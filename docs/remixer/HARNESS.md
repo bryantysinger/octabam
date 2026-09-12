@@ -277,6 +277,16 @@ not set explicitly (since 12 Sep 2026 — the TUI bench's rule, and what
 per-mode defaults on the unit will do); a knob you want at the manifest's
 value under a mode, set it.
 
+**The rig on a real set (Stage D, 13 Sep 2026):** `tools/hw/ot_project.py
+rigproj SONGSET out/set/RIGSONG bamsep26` writes the rig's layout (ids and
+tonight's defaults, mode views included) into every part of a copy of the
+song set, keeping samples, patterns and AMP pages; `tools/harness/set_stems.py
+out/set/RIGSONG --bank B --part P --audio DIR --out D/stems` writes T1..T8
+from each track's STATIC sample at its slot gain (THRU/FLEX tracks stay
+silent); then `rig_render --project out/set/RIGSONG --bank B --part P --stems
+D/stems` renders the part with its own knobs. `out/set/run_set.sh` is the
+loop over banks A–F.
+
 **The rig's floor, metered (7 Sep 2026, `bamsep27`, the RIG table with
 eight stems):** core 0 (Modulation + BusVerb on T5, Spectrum + SEND on T6/T7,
 Character BUS + the fallback SEND on T8) **1,570 instructions/sample** at
