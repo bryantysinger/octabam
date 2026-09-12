@@ -159,6 +159,8 @@ vs `_v5_r64_lm.wav` (unison) and `_v5_r96_lm.wav` (+12).
   persisted write phase under `$3fff` never wrote the upper half — one click
   a second and no reversed burst at 371; fixed), a 50 ms burst comes back
   reversed ~300 ms later at 371, verify-bus 21/21, GRAIN DC still flat.
+  **Heard** (13 Sep, 93 vs 371 on the pad and the loop): "the long one is
+  better — a wavey something that could be useful"; on the loop "way better".
 - `rig_render` in this checkout predates #208's ModeView rule, so the kits set
   PING/MDEP explicitly; on hardware the views carry them.
 
