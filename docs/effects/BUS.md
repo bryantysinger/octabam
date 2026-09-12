@@ -484,8 +484,11 @@ Page 1 of both engines shifted right by one (AUX took 0); the delay's PTCH
 moved to page-2 slot 10 (the `$e` knob field). ⚠️ **A part saved under the
 old layout hands every knob to its neighbour** — TIME becomes AUX, MOD
 becomes TIME, and so on — and PTCH's old page-1 byte becomes MIX. Stamp
-before play (`tools/hw/ot_project.py stamp-defaults <project> bamsep27`, and
-`rigproj` for the rig), the MODE re-slot lesson.
+before play — `tools/hw/ot_project.py stamp-defaults <project> bamsep27
+--all` (⚠️ `--all`: without it the stamper touches only the ids a station
+replaced and leaves the engines' bytes exactly where they were, 12 Sep
+2026; `--keep-mode` keeps an in-range MODE and applies its view), or
+`rigproj` for the rig — the MODE re-slot lesson.
 
 **Gated on both cores** (`tools/verify/verify_onebus.py`, in `make check`): the
 senders and the delay on payload B, the reverb and the return on payload A,
