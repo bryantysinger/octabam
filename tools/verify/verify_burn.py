@@ -77,6 +77,18 @@ def digest(d):
 
 def main():
     remix = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("REMIX", "bamsep26")
+    # The rig burn is a knob on SEND rendered through the bus rig (DELAY
+    # SERVER, SEND, REVERB SERVER). A remix without them (recfix, midi-scenes,
+    # mods) has nothing to burn and nothing to render: a loud SKIP, never a
+    # failure -- the old alias probe had the same policy, and dropping it
+    # broke make check on every such remix the morning the rig burn landed.
+    from remix import registry
+    mods = set(registry.remix(remix).modules)
+    need = {"SEND", "DELAY SERVER", "REVERB SERVER"}
+    if not need <= mods:
+        print(f"  SKIPPED: the rig burn needs {sorted(need - mods)}, which remix "
+              f"{remix!r} does not carry -- nothing to burn")
+        return 0
     if not (ROOT / "out/test_audio/loop.wav").is_file():
         run(["make", "test-audio"])
     SCRATCH.mkdir(parents=True, exist_ok=True)
