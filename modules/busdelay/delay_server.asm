@@ -1432,7 +1432,10 @@ wowlive:
 ; takes S samples, during which the write pointer advances S -- so the head
 ; reaches a lag of LAG0 + 2S and the buffer must hold 2S of history. With a
 ; 16384-word line that caps S at 4096 (93 ms) once the floor is allowed
-; anything at all. Any future size increase must re-check LAG0 + 2S < 16384.
+; anything at all -- and at 8192 (186 ms) with the floor pinned to 0, since
+; the read precedes the write each sample and lag 16,384 is still the ring.
+; Any future size increase must re-check LAG0 + 2S <= 16384. Beyond 186 ms
+; the remedy on the table is a MONO reverse over both lines as one 32K ring.
         move    x:(r7+$5f),a            ; select index
         move    #>$1,x0
         cmp     x0,a
@@ -1467,11 +1470,15 @@ rsz2:
         move    #>14272,a
         bra     rszend
 rsz3:
-        move    #>512,a                 ; 12 ms -- stutter territory
-        move    a,x:(r7+$60)
-        move    #>16384,a
-        move    a,x:(r7+$61)
-        move    #>15296,a
+        move    #>8192,a                ; 186 ms (13 Sep 2026; was 512 = 12 ms
+        move    a,x:(r7+$60)            ; "stutter territory", which nobody
+        move    #>1024,a                ; asked for while 93 ms was "a
+        move    a,x:(r7+$61)            ; flutter" on drums AND on a pad).
+        move    #>0,a                   ; cap 0: the lag floor is TIME-free at
+                                        ; this size -- 2S - 2 = 16,382 is the
+                                        ; ring's oldest valid sample (the write
+                                        ; lands AFTER this read each sample).
+                                        ; XTRM now means 186 ms in both modes.
 rszend:
         move    a,x:(r7+$56)            ; the cap for this size
         move    x:(r7+$75),a            ; TIME
