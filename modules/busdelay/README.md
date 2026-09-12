@@ -67,9 +67,9 @@ grains per line** (two buzzed at the grain rate with scatter up) and
 octaves, 64 = unison. With that, PITCH mode was redundant (GRAIN at full
 density, scatter 0, RATE 96 is a granular +12 on the same non-cascading
 topology) and it is gone: **MODE is CLEAN / GRAIN / REVRS**, three positions.
-The PTCH switch is **SIZE** (46 / 93 / 23 ms, XTRM = 186 ms in both modes —
-REVERSE's own order, one select for both modes; XTRM was a 12 ms REVERSE
-"stutter" until 13 Sep 2026).
+The PTCH switch is **SIZE** (46 / 93 / 23 ms, XTRM = 186 ms grains and
+**371 ms REVERSE segments** — REVERSE's own order, one select for both
+modes; XTRM was a 12 ms REVERSE "stutter" until 13 Sep 2026).
 
 Knobs in GRAIN (v5.1 names): TIME = position, SIZE = grain length, PTCH =
 pitch (page 1), MDEP = scatter (up to 4,095 samples), MRAT = density (R61 law
@@ -147,20 +147,25 @@ vs `_v5_r64_lm.wav` (unison) and `_v5_r96_lm.wav` (+12).
   near-mono (0.998/0.965), 96/127 the bounce (0.73/0.01); 127 leans +4.4 dB
   left, which is ping-pong's own arithmetic (L gets repeats 1, 3, 5: L/R =
   1/feedback), not a defect. The wow at 48 read as motion on a mono loop.
-- **REVERSE at 93 ms is a flutter**, on drums and on a pad. The ceiling is the
-  line (2S of history in one 16,384-word line) — but with the lag floor pinned
-  to 0 a 8,192-sample segment's deepest read (16,382) is still inside the
-  ring, since the read precedes the write each sample. **XTRM is 186 ms in
-  REVERSE now and the mode's default** (13 Sep 2026; sine continuous, burst
-  back reversed within 2S). TIME does nothing at that size. Past 186 ms the
-  remedy is a MONO reverse over both lines as one 32K ring, PING lost in that
-  mode — not done; hear 186 first.
+- **REVERSE at 93 ms is a flutter**, on drums and on a pad. **REVERSE-32K
+  (13 Sep 2026): in REVERSE the two 16K lines are ONE 32K MONO ring** — the
+  L ring's mask is a per-block word (`$6b`: `$7fff` in REVERSE, `$3fff`
+  elsewhere, so CLEAN and GRAIN are bit-identical), the R line's read and
+  write are skipped per sample (they would land in the upper half), PING is
+  forced off, the write-phase load/save masks follow the same word, and the
+  reverse output is mono to both channels. **XTRM = 16,384 samples = 371 ms
+  and the mode's default**; the other sizes keep their lag caps at 32704 −
+  2S. Measured: sine continuous at every size (a first cut that left the
+  persisted write phase under `$3fff` never wrote the upper half — one click
+  a second and no reversed burst at 371; fixed), a 50 ms burst comes back
+  reversed ~300 ms later at 371, verify-bus 21/21, GRAIN DC still flat.
 - `rig_render` in this checkout predates #208's ModeView rule, so the kits set
   PING/MDEP explicitly; on hardware the views carry them.
 
 ## Open
 
-- REVERSE beyond 186 ms (the 32K mono ring), if 186 wants more.
+- REVERSE's segment ceiling is 371 ms now (the whole 32K ring); a beat at
+  slow tempos wants more, and that would need memory the window has not got.
 - ~~The GRAIN level item~~ re-measured whole: with the +6 dB makeup GRAIN was
   +2.1 dB RMS / +6.6 dB peak over CLEAN; the makeup is gone and GRAIN's
   peaks sit level with CLEAN's (RMS ~4 dB under: a scattered cloud's crest).

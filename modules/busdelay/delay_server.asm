@@ -18,6 +18,7 @@
 ;
 ; Deliberately NOT in stage 1 (each is its own gated commit):
 ; the Y state table (no new persistent state yet), PITCH/FREEZE/TAPE/GRAIN/
+; CYCLES_FORWARD_BRANCHES -- the REVERSE-32K skips of the R line (13 Sep 2026)
 ; REVERSE, and the descriptor-side MODE select (a one-value select would
 ; draw a dead knob; it lands with the second mode).
 ;
@@ -261,8 +262,12 @@
 ;                       per-sample manual wraps -- v2 spine)
 ;   r7+$69              MODE, MSB-aligned select (per block; 0 = CLEAN,
 ;                       1 = GRAIN, 2 = REVERSE since v5; anything else = CLEAN)
-;   r7+$6a/$6b          PITCH age step L / R, Q11.12 signed (per block, from
-;                       the PTCH interval select; they differ only in DETUNE)
+;   r7+$6a              this block's MIDI note for GRAIN (0 = none)
+;   r7+$6b              the L ring's MASK: $3fff, or $7fff in REVERSE, where the
+;                       two 16K lines are ONE 32K mono ring (13 Sep 2026)
+;   r7+$6c              skipR: 1 in REVERSE -- the R line's read and write are
+;                       skipped per sample (they would land in the ring's upper
+;                       half); the reverse output is mono to both channels
 ;   r7+$6c/$6d          PITCH head age L / R, Q11.12 (persistent, masked on
 ;                       load AND save -- same discipline as $70/$71)
 ;   r7+$6e              PITCH lag base = min(TIME, 13311) (per block; TIME +
@@ -1229,6 +1234,31 @@ dwarmdone:
         move    #>$1,x0
         teq     x0,a
         move    a,x:(r7+$33)            ; nonzero = the wet comes from $24/$25
+; REVERSE-32K (13 Sep 2026): in REVERSE the two 16K lines are ONE 32K MONO
+; ring, so a segment can be 371 ms (2S = 32768 fits, the read preceding the
+; write each sample). The L ring's mask goes $7fff, the R line's read and
+; write are skipped per sample (they would land in the upper half), PING is
+; forced off (R's stale tap would otherwise cross-feed), and the reverse
+; output is mono to both channels. CLEAN and GRAIN see $3fff and skipR 0:
+; bit-identical (verify-bus).
+        clr     a
+        move    #>$20000,x0             ; 2 << 16 = REVERSE
+        cmp     x0,b                    ; b = MODE, still
+        move    #>$1,x0
+        teq     x0,a
+        move    a,x:(r7+$6c)            ; skipR
+        move    #>$3fff,a
+        move    #>$7fff,x0
+        teq     x0,a                    ; the flag survives the moves
+        move    a,x:(r7+$6b)            ; the L ring's mask
+        move    x:(r7+$74),a
+        move    #>$0,x0
+        teq     x0,a
+        move    a,x:(r7+$74)            ; PING 0 in REVERSE
+        move    x:(r7+$80),a
+        move    #>$7fffff,x0
+        teq     x0,a
+        move    a,x:(r7+$80)            ; 1 - PING = 1 in REVERSE
 
 ; ---- SIZE select (the PTCH slot until v5): the raw index for GRAIN and ----
 ; REVERSE, both of which read it as a SIZE. Page-2 slot 9's companion field,
@@ -1431,11 +1461,12 @@ wowlive:
 ; ⚠️ THE SIZE CEILING IS THE LINE, NOT TASTE. Playing S samples backwards
 ; takes S samples, during which the write pointer advances S -- so the head
 ; reaches a lag of LAG0 + 2S and the buffer must hold 2S of history. With a
-; 16384-word line that caps S at 4096 (93 ms) once the floor is allowed
-; anything at all -- and at 8192 (186 ms) with the floor pinned to 0, since
-; the read precedes the write each sample and lag 16,384 is still the ring.
-; Any future size increase must re-check LAG0 + 2S <= 16384. Beyond 186 ms
-; the remedy on the table is a MONO reverse over both lines as one 32K ring.
+; 16384-word line that capped S at 4096 (93 ms). REVERSE-32K (13 Sep 2026):
+; in REVERSE the two lines are ONE 32K MONO ring (mask $6b, the R line
+; skipped), so 2S <= 32768 and S reaches 16384 (371 ms) with the lag floor
+; pinned to 0 -- the read precedes the write each sample, so lag 32,768 is
+; still the ring. Caps: 32704 - 2S. Any future size increase must re-check
+; LAG0 + 2S <= 32768.
         move    x:(r7+$5f),a            ; select index
         move    #>$1,x0
         cmp     x0,a
@@ -1450,7 +1481,7 @@ wowlive:
         move    a,x:(r7+$60)            ; (index 0 and 1 SWAPPED, R62: the
         move    #>4096,a                ; step = 2^23 / S      panel default
         move    a,x:(r7+$61)            ; is PTCH=1, and R60 measured 46 ms
-        move    #>12224,a               ; cap = 16320 - 2S     as comb
+        move    #>28608,a               ; cap = 32704 - 2S     as comb
                                         ; territory on sustained sources --
                                         ; the default deserves the musical
                                         ; segment, not the ring)
@@ -1460,25 +1491,23 @@ rsz1:
         move    a,x:(r7+$60)            ; R60's ear round preferred
         move    #>2048,a
         move    a,x:(r7+$61)
-        move    #>8128,a
+        move    #>24512,a
         bra     rszend
 rsz2:
         move    #>1024,a                ; 23 ms
         move    a,x:(r7+$60)
         move    #>8192,a
         move    a,x:(r7+$61)
-        move    #>14272,a
+        move    #>30656,a
         bra     rszend
 rsz3:
-        move    #>8192,a                ; 186 ms (13 Sep 2026; was 512 = 12 ms
-        move    a,x:(r7+$60)            ; "stutter territory", which nobody
-        move    #>1024,a                ; asked for while 93 ms was "a
-        move    a,x:(r7+$61)            ; flutter" on drums AND on a pad).
-        move    #>0,a                   ; cap 0: the lag floor is TIME-free at
-                                        ; this size -- 2S - 2 = 16,382 is the
-                                        ; ring's oldest valid sample (the write
-                                        ; lands AFTER this read each sample).
-                                        ; XTRM now means 186 ms in both modes.
+        move    #>16384,a               ; 371 ms (13 Sep 2026, REVERSE-32K; 186
+        move    a,x:(r7+$60)            ; earlier that day, 12 ms "stutter"
+        move    #>512,a                 ; before). cap 0: the lag floor is
+        move    a,x:(r7+$61)            ; TIME-free at this size -- 2S - 2 =
+        move    #>0,a                   ; 32,766 is the mono ring's oldest
+                                        ; valid sample (the write lands AFTER
+                                        ; this read each sample).
 rszend:
         move    a,x:(r7+$56)            ; the cap for this size
         move    x:(r7+$75),a            ; TIME
@@ -1743,7 +1772,7 @@ gvrdone:
 ; bit 23 set would sign-extend and saturate the following move a,rN to
 ; $800000, which hangs the bus forever (the two-track-freeze mechanism).
         move    x:(r7+$70),a            ; LineL phase
-        move    #>$3fff,x0
+        move    x:(r7+$6b),x0           ; the L ring's mask ($7fff in REVERSE)
         and     x0,a
         move    a1,x0
         move    x0,a
@@ -1932,11 +1961,15 @@ gvrdone:
         move    a,x:(r7+$79)          ; dL, wobbled -- the LOOP's own tap
 
 ; ---- TAPE Line R: lerped read at lag TIME + mod ---------------------------
+        move    x:(r7+$6c),a            ; skipR (REVERSE-32K): R's read would
+        tst     a                       ; land in the mono ring's upper half
+        bne     rskipr
         move    r2,a
         move    x:(r7+$68),x0
         move    x0,x:(r7+$30)
         bsr     modtap
         move    a,x:(r7+$7a)          ; dR, wobbled
+rskipr:
 ; ---- MODE dispatch: PITCH additionally computes the SHIFTED OUTPUT taps ---
 ; 0 and every unknown value run the loop's clean taps alone -- a wrong select
 ; degrades to the trad delay, never to silence (the stage-1 rule). The
@@ -2390,9 +2423,9 @@ rmode:
         move    r1,a                    ; LineL write pointer
         move    x:(r7+$56),x0           ; lag0
         sub     x0,a
-        and     #>$3fff,a               ; read phase (exact: the base is
-        move    a1,x0                   ; 0x4000-aligned, so it falls out
-        move    x0,a                    ; of the mask)
+        and     #>$7fff,a               ; read phase in the 32K MONO ring
+        move    a1,x0                   ; (REVERSE-32K, 13 Sep 2026; the base
+        move    x0,a                    ; is 0x8000-aligned too)
         move    x:(r7+$31),x0           ; LineL base
         add     x0,a
         move    a,r5
@@ -2404,7 +2437,7 @@ rmode:
         move    r1,a
         move    x:(r7+$58),x0           ; lag1
         sub     x0,a
-        and     #>$3fff,a
+        and     #>$7fff,a
         move    a1,x0
         move    x0,a
         move    x:(r7+$31),x0
@@ -2416,36 +2449,9 @@ rmode:
         mpy     x0,y1,a
         add     b,a
         move    a,x:(r7+$24)            ; shifted OUTPUT tap L -- NOT $79
-; ---- Line R: identical, on r2 / base $68 ---------------------------------
-        move    r2,a
-        move    x:(r7+$56),x0
-        sub     x0,a
-        and     #>$3fff,a
-        move    a1,x0
-        move    x0,a
-        move    x:(r7+$68),x0           ; LineR base
-        add     x0,a
-        move    a,r5
-        move    y:(r5),a
-        move    a,x0
-        move    x:(r7+$57),y1
-        mpy     x0,y1,a
-        move    a,b
-        move    r2,a
-        move    x:(r7+$58),x0
-        sub     x0,a
-        and     #>$3fff,a
-        move    a1,x0
-        move    x0,a
-        move    x:(r7+$68),x0
-        add     x0,a
-        move    a,r5
-        move    y:(r5),a
-        move    a,x0
-        move    x:(r7+$59),y1
-        mpy     x0,y1,a
-        add     b,a
-        move    a,x:(r7+$25)            ; shifted OUTPUT tap R
+        move    a,x:(r7+$25)            ; ... and R: the reverse is MONO
+                                        ; (REVERSE-32K; the R line is not
+                                        ; written in this mode)
 ; MODEFORK_END
 pdone:
 
@@ -2538,6 +2544,9 @@ pdone:
         bsr     satdrv
         move    a,y:(r1)+                ; LineL write, advance
 
+        move    x:(r7+$6c),a            ; skipR (REVERSE-32K): no R write, it
+        tst     a                       ; would land in the mono ring's upper half
+        bne     rskipw
         move    x:(r7+$81),x0           ; fbIntoR
         move    x:(r7+$73),y1
         mpy     x0,y1,a
@@ -2590,13 +2599,15 @@ pdone:
         move    x:(r7+$7a),x1           ; LineR's raw tap (see the L note)
         bsr     satdrv
         move    a,y:(r2)+                ; LineR write, advance -- no x_in term
+rskipw:
 
 ; ---- wrap both write pointers by hand (the modulo this engine no longer
 ; asks the AGU for). After the +1 a pointer is base .. base+0x4000 inclusive;
 ; masking the phase and re-adding the base folds base+0x4000 back to base
-; and leaves every other value alone.
+; and leaves every other value alone. L's mask is $6b: $7fff in REVERSE.
         move    r1,a
-        and     #>$3fff,a
+        move    x:(r7+$6b),x0
+        and     x0,a
         move    a1,x0
         move    x0,a                    ; A2-clean
         move    x:(r7+$31),x0           ; LineL base
@@ -2779,7 +2790,7 @@ dlyend:
 
 ; ---- save both phases, restore the M registers ----------------------------
         move    r1,a
-        move    #>$3fff,x0
+        move    x:(r7+$6b),x0           ; the L ring's mask ($7fff in REVERSE)
         and     x0,a
         move    a,x:(r7+$70)
         move    r2,a
@@ -2803,7 +2814,8 @@ modtap:
         sub     x0,a
         move    x:(r7+$29),x0           ; mod_int, signed
         sub     x0,a
-        and     #>$3fff,a
+        move    x:(r7+$6b),x0           ; the ring's mask ($3fff; $7fff in REVERSE)
+        and     x0,a
         move    a1,x0
         move    x0,a                    ; A2-clean
         move    a,x:(r7+$2a)            ; park phase
@@ -2815,7 +2827,8 @@ modtap:
         move    x:(r7+$2a),a
         move    #>$1,x0
         sub     x0,a
-        and     #>$3fff,a               ; one sample OLDER
+        move    x:(r7+$6b),x0
+        and     x0,a                    ; one sample OLDER
         move    a1,x0
         move    x0,a
         move    x:(r7+$30),x0

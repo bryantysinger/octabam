@@ -90,7 +90,7 @@ MODULE = Module(
         # segment, one select read the same way by both. Count stays 4.
         Param(b"SIZE", 1, 4, active=True, formatter=_STEP,
               labels=("46MS", "93MS", "23MS", "XTRM"),
-              doc="segment/grain size 46/93/23 ms; XTRM = 186 ms in both modes"),
+              doc="segment/grain size 46/93/23 ms; XTRM = 186 ms grains, 371 ms REVERSE segments"),
         # PTCH on page-2 slot 10 (one-aux re-slot, 7 Sep 2026; page-1 slot
         # 5 until then, which is MIX now). The DSP reads $e's KNOB field for
         # it. GRAIN's pitch; idle in other modes.
@@ -116,9 +116,9 @@ MODULE = Module(
                  names={7: b"SCAT", 8: b"DENS"},   # PTCH is PTCH in every mode
                  defaults={1: 36, 2: 40, 3: 100, 4: 0, 5: 127,
                            7: 40, 8: 127, 9: 1, 10: 64}),
-        ModeView(mode=2,                        # REVERSE: centred, no wow, 186 ms
-                 defaults={1: 40, 2: 60, 3: 100, 4: 0, 5: 127,   # segments (SIZE 3 = XTRM;
-                           7: 0, 8: 64, 9: 3, 10: 64}),          # 93 ms was "a flutter", 13 Sep 2026)
+        ModeView(mode=2,                        # REVERSE: centred, no wow, 371 ms
+                 defaults={1: 40, 2: 60, 3: 100, 4: 0, 5: 127,   # segments (SIZE 3 = XTRM; the
+                           7: 0, 8: 64, 9: 3, 10: 64}),          # 32K mono ring, 13 Sep 2026)
     ),
     dsp=DspSection(
         asm="modules/busdelay/delay_server.asm",
