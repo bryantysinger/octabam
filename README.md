@@ -167,8 +167,10 @@ Parts to Kits on load; downgrading may lose Kit data — her warning, and it
 applies).
 
 **MKI and MKII run the same 1.40C image** (hash-verified), so an image
-should run on either; everything here has only ever been *tested* on an
-MKII.
+should run on either; everything here has only ever been *tested* by us on
+an MKII. The DRAM platform's first hardware run was a contributor's, on a
+MKI ([octalab](https://github.com/nordseele/octalab-notes), 11 Sep 2026 —
+`docs/firmware/EXTERNAL.md` §9).
 
 **No Elektron binary is redistributed here — and none may be.** `make os`
 downloads your own copy; the tooling regenerates Elektron's image

@@ -40,8 +40,15 @@ placement, and the m68k-elf toolchain is a standard dependency.
 (`tools/emu/ot_emu`) boots the built image, the bit-identity gate proves
 the build changed nothing for the twenty-six existing configurations, and
 each port's own oracle holds. **Nothing from the new pipeline has been
-written to a unit yet.** The authors' own builds are what has run on
-hardware.
+written to a unit by us yet.** The authors' own builds are what has run on
+our hardware — but one contributor has: nordseele's **octalab** is a
+ColdFire DRAM module of this remixer, and an image the remixer built at
+`9a49f21` (loader at `0x4010fdf0`, reserve at `0x40a955e0`, one detour, one
+poke, one grown table, the 15-row FX2 chooser) has run on an **Octatrack
+MKI** since 11 Sep 2026 (`docs/firmware/EXTERNAL.md` §9.1). One claim of
+ours fell with it: the MEMORY page still totals 85.5 MB under the reserve
+(Flex FREE MEM reads 71.4 MB) — a fifth geometry site `arena.py` does not
+patch.
 
 | module | from | what it is | proof |
 |---|---|---|---|

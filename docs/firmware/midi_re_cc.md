@@ -130,7 +130,9 @@ the same body. Steps, all measured:
    returns −1 (`0x40054d26`). A disabled slot is refused, not written.
 3. `0x40027e00` / `0x40027e30` (project-dirty flags 🟡).
 4. Audio track (`track ≤ 7`): storage address
-   - PB page: `Part + 0x8edaa + track*30 + machine*7 + slot`
+   - PB page: `Part + 0x8edaa + track*30 + machine*6 + slot` (~~`machine*7`~~
+     until 13 Sep 2026 — re-read off the writer: `0x40054d7e..88` computes
+     `(m<<3) − m*2`; octalab's validator reading agrees, `EXTERNAL.md` §9.2)
    - others: `Part + 0x8ee9a + track*24 + (flat − 6)` (24 B/track = AMP·LFO·FX1·FX2 × 6)
    plus a shadow copy at `0x100a4ef8`/`0x100a4fe8` + same offset.
 5. Clears a per-track lock bit `0x80001538[t] &= ~(1<<flat)` and byte

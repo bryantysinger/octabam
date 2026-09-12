@@ -793,10 +793,14 @@ to the linked image (`docs/remixer/PLACEMENT.md`, "The platform reserve").
    at the splash — the loader's `fatal` (a hash gate failed) or the boot
    detour itself. Recovery: `docs/remixer/FLASHING.md`, stock 1.40C over
    MIDI or the card.
-2. **PROJECT › MEMORY reports ~75 MB**, not 85.5: the arena lost 1,707
-   pages (10 MB). Falsified by the stock figure (the geometry words did
-   not take) or a nonsense figure (the free-list fill and the count
-   disagree).
+2. ~~**PROJECT › MEMORY reports ~75 MB**, not 85.5: the arena lost 1,707
+   pages (10 MB).~~ ❌ FALSIFIED 13 Sep 2026, on a MKI running an image
+   from this pipeline (octalab, `docs/firmware/EXTERNAL.md` §9.1): the
+   MEMORY page **still totals 85.5 MB**, while the audio pool's Flex list
+   reads **FREE MEM 71.4 MB** — the reserve took, the free list is honest,
+   and the page's total is read from a fifth `0x390a` site
+   `tools/remix/arena.py` does not patch (18 candidates, unpinned). The
+   claim to make instead: Flex FREE MEM ≈ 71 MB on an empty project.
 3. **A project with static and flex samples loads and plays**, and a
    second LOAD PROJECT after playing still works. This is the arena base
    having moved at all 24 sites: a missed site would read pages from the

@@ -33,10 +33,18 @@ anchors).
 | +0x14 | page id, dispatched when the action is the shared no-op (see §3) |
 
 **Menu list descriptor — 0x1c (28) bytes:** `+0x00` row count, `+0x04`
-scroll / first-visible index, `+0x18` pointer to the row array. Fields
-`+0x08..+0x14` are not yet interpreted (🟡 — falsified if the draw engine
-reads them for something load-bearing; only `+0x00`, `+0x04` and `+0x18`
-were seen consumed in the window disassembled).
+scroll / first-visible index, `+0x08` cursor within the window, `+0x0c`
+absolute selection (`+0x04 + +0x08`, kept by the scroll routines
+`0x4007ec7c`/`0x4007eca4`), `+0x10` **visible-row count**, `+0x14` row
+count again, `+0x18` pointer to the row array. ✅ (13 Sep 2026; was 🟡
+"`+0x08..+0x14` not yet interpreted".) **Descriptors ship inert and are
+initialised at boot**: `0x40064c70..0x40064cac` calls `init(&desc+4,
+visible, count)` (`0x4007ec60`) for the root (5 visible), the submenus (7)
+and the demo menus (2), guarded once by `tst.l 0x400cbda0`; the count
+argument is read from `+0x00`, so a bumped root count is picked up for
+free. A descriptor built in a cave is NOT in that run and must ship with
+`+0x10` set, or its pane draws zero rows — octalab's third build (theirs on
+a MKI; the guard and the three calls re-read here, `EXTERNAL.md` §9.2).
 
 The stride is confirmed from code, not just layout: the draw/nav engine
 computes `d2 = d3*32 − d3*8` (= ×24) at `0x4006496a..0x40064970` and indexes
@@ -56,8 +64,11 @@ Root rows have a non-zero window descriptor at `+0x04` and a child pointer at
 `+0x10` with action = 0; submenu leaf rows are the mirror image (window 0,
 child 0, action or page id set). The four root window descriptors
 (`0x400cbc34/48/5c/70`) are uniform 20-byte records
-`{0x13, 0x09, 0x01, ptr, ptr}` — plausibly geometry plus two resource
-pointers, uninterpreted (🟡).
+`{0x13, 0x09, 0x01, ptr, ptr}` — **the category's icon**: 19 wide × 9
+tall, `ptr` a plane of 19 words each holding one column byte in the high
+byte (bit 0 at the top); the second plane is `0xff80` in all four, a
+constant. 🟡 adopted 13 Sep 2026 from octalab, whose fifth category draws
+its own icon on a MKI (`EXTERNAL.md` §9.2; was "uninterpreted").
 
 ## 3. Dispatch ✅
 
@@ -290,9 +301,9 @@ variant A toward ~85%.
 
 ## 8. Still undecoded
 
-What remains of the renderer/input half after the §7 trace: the
-window/geometry descriptor internals (the uniform `{0x13,0x09,0x01,ptr,ptr}`
-records), the drawing primitives behind the state table's draw functions,
+What remains of the renderer/input half after the §7 trace: ~~the
+window/geometry descriptor internals~~ (the icon planes, §1, 13 Sep 2026),
+the drawing primitives behind the state table's draw functions,
 the `0x80000088` alternate-list semantics, `FUN_40043728` (old-track
 teardown) and the two `0x46c7d8d8` readers — plus everything
 `verify_menu.py`'s warning about the indirect widget-setup pointers
