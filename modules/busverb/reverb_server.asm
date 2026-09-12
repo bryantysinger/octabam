@@ -1144,8 +1144,8 @@ md_big:                                 ; 2, and anything unexpected
 ; rings at -8.3 dB/s (~7 s) and its size knob was only at HALF. TIME's top
 ; now reaches ~-5 dB/s; the whole knob lengthens (T64 ~-10 dB/s, was -21).
 ; Falsifier: quiet-click stability sweep TIME 127 x SIZE corners, no growth.
-        move    #>$568000,a               ; 0.67578 (was $4CCCCD = 0.60 "2/√8
-        move    a,x:(r7+$1e)              ; headroom", pre-norm-proof)
+        move    #>$200000,a               ; k_mode 0.25 (13 Sep 2026: the TIME law
+        move    a,x:(r7+$1e)              ; below; was the decay scale 0.67578)
         move    #>$5a0000,a             ; wet gain/2 = -3 dB vs ROOM/PLATE.
         move    a,x:(r7+$20)            ; Two-step history, same day (18 Aug
                                         ; 2026): capture B measured BIG +8.4 dB
@@ -1244,8 +1244,8 @@ md_room:
 ; Parked in $1e for the TIME block below to fold in -- the r7 block ends at
 ; $83 and $7e..$81 went to the diffuser taps, so there is no spare slot.
 ; Scaling g DOWN is always safe; it is scaling UP that self-oscillates.
-        move    #>$534307,a               ; 2/√8 = H8 normalization (was $75C000 for H4)
-        move    a,x:(r7+$1e)
+        move    #>$400000,a               ; k_mode 0.5 (13 Sep 2026: the TIME law;
+        move    a,x:(r7+$1e)              ; was the decay scale 0.6505)
 ; (wet gain $20, diffusion offset $3f and movement scale $73 are ROOM/PLATE
 ; -common -- stored once at rp_tail, v8; only BIG differs on those three)
 ; INPUT DIFFUSER taps, LONG since Round 13 (14-44 ms): the diffusers are the
@@ -1298,8 +1298,8 @@ md_plate:
 ; Parked in $1e for the TIME block below to fold in -- the r7 block ends at
 ; $83 and $7e..$81 went to the diffuser taps, so there is no spare slot.
 ; Scaling g DOWN is always safe; it is scaling UP that self-oscillates.
-        move    #>$50A000,a               ; was $5753E3 (2/√8 exact). Round 12:
-        move    a,x:(r7+$1e)            ; on the doubled lines PLATE's fastest
+        move    #>$333333,a               ; k_mode 0.4 (13 Sep 2026: the TIME law;
+        move    a,x:(r7+$1e)            ; was the decay scale 0.6299). Round 12:
 ; (wet gain $20 -- and $3f/$73 below -- are ROOM/PLATE-common: rp_tail, v8)
                                         ; decay (TIME=0) measured MF -15.1 dB/s
                                         ; against VV plate's -18.9 -- the knob
@@ -1596,19 +1596,40 @@ md_done:
 ;   - MOD 0, SIZE 0/3, TONE 0/127: 1.76..1.96 s;
 ;   - the cross-core bus: the single-core hatch (send_probe --layout RS)
 ;     shows the same -32 dB/s at TIME 0.
-; Something recirculates at g ~ 0.9 per ~26 ms (or 0.99 per ~3 ms) that no
-; knob reaches. Next instrument: on the hatch the reverb is instance 0, so
-; dsp_host -track can dump the eight line outputs' energy per block beside
-; the output -- if the tank is silent while the output rings, the loop is
-; downstream of it (the output section / wet stage), else it is a line or
-; allpass whose gain is not the one the knobs write.
-        move    x:(r6+$1),x0            ; TIME: slot 1 (one-aux re-slot)
-        move    #>$080000,y1
+; It was the bloom pair (see the RESOLVED note at the TIME law below).
+; RESOLVED 13 Sep 2026: the floor was the ENERGY BLOOM pair (two allpasses on
+; the output branch, g fixed at 0.867 on 41 / 29 ms lines = a 2.0 s ring
+; nothing upstream could shorten; found by excision -- tank gains zeroed,
+; then the in-loop allpass g zeroed, and the output still fell at -33 dB/s;
+; the delay on the same burst was one echo then silence). The bloom's g now
+; follows TIME (below, $7b), and with the floor gone this law is what sets
+; the dial: $1e = a - k_mode * (d_min + d_span * (1 - t)^2), t = TIME/128.
+; The DISTANCE below the loop-neutral point is what the decay rate is
+; proportional to, and a squared taper on it spreads RT60 across the dial;
+; d > 0 always, so $1e < a at every knob in every mode (the norm proof holds
+; by construction). k_mode replaces the old per-mode decay scale (the md_
+; blocks park it in $1e): ROOM 0.5, PLATE 0.4, BIG 0.25 (its lines are
+; longer). d_min = 0.056, d_span = 0.364 (both x k, so the product stays a
+; fraction).
+        move    x:(r6+$1),x0            ; TIME: slot 1 (one-aux re-slot), t
+        move    #>$3bbbbb,y1            ; the bloom's g: 0.40 + 0.467 t
         mpy     x0,y1,a
-        add     #>$380000,a
-        move    a,x1                    ; fold in MODE's decay scale, parked in
-        move    x:(r7+$1e),y1           ; $1e by the md_ block above. TIME still
-        mpy     x1,y1,a                 ; spans its full range inside a character.
+        add     #>$333333,a
+        move    a,x:(r7+$7b)
+        move    #>$7fffff,a
+        sub     x0,a                    ; 1 - t
+        move    a,x0
+        move    x0,y1
+        mpy     x0,y1,a                 ; (1 - t)^2  (signed order; both >= 0)
+        move    a,x0
+        move    #>$2e978d,y1            ; d_span 0.364
+        mpy     x0,y1,a
+        add     #>$072b02,a             ; + d_min 0.056
+        move    a,x0
+        move    x:(r7+$1e),y1           ; k_mode, parked by the md_ block
+        mpy     x0,y1,a                 ; d = k * (...)
+        neg     a
+        add     #>$2d413c,a             ; $1e = a - d
         move    a,x:(r7+$1e)
 
 ; ---- per-line decay gains (PLAN.md 1.1) ---------------------------------
@@ -2782,7 +2803,11 @@ lfrol:
         move    a,r5
         move    #247,n5                 ; 2048 - 1801 (41 ms; SHORT immediate,
                                         ; zero-extended in an address register)
-        move    #>$6F0000,y0            ; g = 0.867, both bloom APs. R18 tried
+        move    x:(r7+$7b),y0           ; g, both bloom APs: 0.40 .. 0.86 with
+                                        ; TIME (13 Sep 2026; was a fixed 0.867,
+                                        ; which rings 2.0 s on the 41 ms line --
+                                        ; THE floor under every TIME setting, in
+                                        ; every mode, since R13). R18 tried
                                         ; 0.91 (longer ring) and levels up to
                                         ; 2x and RETIRED them all by ear: the
                                         ; APs' sparse 41/29 ms pulse train
