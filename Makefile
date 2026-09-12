@@ -178,7 +178,7 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	  echo "  [SKIP] hidden engines: no .venv, or this remix hides nothing"
 	python3 tools/verify/verify_grains.py $(REMIX)
 	REMIX=$(REMIX) python3 tools/verify/verify_menu.py
-	python3 tools/verify/verify_burn.py
+	python3 tools/verify/verify_burn.py $(REMIX)
 	python3 tools/verify/verify_twocore.py
 	python3 tools/verify/verify_onebus.py
 
@@ -207,8 +207,17 @@ verify-bus: ## Prove a bus-layout change is behaviour-preserving. STAMP FIRST: m
 	python3 tools/verify/verify_bus.py $(if $(SAVE),--save) $(if $(SELFTEST),--selftest)
 
 .PHONY: burn
-burn: ## Build the flashable cycle-burn probe (p3 = the burn knob, 32 cycles/step)
-	XBUS=1 BURN=1 python3 tools/build/build_bus.py
+burn: ## The RIG BURN image: the shipping remix + a cycle-burn knob on SEND's slot 2 (24 cycles/step, every core) -> out/mainos_bus.bin; `make burn-image BUILD=N` packs it
+	REMIX=$(REMIX) BUILD=$(BUILD) XBUS=1 SPEC=1 BURN=1 python3 tools/build/build_bus.py
+
+.PHONY: burn-image
+burn-image: burn ## Repack the RIG BURN build into a card-flashable .bin (BUILD=N: name it so the panel says which image it is)
+	@test -f $(SYX) || { echo "missing $(SYX) — run 'make os'"; exit 1; }
+	@test -x $(EFT) || { echo "missing $(EFT) — run 'make setup'"; exit 1; }
+	EFT_EMIT_CONTAINER=out/elek_$(BUILD)burn.bin $(EFT) \
+	  -i $(SYX) -c 3 out/mainos_bus.bin \
+	  -V $(VERSION)B -o out/OCTATRACK_OS1.40C_$(VERSION)B.syx
+	@ls -la out/elek_$(BUILD)burn.bin
 
 .PHONY: check
 check: bus cycles verify ## Everything that can be checked without hardware

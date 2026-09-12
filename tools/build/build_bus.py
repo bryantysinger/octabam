@@ -598,7 +598,19 @@ if os.environ.get("MARKER") == "1":
     FULLNAME["REVERB SERVER"] = b"MrkVerb" + BUILD_TAG
     ABBR["REVERB SERVER"] = b"MRKV"
 
-if os.environ.get("BURN") == "1":
+# BURN=1 has two shapes. With SPEC=1 it is the RIG BURN (13 Sep 2026): the
+# shipping image plus a cycle-burn knob on SEND's second slot, on every core,
+# so the burn sweep prices the real rig on the core it is dialled on (the
+# worst layout is the DELAY core's, where the reverb's knob never was). The
+# servers are untouched. Without SPEC it is the older diagnostic image: the
+# reverb's own burn blocks and the alias probe in the delay's slot.
+RIG_BURN = os.environ.get("BURN") == "1" and os.environ.get("SPEC") == "1"
+if RIG_BURN:
+    RENAMES["SEND"] = [(i, v) for i, v in RENAMES.get("SEND", []) if i != 1] + [(1, b"BURN")]
+    ACTIVE_PARAMS["SEND"] = sorted(set(ACTIVE_PARAMS["SEND"]) | {1})
+    DEFAULTS["SEND"] = [(i, v) for i, v in DEFAULTS.get("SEND", []) if i != 1] + [(1, 0)]
+    FULLNAME["SEND"] = b"SendBurn" + BUILD_TAG
+elif os.environ.get("BURN") == "1":
     FULLNAME["REVERB SERVER"] = b"BurnProb" + BUILD_TAG
     ABBR["REVERB SERVER"] = b"BURN"
     # BusDelay's slot carries the X/Y ALIAS probe in this build. It is a
@@ -717,11 +729,12 @@ if SPEC:
         # render any more -- it outgrew payload A with the 8-line engine.
         print("  DEV=1 + SPEC=1: rendering reverb only (delay is on payload B, "
               "which dsp_host cannot boot)")
-    _clash = [v for v in ("BURN", "PROBE", "XPROBE", "TPROBE", "DELAYPROBE")
+    _clash = [v for v in ("PROBE", "XPROBE", "TPROBE", "DELAYPROBE")
               if os.environ.get(v) == "1"]
     if _clash:
         sys.exit(f"SPEC=1 cannot be combined with {'/'.join(_clash)}=1 -- "
-                 f"those replace a server with a probe")
+                 f"those replace a server with a probe (BURN=1 is allowed: "
+                 f"with SPEC it is the rig burn on SEND, see RIG_BURN)")
 
 # ---- DSP code placement (task 13) ------------------------------------------
            # DLSRC= swaps the delay engine for an alternate source file --
@@ -1986,6 +1999,14 @@ def main():
         print(f"  shimmer excised ({cut} lines) -- NOSHIM=1 set")
     elif reverb_src is not None:
         print("  shimmer IN (default) -- NOSHIM=1 to excise")
+    if RIG_BURN and send_src is not None:
+        _anchor = ("        clr     a\n"
+                   "        move    a,x:(r7+$67)             ; default: offset 0 (first call)\n")
+        if send_src.count(_anchor) != 1:
+            sys.exit(f"RIG BURN: the SEND anchor appears {send_src.count(_anchor)} "
+                     f"times in {ASM_SRC['SEND']}, expected exactly 1 -- re-cut it")
+        send_src = send_src.replace(_anchor, pathlib.Path("dsp/burn_send.inc").read_text() + _anchor, 1)
+        print("  RIG BURN: cycle burn injected into SEND (both cores); p1 = BURN, 24 cycles/step")
 
     # ---- MARKER=1: inject the staged audible execution marks ---------------
     # See the MARKER MODE naming block above. Three marks, three sites in
@@ -2081,7 +2102,7 @@ mkgo:""",
     # dsp/burn_block{1,2}.inc and are spliced into the current source at build
     # time, against anchors asserted to exist exactly once. If the engine moves
     # under them the build FAILS rather than measuring the wrong thing.
-    if os.environ.get("BURN") == "1":
+    if os.environ.get("BURN") == "1" and not RIG_BURN:
         _anchors = [
             # block 1 goes AFTER the call-flag stash at the top of proc: `a` is
             # already saved and nothing else is live, which is what makes the

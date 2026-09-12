@@ -51,7 +51,7 @@
 ;   $41/$42 DC block x1 L/R, $43/$44 y1 L/R (PERSISTENT, zeroed at init; long-form slots)
 ;   $46 DC block k (1 or 0), $47 R (0.999 or 0): on in TUBE / FUZZ only (per block)
 ;   $49 post low-pass kl  $4a/$4b its state L/R (PERSISTENT)
-;   $4c low-pass mode flag (1.0 TAPE, 0.5 FUZZ, 0 TUBE / BUS; per block)
+;   $4c low-pass kl/DRV (0.6 TAPE, 0.3 FUZZ, 0 TUBE / BUS; per block)
 ;   $3c/$3d reverb / delay liveness grace (BUS mode, per block)
 ;   per sample / persistent (ALL BELOW $40 -- an r7 displacement past 63
 ;   assembles to the two-word long form, which cost the Spectrum station 30
@@ -447,8 +447,10 @@ ch_tnone:
         clr     a
         move    a,x:(r7+$46)            ; the DC blocker off (k = R = 0): a
         move    a,x:(r7+$47)            ; symmetric curve leaves no DC
-        move    #>$7fffff,x0            ; the post low-pass ON (TAPE, the
-        move    x0,x:(r7+$4c)           ; fall-through; the others override)
+        move    #>$4ccccd,x0            ; the post low-pass: kl/DRV = 0.6 in
+        move    x0,x:(r7+$4c)           ; TAPE (the fall-through; the others
+                                        ; override -- the 0.6 lives here, not
+                                        ; in a per-block multiply: 13 Sep 2026)
         clr     a
         move    a,x:(r7+$3e)            ; return levels: 0 outside BUS mode
         move    a,x:(r7+$3f)
@@ -488,22 +490,21 @@ ch_sfuzz:
         move    x0,x:(r7+$46)           ; fold ahead of a hard clip are not
         move    #>$7fdf3b,x0            ; symmetric on real material)
         move    x0,x:(r7+$47)
-        move    #>$400000,x0            ; the low-pass at half strength: the
-        move    x0,x:(r7+$4c)           ; clip's fizz off the top (ear, 12 Sep)
+        move    #>$266666,x0            ; the low-pass at half strength (0.3):
+        move    x0,x:(r7+$4c)           ; the clip's fizz off the top (ear, 12 Sep)
         bra     ch_sdone
 ch_sbus:
         move    #>$200000,x0            ; pre = 0.5 ...
         move    x0,x:(r7+$38)
         move    #>$7fffff,x0            ; ... post = 2.0
         move    x0,x:(r7+$39)
-        clr     a
-        move    a,x:(r7+$4c)            ; a return is clean: no low-pass
 ; BUS: CRSH and RING are the RETURN levels. The crush mask goes all-ones and
 ; the carrier step 0, so the stages those knobs used to drive are neutral.
         move    #>$ffffff,x0
         move    x0,x:(r7+$23)           ; crush: identity
         clr     a
         move    a,x:(r7+$24)            ; ring: no carrier
+        move    a,x:(r7+$4c)            ; ... and a return is clean: no low-pass
 ; ONE RETURN (the one-aux rig, 7 Sep 2026): RET (the CRSH knob) is the level
 ; of the LAST LIVE STAGE's output -- the reverb's if it is running, else the
 ; delay's, else nothing -- resolved below from the engines' liveness stamps.
@@ -585,14 +586,11 @@ ch_sdone:
         move    (r1)+n1                 ; r1 = TANH_TD (n1 written 12 back)
         move    r1,r2
         move    (r2)+                   ; r2 = its slopes
-; kl = 0.6 * DRV/128 * the mode flag ($4c): the post low-pass, ~16 kHz at
-; DRV 32, ~8 k at 64, ~3.6 k at 127 in TAPE, half as strong in FUZZ; 0
-; (bit-exact) in TUBE / BUS.
+; kl = DRV/128 * the mode word ($4c: 0.6 TAPE, 0.3 FUZZ, 0 TUBE / BUS): the
+; post low-pass, ~16 kHz at DRV 32, ~8 k at 64, ~3.6 k at 127 in TAPE, half
+; as strong in FUZZ; 0 (bit-exact) in TUBE / BUS.
         move    x1,x0                   ; DRV/128
-        move    #>$4ccccd,y1            ; 0.6
-        mpy     x0,y1,a
-        move    x:(r7+$4c),y1           ; 1.0 / 0
-        move    a,x0
+        move    x:(r7+$4c),y1           ; the mode's kl/DRV
         mpy     x0,y1,a
         move    a,x:(r7+$49)            ; kl
 ; WDTH -> mid and side gains. 64 = (1, 1); 0 = (1, 0) mono; 127 = (1, ~2).

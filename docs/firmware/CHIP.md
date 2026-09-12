@@ -245,14 +245,21 @@ paying for four FX1 effects the sweep may not have included.
 
 ### The burn knob is a reusable CYCLE METER, not a one-shot test
 
-This is the part worth keeping. `BURN` sits on BusVerb in any `BURN=1` build,
-so **any configuration can be measured, on demand, with no flash**:
+This is the part worth keeping. **Since 13 Sep 2026 the knob is on SEND**
+(`make burn` / `make burn-image BUILD=N`: `BURN=1` with `SPEC=1` is the RIG
+BURN — the shipping remix, servers untouched, plus `BURN` on SEND's second
+slot). SEND is on every track of every core, so **either core's ceiling can
+be measured, on demand, with no rebuild**, and the sweep prices the real rig
+on the core it is dialled on (the worst layout is the DELAY core's, where
+the reverb's old knob never was):
 
-1. Set up the configuration you care about.
-2. Sweep `BURN` up until it breaks.
-3. **`32 × BURN` = cycles/sample spare in that configuration.** (⚠️ 32
-   since the two-block probe — `dsp/burn_block1.inc` documents the scaling;
-   the original single-block probe this section was written against was 16.)
+1. Set up the configuration you care about (a SEND on the core under test).
+2. Sweep that SEND's `BURN` up until the audio breaks.
+3. **`24 × BURN` = cycles/sample spare on that core in that configuration.**
+   (⚠️ 24: a three-word body — `dsp/burn_send.inc`; the reverb's two-block
+   probe was 32/step, the original single-block one 16. `verify_burn.py`
+   proves the knob inert at 0 and 127 and the step exact on both cores,
+   every `make check`.)
 
 And the *difference* between two configurations is the **cost of the change** —
 which is the only way to price stock effects at all, since they are binary and

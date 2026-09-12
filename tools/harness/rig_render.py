@@ -238,9 +238,10 @@ def apply_sets(tracks, sets):
                 continue
             kmap = s.module.knob_map_all() if not s.module.is_stock else {
                 p.name.decode().strip(): i for i, p in enumerate(s.module.params) if p.name}
-            if name in kmap:
-                s.values[kmap[name]] = int(val) & 0x7f
-                explicit.setdefault((t, s.fx), set()).add(kmap[name])
+            if name in kmap or (name.startswith("P") and name[1:].isdigit() and int(name[1:]) < 12):
+                idx = kmap[name] if name in kmap else int(name[1:])   # P<n>: a raw slot
+                s.values[idx] = int(val) & 0x7f                      # (a burn build's knob)
+                explicit.setdefault((t, s.fx), set()).add(idx)
                 hit = True
         if not hit:
             die(f"--set {spec!r}: no such knob on track {t}")
