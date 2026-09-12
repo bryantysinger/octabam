@@ -841,11 +841,17 @@ the reading: run the port with the DSP frame engine on from boot, a known
 signal on one track and an audible FX2, and dump the 64 words; they must be
 that signal after FX2 and nothing else.
 
-The port's "P:0x55a called three times a frame" (`COLDFIRE_PORT.md`, the
-ESAI section) counts the three calls at `P:0x2df`/`0x2e2`/`0x2e6`, which
-copy the ESAI rings into the block's upper 256 words. The per-track call at
-`P:0x514` is a fourth site, inside the loop, once per track; 🟡 it was not
-reached in that run because no track was playing through FX2.
+The frame path calls the copy at `P:0x55a` from FOUR straight-line sites,
+`P:0x2df`/`0x2e2`/`0x2e6`/`0x2eb` (✅ static listing, `out/dsp/payload_A.asm`);
+each call writes 64 words (a 16-iteration `do`, four words per pass), so the
+four together are exactly the block's upper 256 words — three would fill
+only 192. The per-track call at `P:0x514` is a FIFTH site, inside the loop,
+once per track; 🟡 it was not reached in the port run because no track was
+playing through FX2. ⚠️ The port's "P:0x55a called three times a frame"
+(`COLDFIRE_PORT.md`, the ESAI section) was a PC watch at `0:55e`, one word
+into the routine, and it disagrees with the listing by one; which of the
+four the watch missed is not known, and the port doc's count is left as it
+was measured.
 
 **What consumes the tempo inside the packer's handlers** — three sites, all
 turning tempo into a *rate*, none copying it:

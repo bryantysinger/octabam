@@ -204,8 +204,13 @@ Each pass:
 4. The write primitive `0x400166b8` writes `frames * A` bytes.
 5. `remaining -= frames`, `position += frames`.
 
-After the loop, a single zero byte is written if `P` is 1, at `0x400210cc`.
-That is the RIFF pad, and it is correct.
+After the loop, at `0x400210cc`, a zero byte is staged and `0x400166b8` is
+called UNCONDITIONALLY with length `d5 = P` — one byte when `P` is 1, a
+zero-length write when `P` is 0 — and its return is range-checked either
+way (`blt` at `0x400210ea`). That is the RIFF pad, and it is correct; a
+copy of the writer's shape onto a file API that rejects zero-length writes
+must gate the call, and the port watch in §7 will see one extra
+`0x400166b8` call per save.
 
 **Why this matters for anything that streams to the card:** the loop is
 already page aware and already chunked. It walks a block chained pool, it
@@ -247,9 +252,14 @@ into a buffer at `0x460faab4`.
 
 It reads the clock through two helpers:
 
-- `0x4001c4d8(index)` reads one field. It is an I2C transaction against the
-  peripheral registers `0xfc05c02c`, `0xfc05c034` and `0xfc05c038`, polling
-  until a status nibble reads 2. ✅
+- `0x4001c4d8(index)` reads one field. It is a **DSPI** (SPI) transaction:
+  `0xfc05c000` is the MCF5445x DSPI (`tools/emu/emu_rtos.py:151`,
+  `RTOS_FORK.md` §4). Under a mutex (`0x400009f4`/`0x40000ab4` on
+  `0x46c8c5f4`) it pushes two frames to PUSHR (`+0x34`: `0x90020000 | index`,
+  then `0x10020000`), polls SR (`+0x2c`) until RXCTR (bits 7:4) reads 2, pops
+  POPR (`+0x38`) twice and keeps the second byte. ✅ (❌ was "an I2C
+  transaction", 13 Sep 2026: the I2C block is `0xfc058000`; the clock is on
+  SPI.)
 - `0x4001c31c(value)` converts BCD to binary, as
   `(v >> 4) * 10 + (v & 15)`. ✅ So the clock returns BCD.
 

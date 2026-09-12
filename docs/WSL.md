@@ -21,7 +21,8 @@ source $HOME/.local/bin/env
 ```
 
 - **`binwalk` and `radare2` must go in before `make setup`.** The setup script
-  installs them with Homebrew otherwise (`scripts/setup.sh:27`); with them
+  installs them with Homebrew otherwise (`scripts/setup.sh:22-23`, the
+  `brew install` at `:34`); with them
   already on PATH it skips that branch.
 - **`binutils-m68k-linux-gnu` is not optional, and skipping brew is exactly why
   it is easy to miss.** `scripts/disasm.sh emac` shells out to
@@ -46,7 +47,7 @@ source $HOME/.local/bin/env
   does not see it, and hits the gate above even though the interactive shell
   passed it (observed 10 Sep 2026).
 - **`uv`** provisions `.venv` for the remixer. Without it `make remix` will not
-  start and three checks in `make verify` silently `[SKIP]`.
+  start and six checks in `make verify` silently `[SKIP]`.
 - **`pulseaudio-utils`** is for audio. See *Changes needed*.
 
 ## Steps

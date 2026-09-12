@@ -181,19 +181,22 @@ is real.
    the port. Set up option A's fixture, put a known signal on T1 with an
    audible FX2, and dump the 64 words at `0x80003190`. Falsifier: anything
    other than T1 after FX2. On the port this needs the DSP frame engine
-   running from boot; in every run so far the block has been zero because
-   the port started the DSP cold at transport start
-   (`docs/firmware/RTOS_FORK.md` §10.16).
+   running before the transport starts: `ot_emu --pre-roll N`
+   (`docs/firmware/RTOS_FORK.md` §10.47, 10 Sep 2026). The earlier runs
+   that read the block as zero started the DSP cold at transport start,
+   which `--pre-roll` closes; no run has dumped the block since.
 
 3. **The tap's position relative to LEVEL and the delay.** Same fixture,
    sweep both. Decides where in the frame routine the hook goes.
 
 4. **DRAM for the ring.** `PLAN.md` item 6, unchanged.
 
-5. **ColdFire headroom.** No figure exists. The port counts about 64k
-   instructions per frame under emulation, but that is the emulator's
-   count, not a cycle budget. Measurement 1 gives the first real data
-   point: whether the sequencer dropped audio while the card was busy.
+5. **ColdFire headroom.** No figure exists. The "~64k instructions per
+   frame" in `RTOS_FORK.md` §4 is 95,782 cycles/frame at an ASSUMED CPI of
+   1.5 — a knob with a default, not a measurement — and the one observed
+   "64k+" reading was a DMA DONE poll that never ended (§8.1).
+   Measurement 1 gives the first real data point: whether the sequencer
+   dropped audio while the card was busy.
 
 6. **Execute the stock writer under the port.** `SAMPLE_SAVE.md` item 1.
    Confirms the header builder before its layout is copied.
