@@ -27,7 +27,10 @@ image R58; anchors verified against values we wrote over MIDI and Sam's own
     python3 tools/hw/ot_project.py report PROJECT_DIR
     python3 tools/hw/ot_project.py set-gain PROJECT_DIR SLOT DB      # e.g. 12 -3.5
     python3 tools/hw/ot_project.py apply PROJECT_DIR PLAN.json       # {"12": -3.5, ...}
-    python3 tools/hw/ot_project.py stamp-defaults PROJECT_DIR REMIX  # station ids only
+    python3 tools/hw/ot_project.py stamp-defaults PROJECT_DIR REMIX [--all] [--keep-mode]
+        # replaced ids only (the stations); --all = every module of ours
+        # including the engines (after a slot re-layout); --keep-mode keeps
+        # an in-range MODE byte and applies that mode's ModeView defaults
     python3 tools/hw/ot_project.py stamp-slot PROJECT_DIR MODULE SLOT [VALUE] [--track N[,N]]
     python3 tools/hw/ot_project.py set-fx PROJECT_DIR fx1|fx2 TRACK MODULE [--page V,V,V,V,V,V] [--page2 V,...]
     python3 tools/hw/ot_project.py thru-track PROJECT_DIR TRACK [--page HEX14]
@@ -464,6 +467,35 @@ def fx_plan(remix_name):
     return out
 
 
+def module_defaults(m, knobs=None):
+    """The 12 bytes a slot should hold for module `m`: its manifest defaults,
+    then the ModeView defaults of the MODE those bytes (or `knobs`) select,
+    then `knobs` again so an explicit value beats the view. This is what the
+    remixer bench applies when MODE changes (schema.ModeView), so a stamped
+    part and the bench agree by construction (12 Sep 2026)."""
+    vals = [(p.default or 0) & 0x7f for p in m.params] + [0] * 12
+    vals = vals[:12]
+    kmap = m.knob_map_all() if not getattr(m, "is_stock", False) else {}
+    knobs = knobs or {}
+
+    def idx(n):                                  # a knob name, or a slot index
+        if isinstance(n, int):
+            return n
+        if n not in kmap:
+            sys.exit(f"{m.key} has no knob {n!r}")
+        return kmap[n]
+    for n, v in knobs.items():
+        vals[idx(n)] = int(v) & 0x7f
+    if getattr(m, "mode_slot", None) is not None:
+        view = next((mv for mv in m.mode_views if mv.mode == vals[m.mode_slot]), None)
+        if view is not None:
+            for slot, v in view.defaults.items():
+                vals[slot] = int(v) & 0x7f
+            for n, v in knobs.items():
+                vals[idx(n)] = int(v) & 0x7f
+    return bytes(vals)
+
+
 def _remix_defaults(remix_name, replaced_only):
     """-> {fx id: 12 default bytes} for the modules this remix places.
 
@@ -489,18 +521,31 @@ def _remix_defaults(remix_name, replaced_only):
             continue
         if replaced_only and not m.menu.replaces:
             continue
-        vals = [(p.default or 0) & 0x7f for p in m.params] + [0] * 12
-        out[m.menu.fx2_id] = bytes(vals[:12])
+        out[m.menu.fx2_id] = module_defaults(m)
     return out
 
 
-def stamp_defaults(pdir, remix_name, replaced_only=True, guard=True):
+def stamp_defaults(pdir, remix_name, replaced_only=True, guard=True, keep_mode=False):
     """Write our modules' manifest defaults into every part/track that names
-    one of their ids. Returns the number of (part, track, slot) writes."""
+    one of their ids. Returns the number of (part, track, slot) writes.
+
+    keep_mode=True keeps a stored MODE byte that is within its select's count
+    and applies that mode's ModeView defaults (T8's Character stays SAT=BUS
+    with RET 127; a BusDelay in GRAIN keeps GRAIN and gets GRAIN's knobs). Off
+    by default because a replaced id's stored bytes are the STOCK effect's
+    layout, where the byte at the mode slot means something else entirely --
+    use it on a part that has already been stamped or edited under ours."""
     pdir = pathlib.Path(pdir)
     defaults = _remix_defaults(remix_name, replaced_only)
     if not defaults:
         sys.exit(f"remix {remix_name!r} has no {'replacing ' if replaced_only else ''}modules to stamp")
+    modes = {}
+    if keep_mode:
+        sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
+        from remix import registry
+        for m in registry.modules().values():
+            if m.menu is not None and m.menu.fx2_id in defaults and getattr(m, "mode_slot", None) is not None:
+                modes[m.menu.fx2_id] = (m, m.mode_slot, m.params[m.mode_slot].count or 128)
     total = 0
     for bank in sorted(pdir.glob("bank*.work")):
         num = int(bank.name[4:6])
@@ -517,9 +562,14 @@ def stamp_defaults(pdir, remix_name, replaced_only=True, guard=True):
                         d = defaults[fid]
                         a = off + P1_OFF + t * TRACK_STRIDE + sub
                         b = off + P2_OFF + t * P2_STRIDE + sub
+                        if fid in modes:
+                            m, ms, cnt = modes[fid]
+                            stored = data[b + ms - 6] if ms >= 6 else data[a + ms]
+                            if stored < cnt:
+                                d = module_defaults(m, {ms: stored})
                         data[a:a + 6] = d[:6]
                         data[b:b + 6] = d[6:]
-                        done.append((p, t, sub, fid))
+                        done.append((p, t, sub, fid, d))
 
         _bank_write(pdir, num, mut, guard=guard)
         # READ IT BACK, as testproj does: a write this tool cannot verify is
@@ -527,11 +577,11 @@ def stamp_defaults(pdir, remix_name, replaced_only=True, guard=True):
         data = bank.read_bytes()
         if int.from_bytes(data[-2:], "big") != (sum(data[0x10:-2]) & 0xFFFF):
             sys.exit(f"{bank.name}: checksum did not take -- do NOT use this")
-        for p, t, sub, fid in done:
+        for p, t, sub, fid, d in done:
             off = PART_BASE + p * PART_STRIDE
             a = off + P1_OFF + t * TRACK_STRIDE + sub
             b = off + P2_OFF + t * P2_STRIDE + sub
-            if data[a:a + 6] + data[b:b + 6] != defaults[fid]:
+            if data[a:a + 6] + data[b:b + 6] != d:
                 sys.exit(f"{bank.name} part {p+1} T{t+1}: read-back disagrees")
         total += len(done)
         if done:
@@ -838,13 +888,9 @@ def make_rig_project(src, dest, remix_name):
         m = mods[key]
         if key not in remix.modules:
             sys.exit(f"rig names {key!r}, which remix {remix_name!r} does not place")
-        vals = [(p.default or 0) & 0x7f for p in m.params] + [0] * 12
-        kmap = m.knob_map_all() if not getattr(m, "is_stock", False) else {}
-        for n, v in knobs.items():
-            if n not in kmap:
-                sys.exit(f"{key} has no knob {n!r}")
-            vals[kmap[n]] = v
-        return m.menu.fx2_id, bytes(vals[:12])
+        # manifest defaults, the chosen MODE's view (T8's SAT=BUS brings RET
+        # to 127 on its own), then the explicit knobs
+        return m.menu.fx2_id, module_defaults(m, knobs)
 
     plan = [(t, slot(f1), slot(f2)) for t, f1, f2 in RIG]
     shutil.copytree(src, dest)
@@ -927,8 +973,13 @@ if __name__ == "__main__":
     elif cmd == "rigproj": make_rig_project(sys.argv[2], sys.argv[3], sys.argv[4])
     elif cmd == "stamp-defaults":
         # a REAL set, before its first load on a flashed image: only the ids
-        # a station replaced are touched; BusVerb/BusDelay keep Sam's knobs
-        stamp_defaults(pdir, sys.argv[3], replaced_only=True)
+        # a station replaced are touched; BusVerb/BusDelay keep Sam's knobs.
+        # --all stamps every module of ours (the engines' re-slot too -- what
+        # BUS.md's "stamp before play" needs after a slot layout change);
+        # --keep-mode keeps an in-range MODE byte and applies its view.
+        args = sys.argv[4:]
+        stamp_defaults(pdir, sys.argv[3], replaced_only="--all" not in args,
+                       keep_mode="--keep-mode" in args)
     elif cmd == "thru-track":
         args = sys.argv[4:]
         page = args[args.index("--page") + 1] if "--page" in args else "00017f00000000"
