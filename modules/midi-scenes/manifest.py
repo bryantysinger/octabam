@@ -9,11 +9,12 @@ clear/copy/paste menu rows to read and write it when a MIDI event, not the
 panel, is driving. The panel path is untouched. (Its author started from
 this project's own reverse-engineering.)
 
-WHERE THE CODE COMES FROM. `upstream/` is Sam's fork of his repository on
-the branch `octabam-gas`, rebuilt 10 Sep 2026 on his 1.40MIDISC tree
-(he rewrote the repo's history, so the branch is re-cut, not rebased) (a PR to him waits until he has finished his own
-changes; then it rebases). His caves are written in a small Python encoder
-(`tools/ot3_asm.py`); that branch adds `tools/gas_port.py`, which drives
+WHERE THE CODE COMES FROM. `upstream/` is HIS repository, bkkbrls-del/midisc,
+on `main`, since 13 Sep 2026: he merged the gas port (his PR #1), so the
+fork that carried it (sambanks/midisc, branch `octabam-gas`, tags
+`octabam-gas-1.40MSC` / `-1.40MIDISC5` for the older cuts) is no longer in
+the path. His caves are written in a small Python encoder
+(`tools/ot3_asm.py`); `tools/gas_port.py` (ours, now in his tree) drives
 his own build_* functions with an encoder subclass that also records one
 GNU-as line per instruction, writes `gas/*.s`, and then assembles and
 links every region at HIS address and compares -- all five regions
