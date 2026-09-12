@@ -42,5 +42,10 @@ because the bisect narrowed it; see `PLAN.md`.
   Coupling the diffuser g to TIME (~13 words) waits for payload A to have
   them (FREE 8). The bus reference was re-stamped on this build (only the
   reverb layouts differ; every delay-only layout stays bit-identical).
+  **Heard 13 Sep 2026** (the stab): the TIME dial "sounds great"; DIFF 0 at
+  TIME 0 "usable"; at DIFF 127 a metallic sheen comes in that reads as
+  shimmer — the four diffusion allpasses at g 0.77, the near-oscillator
+  edge the DIFF law's cap was sized to stay under. Left as the top of the
+  dial's texture; capping the span at ~0.70 removes it if it ever offends.
 - A SIZE turn once killed the reverb on R44 and has not been reproduced. If
   it recurs, the one diagnostic that matters is whether tracks 5–8 *all* died.
