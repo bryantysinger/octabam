@@ -34,7 +34,7 @@ now; the only bytes this module changes inside the OS are the 35 detour
 sites, the two pokes, and (when Octakit is not in the image) the boot
 site's three-byte redirect into the loader.
 
-THE DETOURS are his 38 sites -- 34 Detours and 4 Pokes, 236 bytes -- each
+THE DETOURS are his 37 sites -- 33 Detours and 4 Pokes -- each
 asserted against stock before it is rewritten, wired by SYMBOL: jmp for
 the stubs that replay what they displaced and jump on, jsr for the
 callable ones, one `lea` operand rewrite (SAVE_ALL), two `bne->bra` flips
@@ -52,6 +52,16 @@ unpacking it every tick (his fix for locks vanishing between encoder
 events); and bank switch/invalidate now preserve d1-d7/a0-a6 across the
 sample load. octabam tracks all of it by regenerating `gas/*.s` from his
 builders -- no transcription -- and re-proving the five regions.
+
+1.40MSCN6 (13 Sep 2026, his 58b27c9): the apply_part wrapper at 0x40009094
+is GONE -- he leaves STOCK_APPLY stock ("apply pack/unpack during project
+load hangs HW"), which is also the site Octakit owns, so the SCENES KITS
+bridge no longer chains apply and Octakit has it alone. XF morph moved from
+the STUB into SAFE_CAVE (the detour at 0x4003F3A2 now targets safe_cave);
+the plock body in CAVE2 is his XF-by-trig remix (TRIG_SNAP, a DRAM table in
+his own memory map, not a unit here). Re-cut on his tip (tag
+octabam-gas-1.40MIDISC5 keeps the previous cut reachable), gas/*.s
+regenerated, all seven regions IDENTICAL to his encoder.
 
 MEASURED (10 Sep 2026, 1.40MIDISC): five regions byte-identical to his
 encoder at his addresses; the linked units, 34 detours and 4 pokes
@@ -106,14 +116,13 @@ DETOURS = (
     Detour(0x4002E828, H("4eb94004a9d0"), "project_cave", "clr_pt", "FUNC+Part clear", kind="jsr"),
     Detour(0x40053A9E, H("4ab980000012660008aa"), "enc_unlock", "hook_a", "scene+encoder unlock, engine A", pad_to=10),
     Detour(0x40054392, H("4ab980000012660008b8"), "enc_unlock", "hook_b", "scene+encoder unlock, engine B", pad_to=10),
-    Detour(0x4003F3A2, H("4ef94003577c"), "stub", "morph", "XF morph tail"),
+    Detour(0x4003F3A2, H("4ef94003577c"), "safe_cave", "morph", "XF morph tail (SAFE_CAVE since 1.40MSCN6)"),
     Detour(0x40061E78, H("71398000004a"), "stub", "xf1", "post-XF continuation 1"),
     Detour(0x40062C32, H("71b980000003"), "safe_cave", "xf2", "post-XF continuation 2"),
     Detour(0x40052AE0, H("4ef94007e8d8"), "code2", "scene_done", "scene-recall completion A"),
     Detour(0x40052A10, H("4ef94007e8d8"), "code2", "scene_done", "scene-recall completion B"),
     Detour(0x4005538A, H("1a82223c000018b2"), "code2", "write_mix", "part-window write, remixed", pad_to=8),
     Detour(0x4009D1DE, H("4cd73cfc4fef00284e75"), "safe_cave", "plock", "post-plock scene rebuild", pad_to=10),
-    Detour(0x40009094, H("4fefff9848d77cfc"), "code2", "apply", "apply_part wrapper", pad_to=8),
     Detour(0x4002DD12, H("4eb94004a908"), "safe_cave", "save", "Part Save menu action", kind="jsr"),
     Detour(0x4002DD56, H("4eb94004aab4"), "code2", "reload", "Part Reload, menu path", kind="jsr"),
     Detour(0x4005E05A, H("4eb94004aab4"), "code2", "reload", "Part Reload, non-menu path", kind="jsr"),
