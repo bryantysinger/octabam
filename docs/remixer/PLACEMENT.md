@@ -276,8 +276,27 @@ control's exactly, not approximately. The cause was his own: `bank_switch`
 plain `move.l d0,(BANK_PTR).l`, so the sample load lost registers; 1.40MIDISC
 saves `d1-d7/a0-a6` (his comment: "sample load").
 
-⚠️ **The arming half is NOT fixed and is a SEPARATE defect** — identical on
-both his images, so it is not the register clobber.
+❌ **RETRACTED 13 Sep 2026 — the "arming half" below, its bisect to
+`0x40087d44`, and the "narrowed to `unpack`" that followed were all the
+INSTRUMENT.** The port learns the project's saved bank from a write watch
+on `BANK_PTR` keyed on the writing PC being the stock store at
+`0x40087d44` (`rtos.cpp`, "route A's own watch"); its transport start then
+re-selects that bank. midisc detours that site to a cave, so the store
+comes from the cave's PC, the watch never fires, `savedBank` stays −1, and
+the port plays bank 0 pattern 0 — whose step-1 trigs are tracks 0, 5, 7.
+Proof, same fixture (`dram_card.img`, set `OCTABAM`, project `RIG`), all on
+HIS build of HIS tree: Site B as a cave holding only stock's store → 3;
+Site B as `store; rts` → 3; Site B left stock → 5; his 1.40MIDISC5 and
+1.40MSCN6 with `--bank 1` → 5 (0, 1, 2, 4, 7), the control exactly. The
+watch now follows a `jsr` at the site and accepts the store from the
+detour's own code; both his images arm 5 without the override. Nothing in
+this section below is evidence about his firmware; his hardware symptom
+("save on bank 1 reloads clean, others corrupt") is real and unmeasured
+here. PR #2 to him (the Site B guard) was built on this and is withdrawn.
+The record is kept as written:
+
+⚠️ ~~**The arming half is NOT fixed and is a SEPARATE defect** — identical on
+both his images, so it is not the register clobber.~~
 
 ✅ **BISECTED to ONE site: `0x40087d44`** (10 Sep 2026, same fixture). Built
 one image per dropped hook group, then per site, from the same tree:

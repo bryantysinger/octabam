@@ -91,8 +91,14 @@ separate measurement.
   `bank_switch`/`bank_invalidate` preserved only `d0` across a `jsr`
   that replaced a plain `move.l d0,(BANK_PTR).l`, so the sample load
   lost registers; they now save `d1-d7/a0-a6`.
-- ⚠️ **The track-arming half is NOT fixed, and is a separate defect —
-  bisected to ONE site, `0x40087d44`, and narrowed to `unpack`.**
+- ❌ **RETRACTED 13 Sep 2026: the "track-arming defect" below was the
+  port's own saved-bank watch, keyed on the stock PC of a store his
+  cave now makes** (`docs/remixer/PLACEMENT.md`). With the watch following
+  the detour, 1.40MIDISC5 and 1.40MSCN6 both arm the control's five. The
+  paragraph is kept as the record of a wrong finding that was reported
+  upstream and PR'd (bkkbrls-del/midisc#2, withdrawn):
+- ~~⚠️ **The track-arming half is NOT fixed, and is a separate defect —
+  bisected to ONE site, `0x40087d44`, and narrowed to `unpack`.**~~
   1.40MIDISC5 shipped "Site B no-pack" crediting this finding, but the
   symptom is UNCHANGED on the same fixture, and a re-bisect (including
   his new `0x400622c6` hook, which is not it) still lands on
