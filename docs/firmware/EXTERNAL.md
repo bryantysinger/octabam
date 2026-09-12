@@ -4,9 +4,11 @@ Reverse-engineering results **from outside this project**, recorded here so
 that what we adopted, what we verified, and what we merely repeated are three
 distinguishable things.
 
-**This work is by Bryan T**, shared on Discord. It is his finding, not
-octabam's, and is recorded here as such — the status key below marks what we
-independently confirmed versus what we adopted on his evidence.
+**§1–§6 and §8 are by Bryan T**, shared on Discord; §7 scans two parallel
+projects and **§9 is nordseele's octalab** (13 Sep 2026). None of it is
+octabam's finding, and it is recorded here as such — the status key below
+marks what we independently confirmed versus what we adopted on their
+evidence.
 
 Received 30 Aug 2026: `octatrack-delay-architecture.md`, `TABLE_ATLAS.md`
 (a revised version of an earlier atlas), `timestretch.md`; **2 Sep 2026:
@@ -1015,3 +1017,278 @@ boundary may or may not seam; see the `write-first`/`read-first` columns).
   frame exchange (§6's correction) carries the mixed frame, so the
   recorder's own start may travel as a flag in the per-track record rather
   than as a separate message — 🟡 to be watched.
+
+## 9. nordseele's octalab (read 13 Sep 2026) — a module OF this remixer, and the first MKI data
+
+[`nordseele/octalab-notes`](https://github.com/nordseele/octalab-notes)
+(MIT; findings only, no binary, no build) is the notes repository of
+**octalab**, a set of randomisation helpers for the OT (pool fill, random
+LFO/FX/scenes/locks, INIT TRACK, a topographic trig generator in progress).
+It is built **as a ColdFire DRAM module of octabam's remixer** — the
+author's own words — and has been running on an **Octatrack MKI** through
+our loader since 11 Sep 2026. It reads octamax, octabam, ems-octakit and
+octa-bt-pt as references and publishes only what those still mark open. Every
+address is in the same image as ours (`164f3122…`, base `0x40000400`), each
+claim carries its own marker, and the falsifier is usually named. The
+discipline is ours; the findings are theirs.
+
+Read at commit `40ffa53`. Status key as above, with one addition: ❌ on
+*their* side where our own image dump contradicts them.
+
+### 9.1 Hardware data on OUR pipeline — the first, and on the other model
+
+- ✅ (theirs) **octabam's DRAM loader boots on a MKI.** An image built by
+  the remixer at origin `9a49f21` — loader appended at `0x4010fdf0`,
+  reached from the boot site `0x4000050c`, depacking a ColdFire unit into
+  the 10 MiB reserve at `0x40a955e0`, one detour + one poke + one grown
+  table, the FX2 chooser rebuilt with the fourteen stock effects (15 rows
+  at `0x400d7bbc`) — ran on a MKI on 11 Sep 2026 and is in daily use. Our
+  own record until now: nothing flashed from the DRAM pipeline, and every
+  test ever on a MKII (`docs/effects/FLASHPLAN.md`, memory). This is the
+  first hardware confirmation of the platform, and it is on the model we
+  cannot test.
+- ❌ (ours) **`FLASHPLAN.md` claim 2 is falsified**: we predicted "PROJECT ›
+  MEMORY reports ~75 MB". On the unit the MEMORY page **still shows an
+  85.5 MB total** (visible when changing RESERVE LENGTH), while the audio
+  pool's Flex list reads **FREE MEM 71.4 MB** — so the reserve took and the
+  free list is honest, but the page's total does not follow
+  `tools/remix/arena.py`'s four geometry words. The page count `0x390a`
+  appears as a word at 18 sites in stock; which one the MEMORY page reads
+  is not pinned. Cosmetic, open, and ours to fix — a fifth geometry site.
+- ⚠️ **A cave to reconcile before octalab ships as a module.** Their
+  standalone ledger (`docs/CAVES.md`) claims `0x400d64e0..0x400d7bf5` in
+  the third zero run (build v22, 69 B left), which straddles the FX2
+  chooser's NONE row at `0x400d6b00` that every one of our builds writes
+  (`docs/remixer/PLACEMENT.md`). As a module they cite only `LAB_MENU`,
+  402 B at `0x400d64e0..0x400d6671`, which is clear of it; the ledger
+  refuses an overlap by name either way. Worth a word to them.
+
+### 9.2 Corrections to things this repo had written
+
+| ours | theirs | verdict |
+|---|---|---|
+| `RTOS_FORK.md` §(trig masks), `tools/hw/ot_project.py`: masks `0x40`/`0x48` "are not masks — a run of `0xaa`" | `0x40` = **swing trigs** (default `0xaa…` = every even step — that is what the run of `0xaa` was), `0x48` = **slide trigs**; settled by placing one of each on the unit and diffing the bank files | ✅ adopted; corrected in both places |
+| `midi_re_cc.md` step 4: PLAYBACK page-1 address `Part + 0x8edaa + track*30 + machine*7 + slot` | `machine*6` — the validator indexes the four PLAYBACK descriptors at +0, +6, +0xc, +0x12, and 5 × 6 fills the 30-byte stride | ✅ **re-verified here from the writer itself**: `0x40054d7e..88` computes `d1 = (m<<3) − m*2` = `machine*6` (and `track*32 − track*2` = `track*30` just above). Corrected |
+| `tools/hw/ot_project.py` (7 Sep): a STATIC `[SAMPLE]` PATH "must be a BARE filename; the `../AUDIO/<dir>/<file>` form loads as an EMPTY slot" | On 1.40C the unit itself writes nested STATIC paths (`PATH=../AUDIO/Breaks & Drum Loops…/Brent Dowe - ….wav`, three of their projects) and 32 host-written nested STATIC slots load, preview and trig. Their reconciliation: the "empty" slot is what a slot with **no `markers.work` record** looks like — no error, 64-frame fallback, 30 BPM, inert (§9.4) | 🟡 adopted as the likely cause; our note is softened, not deleted. **Our `tools/hw/` never writes `markers.work`**, so every fixture slot we have written from the host has been in exactly that state — falsifier: write one nested STATIC slot with a marker record and trig it |
+| `MAINMENU.md` §1: list-descriptor fields `+0x08..+0x14` "not yet interpreted 🟡" | `+0x08` cursor within the window, `+0x0c` absolute selection, `+0x10` **visible-row count**, `+0x14` item count again; a descriptor ships inert and is initialised **at boot** by `init(&desc+4, visible, count)` (`0x4007ec60`) from `0x40064c70..`, guarded by `tst.l 0x400cbda0` (root 5 visible, submenus 7, demo 2). A hand-built descriptor not in that run must ship with `+0x10` set or its pane draws empty — their build 3 | ✅ **re-verified**: the guard, the three `pea 5/7/2` calls and `init` writing `+0xc` of `desc+4` are on the image. Closed in `MAINMENU.md` |
+| `MAINMENU.md` §1/§8: the root rows' `{0x13, 0x09, 0x01, ptr, ptr}` window descriptors "uninterpreted" | it is the category's **icon**: 19 wide × 9 tall, each plane 19 words holding one column byte in the high byte, bit 0 at the top; `plane1` is `0xff80` in all four (a constant, not image data). Drawn on a MKI beside PROJECT/SYSTEM/CONTROL/MIDI | 🟡 adopted (their hardware). Closed in `MAINMENU.md` |
+| `MAINMENU.md` §3: "16-entry menu-state table at `0x400cbdac`, stride 0x14, ids 1..15" | "eleven pages, not fifteen — 7-long records, stride `0x1c`" | ❌ **theirs.** Dumped here under both strides: at 0x14 every record has its draw and key-handler columns filled with neighbouring code addresses and id 12's draw is `0x40068e00`, the PERSONALIZE renderer we had cross-confirmed; at 0x1c the columns scramble. Ours stands. Their *conclusion* — no free page id — holds under either reading, and they built a category instead of a row for it (§9.3) |
+
+### 9.3 Ground we had marked open that they closed
+
+**The FAT layer** (`FS_LAYER.md`) — `docs/history/COVERAGE.md`'s "Missing:
+FAT layer (vtable `_DAT_46c82xxx`)":
+- ✅ (theirs, disassembly + runtime) a **23-slot FS vtable at
+  `0x46c823fa..0x46c82452`**, three complete implementations installed by
+  `0x40014524` / `0x40014636` / `0x40014750`; **variant B (`0x40014636`) is
+  the one the unit runs** — the load path's open `0x4001b724` is in its
+  slot 0. Named slots: `0x46c8242a` `open(path, mode) → fd`, `0x46c823fa`
+  the existence probe our `NOTES.md` saw, `0x46c8241e` file size (octakit's
+  `SizeFunction`). `0x46c82456` is NOT a slot: the bank pointer.
+  `docs/history/DESIGN_BANKPAGE.md` deferred sibling detection as "vtable
+  uninitialised in the static image → not emulator-testable"; seed the 23
+  words and it is.
+- ✅ (theirs) **`0x40090a14` is a recursive directory-tree walker with a
+  callback**: `walk(path, *dirs, *files, mode, progress)`, two explicit
+  component stacks (`0x46070e44`, `0x46038e40`), skips `.`/`..`, counts
+  per entry, `mode == 1` walks only; 🟡 `mode == 0` also calls slots
+  `0x46c8241a` per file and `0x46c8243a` per directory — inferred to be
+  unlink/rmdir from the DELETE DIRECTORY caller. **Do not call with mode 0
+  on a card you care about.** ⚠️ The walker enumerates a whole directory
+  before invoking the callback, so the entry register holds the *last*
+  entry. Already called from the sample-load path (`0x40084a34`).
+- Buffered file primitives: `0x40016864` open, `0x400166b8` write,
+  `0x4001677c` close.
+
+**Loading a sample into a slot is two halves** (`SLOT_LOADING.md`, all on a
+MKI ✅):
+- `ot_static_slot_load` `0x40093980(slot, keep_trim)` has ONE caller —
+  case 1 of the storage-job dispatcher `0x4008445c` — which follows it with
+  a post-load (`0x40099148(0, slot)` when `keep_trim == 0`, else
+  `0x40099680`), then **`0x40093468(-1)` (re-arm the eight tracks' voices,
+  a type-`0xe` engine message per track) and `0x4009da20(-1)` (refresh)**.
+  Calling only the loader gives a slot that displays name and size, shows
+  no BPM, and neither previews nor trigs. `keep_trim = 0` derives the
+  trim window from the file.
+- Per-slot status record `0x46c90a78 + slot*0x2c`: `+0x08` state (0 idle,
+  2 loading, 3 error), `+0x0c` code, `+0x24` the open handle; rendered
+  `ERROR: <reason> : <name>` (format `0x400b7248`, table
+  `FUN_4001fcb8`). `-0x10` INVALID FILENAME = no extension at all (a
+  directory name gives exactly this); `-0x1e` INVALID FILETYPE.
+- CLEAR SLOT is `0x40025288(kind, slot)`: `0x40093814(slot)` (closes the
+  handle, drops the slot from every trig/slice table) then zero the 0x448
+  record. Skipping the first **leaks the file handle** — `MAX OPEN FILES`.
+- STATIC settings `0x100d5b30`, FLEX `0x100b14f0`, stride `0x448`, name
+  at +0, free when byte 0 is 0 (octamax's, confirmed).
+
+**Step records, p-locks, sample locks** (`TRIGS.md`) — both COVERAGEs had
+"trig types / p-locks / sample locks ⬜":
+- ✅ after the ten masks, each track holds **64 step records of 32 bytes
+  from `TRAC + 0x59`**: byte `k` = p-lock of parameter `k` in the scene
+  numbering (PLAYBACK 0..5, LFO 6..11, AMP 12..17, FX1 18..23, FX2 24..29),
+  **byte 31 = sample lock**, `0xff` = none. Full address: `bank +
+  p*0x8ed8 + t*0x91a + 0x78 + (s−1)*0x20`.
+- ✅ `TRAC + 0x89a + (s−1)*2`: a 16-bit **trig word** — bits 15-13 trig
+  count − 1, bits 12-7 micro-timing (signed, ±23), bits 6-0 condition
+  (labels `0x400b2588`: 0 OFF, 1..8 FILL/PRE/NEI/1ST ± negations, 9..29
+  the probabilities 1…99 %, 30..64 the A:B counters). ⚠️ **In the bank
+  FILE the trig words sit one byte earlier (`+0x899`)**: RAM pads to an
+  even address, the file does not.
+- ✅ The stock **sample-lock store is `0x40040ee0(slot)`**, the LOCK
+  picker's callback; it takes its steps from the held-key mask
+  `0x460d174a` and page base `0x460d174c`, writes the bank byte AND a
+  second copy at `0x1001614e + same offset`, raises the dirty flags,
+  rebuilds the per-step "has a lock" bitmaps (`0x400339d8` →
+  `0x46c7d48c[step]`) and refreshes. Called from outside the picker with
+  those two globals set, it works on hardware (their RANDOM SMP LOCKS).
+- ✅ The stock **p-lock store `0x4004f5f8(track, param, value)`** returns
+  at once unless a trig key is physically down (`FUN_4003171c`) and no
+  list is open — it cannot be called from a menu as it is; they replicate
+  its body (record byte, `0x1001614e` copy, bitmap bit, dirty flags
+  `bank+0x9b332` / `0x100f8598` / `0x40027e00`, refresh `0x4009da20`),
+  drawing values inside the descriptor range (`+0x6a` min, `+0x9a` count)
+  and skipping disabled slots (`+0x18e`, bit `slot*4`).
+- ❌ (theirs, self-reported) the slice editor's `CREATE RANDOM LOCKS`
+  handler paired by position (`0x40072004`) opened `DELETE SLICES ?` on
+  the unit — their adjacency table is unreliable.
+
+**A part lives three times** (`FINDINGS.md`, MKI ✅ 12 Sep 2026): the
+bank's working part (`bank + 0x8ed80 + part*0x18b2`), the saved part
+(`bank + 0x9504a + …`) and an **SRAM copy at `0x100a4ece + part*0x18b2`
+— the one the unit comes back with after a power cycle** (patterns have
+theirs at `0x1001614e`). A direct write to the bank alone is lost at the
+next boot (measured: randomised scenes gone, the scene selector kept). The
+stock parameter writer `0x40054cd8` writes bank + copy (our `midi_re_cc.md`
+already had the shadow at `0x100a4ef8`); the stock setter
+**`0x40029a4c(src, part)`** writes both, sets the part-edited bits
+(`bank + 0x95048`, `0x100b145e`) and the dirty flags, and re-applies the
+current part to the engine with `0x40009094(bank, part)` — which also
+copies scenes A/B (indexes at `part + 0x10/0x11`) into the live copy
+`0x80000ed4`, so a scene written this way plays at once. Given the working
+part as its own source it commits in place. We held `0x40029a4c` only as
+octakit's `GK_STOCK_PART_BUFFER_STORE`; this is the description. It bears
+on our own "part saved under an older slot layout" trap (`CLAUDE.md`): the
+bytes that survive a reboot are the SRAM copy's, not the bank's.
+
+**The input layer** (`INPUT.md`):
+- ✅ two 26-byte keymap tables, `0x400bfbf6` (59 records, no code `0x1c`)
+  and `0x400c01f4` (62, with `0x1c` = the dedicated MAIN MENU key) — 🟡
+  MKI and MKII respectively, inferred from our `MAINMENU.md` §7. Record:
+  `+0 code, +2 press, +6 release, +0xa, +0xe sub-map (FUNCTION's is
+  `0x400bfa1e`), +0x12, +0x16`. Both end in a `0xff` sentinel and are full;
+  a binding is one pointer.
+- ✅ **maps are layers**: `0x40031494(map)` / `0x4003146c(map)` register /
+  remove a 20-byte map `{next, keys, encoders, 0, marker}`, and each call
+  rebuilds two RAM tables from every registered map (`FUN_4003125c`): keys
+  `0x46c7d8de + code*0x18` (+0 press, +4 release, +8 repeat, +0xc sub-maps,
+  +0x10 held via `FUN_4003171c(code)`), encoders `0x46c7dede + enc*0x14`
+  (+0 turn handler `(encoder, delta)`). Last registered wins; a key field
+  of −1 lets the layer below through; **an encoder listed with a null
+  handler is swallowed** — why nothing turns with a popup up (the
+  scrolling list's map `0x400ce0c4` lists all seven, null). Codes: UP
+  `0x33`, DOWN `0x20`, LEFT `0x34`, RIGHT `0x21`, ENTER `0x31`, EXIT
+  `0x32`, encoder presses `0x38..0x3e`; encoders A..F = 0..5, **LEVEL =
+  6**; stock handlers ×7 the delta when the knob is pushed while turned.
+  Trig keys `0x00..0x0f` → `0x40060ce0`, track keys `0x10..0x17` →
+  `0x40040250`, BANK `0x2f`, PATTERN `0x2e`, FUNCTION `0x2d`.
+- ✅ **double presses are detected generically**: `0x400c0aac` = last
+  tracked keycode (we had it, `MAINMENU.md`), `0x460d5de0` = ticks since,
+  incremented by the display loop at `0x40052204`, reset by any tracked
+  key (`0x40033e20`); window **14 ticks**. Their double-tap [FUNCTION]
+  stub reuses it and tail-calls `0x40064c18` (the menu opener, which
+  toggles on `0x400cbf4c`) or the stock FUNCTION handler `0x4004e954`.
+- ✅ the LEVEL press `0x3e` is not free: `0x4004ecfc` special-cases it to
+  raise the value display (`0x46c7d2c0 = 0x14`), and physically a brief
+  press moves the value ~1 time in 3.
+- ✅ the two stock popup engines: yes/no `0x4006d57c(title, n, lines[], 3,
+  handler)` with YES → `handler(0)` (call site to read it off: CLEAR SLOT
+  at `0x40021c9c`); scrolling list with callbacks `0x4006d94c(count, sel,
+  arg3, labels[], handlers[])` / close `0x4006d754` / refresh `0x4006d784`
+  (only ever reached by relative branches — a detour there is safe, and
+  its first two instructions are position-independent). Labels pointer
+  `0x460e5e2c` identifies "our list" without a flag.
+- ✅ grid recording is `0x460d1736 != 0`; [TRACK]+[BANK] opens the audio
+  editor with `0x4006de34(type, slot)` + `0x4006e160()`; the held-trig
+  bookkeeping after an edit is `FUN_4004f5f8`'s (`0x460d173a = 1`,
+  `0x460d1750 = 1`, marks `0x460d1a9e..` cleared).
+
+**A fifth MAIN MENU category with zero new instructions** (`MENU.md`, MKI
+✅ 7 Sep 2026): copy the four root rows to a cave, append one, repoint
+`0x400cbda4`, bump `0x400cbd8c` — our §5 move, now with a hardware record
+and three rules read off three failed builds: a row whose action is null is
+a **section heading the cursor skips** (every real leaf carries the shared
+`rts`); a row inside a pane cannot descend, since `[ENTER]` reads `+0x14`
+and `+0x10` is only read on the root; and the descriptor must ship
+initialised (§9.2). Their options page is that category with the checkbox
+drawn **in the label** (fixed-stride label buffers in the cave, which is
+writable at runtime; the row that ran comes from the descriptor's `+0x0c`).
+This is the cheap answer to where octabam's own CONTROL rows could go, and
+the double-tap the answer to "which key combination".
+
+**Smaller:**
+- 🟡 (code read) pattern length/scale, as the scale page `0x40047d08` reads
+  them: `pattern + 0x8e55` scale mode (0 normal, 1 per track), `+0x8e53`
+  length and `+0x8e54` scale in normal mode; per track `TRAC + 0x50` length,
+  `+0x51` scale; `pattern + 0x8e50` master length (short, −1 = INF).
+- ✅ descriptor defaults: page-1 at **`desc + 0x5e`**, page-2 at `+0x64`
+  (the FX chooser's apply `FUN_400526e4` reads exactly those); range table
+  at `+0x6a` (min) / `+0x9a` (count) per slot; disable bits `+0x18e`.
+  Descriptor tables: PLAYBACK `0x400d5f38[machine]`, LFO `0x400d37f6`, AMP
+  `0x400d3988`, FX1 `0x400d5f58[id]`, FX2 `0x400d5fdc[id]`. Part offsets
+  from `part = bank + 0x8ed80 + part*0x18b2`: `+0x22 + track` machine
+  type, `+0x2a + track*30 + machine*6` PLAYBACK p1, `+0x11a + track*24 +
+  page*6` LFO/AMP/FX1/FX2 p1, `+0x2f2 + track*30` the three LFO PMTR then
+  three WAVE, `+0x662 + (scene*8 + track)*0x20` scene locks. **LFO
+  destination values 0..29 use the scene-byte numbering**, so 18..29 aim
+  an LFO at the effect pages. 🟡 page 2 of PLAYBACK/AMP/FX1/FX2 not
+  located by them (ours: `MAINMENU.md` §9c-ii).
+- ✅ **the two zero runs above the image's code are live at runtime**:
+  `0x401087e4..0x4010c315` (15,153 B) and `0x4010cdd1..0x4010fdf0`
+  (12,319 B) have zero static references and code placed in the first
+  raised `VEC:03` in the menu draw loop, on hardware, costing an hour of
+  SysEx. Consistent with `PLACEMENT.md`'s refusal of everything above
+  `0x400d8000` as the PROJECT subsystem's RAM — now with a hardware
+  record. (midisc's `build.py` already refuses both addresses as "unsafe
+  1.22 caves".)
+- ✅ `RANDOMIZE PAGE` is `0x4005b9c0` (octakit's
+  `GK_STOCK_RANDOMIZE_PAGE_WRITER`), no arguments, reached only through
+  the table entry at `0x400bab22`; reads the current page from UI state.
+
+### 9.4 The card, from the host — `markers.work` and `TRIM_BARSx100` (`PROJECT_FILE.md`, MKI ✅)
+
+32 STATIC slots written entirely from the host load, preview and trig. Three
+things had to be right at once, each wrong silently in a different way:
+
+- **`PATH=` is bare** — no quotes, no escaping, nested paths resolve.
+  octamax's `NOTES.md` renders paths as `'../AUDIO/x.wav'`; those quotes are
+  prose, and written into a record they make every slot FILE NOT FOUND.
+- **`TRIM_BARSx100` is computed from the file and must never be cloned**:
+  `bars = 2^round(log2(seconds × tempo24 / 24 / 240))`, ×100, capped at
+  3200 (🟡 the cap rests on one point; the floor is unmeasured). Cloned,
+  every slot reads 300 BPM and is inert.
+- **`markers.work` carries the length**: 16-byte header `FORM 00000000
+  DPS1SAMP`, 264 records × 784 B (136 flex incl. 8 recorders, then 128
+  static), 8-byte trailer whose last two bytes are `sum(body) & 0xffff`;
+  STATIC slot n at `16 + (136 + n − 1) × 784`, **frame count at `+10`,
+  4 bytes BE**. A slot with no record falls back to **64 frames**, writes
+  `TRIM_BARSx100=0` back on the next save, shows the minimum tempo, and
+  neither trigs nor previews. Our `tools/emu/emu_card.py` reads the file;
+  nothing in `tools/hw/` writes it — see §9.2.
+- ⚠️ the unit auto-saves the loaded project from RAM continuously, so an
+  external edit to the *loaded* project is overwritten; and its RTC runs
+  behind wall clock, so **compare content, not mtimes**. Switch projects or
+  power off before editing.
+- `project.work` has no checksum; bank files do. Their settings live in a
+  sidecar file (the OS opens files by name; extras are invisible), because
+  unknown keys in `project.work` are dropped by a stock save.
+- Their builds sign `OS_VERSION=R0178     OLAB<n>` in `[META]`, as ours
+  sign `OCTABAM<n>`.
+
+### 9.5 What is not new
+
+The current track/part/pattern globals, the bank pointer, the ten masks and
+the recorder-trig triple, the yes/no signature, the menu record layouts —
+they cite octabam, octamax or octakit for each. And two of their retractions
+came from reading us: `0x100b14cf` is the part, not the pattern (our §6
+writer), and `0x4006de34` is a stage-then-commit input, not a publisher
+(our `MAINMENU.md`).

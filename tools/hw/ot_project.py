@@ -213,7 +213,14 @@ SLOT_KIND = {"static": 0, "flex": 1, "pickup": 4}
 # Measured on the unit 7 Sep 2026: the STATIC slot byte is 0-based like the
 # FLEX one (byte 1 shows as "static 002"); a STATIC [SAMPLE] entry's PATH is a
 # BARE filename ("PLUCK.wav"), and the ../AUDIO/<dir>/<file> form -- which the
-# FLEX entries of Sam's projects use -- loads as an EMPTY slot for STATIC.
+# FLEX entries of Sam's projects use -- loaded as an EMPTY slot for STATIC.
+# ⚠️ 13 Sep 2026: the path form is probably NOT the cause. On 1.40C the unit
+# itself writes nested STATIC paths and 32 host-written nested STATIC slots
+# play (octalab, docs/firmware/EXTERNAL.md 9.2/9.4). A slot with no
+# markers.work record (784-byte records, frame count at +10) looks exactly
+# like "empty": no error, 64-frame fallback, 30 BPM, will not trig. Nothing
+# in tools/hw/ writes markers.work. Falsifier: write one nested STATIC slot
+# WITH a marker record and trig it.
 def set_track_slot(pdir, banknum, part, track, slot_1based, kind="flex"):
     if not (1 <= part <= NPARTS_ALL and 1 <= track <= 8):
         sys.exit(f"track-slot: part {part} / track {track} must be 1-based")
@@ -276,11 +283,12 @@ def set_machine_type(pdir, banknum, part, track, mtype, mirror=True, guard=True)
 # and builds a per-track flag word from 0x20 -> bit 12, 0x28 -> bit 13,
 # 0x30 -> bit 14, 0x38 -> bits 5+8 (0x4009d93c..0x4009da12).
 #
-# ⚠️ WHICH MASK IS THE RECORDER TRIG IS NOT KNOWN. 0x40/0x48 are not masks at
-# all -- they read as a run of 0xaa, a default-filled per-step byte array.
-# The cheap way to settle it is `pattern-diff` below against two projects
-# saved from the unit, one with a recorder trig and one without; nothing in
-# the emulator identifies it as directly.
+# The recorder trig is 0x20|0x28|0x30 at once (settled by pattern-diff,
+# RTOS_FORK.md). 0x40 is the SWING mask (default 0xaa.. = every even step,
+# which is why it once read as "a default-filled byte array, not a mask") and
+# 0x48 the SLIDE mask -- both settled on a MKI by placing one of each and
+# diffing (octalab, docs/firmware/EXTERNAL.md 9.2, 13 Sep 2026). 0x38 is
+# still unidentified.
 PTRN0, PTRN_FSTRIDE, TRAC_FSTRIDE, NMASKS = 0x16, 0x8eec, 0x922, 8
 
 def trac_off(pattern, track):

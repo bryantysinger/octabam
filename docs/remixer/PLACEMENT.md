@@ -22,7 +22,10 @@ claim one address before a byte is written.
 
 Three zero runs inside the OS image (`0x400c0000..0x400d8000` scanned for
 runs ≥ 64 B; the region above `0x400d8000` reads zero but is the PROJECT
-subsystem's RAM and is refused):
+subsystem's RAM and is refused — and that refusal now has a hardware
+record: octalab put a menu table in the 15 KB zero run at `0x401087e4`,
+which has zero static references, and the unit raised `VEC:03` in the menu
+draw loop, `docs/firmware/EXTERNAL.md` §9.3):
 
 ```
 0x400c45b0..0x400c4702     338 B

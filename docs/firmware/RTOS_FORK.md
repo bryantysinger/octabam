@@ -1069,8 +1069,13 @@ them (`--watch-pattern` over a live record, then `scripts/disasm.sh emac`):
 | `0x38` | `0x4009d9f6` | bits 5+8 (else bit 5); only read when 12/13/14 fired |
 | `0x40` | `0x4009d3d6` | gates a per-step byte at `+0x52` into a `x110250` timing calc |
 
-`0x40`/`0x48` are **not** masks: they read as a run of `0xaa`, a
-default-filled per-step byte array.
+~~`0x40`/`0x48` are **not** masks: they read as a run of `0xaa`, a
+default-filled per-step byte array.~~ ❌ RETRACTED 13 Sep 2026: they are
+the **swing** (`0x40`) and **slide** (`0x48`) trig masks — the run of
+`0xaa…` is swing's default, every even step. Settled on a MKI by placing
+one of each and diffing the bank files (nordseele's octalab,
+`EXTERNAL.md` §9.2). The `0x40` consumer above (`+0x52` into the timing
+calc) is consistent with swing.
 
 **The fixture** (`ot_project.py`, so it composes with the rest of the
 toolkit rather than living in `tools/scratch/`):
