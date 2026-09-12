@@ -257,3 +257,37 @@ a send from a **core 0** track (T6/T7) behaves differently from a **core 1**
 one (T2–T4), and whether the return is dead or merely intermittent (the
 free lever from `docs/effects/XBUS.md` is to change what sits on track 5).
 
+
+## The port reports a wrong bank/pattern at play for an image that detours `0x40087d44` — the INSTRUMENT, not the firmware (13 Sep 2026)
+
+**Symptom.** Under `ot_emu --sequencer`, an image that hooks the engine's
+BANK= store at `0x40087d44` (midisc's Site B) plays bank 0 pattern 0 after
+LOAD PROJECT, whatever bank the project was saved on: `saved_bank: -1` in
+the load report, "playing bank 0 pattern 0", and a step-1 trig set that is
+the default position's (tracks 0, 5, 7 on `dram_card.img`/`OCTABAM`/`RIG`)
+instead of the saved one's (0, 1, 2, 4, 7). Stock and any image that leaves
+the site alone play the saved bank.
+
+**Cause.** `rtos.cpp` learns the saved bank from a write watch on
+`BANK_PTR` (`0x46c82456`) that accepts only writes whose PC is the stock
+store at `0x40087d44` — deliberately, to tell the engine's parse from
+`sys`'s select-bank writer. A detour moves that store into a cave, the
+watch never fires, and the port's own transport-start re-select (which
+compensates for an emulator ordering defect) picks bank 0. Nothing in the
+firmware did anything wrong.
+
+**Cost.** Three sessions (10–12 Sep 2026): a 38-site bisect that "landed"
+on this one site, a re-bisect that "narrowed it to `unpack`", an inferred
+mechanism sent to the author, and a PR to his repository (bkkbrls-del/
+midisc#2, withdrawn). Every step was internally consistent because every
+step ran the same blind instrument. The tell that was missed: dropping the
+site restored the control, but so would ANY change to the writing PC — and
+"Site B as a cave holding only stock's store" (→ 3) was the one-line
+experiment that separated the site from what it ran.
+
+**Fix.** The watch follows a `jsr (abs).l` at the site and accepts the store
+from the detour's own code (`rtos.cpp`, branch `port-bankwatch-detour`).
+`--bank N` overrides for anything else. **Rule:** a port watch keyed on a
+stock PC is blind to any module that detours that PC; when a "defect"
+bisects to exactly one hook site and survives emptying the hook, suspect
+the instrument's PC keys before the firmware.

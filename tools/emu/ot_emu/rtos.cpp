@@ -812,10 +812,25 @@ namespace ot
 		if(!m_partPtrWatched)
 		{
 			m_partPtrWatched = true;
+			// A mod may DETOUR the site (midisc's bank_publish replaces the
+			// 6-byte store with `jsr (cave).l` and makes the store from the
+			// cave). Keyed on the stock PC alone, this watch never fired on
+			// such an image, savedBank stayed -1, the transport start below
+			// re-selected bank 0, and three sessions (10-12 Sep 2026) read
+			// the resulting 3-tracks-armed signature as a firmware defect at
+			// that one site -- bisected, "narrowed to unpack", reported and
+			// PR'd upstream. It was this watch. Follow a jsr at the site and
+			// accept the store from the detour's own code as well.
+			uint32_t detourLo = 0, detourHi = 0;
+			if(m_machine.read16(g_engineBankWrite) == 0x4eb9)	// jsr (abs).l
+			{
+				detourLo = m_machine.peek32(g_engineBankWrite + 2);
+				detourHi = detourLo + 0x80;
+			}
 			m_machine.addWriteWatch(g_partPtr, g_partPtr + 3,
-				[this](uint32_t, uint8_t, const uint32_t _val, const uint32_t _pc)
+				[this, detourLo, detourHi](uint32_t, uint8_t, const uint32_t _val, const uint32_t _pc)
 				{
-					if(_pc == g_engineBankWrite)
+					if(_pc == g_engineBankWrite || (detourLo && _pc >= detourLo && _pc < detourHi))
 						m_savedBank = static_cast<int>((_val - g_bankBlob) / g_bankStride);
 				});
 		}
