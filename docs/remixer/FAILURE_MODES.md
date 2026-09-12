@@ -109,6 +109,30 @@ either — only the unit can.
 
 ---
 
+## Sequencer stuck on step 1 with EVERY effect turned off — id 0 IS SEND
+
+**Symptom (measured, 13 Sep 2026, the first rig-burn image 85B).** Step 1
+solid on play; still solid with every FX1 set to NONE and every FX2 set to
+SEND, on a freshly stamped project and on a project that ran on flash 7.
+The plain image (same DSP code minus the burn block) played.
+
+**Cause.** Id 0 is aliased to SEND, and the FX1 chooser's NONE is id 0, so
+**SEND's proc runs on every FX1 slot set to NONE** — with r6 on that slot's
+page, whose bytes are whatever the last effect left there. The burn knob
+read a stale slot-1 byte on four extra slots per core and burned the core to
+a standstill. "Everything off" is not nothing: it is eight SENDs. The
+emulator never instantiates an FX1-NONE slot, so no local render can show
+this family.
+
+**Fix.** Anything in SEND that reads a knob and can cost cycles or write
+the bus must gate on the slot being FX2 (`X:$213` base ≥ 0x4000, tested
+per call — an alias instance never ran init). The burn does now
+(`dsp/burn_send.inc`, `verify_burn.py` check 5). ⚠️ SEND's AUX read has no
+such gate: whether an FX1-NONE slot with a stale AUX byte registers as a
+phantom sender on the unit is an OPEN hardware claim for the pass.
+
+---
+
 ## Line-F exception on [PROJ] — a cave pinned in OS .bss
 
 **Symptom.** The OS runs, but hitting **PROJECT throws an exception** and

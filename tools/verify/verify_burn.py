@@ -19,6 +19,11 @@ bamsep26), both cores, the same stems:
   4. THE HARNESS CAN SEE. AUX 0 vs AUX 100 on the same layout must DIFFER,
      or "bit-identical" is a claim about a blind comparison (the control
      the bit-identity rule demands).
+  5. FX2 ONLY.         A SEND on an FX1 slot at BURN 127 adds NOTHING to the
+     meter. Id 0 is aliased to SEND, so on the unit this proc runs on every
+     FX1 slot set to NONE with that page's stale bytes as its knobs -- the
+     first rig-burn image hung the sequencer on step 1 with every effect
+     turned off (13 Sep 2026).
 
 The old probe shape (BURN=1 without SPEC: the reverb's own burn blocks,
 the alias probe in the delay's slot) is not tested here; it is a
@@ -68,6 +73,15 @@ def render(image, remix, out, burn, aux=100):
     return meters
 
 
+def render_fx1(image, remix, out, burn):
+    out.mkdir(parents=True, exist_ok=True)
+    txt = run([sys.executable, "tools/harness/rig_render.py", "--image", str(image), "--remix", remix,
+               "--tracks", "T1=DELAY SERVER,T2=SEND+SEND",
+               "--stem", "T2=out/test_audio/loop.wav", "--tail", "0", "--seconds", "1", "--frames", "16",
+               "--set", "T2:AUX=100", "--set", f"T2:FX1:P1={burn}", "--out", str(out)])
+    return {int(m.group(1)): int(m.group(2)) for m in re.finditer(r"core (\d) meter: max (\d+) instructions", txt)}
+
+
 def digest(d):
     h = hashlib.md5()
     for f in sorted(d.glob("*.wav")):
@@ -113,6 +127,10 @@ def main():
         check(abs(delta - STEP * 127) <= 1.0, f"exact: core {core} rises by {STEP} * 127 instructions/sample",
               f"{delta:+.1f} (want {STEP * 127:+d})")
     check(d_ship != d_ctl, "the harness can see: AUX 0 vs AUX 100 differ")
+    m_f0 = render_fx1(burn, remix, SCRATCH / "fx1_0", burn=0)
+    m_f127 = render_fx1(burn, remix, SCRATCH / "fx1_127", burn=127)
+    check(m_f0.get(1) == m_f127.get(1), "FX2 only: a SEND on an FX1 slot at BURN 127 adds nothing",
+          f"{m_f0.get(1)} vs {m_f127.get(1)} instructions in the worst block")
     (ROOT / "out/mainos_bus.bin").write_bytes(ship.read_bytes())   # leave the shipping build on disk
     print("\nOK" if ok else "\nFAILED")
     return 0 if ok else 1

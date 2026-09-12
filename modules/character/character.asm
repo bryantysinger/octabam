@@ -474,25 +474,24 @@ ch_stube:
         move    x0,x:(r7+$37)           ; driven twice as hard, so even
                                         ; harmonics (0.75 gave H2 -25 dB and
                                         ; TUBE was TAPE by ear, 12 Sep 2026)
-        move    #>$7fffff,x0            ; ... and DC: the blocker on
-        move    x0,x:(r7+$46)
-        move    #>$7fdf3b,x0            ; R = 0.999, ~7 Hz
-        move    x0,x:(r7+$47)
         clr     a
         move    a,x:(r7+$4c)            ; and BRIGHT: no low-pass -- TAPE is
-        bra     ch_sdone                ; the dark one, TUBE the present one
+        bra     ch_dcon                 ; the dark one, TUBE the present one
 ch_sfuzz:
-        move    #>$266666,x0            ; clip +0.6
-        move    x0,x:(r7+$3a)
         move    #>$d9999a,x0            ; clip -0.6
         move    x0,x:(r7+$3b)
-        move    #>$7fffff,x0            ; the blocker on (the crush and the
-        move    x0,x:(r7+$46)           ; fold ahead of a hard clip are not
-        move    #>$7fdf3b,x0            ; symmetric on real material)
-        move    x0,x:(r7+$47)
-        move    #>$266666,x0            ; the low-pass at half strength (0.3):
-        move    x0,x:(r7+$4c)           ; the clip's fizz off the top (ear, 12 Sep)
-        bra     ch_sdone
+        move    #>$266666,x0            ; clip +0.6
+        move    x0,x:(r7+$3a)
+        move    x0,x:(r7+$4c)           ; the low-pass at half strength (0.3 --
+                                        ; the same word as the clip, by luck of
+                                        ; the constants): the clip's fizz off
+                                        ; the top (ear, 12 Sep)
+ch_dcon:                                ; TUBE and FUZZ: the DC blocker on (the
+        move    #>$7fffff,x0            ; crush and the fold ahead of a hard
+        move    x0,x:(r7+$46)           ; clip are not symmetric on real
+        move    #>$7fdf3b,x0            ; material; TUBE's asymmetry is the
+        move    x0,x:(r7+$47)           ; point). R = 0.999, ~7 Hz. One tail
+        bra     ch_sdone                ; for both: 8 words (13 Sep 2026)
 ch_sbus:
         move    #>$200000,x0            ; pre = 0.5 ...
         move    x0,x:(r7+$38)
