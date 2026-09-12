@@ -217,7 +217,11 @@ burn-image: burn ## Repack the RIG BURN build into a card-flashable .bin (BUILD=
 	EFT_EMIT_CONTAINER=out/elek_$(BUILD)burn.bin $(EFT) \
 	  -i $(SYX) -c 3 out/mainos_bus.bin \
 	  -V $(VERSION)B -o out/OCTATRACK_OS1.40C_$(VERSION)B.syx
-	@ls -la out/elek_$(BUILD)burn.bin
+	python3 tools/build/make_bin.py out/elek_$(BUILD)burn.bin \
+	  -o out/OCTATRACK_$(VERSION)B.bin
+	@echo
+	@echo "  card image: out/OCTATRACK_$(VERSION)B.bin   (the rig + BURN on SEND's slot 2)"
+	@echo "  MIDI image: out/OCTATRACK_OS1.40C_$(VERSION)B.syx"
 
 .PHONY: check
 check: bus cycles verify ## Everything that can be checked without hardware
