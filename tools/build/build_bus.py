@@ -605,6 +605,13 @@ if os.environ.get("MARKER") == "1":
 # servers are untouched. Without SPEC it is the older diagnostic image: the
 # reverb's own burn blocks and the alias probe in the delay's slot.
 RIG_BURN = os.environ.get("BURN") == "1" and os.environ.get("SPEC") == "1"
+# A remix with no SEND (recfix, midi-scenes, mods) has nowhere to put the
+# knob. Say so: the KeyError this used to raise broke make check for every
+# such remix the morning the rig burn landed (13 Sep 2026); verify_burn
+# skips them before it gets here.
+if RIG_BURN and "SEND" not in ACTIVE_PARAMS:
+    sys.exit(f"BURN=1 SPEC=1: remix {REMIX.name!r} carries no SEND -- the rig burn "
+             f"has no knob to sit on; nothing to build")
 if RIG_BURN:
     RENAMES["SEND"] = [(i, v) for i, v in RENAMES.get("SEND", []) if i != 1] + [(1, b"BURN")]
     ACTIVE_PARAMS["SEND"] = sorted(set(ACTIVE_PARAMS["SEND"]) | {1})
