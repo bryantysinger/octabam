@@ -25,6 +25,11 @@ Gates:
   VOWL bank   -> five vowels: each F1 and F2 is a PEAK within a quarter octave
                  of the Peterson-Barney table, and each vowel is loudest at its
                  own F1 among the five
+  LADR (13 Sep 2026, the linear zero-delay Moog ladder, MODE 5):
+  4-pole      -> 2 kHz vs 4 kHz at FREQ 64 differ by ~24 dB (LP reads ~12)
+  DC          -> DC (unity at RES 0);  distinct from LP: 4 kHz > 10 dB lower
+  resonance   -> the tone at fc rises monotonically RES 0 < 64 < 100 < 127
+  RES 127     -> bounded at 0.13 and 0.5 FS (below full scale, no rail)
 
 The dump comes from the audition, which builds a scratch image that really
 contains this station beside SEND:
@@ -256,6 +261,38 @@ for name, freq, f1, f2 in VOWELS:
     check(f"VOWL {name} is loudest at its own F1 among the five", own[name] > max(others),
           f"own {own[name]:.1f}, best other {max(others):.1f} dBFS")
 
+# ---- 6g. LADR: the linear zero-delay Moog ladder (13 Sep 2026) ----------------
+# MODE 5 is the 4-pole (audiojs/filter moogLadder without its tanh): 24 dB/oct
+# where LP is 12, resonance k = 4 * 0.975 * RES/128 (the linear ladder
+# oscillates at k = 4), bounded at RES 127 by the limiting stores. Proven
+# against a float reference of the same equations on 13 Sep 2026 (levels to
+# 0.01 dB, peak error < 0.01 FS at the self-oscillating edge); these gates pin
+# the shape so a regression shows.
+# Measured at FREQ 64 (fc 600 Hz), not the LP gate's FREQ 30: four poles put
+# 2 kHz 100 dB under fc = 109 Hz, below the 24-bit floor, and both tones read
+# the floor (the first draft of this gate measured -0.0 dB/oct that way).
+l_lo = rms_db(render(tone(2000), FREQ=64, RES=0, MODE=5)[0])
+l_hi = rms_db(render(tone(4000), FREQ=64, RES=0, MODE=5)[0])
+p_lo = rms_db(render(tone(2000), FREQ=64, RES=0)[0])
+p_hi = rms_db(render(tone(4000), FREQ=64, RES=0)[0])
+l_slope, p_slope = l_lo - l_hi, p_lo - p_hi
+check("LADR is a 4-pole: 2 kHz vs 4 kHz differ by ~24 dB at FREQ=64 (LP reads ~12 there)",
+      19 <= l_slope <= 29 and 9 <= p_slope <= 15 and l_slope > p_slope + 6,
+      f"LADR {l_slope:.1f} dB/oct vs LP {p_slope:.1f}")
+d_ld = tail_mean(render(dc(), FREQ=64, MODE=5)[0])
+check("LADR at DC -> DC (a low-pass, unity at RES 0)", abs(d_ld - dcv) < 256, f"{d_ld:.0f} vs {dcv}")
+l4k = rms_db(render(tone(4000, 0.2), FREQ=64, RES=64, MODE=5)[0])
+check("LADR cuts 4 kHz at FREQ 64 by > 10 dB more than LP does (distinct from LP)",
+      lv[0][4000] - l4k > 10, f"LP {lv[0][4000]:.1f}, LADR {l4k:.1f} dBFS")
+lr = {res: rms_db(render(tone(600, 0.02), FREQ=64, RES=res, MODE=5)[0]) for res in (0, 64, 100, 127)}
+check("LADR resonance grows with RES: the tone at fc rises RES 0 < 64 < 100 < 127",
+      lr[0] < lr[64] < lr[100] < lr[127] and lr[127] - lr[0] > 15,
+      " / ".join(f"RES {r} {v:.1f}" for r, v in lr.items()) + " dBFS")
+bounded("RES 127 LADR at fc, 0.13 FS in: below full scale, never on the rails",
+        render(tone(600, 0.13), FREQ=64, RES=127, MODE=5)[0])
+bounded("RES 127 LADR at fc, 0.5 FS in: below full scale, never on the rails",
+        render(tone(600, 0.5), FREQ=64, RES=127, MODE=5)[0])
+
 # ---- 7. every knob at its extremes renders -----------------------------------
 for name in K:
     for v in (0, 127 if MOD.params[K[name]].count in (None, 128) else MOD.params[K[name]].count - 1):
@@ -267,11 +304,11 @@ check("every knob at both extremes renders", True)
 # envelope (tools/harness/pressure.py) and the FX2 chooser both take it at
 # its word, so it is proven here at every extreme, and the guard sees no
 # write outside the frame.
-L, R = render(ramp, slot="fx2", FREQ=30, RES=110, DRV=127, MODE=1, ROUT=2, DPTH=127, SRC=2)
+L, R = render(ramp, slot="fx2", FREQ=30, RES=110, MODE=1, ROUT=2, DPTH=127, SRC=2)
 check("FX2 instance is a bit-exact DRY PASS at every extreme (fx1_only)",
       L == ramp and R == ramp,
       "" if L == ramp else f"first diff at {next(i for i,(a,b) in enumerate(zip(L,ramp)) if a!=b)}")
-render(ramp, slot="fx2", guard=True, FREQ=30, RES=110, DRV=127, MODE=1, ROUT=2, DPTH=127, SRC=2)
+render(ramp, slot="fx2", guard=True, FREQ=30, RES=110, MODE=1, ROUT=2, DPTH=127, SRC=2)
 g = getattr(render, "guard_out", "")
 check("FX2 instance trips no write guard",
       "guard clean" in g,

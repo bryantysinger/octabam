@@ -2193,3 +2193,48 @@ Cost: Spectrum 861 → 1,141 words (core A FREE 578 → 283, core B 680 → 385)
 322 → 462 cycles/sample (the SVF and VOWL alternatives are a mode fork: the
 pricer charges the worse, VOWL). Worst core unchanged at 3,654 (four
 Characters), headroom 234. Unheard; nothing flashed.
+
+## 13 Sep 2026, late — Spectrum: DRV retired, LADR (the Moog ladder) is MODE 5
+
+DRV is gone from Spectrum (Sam: "we have DRVs everywhere" — Character owns
+drive); slot 6 is blank, the SVF and VOWL paths read x where they read the
+driven x_d. Proven a no-op for every other knob: 37 renders (LP/BP/HP/NTCH/
+VOWL × five knob sets on noise, FM and RING on a mix, the passthrough, the
+FX2 dry pass) bit-identical to the build before it.
+
+LADR is MODE 5 (LP/BP/HP/NTCH/VOWL/LADR): the LINEAR zero-delay Moog
+transistor ladder, audiojs/filter's `moogLadder` without its tanh
+(Zavalishin ch. 6). Per block G = g/(1+g) by a second real division, G² G³,
+k/4 = 0.975·RES/128 (the linear ladder oscillates at k = 4 — 3.9 rings hard
+and the limiting stores bound it), d/2 = (1/4)/(1/2 + kG⁴/2) by a third;
+per sample S = G³s₀ + G²s₁ + Gs₂ + s₃ (states kept halved in VOWL's slots —
+the two modes never share a block), u = (x − kS)·d, four trapezoidal stages
+y = G'(v − s) + s, s' = 2y − s, out = y₄. G ramps per sample across the block
+like the SVF's g; FM is a multiplicative offset on G with the block's G
+powers and d frozen (the SEM's approximation). The per-channel core is one
+straight-line callee (`fs_lcore`, 104 words, twice per sample): inline it
+overran payload A by 20 words. ROUT, filter B and the modulation apply
+unchanged.
+
+Measured, local only (dsp_host vs a float reference of the same equations,
+FREQ 0/32/64/96/127 × RES 0/64/100/127 on 220 Hz / 1 kHz / 4 kHz tones at
+0.13 FS, a 1 kHz tone at 0.5 FS and noise): level within 0.01 dB in every
+one of the 100 cases; peak sample error ≤ 9e-3 FS, and that only at the
+self-oscillating edge (FREQ 96, RES 127), elsewhere ≤ 1e-5. Slope on noise
+at FREQ 64: −22 dB/oct across 1.2–3 kHz (2 kHz vs 4 kHz tones 23.7 dB/oct;
+LP reads 12.7 there); the resonance peak at fc reads +0.7 / +5.7 / +25 dB at
+RES 0 / 100 / 127; at RES 127 a tone at fc peaks at −5.2 dBFS (0.13 FS in)
+and −4.7 dBFS (0.5 FS in), no sample on a rail. The first build rendered
+silence: the per-sample G ramp was missing (G' = 0 every sample) — the float
+comparison found it, no assembly-time check could. `verify_spectrum.py`
+47/47 with six LADR gates (4-pole vs LP, DC, distinct from LP, RES monotone,
+bounded at 0.13 and 0.5 FS). LP/BP/HP/NTCH/VOWL bit-identical to the
+DRV-retired build (37/37) with LADR in.
+
+Cost: Spectrum 1,141 → 1,109 (DRV out) → 1,333 words with the ladder; core A
+FREE 315 → 91, core B 417 → 193. Pricer: Spectrum 454 → 461 cycles/sample
+(the fork's dispatch grew; the LADR alternative prices at 426 against
+VOWL's 433, so VOWL still sets the line); worst core unchanged at 3,654
+(four Characters + delay + three sends), headroom 234 against the 3,888
+credited line. Four Spectrums in LADR on a core sit under it (the worst
+Spectrum layout prices below the Character one). Unheard; nothing flashed.
