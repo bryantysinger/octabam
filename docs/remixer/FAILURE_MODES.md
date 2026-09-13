@@ -134,26 +134,26 @@ to the return; if both do, it is the return or the bus itself.
 
 ---
 
-## BusDelay produces no audible repeats — TIME is inert 🔴 MEASURED 13 Sep 2026
+## BusDelay went silent with its knobs pinned 🔴 SEEN 13 Sep 2026, CLEARED BY A REBOOT
 
 **Symptom.** No delay is audible anywhere in the rig. Sam by ear first
 ("it's been on mix 127 this whole time which seems strange as I can't hear
 delay"); confirmed by measurement.
 
-**Measured.** With everything the chain needs — T1 AUX 90 feeding the bus,
-BusDelay `MIX 127` (repeats only), BusVerb `MIX 0` so the reverb passes its
-input through, return at 127 — the output's envelope autocorrelation peaks at
-248 ms and **does not move when TIME changes**:
+❌ **THE "TIME IS INERT" MEASUREMENT IS RETRACTED (same session).** It read
+the envelope autocorrelation of the WHOLE MIX and reported 248 ms at TIME
+40/100/15 — unchanged, therefore "inert". But 248 and 496 ms are the eighth
+and the quarter at 121 BPM: the peaks were the MATERIAL every time, and the
+instrument could not have shown a delay-time change if there had been one.
+After the reboot Sam heard TIME move clearly while the same measurement still
+reported 249 ms at every value. **The ear was right and the metric was blind**
+— the fourth instance this session of a null from an instrument that cannot
+see the thing it is being used to rule out.
 
-| BusDelay TIME | strongest envelope repeat |
-|---|---|
-| 40 | 248 ms (rel 0.665) |
-| 100 | 248 ms (rel 0.640) |
-| 15 | 248 ms (rel 0.558) |
-
-248 ms is an eighth note at 121 BPM, i.e. the material's own pulse. A delay
-contributing anything would move that peak, or add a second one, when TIME
-changes. It does neither.
+**The right instrument** (untried): stop the source mid-capture and measure
+the SPACING OF THE DECAYING REPEATS, which is the delay time by construction
+and has no material in it. Autocorrelating a mix against tempo-locked
+material never will.
 
 ⚠️ **The first explanation offered was wrong and is retracted**: that both
 stages at `MIX 127` give "reverb-of-delay" so the repeats are smeared rather
@@ -177,9 +177,17 @@ overrides the knob. The crossfader position would then be selecting 68/0/84.
 NOT YET TESTED — the discriminator is to move the crossfader (CC 48) and see
 whether the three values move with it.
 
-**Cause. NOT ESTABLISHED.** Also untested: whether the delay is audible with
-BusVerb out of the chain entirely (T5 FX2 → a stock effect), which separates
-"the delay makes nothing" from "the reverb stage discards it".
+**A REBOOT CLEARED IT.** After a power-cycle (no save) the delay is audible
+and TIME responds by ear. So the pinned knobs and the silence were **RAM
+state, not stored data** — a runtime fault that will recur, not something
+wrong on the card. That is the useful half of this entry.
+
+**Cause. NOT ESTABLISHED.** Scene locks are ruled out: Sam checked by holding
+scene A and scene B, no locks. Untested: whether the delay is audible with
+BusVerb out of the chain entirely (T5 FX2 → a stock effect), and what the
+"jiggling the knobs" that restored it actually touched — that step is lost,
+which is why the next occurrence should be captured before anything is
+moved.
 
 ---
 
