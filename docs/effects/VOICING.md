@@ -2282,3 +2282,18 @@ reproduces the hardware bug): (1) post-multiply the saturated bands by 1/d
 (a per-block 1/d P-table, ~9-17 words, no per-sample cost) to hold level;
 (2) widen the drive max from 7.9x to ~30x so it saturates at mix level with
 level held -- dmax is Sam's ear. Same for TUBE.
+
+**CONFIRMED, clean measurement (transport running): the AC1 compressor KILLS
+THE RIGHT CHANNEL.** On the master, DRV 0, INFL, sweeping COMP: L holds ~-32
+dBFS at every COMP; R is -33.9 at COMP 40 (already decorrelating, 0.95->0.85),
+-71.9 at COMP 80, -76.4 at COMP 127 -- the right channel collapses ~40 dB and
+what remains is distorted (HF tilt +40 dB over L). With SAT skipped (DRV 0)
+COMP 80 still does it, so it is the COMPRESSOR (tonight's AC1 port), not
+INFL/TAPE. Sam heard it at COMP 40 (the stamp). A channel-specific gain bug:
+the mono detector's gain is misapplied to R (a stale register / wrong state
+slot / A2 staleness on the R path). Reproducible LOCALLY with a STEREO render
+(dsp_host -stereo) -- the 28/28 gate rendered mono. Tonight's Character has
+THREE hardware breaks (comp R-channel, TAPE thins, TUBE collapses), all green
+on the local gates. Recommendation: roll Character back to the pre-port
+(image-97) version for the set; fix the ports on the branch with stereo
+renders at real levels + the port modelling the master path.
