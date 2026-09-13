@@ -643,6 +643,30 @@ def reanalyse(args):
     print("\n".join(rows))
 
 
+def summary(args):
+    """The report rows plus the solo table: per-track rms of each rung minus
+    rung A's (the same track, the same material -- the rig's contribution to
+    that track's level; T8 solo = the return on its own)."""
+    out = ROOT / "out/hw/ladder" / args.label
+    results = json.loads((out / "results.json").read_text())
+    print((out / "REPORT.md").read_text())
+    ref = results.get("A", {}).get("solos")
+    if not ref:
+        print("(no solos in rung A)"); return
+    print("\nsolo rms per track (dBFS), and the difference from rung A:")
+    print("| rung | " + " | ".join(f"T{t}" for t in range(1, 9)) + " |")
+    print("|---|" + "---|" * 8)
+    for bank, name, what, layout in RUNGS:
+        r = results.get(bank)
+        if not r or not r.get("solos"):
+            continue
+        cells = []
+        for t in range(1, 9):
+            v = r["solos"][str(t)]["rms"]; d = v - ref[str(t)]["rms"]
+            cells.append(f"{v:.1f} ({d:+.1f})" if bank != "A" else f"{v:.1f}")
+        print(f"| {bank} {name} | " + " | ".join(cells) + " |")
+
+
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -660,6 +684,7 @@ def main():
     p.add_argument("--no-assert", action="store_true")
     p.add_argument("--solo", action="store_true", help="after the play phase, solo each track for 8 s")
     p = sub.add_parser("analyse"); p.add_argument("label")
+    p = sub.add_parser("summary"); p.add_argument("label")
     sub.add_parser("rungs")
     args = ap.parse_args()
     if args.cmd == "proj":
@@ -668,6 +693,8 @@ def main():
         run(args)
     elif args.cmd == "analyse":
         reanalyse(args)
+    elif args.cmd == "summary":
+        summary(args)
     elif args.cmd == "rungs":
         cmd_rungs()
 
