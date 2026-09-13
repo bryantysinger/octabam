@@ -182,6 +182,19 @@ and TIME responds by ear. So the pinned knobs and the silence were **RAM
 state, not stored data** — a runtime fault that will recur, not something
 wrong on the card. That is the useful half of this entry.
 
+**13 Sep 2026 evening — THE VALUES WERE STORED IN THE PART, not only RAM.**
+OCTABAM86 bank A part 1 (the part yesterday's session played) holds BusDelay
+`AUX 90, TIME 20, FDBK 85, TONE 68, PING 28` (page 2 `MRAT 70, SIZE 0, PTCH
+68`), every other track's AUX at 110–127, and BusVerb at `AUX 0, MIX 0`; parts
+2–4 hold TONE 68 and banks B/C TONE 0. So the "pinned 68/0/84" reading was
+the part's own bytes (85 read as 84 at the panel, or one step moved), and a
+rig with every send near full into a delay at FDBK 85 with a dark TONE is the
+"loops and mess" of the last days by construction. Read with
+`tools/hw/ot_ladder.py`'s diff on the card; the rig re-stamped from the
+manifests (`OCTABAM87`, rigproj with the fixed stamper) measured clean on the
+ladder at every rung and under a 5-minute page-1 stress. Why the encoders
+would not move a stored value is still open.
+
 **Cause. NOT ESTABLISHED.** Scene locks are ruled out: Sam checked by holding
 scene A and scene B, no locks. Untested: whether the delay is audible with
 BusVerb out of the chain entirely (T5 FX2 → a stock effect), and what the
