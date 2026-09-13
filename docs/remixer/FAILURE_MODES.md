@@ -389,6 +389,30 @@ test (SAT = TAPE at the panel, knob 3 to 127 over CC 36 while playing)
 decides whether page 2 reaches the DSP on the master only, or only via the
 stamp and never via the panel.
 
+**MECHANISM, HALF MEASURED (port, 13 Sep evening; scratchpad
+`fx1p2_trace.py`, `copier_markers.py`).** The per-frame copier `0x4000cae8`
+takes THREE six-byte page-2 blocks per track out of the 72-byte live lane
+(`0x80000810 + track*72`) into the DSP record (`0x80000110 + 64*track`,
+hw 21-23 / 18-20 / 24-26): **AMP p2 from +0x2c, FX1 p2 from +0x32, FX2 p2
+from +0x38.** Bytes +0x20..+0x2b (PLAYBACK, LFO p2) never reach the DSP. The
+panel's page-2 editor `0x4003a474` writes the Part (`+0x8ef5a + track*30 +
+idx*6 + slot`), the shadow (`0x100a50a8 + ...`) and the live lane at
+`+0x20 + idx*6 + slot` with `idx = long 0x460d5c30`, the STAGED INDEX -- so
+an FX2 edit reaches the DSP only when idx = 4 and an FX1 edit only when
+idx = 3. The emulator cannot show what the real key press stages (the
+setter does not run there; it reads 0 after every page call). Two
+candidates for T1: the FX1 page stages a different index on T1 (a THRU
+machine; T8 is FLEX -- a page ordinal per machine type would do it) or
+payload B unpacks hw 18-20 differently. The stamp reaches both because the
+load-time refresher fills the lane from the Part directly. **Discriminator:**
+a page-2 edit on a STATIC track (T3 Spectrum MODE LP->HP with FREQ low
+over CC 34) -- if it reaches, the machine-type ordinal is the cause.
+**Consequence found on the way:** the CC PAGE 2 cave (`modules/ccpage2`)
+writes the lane at +0x20 + slot, PLAYBACK's block, never the DSP's -- which
+is why CC 62-67 are inert on hardware; its Part/shadow stores are at the
+same wrong index. Fix: live +0x38 + slot, Part/shadow +24 + slot. The 5 Sep
+"FX2 stages index 0" reading was the emulator's own artefact.
+
 **Interim for the set:** keep every station's knob 3 at 0 on FX1 tracks;
 the stamp writes 0 there.
 

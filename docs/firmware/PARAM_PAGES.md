@@ -724,3 +724,23 @@ longest label is "OFF"/"%d" of 3–4 chars; our labels would be ≤ 5,
 widget's count matters (a count-12 dial with `B=0` is stock DELAY TIME's
 own configuration, so this is low-risk). Both are one flash to settle.
 
+## The page-2 lanes the copier delivers to the DSP ✅ MEASURED under the port, 13 Sep 2026
+
+The per-frame copier `0x4000cae8` (loop `0x4000cb2a..cb98`, eight tracks)
+takes three six-byte page-2 blocks per track out of the 72-byte live lane
+`0x80000810 + track*72` into the DSP record `0x80000110 + 64*track`:
+
+| lane bytes (`track*72 +`) | lands in | meaning |
+|---|---|---|
+| `+0x20..+0x2b` | ColdFire record `0x80000510 + 48*t` only | PLAYBACK p2, LFO p2 -- never the DSP |
+| `+0x2c..+0x31` | DSP record hw 21-23 | AMP page 2 |
+| `+0x32..+0x37` | DSP record hw 18-20 | **FX1 page 2** |
+| `+0x38..+0x3d` | DSP record hw 24-26 | **FX2 page 2** |
+
+Measured with marker bytes (scratchpad `copier_markers.py`). The page-2
+editor `0x4003a474` writes the lane at `+0x20 + idx*6 + slot` with `idx` the
+staged index at `0x460d5c30`, so it reaches the DSP for FX1 only at idx 3
+and for FX2 only at idx 4; what the panel stages on hardware is the open
+read (FAILURE_MODES "An FX1 station's PAGE 2 does not reach the DSP on
+T1"). The page-1 writer `0x40054cd8(track, flat, value)` is symmetric:
+FX1 slot k at `+0x12 + k`, FX2 slot k at `+0x18 + k`.
