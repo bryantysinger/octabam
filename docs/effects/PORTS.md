@@ -68,6 +68,19 @@ Net for the linear SEM + the formant bank + the ramp: ≈ +90 words,
 bsr-in-fork attribution fix and a re-price; the linear SEM alone is
 affordable now.
 
+## Built, 13 Sep 2026 late (image 98, unflashed at the time of writing)
+
+| stage | result |
+|---|---|
+| Character TAPE / TUBE / INFL | TapeHead / DaTube / OInflator; FUZZ and TRNS retired; TONE (page-1 slot 5) sweeps the tape split; references matched to ≤ 7e-3 / 2e-3 / 1.4e-3 |
+| Character GLUE / COMP | AC1's law, 0.5/500 ms and 0.5/50 ms; COMP 40 = +0.96 dB; LMC1 built, +125 words over, kept as a draft |
+| Character total | 1,170 words, 466 cycles/sample (the pricer's bsr-in-fork attribution fixed the same evening: 685 reported before) |
+| Modulation | PHSR, TREM, VIB, PAN retired (the OT's LFOs do trem/pan): CHOR / FLNG / COMB, 767 words, 386 cycles |
+| Spectrum | SEM ZDF core (no cutoff ceiling, RES 127 bounded, Q ≈ 34), per-sample cutoff ramp (block comb −11..−26 dB), three-formant VOWL (Peterson & Barney): 1,141 words, 462 cycles |
+| the rig | core A FREE 283, core B 385; worst core 3,654, headroom +234; every gate green |
+
+Not yet: heard on the unit (the live rounds), the LMC1 COMP, the Moog ladder.
+
 ## Order of work
 
 Character first (TAPE done, TUBE + INFL in progress, then GLUE, COMP), one
