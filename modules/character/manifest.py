@@ -91,6 +91,7 @@ TUBE_UP = _tube_up()
 # placed after TUBE_UP's 34 in the P table:
 TAPE_D8 = (0x0ccccd, 0x0ec7fd, 0x1111af, 0x13b608, 0x16c311, 0x1a48fe, 0x1e5a84, 0x230d41, 0x287a27, 0x2ebe07, 0x35fa27, 0x3e54f4, 0x47facd, 0x531ef0, 0x5ffc89, 0x6ed7eb, 0x7fffff)
 
+
 MODULE = Module(
     name="character",
     key="CHARACTER",
@@ -128,7 +129,7 @@ MODULE = Module(
               doc="ring-mod carrier, ~5 Hz..3 kHz; 0 = off"),
         Param(b"CMOD", 0, 2, active=True, formatter=_STEP,
               labels=("COMP", "GLUE"),
-              doc="COMP fast 4:1 - GLUE slow soft-knee 2:1 (the master). TRNS retired 13 Sep 2026"),
+              doc="AC1's dip (JClones): COMP 0.5/50 ms at 4x, GLUE 0.5/500 ms at 3x; depth is COMP"),
         Param(b"WDTH", 64, 128, active=True, formatter=_PLAIN,
               doc="mid/side width: 64 = untouched, 0 = mono, 127 = double the sides"),
         Param(b"SRR", 0, 4, active=True, formatter=_STEP,

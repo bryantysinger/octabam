@@ -23,16 +23,13 @@
 ; Distortion BEFORE dynamics: a compressor after the dirt is a tool, before
 ; it is a fader for the dirt.
 ;
-; ---- the compressor ------------------------------------------------------
-; A feedforward peak detector on the mono sum, one-pole attack and release,
-; then a gain curve applied to both channels -- so it cannot pump the image.
-;   env  = max(|key| , env*rel) with attack smoothing on the way up
-;   over  = env - thr, positive part only            (thr per CMOD)
-;   gr/2  = 0.5 - over*slope*COMP/2                  (linear-in-amplitude,
-;                                                     which IS a soft knee in
-;                                                     dB and needs no log)
-;           BOTH gains are stored HALVED: a y1 operand is a fraction, so a
-;           gain above 1 would wrap. Doubled back in the accumulator's guard bits.
+; ---- the compressor (13 Sep 2026, JClones AC1, MIT) -----------------------
+; AC1's console channel law for both flavours: |key| smoothed by attack /
+; release, Lv = K * level_s, gr = (Lv^2/2 - 1)^2 + a*Lv clamped at 1 -- a
+; dip around Lv = 1 whose depth is a = 0.75 - 0.675*COMP/128 -- and a
+; makeup 1/(1 - 0.3375*COMP/128). GLUE: 0.5 / 500 ms, K = 3. COMP: 0.5 /
+; 50 ms, K = 4. COMP 0 skips the stage, bit-exact. (LMC1's bus compressor
+; was built and did not fit: +125 words.)
 ; ⚠️ THE DETECTOR READS x:(r7+$32), the KEY. Today the station writes its own
 ; input there; the ->KEY bus send on the backlog writes another track's, and
 ; nothing else changes.
@@ -43,8 +40,8 @@
 ;   $29 sat mode (0 TAPE = TapeHead, 1 TUBE = DaTube, 2 INFL = OInflator)  $30 k2  $31 k3mag  $48 d/8 (per block)
 ;   per block:
 ;   $20 m (MIX)   $21 fold gain/64  $22 (free, was the tanh drive)  $23 crush mask
-;   $24 carrier step  $25 srr mask  $26 comp amount    $27 thr
-;   $28 invR      $29 sat mode      $2a (free, was trns flag)  $2b width side gain
+;   $24 carrier step  $25 srr mask  $26 comp amount    $27 makeup/4
+;   $28 the dip's a   $29 sat mode   $2b width side gain
 ;   $2c width mid gain  $2d attack coeff   $2e release coeff  $2f bypass
 ;   $30 ->DEL level     $31 ->VRB level
 ;   $3e RET return level   $3f 0 (was DLY; one return since 7 Sep 2026)
@@ -60,8 +57,8 @@
 ;   words before it was found):
 ;   $19 held L (PERSISTENT)      $1a held R (PERSISTENT)
 ;   $1b srr counter (PERSISTENT) $1c carrier phase (PERSISTENT)
-;   $1d block max |key| (PERSISTENT across the block edge)  $1e (free, was TRNS's slow follower)
-;   $1f gr/2 (PERSISTENT: slewed)  $45 gr/2 target (per block)
+;   $1d (free)  $1e level_s (PERSISTENT)  $2a (free)
+;   $1f gr (per sample)  $45 (free)  $22 K/4 (per block)
 ;   $32 key    $33 dry L park   $34 dry R park
 ;   $35 scratch (wet L)          $36 scratch (wet R)
 ;   r4 / r5: the REVERB / DELAY wet read pointers (BUS mode), linear, per
@@ -120,10 +117,11 @@ init:
         move    a,x:(r7+$16)
         move    a,x:(r7+$17)
         move    a,x:(r7+$18)
-        move    a,x:(r7+$1d)            ; the compressor: block max, slow follower
+        move    a,x:(r7+$1d)            ; the compressors' states: LMC1 s1, s2 / AC1 level_s
         move    a,x:(r7+$1e)
-        move    #>$400000,x0
-        move    x0,x:(r7+$1f)           ; gr/2 = unity
+        move    a,x:(r7+$2a)
+        move    #>$7fffff,x0
+        move    x0,x:(r7+$1f)           ; gr = unity
         move    x0,x:(r7+$45)
         rts
 
@@ -281,7 +279,16 @@ ch_srrz:
 ; COMP amount, straight from the knob
         move    x:(r6+$3),x0
         move    x0,x:(r7+$26)
-; CMOD (slot 9 select of r6+$d): threshold, slope, attack and release
+; CMOD (slot 9 select of r6+$d): both flavours are AC1's console channel
+; law (JClones, MIT; 13 Sep 2026 -- docs/effects/PORTS.md), differing in
+; their constants: GLUE = attack 0.5 ms / release 500 ms, the detector at
+; 3x (Lv/2 = 1.5*level_s); COMP = the same dip driven harder, 4x, with a
+; 50 ms release. (LMC1's bus compressor was built and measured too big:
+; +125 words with its two tables; the draft is kept beside the session.)
+; a = 0.75 - 0.675*COMP/128 (the JSFX's Comp 1..10 on the knob); makeup =
+; 1/(1 - 0.3375*COMP/128), HALF the JSFX's auto-gain in dB terms (that one
+; restores unity at the dip's bottom and lifts a mix that mostly sits below
+; the dip: +2.1 dB at COMP 40; this is +1.0 dB, today's GLUE on the unit).
         move    x:(r6+$d),a
         and     #>$ff00,a
         move    a1,x0
@@ -290,85 +297,37 @@ ch_srrz:
         move    #>$10000,x0
         cmp     x0,a
         beq     ch_cglue
-; The compressor (rebuilt 12 Sep 2026 -- the first one measured inert at the
-; unit's level: thresholds of 0.2 / 0.1 FS against a chain that sees ~0.13
-; at AMP VOL 64, a gain law linear in AMPLITUDE, a "release" coefficient of
-; 0.004 that collapsed the envelope every sample and an attack that was
-; never read). Now: a BLOCK-MAX detector (one cmp/Tcc a sample), a static
-; curve computed once per block with a real division -- gr = (thr + over/R)
-; / env above thr, 1 below -- COMP scaling the reduction and adding a
-; proportional makeup, and attack / release as the GAIN's slew per sample
-; (attack while it falls, release while it rises). Coefficients are
-; 1 - exp(-1 / (t * fs)) in Q23. thr in FS at the chain; invR = 1/R.
-        move    #>$03d70a,x0            ; COMP: 10:1 from -30 dBFS, 8 ms / 100 ms; thr 0.03
-        move    x0,x:(r7+$27)
-        move    #>$0ccccd,x0            ; invR 0.1
-        move    x0,x:(r7+$28)
-        move    #>$005cc0,x0            ; attack 8 ms: the front of a hit passes,
-        move    x0,x:(r7+$2d)           ; the body is clamped (1 ms / 5:1 /
-                                        ; -26 dBFS "lost energy, washed out",
-                                        ; ear 12 Sep 2026)
-        move    #>$00076e,x0            ; release 100 ms
+        move    #>$7fffff,x0            ; COMP: K/4 = 1.0 (4x), release 50 ms
+        move    x0,x:(r7+$22)
+        move    #>$000bd0,x0
         move    x0,x:(r7+$2e)
-        bra     ch_cdone
+        bra     ch_cset
 ch_cglue:
-        move    #>$03d70a,x0            ; GLUE: ~2.5:1 from -30 dBFS, 10 ms / 400 ms; thr 0.03
-        move    x0,x:(r7+$27)
-        move    #>$2ccccd,x0            ; invR 0.35: ~2.5:1 in dB
-        move    x0,x:(r7+$28)
-        move    #>$004a38,x0            ; attack 10 ms: lets transients through
-        move    x0,x:(r7+$2d)
-        move    #>$0001dc,x0            ; release 400 ms
+        move    #>$600000,x0            ; GLUE: K/4 = 0.75 (3x), release 500 ms
+        move    x0,x:(r7+$22)
+        move    #>$00017c,x0
         move    x0,x:(r7+$2e)
-        bra     ch_cdone
-ch_cdone:
-; ---- the gain computer, once per block, on the LAST block's max |key| ----
-        move    x:(r7+$1d),x1           ; env = the block max (persistent)
-        move    x1,x0
-        move    #>$780000,y1            ; the max restarts each block at 15/16
-        mpy     x0,y1,a                 ; of itself (~6 ms): restarted at 0 it
-        move    a,x:(r7+$1d)            ; swung 40 % within one 438 Hz cycle and
-                                        ; TRNS read a steady tone as a constant
-                                        ; +2 dB boost (12 Sep 2026)
-        move    #>$400000,b             ; gr/2 = 0.5 (unity) unless over thr
-        move    x1,a
-        move    x:(r7+$27),x0           ; thr
-        sub     x0,a                    ; over = env - thr
-        ble     ch_gunity
+ch_cset:
+        move    #>$05ce1b,x0            ; attack 0.5 ms: 1/(fs*t), both
+        move    x0,x:(r7+$2d)
+        move    x:(r7+$26),x0           ; COMP/128
+        move    #>$566666,y1            ; 0.675
+        mpy     x0,y1,a
+        neg     a
+        add     #>$600000,a             ; a = 0.75 - 0.675*COMP/128
+        move    a,x:(r7+$28)
+        move    #>$2b3333,y1            ; 0.3375
+        mpy     x0,y1,a
+        neg     a
+        add     #>$7fffff,a             ; den = 1 - 0.3375*COMP/128 (0.66..1)
         move    a,x0
-        move    x:(r7+$28),y1           ; invR
-        mpy     x0,y1,a                 ; over / R
-        move    x:(r7+$27),x0
-        add     x0,a                    ; num = thr + over/R  (< env: invR < 1)
-        move    a,y1                    ; num, 24 bits
-        move    y1,a                    ; a clean load: a0 = 0 for the divide
-        move    x1,x0                   ; den = env
-        andi    #$fe,ccr                ; carry clear
+        move    #>$200000,a             ; num = 0.25 (a1), a0 = 0
+        andi    #$fe,ccr
         rep     #$18
-        div     x0,a                    ; 24 quotient bits land in a0
-        move    a0,x0                   ; gr = num / env (a0 IS the quotient here)
-        move    x0,a
-        asr     #$1,a,a                 ; gr/2
-        move    #>$400000,b
-        sub     a,b                     ; 0.5 - gr/2 = the reduction, halved
-        move    b,x0
-        move    x:(r7+$26),y1           ; COMP
-        mpy     x0,y1,b                 ; scaled by the knob
-        move    #>$400000,a
-        sub     b,a                     ; gr/2 = 0.5 - reduction*COMP
-        move    a,b
-ch_gunity:
-; makeup = 1 + 0.5*COMP, on BOTH branches (a makeup applied only above the
-; threshold cancels the reduction instead of lifting the whole signal).
-        move    b,x:(r7+$45)            ; park gr/2
-        move    x:(r7+$26),y1           ; COMP
-        move    x:(r7+$45),x0           ; gr/2
-        mpy     x0,y1,a                 ; gr/2 * COMP
-        asr     #$1,a,a
-        move    x:(r7+$45),b
-        add     a,b                     ; gr/2 * (1 + 0.5*COMP)
-ch_tnone:
-        move    b,x:(r7+$45)            ; gr/2 target for this block
+        div     x0,a
+        move    a0,x0
+        move    x0,x:(r7+$27)           ; m/4 = 0.25/den: makeup/4
+ch_cdone:
 ; SAT character (slot 7 select of r6+$c) -> a MODE FLAG and per-mode words,
 ; so the sample loop's SAT stage is a MODEFORK: TAPE (0) = TapeHead, TUBE (1)
 ; = DaTube, INFL (2) = OInflator (all JClones, MIT; 13 Sep 2026). The tanh
@@ -858,38 +817,62 @@ ch_sinfl:
         move    b,x:(r7+$36)
 ; MODEFORK_END
 ch_nosat:
-; ---- COMPRESS: the block-max detector, and the gain slewed to the block's
-; target -- attack while it falls, release while it rises (12 Sep 2026) ---
+; ---- COMPRESS (13 Sep 2026, JClones AC1, MIT): COMP 0 skips the stage
+; (bit-exact); else |key| smoothed by the flavour's attack / release, Lv =
+; K * level_s, gr = (Lv^2/2 - 1)^2 + a*Lv, <= 1 by the limiting store --
+; a dip around Lv = 1 -- then x *= gr * makeup on both channels. Lv is
+; carried halved (Lv/2, so Lv up to 2 fits a word; the dip is over by 1.5).
+        move    x:(r7+$26),a            ; COMP
+        tst     a
+        beq     ch_capd                 ; COMP 0: the stage is skipped
         move    x:(r7+$32),a            ; key
         abs     a
-        move    x:(r7+$1d),x0           ; the block max so far
-        cmp     x0,a                    ; nothing between this and the Tcc
-        tlt     x0,a
-        move    a,x:(r7+$1d)
-        move    x:(r7+$45),a            ; gr/2 target
-        move    x:(r7+$1f),x0           ; gr/2 now
-        sub     x0,a                    ; d = target - now
-        move    x:(r7+$2d),x1           ; attack coefficient
-        move    x:(r7+$2e),b            ; release coefficient
-        tst     a                       ; sign of d -- nothing between this
-        tmi     x1,b                    ; and the Tcc: falling = attack
+        move    a,x0                    ; level
+        move    x:(r7+$1e),b            ; level_s
+        move    x0,a
+        sub     b,a                     ; d = level - level_s
+        move    x:(r7+$2d),x1           ; attack
+        move    x:(r7+$2e),b            ; release
+        tst     a                       ; nothing between this and the Tcc
+        tpl     x1,b                    ; rising: attack
         move    b,y1
         move    a,x0
-        mpy     x0,y1,a                 ; c * d
-        move    x:(r7+$1f),b
-        add     b,a                     ; gr/2 += c * d
-ch_grz:
-        move    a,x:(r7+$1f)            ; gr / 2
-        move    x:(r7+$35),x0
-        move    x:(r7+$1f),y1           ; gr / 2
-        mpy     x0,y1,a
-        asl     #$1,a,a                 ; ... doubled back in the guard bits
-        move    a,x:(r7+$35)
-        move    x:(r7+$36),x0
-        move    x:(r7+$1f),y1
+        mpy     x0,y1,a                 ; k*d
+        move    x:(r7+$1e),b
+        add     b,a
+        move    a,x:(r7+$1e)            ; level_s
+        move    a,x0
+        move    x:(r7+$22),y1           ; K/4
         mpy     x0,y1,a
         asl     #$1,a,a
+        move    a,x0                    ; Lv/2 (the limiting store: Lv <= 2)
+        move    x0,y1
+        mpy     x0,y1,a                 ; (Lv/2)^2
+        asl     #$1,a,a                 ; Lv^2/2
+        add     #>$800000,a             ; t = Lv^2/2 - 1  (-1 .. 1)
+        move    a,x1                    ; t (clean)
+        move    x:(r7+$28),y1           ; a
+        mpy     x0,y1,b                 ; a*Lv/2  (x0 = Lv/2 >= 0)
+        asl     #$1,b,b                 ; a*Lv
+        move    x1,x0                   ; t goes negative below the dip: the
+        move    x1,y1                   ; square must be the audited x0,y1
+        mpy     x0,y1,a                 ; t^2   (mpy x1,y1 encodes as mpysu)
+        add     b,a                     ; gr = t^2 + a*Lv
+        move    a,x:(r7+$1f)            ; gr (the limiting store: <= 1)
+ch_capp:
+        move    x:(r7+$1f),x0           ; gr
+        move    x:(r7+$27),y1           ; makeup/4
+        mpy     x0,y1,a
+        move    a,y1                    ; gr*makeup/4
+        move    x:(r7+$35),x0
+        mpy     x0,y1,a
+        asl     #$2,a,a
+        move    a,x:(r7+$35)
+        move    x:(r7+$36),x0
+        mpy     x0,y1,a
+        asl     #$2,a,a
         move    a,x:(r7+$36)
+ch_capd:
 ; ---- WIDTH: mid stays, side scales ---------------------------------------
         move    x:(r7+$35),a            ; L
         move    x:(r7+$36),x0           ; R

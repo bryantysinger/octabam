@@ -14,7 +14,7 @@ Gates:
                  TUBE asymmetric (even harmonics); INFL adds level
   FOLD        -> a full-scale ramp folds back: the output reverses direction
   RING        -> at DC the output is DC * carrier, so its mean is ~0
-  COMP        -> gain reduction grows with level, and never inverts
+  COMP/GLUE   -> AC1's dip: deeper with COMP, unity at COMP 0 (skipped), GLUE's makeup, COMP releases faster
   WDTH        -> 0 = mono (L == R), 64 = untouched, 127 = doubled sides
   every knob  -> renders without dsp_host dying
 
@@ -233,20 +233,49 @@ m = abs(tail_mean(L, N // 4))
 check("RING at DC has ~zero mean (it is DC times a carrier)",
       m < 0.05 * 0.25 * 8388607, f"mean {m:.0f} of {0.25*8388607:.0f}")
 
-# ---- 8. COMP reduces more as the level rises, and never inverts -------------
+# ---- 8. the compressor is AC1's dip (JClones, 13 Sep 2026) -----------------
+# gr = (Lv^2/2 - 1)^2 + a*Lv, <= 1: a dip around Lv = 1 (level 0.25 FS at
+# COMP's 4x), unity well below it; the dip's depth is COMP. Above ~1.5 the
+# law lets go (the JSFX's AC101 mode, a division, is not ported).
 quiet, _ = render(tone(438, amp=0.05), COMP=127, CMOD=0)
-loud, _ = render(tone(438, amp=0.9), COMP=127, CMOD=0)
+dip, _ = render(tone(438, amp=0.25), COMP=127, CMOD=0)
 q0, _ = render(tone(438, amp=0.05), COMP=0)
-l0, _ = render(tone(438, amp=0.9), COMP=0)
+d0, _ = render(tone(438, amp=0.25), COMP=0)
 gr_q = rms_db(quiet) - rms_db(q0)
-gr_l = rms_db(loud) - rms_db(l0)
-check("COMP reduces the loud signal more than the quiet one",
-      gr_l < gr_q - 2, f"quiet {gr_q:+.1f} dB, loud {gr_l:+.1f} dB")
+gr_d = rms_db(dip) - rms_db(d0)
+check("COMP reduces the signal in the dip (0.25 FS at 4x) far more than a quiet one",
+      gr_d < gr_q - 6, f"quiet {gr_q:+.1f} dB, dip {gr_d:+.1f} dB")
+shallow, _ = render(tone(438, amp=0.25), COMP=40, CMOD=0)
+check("the dip deepens with COMP",
+      rms_db(shallow) - rms_db(d0) > gr_d + 3,
+      f"COMP 40 {rms_db(shallow) - rms_db(d0):+.1f} dB, COMP 127 {gr_d:+.1f} dB")
 unity, _ = render(tone(438, amp=0.3), COMP=0, CMOD=0)
 ref, _ = render(tone(438, amp=0.3), MIX=0)
-check("COMP=0 is unity gain (the halved-gain doubling is exact)",
-      abs(rms_db(unity) - rms_db(ref)) < 0.1,
-      f"{rms_db(unity) - rms_db(ref):+.2f} dB")
+check("COMP=0 is unity gain (the stage is skipped, bit-exact)",
+      unity == ref, f"{rms_db(unity) - rms_db(ref):+.2f} dB")
+glue, _ = render(tone(438, amp=0.13), COMP=40, CMOD=1)
+g0, _ = render(tone(438, amp=0.13), COMP=0)
+check("GLUE at COMP 40 lifts a 0.13 FS tone by about +1 dB (the makeup)",
+      0.4 < rms_db(glue) - rms_db(g0) < 1.6, f"{rms_db(glue) - rms_db(g0):+.2f} dB")
+# release, as the reference harness measures it: a 0.13 FS tone stepped up
+# 10 dB for a third and back; the time after the step down until the output
+# sits within 1 dB of its final level. COMP (50 ms) beats GLUE (500 ms).
+NS = 24000
+stepped = [int(0.13 * (10 ** 0.5 if NS // 3 <= i < 2 * NS // 3 else 1.0) * 8388607
+               * math.sin(2 * math.pi * 438 * i / SR)) for i in range(NS)]
+def env10(x, w=441):
+    return [20 * math.log10(max(1e-9, math.sqrt(sum(v * v for v in x[i:i + w]) / w) / 8388607))
+            for i in range(0, len(x) - w, w)]
+def release_ms(cmod):
+    y, _ = render(stepped, COMP=127, CMOD=cmod)
+    e = env10(y); k2 = 2 * len(e) // 3; fin = e[-1]
+    for j in range(k2, len(e)):
+        if abs(e[j] - fin) < 1.0:
+            return (j - k2) * 10.0
+    return 1e9
+rc, rg = release_ms(0), release_ms(1)
+check("COMP releases faster than GLUE (to within 1 dB after a 10 dB step down)",
+      rc < rg, f"COMP {rc:.0f} ms, GLUE {rg:.0f} ms")
 
 # ---- 9. TRNS retired 13 Sep 2026 (was here) --------------------------------
 
