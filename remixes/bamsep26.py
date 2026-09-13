@@ -50,7 +50,7 @@ REMIX = Remix(
     doc="The rig: bus (BusVerb + BusDelay) + three stations + the stock delay.",
     modules=("REVERB SERVER", "DELAY SERVER", "SEND", "DELAY",
              "SPECTRUM", "CHARACTER", "MODULATION",
-             "TEMPO SYNC", "MENU SHORTCUT"),
+             "TEMPO SYNC", "CC PAGE 2"),
     fallback="SEND",
     fx1=("SPECTRUM", "CHARACTER", "MODULATION"),
 )
