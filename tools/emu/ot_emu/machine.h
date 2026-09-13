@@ -282,6 +282,10 @@ namespace ot
 		// match. PPC is the address of the instruction being executed.
 		using WriteWatch = std::function<void(uint32_t _addr, uint8_t _size, uint32_t _val, uint32_t _pc)>;
 		void addWriteWatch(uint32_t _begin, uint32_t _end, WriteWatch _cb);
+		// A READ watch: data reads only (the fetch path does not come here),
+		// PPC-attributed like the write watch. Added 14 Sep 2026 to find who
+		// reads an OS zero-run a mod placed code into.
+		void addReadWatch(uint32_t _begin, uint32_t _end, WriteWatch _cb);
 		uint32_t currentPc() const;
 
 		// Map a span of plain memory after construction. Route A's `install`
@@ -408,6 +412,8 @@ namespace ot
 		void noteUnmapped(char _kind, uint32_t _addr, uint8_t _size, uint32_t _val);
 		struct Watch { uint32_t begin, end; WriteWatch cb; };
 		std::vector<Watch> m_writeWatches;
+		std::vector<Watch> m_readWatches;
+		void noteWatchedRead(uint32_t _addr, uint8_t _size, uint32_t _val);
 		void noteWatchedWrite(uint32_t _addr, uint8_t _size, uint32_t _val);
 		std::vector<Unmapped> m_unmapped;
 		uint64_t m_unmappedCount = 0, m_unmappedReads = 0;
