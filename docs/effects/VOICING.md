@@ -2147,3 +2147,16 @@ a hazard on the master** (1x..48x gain sized for a quiet insert); CRSH 64
 dB); WDTH 127 L/R corr 0.65, WDTH 0 mono. The band deltas above 4 kHz are
 material-dependent (captures are not synchronous) -- read the rms.
 Ear pass by Sam pending on the excerpts.
+
+## 13 Sep 2026, late — Modulation trimmed to CHOR / FLNG / COMB
+
+PHSR, TREM, VIB and PAN retired (Sam: tremolo and auto-pan are the OT's own
+LFO on AMP VOL / BAL; vibrato is CHOR at MIX 127; the phaser was the pricer's
+dearest station loop). MODE is count 3 (CHOR 0, FLNG 1, COMB 2 — COMB moved
+from 3); a stored 3..6 runs CHOR. STGS (page-2 slot 11) is blank. The three
+survivors render word-identical before and after (24 cases: view defaults,
+two extreme sets, tone and noise, MIX 0, the FX2 dry pass). Modulation
+1,275 → 767 words on core A (core A FREE 70 → 578), 464 → 386 cycles/sample
+(the LINE loop); the worst core is now four Characters (466 each, 3,654,
+headroom 234) rather than four Modulations. The verify gate measures the LFO
+on CHOR at MIX 127 (the tone's period wobble) since TREM is gone.
