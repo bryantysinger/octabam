@@ -7,14 +7,17 @@ The second BamSep26 station. A per-track INSERT that REPLACES stock LO-FI
     own pair, on one knob each way (CRSH = bits, SRR = the rate divider);
   * FOLD + RING -- WarpFold's wavefolder and its parabolic carrier, so the
     fold and the ring mod are here rather than needing a second insert;
-  * SATURATE -- BusDelay's satdrv curve (w - w^3/3, unity small-signal) in
-    four flavours: TAPE (the curve alone), TUBE (asymmetric: positive half
-    driven harder), FUZZ (hard clip after the curve) and BUS (soft, gentle,
-    for the master);
+  * SATURATE -- three characters, each a JClones (MIT) clone re-derived
+    here (13 Sep 2026): TAPE = TapeHead (a state-variable split at TONE,
+    the low and band parts through a cubic smoothstep, the top passed
+    clean), TUBE = DaTube (an asymmetric u - u^P curve, the negative half
+    driven twice as hard, level-compensated so drive densifies rather than
+    turns up), INFL = OInflator (the inflator's signed cubic, DRV is its
+    Effect). FUZZ (a hard clip after a tanh) was retired: "very early 2000s
+    digi" (Sam). DRV 0 skips the stage, bit-exact;
   * COMPRESS -- a feedforward peak compressor with three characters: COMP
-    (fast, 4:1), GLUE (slow attack and release, 2:1, soft knee -- the
-    mastering setting) and TRNS (a transient shaper: the difference of two
-    followers, so the knob adds attack rather than removing it);
+    (fast, 4:1) and GLUE (slow attack and release, 2:1, soft knee -- the
+    mastering setting; TRNS retired 13 Sep 2026);
   * WIDTH -- mid/side width, 64 = untouched, 0 = mono, 127 = 2x side. This
     is what makes the station a master chain on T8's FX1;
   * ->DEL / ->VRB -- the station is a BUS CLIENT, exactly as the filter
@@ -61,28 +64,32 @@ _BLANK = Param(b"", 0)
 # the drive's 1x..16x pre-gain read as a +16 dB fader at the unit's level
 # (12 Sep 2026); with this a saturated signal comes out near unity and a
 # quiet one gains ~+12 dB at full drive. Read with p:(r5)+, interpolated.
-DRIVE_COMP = (
-    0x7fffff, 0x5bf53a, 0x4b7d83, 0x418e0d, 0x3abafd, 0x35ac14,
-    0x31bad7, 0x2e8ba3, 0x2be755, 0x29aa7d, 0x27bd29, 0x260e81,
-    0x249249, 0x233f5e, 0x220ec8, 0x20fb17, 0x200000,
-)
+import math as _m
+_P = _m.log(10.0) + 1.0
+def _q(v): return min(0x7FFFFF, max(0, round(v * (1 << 23))))
 
-# The saturation curve, tanh(4w) over w in [0, 1] (driven 0..4) as 33 pairs
-# (value, slope to the next value) interpolated per sample -- read with
-# (r1)+n1 / p:(r1)+ / p:(r1) at n1 = 2*idx. tanh never goes flat: the cubic
-# it replaced (12 Sep 2026) was a hard clip above |w| = 1 and read as digital.
-def _tanh_td(n=32, span=4.0):
-    import math
-    t = [math.tanh(span * i / n) for i in range(n + 1)]
-    q = lambda v: min(0x7FFFFF, round(v * (1 << 23)))
+# (TUBE's post gain is a per-block division in the source, no table.)
+# DaTube's curve: u^P over u in [0, 1], stored as u^P / 2 in 17 pairs (value,
+# slope to the next), interpolated in chtube over u/2 (1/32 steps; the
+# curve is smooth, and 17 pairs cost 32 words less than 33 -- Character
+# has to fit core A beside Modulation and the burn probe). The
+# curve itself is T(u) = u - u^P applied to u = 1 - |x|; past |x| = 1 the JSFX
+# goes linear, which is the same formula with u^P dropped -- the lookup
+# clamps u at 0 and the arithmetic does the rest.
+def _tube_up(n=16):
+    t = [0.5 * (i / n) ** _P for i in range(n + 1)]
     out = []
     for i in range(n + 1):
-        out.append(q(t[i]))
-        out.append(q(t[i + 1] - t[i]) if i < n else 0)
+        out.append(_q(t[i]))
+        out.append(_q(t[i + 1] - t[i]) if i < n else 0)
     return tuple(out)
 
 
-TANH_TD = _tanh_td()
+TUBE_UP = _tube_up()
+# TapeHead's drive: d/8 with d = 0.8 * 10^(i/16) (0.8x .. 8x over DRV/128),
+# 17 words, interpolated (idx = knob >> 19, frac = the 19 bits under it),
+# placed after TUBE_UP's 34 in the P table:
+TAPE_D8 = (0x0ccccd, 0x0ec7fd, 0x1111af, 0x13b608, 0x16c311, 0x1a48fe, 0x1e5a84, 0x230d41, 0x287a27, 0x2ebe07, 0x35fa27, 0x3e54f4, 0x47facd, 0x531ef0, 0x5ffc89, 0x6ed7eb, 0x7fffff)
 
 MODULE = Module(
     name="character",
@@ -100,7 +107,7 @@ MODULE = Module(
     params=(
         # ---- page 1: the performance surface, scene/CC-reachable -----------
         Param(b"DRV", 0, active=True, formatter=_PLAIN,
-              doc="saturation amount; 0 = clean, the curve is unity small-signal"),
+              doc="saturation drive; 0 skips the stage (bit-exact); TAPE 0.8x..8x"),
         Param(b"FOLD", 0, active=True, formatter=_PLAIN,
               doc="wavefolder drive, 1x..8x into the fold; 0 = no folding"),
         Param(b"CRSH", 0, active=True, formatter=_PLAIN,
@@ -109,18 +116,19 @@ MODULE = Module(
               doc="compression amount; 0 = no gain reduction at any level"),
         Param(b"RET", 0, active=True, formatter=_PLAIN,
               doc="the bus return level; live on the master (T8) only, inert elsewhere (13 Sep 2026)"),
-        _BLANK,   # -VRB: the stations lost their sends in the one-aux rig (7 Sep 2026)
+        Param(b"TONE", 0, active=True, formatter=_PLAIN,
+              doc="TapeHead's tone: the SVF split, 2.1 kHz (0) to 5 kHz (127)"),
         # ---- page 2: knob / select / knob / select / knob / select ----------
         Param(b"MIX", 127, 128, active=True, formatter=_PLAIN,
               doc="dry/wet across the whole chain; 0 = exact passthrough"),
         Param(b"SAT", 0, 3, active=True, formatter=_STEP,
-              labels=("TAPE", "TUBE", "FUZZ"),
-              doc="saturation character (BUS left 13 Sep 2026: the return is a knob, by position)"),
+              labels=("TAPE", "TUBE", "INFL"),
+              doc="character: TAPE (TapeHead), TUBE (DaTube, asymmetric), INFL (OInflator). JClones, MIT"),
         Param(b"RING", 0, 128, active=True, formatter=_PLAIN,
               doc="ring-mod carrier, ~5 Hz..3 kHz; 0 = off"),
-        Param(b"CMOD", 0, 3, active=True, formatter=_STEP,
-              labels=("COMP", "GLUE", "TRNS"),
-              doc="COMP fast 4:1 - GLUE slow soft-knee 2:1 (the master) - TRNS transient shaper"),
+        Param(b"CMOD", 0, 2, active=True, formatter=_STEP,
+              labels=("COMP", "GLUE"),
+              doc="COMP fast 4:1 - GLUE slow soft-knee 2:1 (the master). TRNS retired 13 Sep 2026"),
         Param(b"WDTH", 64, 128, active=True, formatter=_PLAIN,
               doc="mid/side width: 64 = untouched, 0 = mono, 127 = double the sides"),
         Param(b"SRR", 0, 4, active=True, formatter=_STEP,
@@ -130,7 +138,7 @@ MODULE = Module(
     # No mode views (13 Sep 2026): no knob changes meaning by mode.
     dsp=DspSection(
         asm="modules/character/character.asm",
-        ptable=DRIVE_COMP + TANH_TD,
+        ptable=TUBE_UP + TAPE_D8,
         priority=13,                  # after the Spectrum station
         bus_role=BusRole.NONE,        # an insert that also WRITES the bus
         ybase=YBase.NEVER,                # (an FX1 module may own no buffers;
