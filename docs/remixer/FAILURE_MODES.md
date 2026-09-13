@@ -417,6 +417,19 @@ store (tag 13), which contradicts the lane map if "moved" meant the sound
 and not the panel value. Unresolved: the +0x38 fix is a candidate, to be
 proven on the unit (a CC 63 with the reverb audible), not assumed.
 
+**DISCRIMINATOR RUN (13 Sep, later the same evening; `out/hw/ladder/bisect95/t3mode_{LP,HP}.wav`).**
+T3 (a STATIC machine) soloed, Spectrum FREQ 20 over CC 34, 6 s under our
+clock: MODE = LP (stamped) rms −74.1 dBFS, low bands −109; after Sam set
+MODE = HP at the panel: rms −58.3, low bands −81.7. **A page-2 edit on an
+FX1 station reaches the DSP on a STATIC track.** With T1 (THRU) failing and
+T8 (FLEX, master) working, the staged page index is per MACHINE TYPE and
+the THRU machine's FX1 page stages the wrong one. Fix candidate: a cave at
+the editor's three stores (`0x4003a5ba`, `0x4003a5c2`, `0x4003a610`) that
+derives the offset from the page KIND (`0x460d1684`: FX1 → +18 / lane
++0x32, FX2 → +24 / lane +0x38) instead of the staged index -- the same
+derivation the CC page-2 cave should use. Pending: which page a THRU edit
+lands in (a one-step SAT edit on T1 showing up on its AMP or LFO page 2).
+
 **Interim for the set:** keep every station's knob 3 at 0 on FX1 tracks;
 the stamp writes 0 there.
 
