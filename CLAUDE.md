@@ -52,10 +52,22 @@ make reverb IN=loop.wav ARGS='--wet --mode all'
 ```
 
 Never claim something works because it assembled or linked. `make check` is
-the floor. Working in a git worktree: `vendor/` and `.venv/` are symlinks to
-the main checkout's (gitignored, and excluded in `.git/info/exclude`); without
-them the selftest reports "remix X does not build" and every gate fails
-before it starts.
+the floor.
+
+**ALWAYS WORK IN A GIT WORKTREE, never in the main checkout.** Several
+sessions share this repository at once; the main checkout's working tree,
+index and stash list are theirs as much as yours. Start every task with
+`git worktree add .claude/worktrees/<name> -b <branch> origin/main`, work
+and run the gates there, and open the PR from it. Never `git stash` or
+`git stash pop` in the main checkout: on 13 Sep 2026 a pop there took
+another session's stash (`o14 port edits`) instead of the caller's own
+and a `stash drop` removed it from the list -- restored by commit SHA,
+but only because the dangling commits were still there. In a worktree:
+`vendor/` and `.venv/` are symlinks to the main checkout's (gitignored,
+and excluded in `.git/info/exclude`); `out/raw/section_3_MAIN_OS.bin`
+must be there too (`make os && make recon`, or copy it); without them the
+selftest reports "remix X does not build" and every gate fails before it
+starts. `git submodule update --init` in the worktree as well.
 
 ## Traps that have already cost real work
 
