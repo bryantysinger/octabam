@@ -11,7 +11,10 @@ filter -- plus the Sherman-filterbank moves that fit in twelve slots:
     ramped per sample across the block; and a VOWL mode that is a real
     three-formant bank (constant-peak-gain resonators, audiojs formant /
     resonator) morphed across A E I O U by FREQ, RES narrowing the bands --
-    it no longer borrows the SVF, so ROUT / DRV keep their meaning in VOWL;
+    it no longer borrows the SVF, so ROUT keeps its meaning in VOWL; and a
+    LADR mode (13 Sep 2026): the linear zero-delay Moog transistor ladder
+    (audiojs/filter moogLadder, MIT), 24 dB/oct, resonance to the edge of
+    self-oscillation at RES 127 and bounded there;
   * filter B -- a base/width pair: two cascaded one-poles of HP at BASE and
     two of LP at WDTH (12 dB/oct each side);
   * routing -- SER (A into B), PAR (A + B), RING (A x B), FM (B's output
@@ -26,7 +29,7 @@ filter -- plus the Sherman-filterbank moves that fit in twelve slots:
     cannot double-flip the rotation with its own FX2.
 
 DEFAULTS ARE A BIT-EXACT PASSTHROUGH (FREQ 127, RES 0, BASE 0, WDTH 127,
-DRV 0, DPTH 64, LP, SER, sends 0): the engine detects that block and copies
+DPTH 64, LP, SER, sends 0; DRV retired 13 Sep 2026 -- Character owns drive): the engine detects that block and copies
 nothing, because after the flash every part that ever chose FILTER runs
 this on FX1. ⚠️ A part's STORED bytes are stock FILTER's, not these defaults
 (DEC=64 lands on ->VRB): the project stamper writes ours (plan A6).
@@ -93,11 +96,10 @@ MODULE = Module(
         _BLANK,   # -DEL: the stations lost their sends in the one-aux rig (7 Sep 2026)
         _BLANK,   # -VRB: the stations lost their sends in the one-aux rig (7 Sep 2026)
         # ---- page 2: knob / select / knob / select / knob / select ----------
-        Param(b"DRV", 0, 128, active=True, formatter=_PLAIN,
-              doc="drive into filter A, 1..4x, clipped at the rail; 0 = unity"),
-        Param(b"MODE", 0, 5, active=True, formatter=_STEP,
-              labels=("LP", "BP", "HP", "NTCH", "VOWL"),
-              doc="filter A response; VOWL = a three-formant bank morphed by FREQ (ROUT and DRV still apply)"),
+        _BLANK,   # DRV retired 13 Sep 2026 (Sam: "we have DRVs everywhere" -- Character owns drive)
+        Param(b"MODE", 0, 6, active=True, formatter=_STEP,
+              labels=("LP", "BP", "HP", "NTCH", "VOWL", "LADR"),
+              doc="filter A response; VOWL = formant bank morphed by FREQ; LADR = the Moog ladder, 24 dB/oct"),
         Param(b"DPTH", 64, 128, active=True, formatter=_PLAIN,
               doc="modulation depth onto A's cutoff, bipolar around 64 = none"),
         Param(b"ROUT", 0, 4, active=True, formatter=_STEP,
