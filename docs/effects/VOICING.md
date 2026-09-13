@@ -2375,3 +2375,20 @@ and modeling it in the port (or a hardware pass) is the next instrument. Do
 NOT re-conclude "OT master path, unfixable"; it is un-INSTRUMENTED, not proven
 unfixable. Pragmatic set constraint until then: master GLUE COMP <= ~20 is
 clean; heavy compression on the wide master collapses R on hardware only.
+**14 Sep, same session: stereo WIDTH ruled out as the missing variable under
+the port.** The one thing that could have made the port's clean result an
+artefact was its master mix being too correlated (corr 0.938) to trigger a
+width-dependent bug. Tested directly: fed the port master content at three
+widths through the THRU tracks and read T8's chain output --
+- correlated (the summed set): T8 corr +0.94, COMP 80 R-L +0.1
+- swapped L/R across T1/T2: T8 corr +1.00, COMP 80 R-L +0.0
+- anti-phase (T1 = x,-x): **T8 corr -1.00 (maximally wide), COMP 80 R-L +0.0**
+COMP 80 vs COMP 0 only shifts level by +2 dB (the makeup) in every case; R
+never collapses. So the collapse is NOT a function of the stereo width the
+DSP sees -- the port does not reproduce it at any width. Whatever zeroes R on
+hardware is in the OT's master delivery (main/cue summing / output stage)
+under sustained gain reduction, downstream of or around the DSP effect, which
+the port does not run. The emulator-side investigation is exhausted: the DSP
+arithmetic is symmetric and does not collapse R for any content. Next
+instrument is hardware (measure the master out under sustained GR directly)
+or modeling the firmware's master delivery in the port -- both need Sam.
