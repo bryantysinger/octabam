@@ -2323,3 +2323,29 @@ all -44); with COMP 0, balance doesn't skew the channels at all. And the STAMP
 return-independent, code proven symmetric. Both cheap hardware hypotheses
 (return, balance) RULED OUT. Next (Sam: 2 then 1): extend the ColdFire port to
 model the master track's main/cue summing and reproduce it locally.
+
+**14 Sep 2026, the compressor R-collapse, what is PROVEN and what is not.**
+- Character's compressor apply, width and write-back were DISASSEMBLED at the
+  shipping address (dsp_asm at -org 17f3, dsp56kDisassemble -pc 17f3): the L
+  and R blocks are word-identical (`0a77c4 000035 / 2000c0 / 0c1d04 / 0a778e
+  000035` and the same with $36), one gain scalar in y1 from the mono key.
+  The arithmetic cannot zero one channel; the bit-accurate oracle on the real
+  captured mix agrees. NOT in Character's code.
+- The collapsed R at WDTH 64 is isolated SPIKES (crest 79, kurtosis ~2000),
+  and at WDTH 16..48 R is a clean copy of L at exactly the mid/side level for
+  R_comp = 0 (predicted -4.4 / -9.5 / -16.9 dB, measured -4.5 / -9.5 /
+  -16.7): the R the width stage sees is ~0 by then. WDTH 0 recovers by
+  averaging (L drops ~6 dB), which also says the drop is not downstream.
+- At the stamp (COMP 40) the collapse is BISTABLE across captures at
+  identical knobs: R-L -1.5 (corr 0.95) in some runs, -16 (corr 0.5) in
+  others. A stored/continuous state the local render (which resets state
+  per render) never reaches.
+- The "T1 insert is fine" comparison was VOID: T1 is a THRU with no input;
+  its solo measured the bus returns through T8 at -48 dBFS.
+- comptest (OCTABAM2) was SILENT, not hung: Character's id in the stamped
+  project resolved to the null stub on T8 = the master, and COMPRESSOR was
+  not in the FX1 chooser. OCTABAM3 lists it on FX1. The "COMB overlap"
+  claim was wrong (LO-FI 537 + DJ EQ 345 end at 0x01eca > Modulation's
+  0x01e57) and is retracted.
+- Usable now: INFL drive + GLUE COMP ~20 (clean) on the master; heavy
+  compression on the wide master collapses R until the mechanism is found.
