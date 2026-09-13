@@ -883,6 +883,65 @@ RIG = (
 )
 
 
+# ---- the three LFOs per track, in the part record ---------------------------
+# octalab's part layout (docs/firmware/EXTERNAL.md section 9, RAM offsets; the
+# file is +9): LFO page 1 = `+0x11a + track*24` = SPD1 SPD2 SPD3 DEP1 DEP2
+# DEP3; `+0x2f2 + track*30` = PMTR1 PMTR2 PMTR3 WAVE1 WAVE2 WAVE3, the
+# destination in the scene-byte numbering (16 = AMP BAL, 18..29 the effect
+# pages). Read back against the panel on 13 Sep 2026: T6 LFO2 = AMP BAL,
+# triangle, the bytes said pmtr 16 / wave 1 / spd 18 / dep 21.
+LFO_P1_OFF, LFO_PM_OFF = 0x123, 0x2fb
+
+
+def lfo_report(pdir, banks=None):
+    pdir = pathlib.Path(pdir)
+    for bank in sorted(pdir.glob("bank*.work")):
+        num = int(bank.name[4:6])
+        if banks and num not in banks:
+            continue
+        d = bank.read_bytes()
+        for part in range(NPARTS):
+            off = PART_BASE + part * PART_STRIDE
+            rows = []
+            for t in range(NTRACKS):
+                p1 = d[off + LFO_P1_OFF + t * 24: off + LFO_P1_OFF + t * 24 + 6]
+                pm = d[off + LFO_PM_OFF + t * 30: off + LFO_PM_OFF + t * 30 + 6]
+                live = [(n + 1, p1[3 + n], pm[n], p1[n], pm[3 + n]) for n in range(3) if p1[3 + n]]
+                if live:
+                    rows.append(f"T{t + 1} " + " ".join(f"LFO{n}(dep {dep} pmtr {pmtr} spd {spd} wave {wv})"
+                                                        for n, dep, pmtr, spd, wv in live))
+            if rows:
+                print(f"bank {chr(64 + num)} part {part + 1}: " + "; ".join(rows))
+
+
+def lfo_clear(pdir, track, lfo, guard=True):
+    """Zero LFO `lfo` (1-3) DEPTH on `track` (1-8) in every part record
+    (current + saved) of every bank -- the bytes are the part's, so a free-
+    running LFO nobody meant (T6 LFO2 on AMP BAL, 13 Sep 2026: a DC thump
+    every cycle at idle) goes everywhere it was copied."""
+    pdir = pathlib.Path(pdir)
+    every = str(track) == "all"
+    t, n = (0, 0) if every else (int(track) - 1, int(lfo) - 1)
+    cells = [(tt, nn) for tt in range(NTRACKS) for nn in range(3)] if every else [(t, n)]
+    for bank in sorted(pdir.glob("bank*.work")):
+        num = int(bank.name[4:6])
+
+        def mut(data):
+            for p in range(NPARTS_ALL):
+                off = PART_BASE + p * PART_STRIDE
+                for tt, nn in cells:
+                    data[off + LFO_P1_OFF + tt * 24 + 3 + nn] = 0
+        _bank_write(pdir, num, mut, guard=guard)
+        d = bank.read_bytes()
+        if int.from_bytes(d[-2:], "big") != (sum(d[0x10:-2]) & 0xFFFF):
+            sys.exit(f"{bank.name}: checksum did not take -- do NOT use this")
+        for p in range(NPARTS_ALL):
+            for tt, nn in cells:
+                if d[PART_BASE + p * PART_STRIDE + LFO_P1_OFF + tt * 24 + 3 + nn] != 0:
+                    sys.exit(f"{bank.name} part {p + 1}: read-back disagrees")
+    print(f"{'every LFO' if every else f'T{track} LFO{lfo}'} depth -> 0 in every part of every bank of {pdir.name}")
+
+
 def make_rig_project(src, dest, remix_name):
     """Copy a project and write the RIG layout into every part of every bank:
     ids AND knob bytes, both current parts and their saved copies, checksums
@@ -988,6 +1047,9 @@ if __name__ == "__main__":
         set_machine_type(pdir, int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5]), int(sys.argv[6]))
     elif cmd == "testproj": make_test_project(sys.argv[2], sys.argv[3], sys.argv[4])
     elif cmd == "rigproj": make_rig_project(sys.argv[2], sys.argv[3], sys.argv[4])
+    elif cmd == "lfo": lfo_report(pdir)                                      # every live LFO, per part
+    elif cmd == "lfo-clear":                                                # <project> <track> <lfo> | <project> all
+        lfo_clear(pdir, sys.argv[3], sys.argv[4] if len(sys.argv) > 4 else 0, guard=False)
     elif cmd == "stamp-defaults":
         # a REAL set, before its first load on a flashed image: only the ids
         # a station replaced are touched; BusVerb/BusDelay keep Sam's knobs.
