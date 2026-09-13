@@ -1,10 +1,14 @@
-"""CC -> FX2 PAGE-2 (shipped ... UNFLASHED; stores repointed 13 Sep 2026 -- a CANDIDATE until a CC 63 is heard on the unit).
+"""CC -> FX2 PAGE-2 (CC 62-67; stores repointed 13 Sep 2026 and CONFIRMED on image 96) and CC -> FX1 PAGE-2 (CC 68-73; added 13 Sep 2026, unflashed).
 
 Stock incoming CC reaches only FX2 page 1 (CC 40-45; the handler admits
 cc-16 < 30, so slots 6-11 are unrepresentable -- docs/firmware/midi_re_cc.md 2). This
 module adds CC 62-67 -> the host bus engine's page-2 slots 6-11, so the
 voicing round can drive every control of BusVerb / BusDelay over MIDI, not
-just page 1.
+just page 1. CC 68-73 do the same for the track's FX1 station's page-2
+slots 6-11 (13 Sep 2026), store for store as the FX1 page-2 editor
+0x4003abe4 writes them (Part +0x8f07e, shadow 0x100a51cc, lane +0x32, the
+same four dirty flags), clamped by the FX1 descriptor's own min/count for the
+slot; a count of 0 (NONE) writes nothing.
 
 HOW: the MIDI dispatch table 0x400d6474[0xB] (the CC vector) is repointed
 from the stock handler 0x4000e79c to the cave. The cave reads the CC number;
@@ -49,17 +53,24 @@ STOCK_CC = 0x4000e79c
 # and is the ORACLE -- the build compares the linked source to it on every
 # build (CavePatch.reference), as does tools/verify/verify_ccpage2.py.
 CODE = bytes.fromhex(
-    "206f000470001028000104800000003e7205b280650260064ef94000e79c4fefffe448d7"
+    "206f000470001028000104800000003e720bb280650260064ef94000e79c4fefffe448d7"
     "04fc28002448263946104cf44eb9400018547a001a2a000202850000007f4a3980000049"
     "67287000101202800000000f41f946c7febe2e300c007c007001eda8c087670261125286"
-    "7008b0866eee4cd704fc4fef001c4e75203946c824567200123980000003263c000018b2"
-    "4c031000d0812040d1fc0008ed88d1c6700010107206b28067107207b28067024e7543f9"
-    "40bad000600643f940bad00472001231480053812405b4816f022401203946c824567200"
-    "123980000003263c000018b24c031000d0817200d0812040d1fc0008f0842206761e4c03"
-    "1000d1c1d1c410822040d1fc0008f084d1c1d1c41082220676484c03100041f980000810"
-    "d1c1d1fc00000038d1c410822606721e4c013000220092b946c82456d2830681100a51d2"
-    "2041d1c4108272001239800000037601e3ab207946c824562248d3fc0009504812118283"
-    "12811239100b145e828313c1100b145ed1fc0009b3327201208123c1100f85984e75")
+    "7008b0866eee4cd704fc4fef001c4e757206b2846f000110203946c82456720012398000"
+    "0003263c000018b24c031000d0812040d1fc0008ed88d1c6700010107206b28067107207"
+    "b28067024e7543f940bad000600643f940bad00472001231480053812405b4816f022401"
+    "203946c824567200123980000003263c000018b24c031000d0817200d0812040d1fc0008"
+    "f0842206761e4c031000d1c1d1c410822040d1fc0008f084d1c1d1c41082220676484c03"
+    "100041f980000810d1c1d1fc00000038d1c410822606721e4c013000220092b946c82456"
+    "d2830681100a51d22041d1c4108272001239800000037601e3ab207946c824562248d3fc"
+    "000950481211828312811239100b145e828313c1100b145ed1fc0009b3327201208123c1"
+    "100f85984e75203946c824567200123980000003263c000018b24c031000d0812040d1fc"
+    "0008ed80d1c672001210670000b643f9400d5f5822711c00260441f13c002228009a2628"
+    "006ad28353812405b4836c022403b4816f0224012206761e4c03100026045d832040d1c1"
+    "d1c3d1fc0008f07e1082224093f946c82456d3c1d3c3d3fc100a51cc1282720012398000"
+    "00037601e3ab207946c824562248d3fc000950481211828312811239100b145e828313c1"
+    "100b145ed1fc0009b3327201208123c1100f8598220676484c03100026045d8341f98000"
+    "0810d1c1d1fc00000032d1c310824e75")
 
 VCOUNT_MARK = bytes.fromhex("40bad000")
 DCOUNT_MARK = bytes.fromhex("40bad004")
@@ -93,9 +104,9 @@ MODULE = Module(
     name="ccpage2",
     key="CC PAGE 2",
     kind=Kind.CF_PATCH,
-    doc="MIDI CC 62-67 drive the host bus engine's FX2 page-2 slots 6-11.",
+    doc="MIDI CC 62-67 drive the FX2 engine's page-2 slots 6-11; CC 68-73 the FX1 station's.",
     cf_patches=(CavePatch(
-        label="CC->FX2 page-2 cave + dispatch repoint",
+        label="CC->FX2/FX1 page-2 cave + dispatch repoint",
         # FLOATS in the decoded ColdFire free region, like the busscreen.
         cave_addr=None,
         pinned=b"",                     # bytes depend on the float address --
@@ -113,6 +124,6 @@ MODULE = Module(
         # bytes then legitimately differ by that one address).
         defsyms=(("CC_NEXT", STOCK_CC),),
         emit=emit,
-        report_note=" (CC 62-67 reach FX2 page 2)",
+        report_note=" (CC 62-67 reach FX2 page 2, CC 68-73 FX1 page 2)",
     ),),
 )

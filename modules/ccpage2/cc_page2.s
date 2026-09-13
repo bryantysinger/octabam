@@ -1,13 +1,28 @@
-| CC -> FX2 PAGE-2 cave (OS 1.40C, ColdFire).
+| CC -> FX2 PAGE-2 cave (OS 1.40C, ColdFire) -- and, since 13 Sep 2026, FX1 too.
 |
 | Stock CC only reaches FX2 page 1 (CC 40-45; the handler admits cc-16 < 30).
-| This cave adds CC 62-67 -> the host's bus-engine page-2 slots 6-11, so the
-| voicing round can drive every control over MIDI, not just page 1.
+| This cave adds CC 62-67 -> the host's bus-engine page-2 slots 6-11, and
+| CC 68-73 -> the track's FX1 station's page-2 slots 6-11 (13 Sep 2026), so
+| the voicing round can drive every control over MIDI, not just page 1.
+|
+| FX1 (CC 68-73): mirrors the FX1 PAGE-2 EDITOR 0x4003abe4 store for store
+| (disassembled 13 Sep 2026): Part DB+part*6322+track*30+slot+0x8f07e
+| (0x4003acb2), shadow 0x100a51cc+part*6322+track*30+slot (0x4003acba), the
+| four dirty flags (0x4003acbe..0x4003acec, the same four the FX2 editor
+| writes), and the live lane 0x80000842+track*72+slot (0x4003ad08 -- lane
+| +0x32, the FX1 page-2 block the per-frame copier delivers to the DSP). The
+| clamp is the editor's own: min at desc+0x6a+4*(slot+6), count at
+| desc+0x9a+4*(slot+6), desc = 0x400d5f58[the Part's FX1 id at +0x8ed80+track]
+| (0x4003ac68..0x4003ac8c). An FX1 id of 0 (NONE) writes nothing: the editor
+| never runs for NONE because that page draws no knob, and on this image id 0
+| runs SEND with whatever bytes are there. The editor's
+| jsr 0x40027e00 (the refresher) and its per-slot redraw marker are not
+| mirrored, as for FX2: off-page there is no knob to redraw.
 |
 | HOOK: the MIDI dispatch table 0x400d6474[0xB] (CC) is repointed from the
 | stock handler 0x4000e79c to CAVE. CAVE reads the CC number; anything but
-| 62-67 tail-calls stock (jmp 0x4000e79c) with the argument intact, so no
-| stock CC is disturbed. Only 62-67 are handled here.
+| 62-73 tail-calls stock (jmp 0x4000e79c) with the argument intact, so no
+| stock CC is disturbed. Only 62-73 are handled here.
 |
 | WRITE: mirrors the busscreen's measured page-2 write, generalised over
 | track -- Part, live byte and mirror, count-clamped. It does NOT call the
@@ -61,6 +76,11 @@
         .set    FX2P2,    0            | no page term: the FX2 page-2 arrays are per track (30 B), slot2 direct
         .set    VERBID,   7            | BusVerb FX2 id
         .set    DLYID,    6            | BusDelay FX2 id
+        .set    ID1OFF,   0x8ed80      | Part: per-track FX1 id byte (+track) (FX1 editor 0x4003ac1e)
+        .set    DESC1,    0x400d5f58   | FX1 descriptor table [id] (0x4003ac26)
+        .set    P1P2OFF,  0x8f07e      | FX1 page-2 Part store: DB+part*6322+track*30+slot (0x4003acac)
+        .set    SHADOW1,  0x100a51cc   | FX1 page-2 shadow: +part*6322+track*30+slot (0x4003acb4)
+        .set    LANE1,    0x32         | FX1 page-2 live lane offset in the 72-byte block (0x80000842)
 | VCOUNT / DCOUNT are the two count tables at the END of this file: the
 | linker resolves `lea VCOUNT,%a1` to wherever the build places the cave
 | (until 9 Sep 2026 they were 0x40bad000/4 placeholders patched by hand).
@@ -71,15 +91,15 @@ CAVE:   movel   %sp@(4),%a0            | a0 = msg {status, cc, value}
         moveq   #0,%d0
         moveb   %a0@(1),%d0            | d0 = CC number
         subil   #62,%d0                | d0 = cc - 62
-        moveq   #5,%d1
-        cmpl    %d0,%d1                | 5 - (cc-62); carry if 5 < (cc-62)
-        bcs.s   tostk                  | not 62..67 (also catches cc < 62)
+        moveq   #11,%d1
+        cmpl    %d0,%d1                | 11 - (cc-62); carry if 11 < (cc-62)
+        bcs.s   tostk                  | not 62..73 (also catches cc < 62)
         bra.s   mine
 tostk:  jmp     (CC_NEXT).l            | tail-call the next handler, argument intact
 
 mine:   lea     %sp@(-28),%sp
         movem.l %d2-%d7/%a2,%sp@
-        movel   %d0,%d4                | d4 = slot2 (0..5) -- MAPBUILD preserves d2-d4/a2 only
+        movel   %d0,%d4                | d4 = cc-62: 0..5 = FX2 slot2, 6..11 = FX1 slot2+6 -- MAPBUILD preserves d2-d4/a2 only
         moveal  %a0,%a2                | a2 = msg (preserved across MAPBUILD)
         movel   MAPGLOB,%d3            | mimic stock register environment
         jsr     MAPBUILD               | rebuild CHANMASK[16]. ⚠️ CLOBBERS d5-d7: it
@@ -115,7 +135,11 @@ done:   movem.l %sp@,%d2-%d7/%a2
 
 | ---- wtrack: write page-2 slot d4 = value d5 for track d6 ----------------
 | reads d4/d5/d6, preserves d4/d5/d6/d7/a2; scratches d0-d3/a0/a1.
-wtrack: movel   DBPTR,%d0
+| d4 >= 6 is an FX1 CC (68-73): the block at the end of this file.
+wtrack: moveq   #6,%d1
+        cmpl    %d4,%d1                | 6 - d4: le when d4 >= 6
+        ble.w   wtrk1
+        movel   DBPTR,%d0
         moveq   #0,%d1
         moveb   PARTB,%d1
         movel   #6322,%d3
@@ -242,6 +266,88 @@ wpos:   | d2 = clamped value (>=0 by construction)
                                        | P2EDIT vs this cave (5 Sep): this was the
                                        | only functional store still missing.
         rts
+
+| ---- wtrk1: FX1 page-2 slot (d4-6) = value d5 for track d6 (13 Sep 2026) --
+| The FX1 PAGE-2 EDITOR 0x4003abe4, store for store, minus the refresher
+| call and the redraw marker (see the header). Reads d4/d5/d6, preserves
+| d4/d5/d6/d7/a2; scratches d0-d3/a0/a1.
+wtrk1:  movel   DBPTR,%d0
+        moveq   #0,%d1
+        moveb   PARTB,%d1
+        movel   #6322,%d3
+        mulu.l  %d3,%d1
+        addl    %d1,%d0                | d0 = DB + part*6322
+        moveal  %d0,%a0
+        addal   #ID1OFF,%a0
+        addal   %d6,%a0
+        moveq   #0,%d1
+        moveb   %a0@,%d1               | the Part's FX1 id for track d6 (0x4003ac24)
+        beq.w   w1skip                 | NONE (id 0): no page of ours -- write nothing.
+                                       | (The editor never runs for NONE: that page
+                                       | draws no knob. Its descriptor's counts are
+                                       | not 0, so an id test is the honest guard.)
+        lea     DESC1,%a1
+        moveal  %a1@(0,%d1:l:4),%a1    | a1 = its descriptor (0x4003ac2c)
+        movel   %d4,%d3                | d3 = (cc-62) = slot2 + 6: the page-2 slot index 6..11
+        lea     %a1@(0,%d3:l:4),%a0    | a0 = desc + 4*(slot2+6)
+        movel   %a0@(154),%d1          | count  (desc+0x9a+4*(slot2+6), 0x4003ac80)
+        movel   %a0@(106),%d3          | min    (desc+0x6a+4*(slot2+6), 0x4003ac68)
+        addl    %d3,%d1
+        subql   #1,%d1                 | d1 = max = min + count - 1
+        movel   %d5,%d2                | value
+        cmpl    %d3,%d2                | value - min
+        bge.s   w1lo
+        movel   %d3,%d2                | below min -> min  (0x4003ac70..74)
+w1lo:   cmpl    %d1,%d2                | max - value
+        ble.s   w1ok
+        movel   %d1,%d2                | above max -> max  (0x4003ac88..8c)
+w1ok:   | d2 = clamped value; d0 = DB + part*6322
+        movel   %d6,%d1
+        moveq   #30,%d3
+        mulu.l  %d3,%d1                | d1 = track*30
+        movel   %d4,%d3
+        subql   #6,%d3                 | d3 = slot2 (0..5)
+        moveal  %d0,%a0
+        addal   %d1,%a0
+        addal   %d3,%a0
+        addal   #P1P2OFF,%a0
+        moveb   %d2,%a0@               | Part <- value (0x4003acb2)
+        movel   %d0,%a1
+        subl    DBPTR,%a1              | a1 = part*6322
+        addal   %d1,%a1                | + track*30
+        addal   %d3,%a1                | + slot2
+        addal   #SHADOW1,%a1
+        moveb   %d2,%a1@               | shadow <- value (0x4003acba)
+        | the four dirty flags, exactly as the editor (0x4003acbe..0x4003acec)
+        moveq   #0,%d1
+        moveb   PARTB,%d1
+        moveq   #1,%d3
+        lsll    %d1,%d3                | d3 = 1 << part
+        moveal  DBPTR,%a0              | a0 = DB
+        moveal  %a0,%a1
+        addal   #CHGBITS,%a1
+        moveb   %a1@,%d1
+        orl     %d3,%d1
+        moveb   %d1,%a1@               | DB+0x95048 |= 1<<part
+        moveb   MODBITS,%d1
+        orl     %d3,%d1
+        moveb   %d1,MODBITS            | 0x100b145e |= 1<<part
+        addal   #CHGFLAG,%a0
+        moveq   #1,%d1
+        movel   %d1,%a0@               | DB+0x9b332 = 1
+        movel   %d1,GCHG               | 0x100f8598 = 1
+        | live = LIVEB + track*72 + 0x32 + slot2 (0x4003ad02..0x4003ad08)
+        movel   %d6,%d1
+        moveq   #72,%d3
+        mulu.l  %d3,%d1                | d1 = track*72
+        movel   %d4,%d3
+        subql   #6,%d3                 | d3 = slot2
+        lea     LIVEB,%a0
+        addal   %d1,%a0
+        addal   #LANE1,%a0
+        addal   %d3,%a0
+        moveb   %d2,%a0@
+w1skip: rts
 
 | ---- per-engine page-2 value counts, slot2 order (slots 6..11) -----------
 | Must match the engines' manifests (busverb / busdelay page-2 counts);

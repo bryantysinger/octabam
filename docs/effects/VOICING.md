@@ -2122,3 +2122,28 @@ listened to. What the ear will meet, from the numbers:
   parked in `out/rig/oneaux/` for the ear: what is left to judge is
   character, not level.
 - **PTCH moved to page 2** (slot 10), MIX took page-1 slot 5 on the delay.
+
+## 13 Sep 2026 evening — the stations on the unit, hands-free (image 97, OCTABAM88)
+
+First time any station mode was driven and measured ON THE UNIT: FX1 page 2
+over CC 68-73 (image 97), page 1 over CC 34-39, one track soloed, 5-6 s per
+setting, octave bands against the passthrough stamp. Captures and excerpts
+under `out/hw/ladder/{spectrum,modulation,character}/` (untracked).
+
+**Spectrum on T3** (STATIC): LP, BP, HP, NTCH behave (FREQ tracks, RES 100
+lifts +8-12 dB at the peak, RES 127 bounded at -17..-23 dBFS peak).
+**VOWL goes silent at RES >= 100 for FREQ <= 96** -- FAILURE_MODES.
+
+**Modulation on T5**: all seven modes at their view defaults render: CHOR
+-3.9 dB (the MIX-64 crossfade loss), FLNG -2.4, PHSR -3.2, COMB -6.2 (FDBK
+110), TREM +0.6, VIB -1.3, PAN -0.5 vs passthrough. Nothing silent, nothing
+runs away.
+
+**Character on T8, the whole mix through it** (vs the stamp DRV 0 / COMP 40
+GLUE / RET 127): TAPE DRV 64 +8.5 dB, DRV 127 +10.6; TUBE/FUZZ +7..+8.5 with
+the top octaves up 30-45 dB (harmonics); **FOLD 64 = +26 dB, 0.0 dBFS peak --
+a hazard on the master** (1x..48x gain sized for a quiet insert); CRSH 64
++0.3; COMP 0 -0.9 / COMP 80 +0.6 (the glue's makeup is the G rung's +1.1
+dB); WDTH 127 L/R corr 0.65, WDTH 0 mono. The band deltas above 4 kHz are
+material-dependent (captures are not synchronous) -- read the rms.
+Ear pass by Sam pending on the excerpts.
