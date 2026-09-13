@@ -228,7 +228,7 @@ moved.
 
 ---
 
-## CC PAGE 2 does not write on hardware 🔴 MEASURED 13 Sep 2026, image 94
+## CC PAGE 2 does not write on hardware ✅ CAUSE FOUND AND FIXED 13 Sep 2026 evening (image 96): the cave used the PLAYBACK page's stores — see "An FX1 station's PAGE 2" below (was 🔴 MEASURED 13 Sep 2026, image 94)
 
 **Symptom.** CC 62-67 change nothing. The panel value does not move, with the
 transport stopped or running.
@@ -440,8 +440,9 @@ used the PLAYBACK editor's three stores, so every CC 62-67 corrupted the
 track's PLAYBACK page-2 byte and never touched FX2's; SHMR "moved" on 5 Sep
 only because its DISPOFF write happened to hit the real FX2 Part byte. Now
 on the FX2 editor's own stores (Part `+0x8f084`, shadow `0x100a51d2`, lane
-+0x38), `verify_ccpage2` real and green — a candidate until a CC 63 is
-heard on the unit.
++0x38), `verify_ccpage2` real and green — ✅ **CONFIRMED on image 96, 13 Sep
+2026 evening:** CC 63 on channel 5 moved the SHMR knob on the panel (Sam) and
+raised the tail's 2–8 kHz bands by 5–8 dB (`out/hw/ladder/ret96.log`).
 
 **Interim for the set:** keep every station's knob 3 at 0 on FX1 tracks;
 the stamp writes 0 there.
