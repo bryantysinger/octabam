@@ -2238,3 +2238,26 @@ VOWL's 433, so VOWL still sets the line); worst core unchanged at 3,654
 (four Characters + delay + three sends), headroom 234 against the 3,888
 credited line. Four Spectrums in LADR on a core sit under it (the worst
 Spectrum layout prices below the Character one). Unheard; nothing flashed.
+
+## 13 Sep 2026 late — the Character live round on the unit (image 100), first finding
+
+On the master (Character on T8 FX1, the full mix ~-35 dBFS rms, bass-heavy),
+driven over MIDI while the set played:
+
+| stage | rms vs DRV 0 | by ear |
+|---|---|---|
+| TAPE DRV 1 | -7 dB | already quiet |
+| TAPE DRV 32 | -5 to -10 dB, bass gone | thin (Sam) |
+| TUBE DRV 32 | -28 dB | nearly gone |
+| INFL DRV 32 | +0.3 dB, full | good |
+| DRV 0 | unity | the reference |
+
+So **TAPE and TUBE have a level/tone fault on a full-band mix at its real
+level** -- the opposite of the emulator's +6..+17 dB, which voiced TAPE
+against a 0.13 FS tone (~-18 dBFS, far hotter than the mix). The TapeHead
+band split saturates the low and mid bands and passes the highs clean, so on
+bass-heavy material at -35 dBFS the loud low band is crushed while the top
+passes: thin and quiet. INFL is the master's usable drive as it stands. The
+harness-level trap (send_probe / the FX1 render level) again: voice a
+saturator at the level it will actually see. To diagnose/fix: dsp_host with a
+bass-heavy signal at -35 dBFS rms, not a 0.13 FS tone.
