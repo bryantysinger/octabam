@@ -5,9 +5,13 @@ The first BamSep26 station. A per-track INSERT that REPLACES stock FILTER
 the Digitakt II / Digitone II pair a multimode filter with a base/width
 filter -- plus the Sherman-filterbank moves that fit in twelve slots:
 
-  * filter A -- Ripple's driven Chamberlin SVF: LP / BP / HP / NOTCH, and a
-    VOWEL mode (five formant pairs morphed by FREQ, A's band-pass at F1 and
-    filter B as a band at F2);
+  * filter A -- a driven Oberheim SEM zero-delay SVF (Zavalishin's trapezoidal
+    form, audiojs/filter's oberheim, MIT; 13 Sep 2026): LP / BP / HP / NOTCH
+    from one 2-pole core, no cutoff ceiling, stable at any RES, the cutoff
+    ramped per sample across the block; and a VOWL mode that is a real
+    three-formant bank (constant-peak-gain resonators, audiojs formant /
+    resonator) morphed across A E I O U by FREQ, RES narrowing the bands --
+    it no longer borrows the SVF, so ROUT / DRV keep their meaning in VOWL;
   * filter B -- a base/width pair: two cascaded one-poles of HP at BASE and
     two of LP at WDTH (12 dB/oct each side);
   * routing -- SER (A into B), PAR (A + B), RING (A x B), FM (B's output
@@ -39,13 +43,28 @@ _STEP = Formatter.STEPPED
 
 _BLANK = Param(b"", 0)
 
-FREQ_TABLE = (
-    0x00700c, 0x0085e9, 0x00a00a, 0x00bf43, 0x00e495, 0x01112e,
-    0x01467c, 0x01862f, 0x01d251, 0x022d4c, 0x029a08, 0x031bfb,
-    0x03b747, 0x0470df, 0x054eaa, 0x0657b6, 0x079470, 0x090ee7,
-    0x0ad31c, 0x0cef60, 0x0f74c1, 0x12778c, 0x160fdd, 0x1a5a44,
-    0x1f7872, 0x2591f0, 0x2cd4bc, 0x3575a5, 0x3fb028, 0x4bc52e,
-    0x59f7db, 0x6a86da, 0x7d9faa,
+# The SEM core's g/2 = tan(pi*fc/fs)/2 at FREQ 0, 4, .., 128 for fc = 24 Hz *
+# 625^(FREQ/128): exponential, 9.3 octaves to 15 kHz, an equal step per
+# detent (13 Sep 2026; the Chamberlin table it replaced held 2*sin(pi*fc/fs)
+# to 7.2 kHz, that topology's stable ceiling). Halved so g stays a
+# fraction: tan at 15 kHz is 1.82.
+G2_TABLE = (
+    0x001c03, 0x002241, 0x0029e3, 0x003339, 0x003ea3, 0x004c98,
+    0x005daa, 0x00728a, 0x008c10, 0x00ab47, 0x00d173, 0x010021,
+    0x013938, 0x017f0b, 0x01d472, 0x023cea, 0x02bcb9, 0x035923,
+    0x04189e, 0x05032a, 0x0622b3, 0x0783a2, 0x0935a9, 0x0b4ce9,
+    0x0de3ca, 0x111dfe, 0x152dca, 0x1a5de8, 0x21258f, 0x2a54ef,
+    0x3785f2, 0x4c7450, 0x748895,
+)
+
+# VOWL: cos(2*pi*F/fs) for five vowels x three formants, Peterson & Barney
+# (1952) male means as the classic formant tables carry them --
+# a 730/1090/2440, e 530/1840/2480, i 270/2290/3010, o 570/840/2410,
+# u 300/870/2240 Hz; bandwidths 90/110/170 Hz are constants in the asm.
+COS_TABLE = (
+    0x7f4eed, 0x7e75a6, 0x7857c9, 0x7fa29f, 0x7ba06f,
+    0x7817aa, 0x7fe7c2, 0x793f4f, 0x7468a6, 0x7f9401,
+    0x7f159c, 0x788738, 0x7fe212, 0x7f0497, 0x798957,
 )
 
 MODULE = Module(
@@ -64,9 +83,9 @@ MODULE = Module(
     params=(
         # ---- page 1: the performance surface, scene/CC-reachable -----------
         Param(b"FREQ", 127, active=True, formatter=_PLAIN,
-              doc="filter A cutoff, ~24 Hz..7.2 kHz squared taper; in VOWEL the vowel A-E-I-O-U"),
+              doc="filter A cutoff, 24 Hz..15 kHz exponential taper; in VOWL the vowel A-E-I-O-U"),
         Param(b"RES", 0, active=True, formatter=_PLAIN,
-              doc="filter A resonance, up to Q~30"),
+              doc="filter A resonance, up to Q~33 (self-oscillates, bounded); in VOWL the formants' bandwidth"),
         Param(b"BASE", 0, active=True, formatter=_PLAIN,
               doc="filter B high-pass corner (12 dB/oct); 0 = open"),
         Param(b"WDTH", 127, active=True, formatter=_PLAIN,
@@ -78,7 +97,7 @@ MODULE = Module(
               doc="drive into filter A, 1..4x, clipped at the rail; 0 = unity"),
         Param(b"MODE", 0, 5, active=True, formatter=_STEP,
               labels=("LP", "BP", "HP", "NTCH", "VOWL"),
-              doc="filter A response; VOWL = formant pair morphed by FREQ, forces PAR"),
+              doc="filter A response; VOWL = a three-formant bank morphed by FREQ (ROUT and DRV still apply)"),
         Param(b"DPTH", 64, 128, active=True, formatter=_PLAIN,
               doc="modulation depth onto A's cutoff, bipolar around 64 = none"),
         Param(b"ROUT", 0, 4, active=True, formatter=_STEP,
@@ -97,7 +116,7 @@ MODULE = Module(
         # octaves, an equal step per detent -- read with p:(r5)+ and
         # interpolated linearly per block (12 Sep 2026). The squared law it
         # replaced put half the dial above 2 kHz (station_laws.py).
-        ptable=FREQ_TABLE,
+        ptable=G2_TABLE + COS_TABLE,
         priority=12,                  # after every existing module
         bus_role=BusRole.NONE,        # an insert that also WRITES the bus
         ybase=YBase.NEVER,

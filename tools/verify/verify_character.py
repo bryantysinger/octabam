@@ -10,12 +10,11 @@ Gates:
   MIX=0       -> bit-exact passthrough with the whole chain live
   CRSH        -> the output is quantised: every sample a multiple of 2^k
   SRR         -> /2 /4 /8 hold each sample exactly that many times
-  DRV/SAT     -> unity small-signal (a tiny input passes at gain 1 to 1 LSB),
-                 and every character is monotonic and bounded
+  DRV/SAT     -> DRV 0 skips the stage (bit-exact); TAPE/TUBE/INFL bounded;
+                 TUBE asymmetric (even harmonics); INFL adds level
   FOLD        -> a full-scale ramp folds back: the output reverses direction
   RING        -> at DC the output is DC * carrier, so its mean is ~0
-  COMP        -> gain reduction grows with level, and never inverts
-  TRNS        -> a step transient comes out LOUDER than steady state
+  COMP/GLUE   -> AC1's dip: deeper with COMP, unity at COMP 0 (skipped), GLUE's makeup, COMP releases faster
   WDTH        -> 0 = mono (L == R), 64 = untouched, 127 = doubled sides
   every knob  -> renders without dsp_host dying
 
@@ -174,14 +173,53 @@ for sel, hold in ((1, 2), (2, 4), (3, 8)):
 
 # ---- 5. saturation is unity small-signal and bounded -------------------------
 small = [int(0.001 * 8388607 * math.sin(2 * math.pi * 438 * i / SR)) for i in range(N)]
-for sat, name in ((0, "TAPE"), (1, "TUBE"), (2, "FUZZ")):
+for sat, name in ((0, "TAPE"), (1, "TUBE"), (2, "INFL")):
     L, _ = render(small, DRV=0, SAT=sat)
     err = max(abs(a - b) for a, b in zip(L[N//2:], small[N//2:]))
-    check(f"SAT {name} is unity small-signal at DRV=0", err <= 40, f"max err {err} LSB")
-for sat, name in ((0, "TAPE"), (1, "TUBE"), (2, "FUZZ")):
+    check(f"SAT {name} DRV=0 is a bit-exact skip", err == 0, f"max err {err} LSB")
+# TAPE is TapeHead (13 Sep 2026): TONE moves the SVF split 2.1 -> 5 kHz, so
+# at DRV 64 on noise the top/bottom balance must follow it, and the mid point
+# must sit between the ends (the law is monotonic).
+def _tilt(L):
+    import cmath
+    n = len(L) // 2; seg = [v / 8388607 for v in L[n:]]
+    def band(lo, hi):
+        acc = 0.0
+        for k in range(len(seg)):
+            pass
+        return acc
+    # crude two-band split by a one-pole at ~3 kHz: energy above vs below
+    a = math.exp(-2 * math.pi * 3000 / SR); lp = 0.0; el = eh = 0.0
+    for v in seg:
+        lp = a * lp + (1 - a) * v; el += lp * lp; eh += (v - lp) ** 2
+    return 10 * math.log10((eh + 1e-12) / (el + 1e-12))
+_rng = __import__("random").Random(5)
+_noise = [int(0.3 * 8388607 * (_rng.random() * 2 - 1)) for _ in range(N)]
+_t0 = _tilt(render(_noise, DRV=64, SAT=0, TONE=0)[0])
+_t64 = _tilt(render(_noise, DRV=64, SAT=0, TONE=64)[0])
+_t127 = _tilt(render(_noise, DRV=64, SAT=0, TONE=127)[0])
+check("TAPE TONE moves the split (tilt 0 < 64 < 127)", _t0 < _t64 < _t127,
+      f"tilt {_t0:.1f} / {_t64:.1f} / {_t127:.1f} dB")
+check("TAPE TONE 127 vs 0 differs by >= 1 dB of tilt", _t127 - _t0 >= 1.0, f"{_t127 - _t0:.1f} dB")
+for sat, name in ((0, "TAPE"), (1, "TUBE"), (2, "INFL")):
     L, _ = render(tone(438, amp=0.9), DRV=127, SAT=sat)
     check(f"SAT {name} stays bounded at DRV=127",
           max(abs(v) for v in L) <= 8388607, f"peak {max(abs(v) for v in L)}")
+# TUBE (DaTube) adds harmonics with drive -- a pure tone grows non-fundamental
+# energy. A crude test: the peak-to-rms crest of the output rises as the curve
+# sharpens the waveform (a sine is crest ~1.41; saturation flattens it).
+def _crest(L):
+    seg = [v / 8388607 for v in L[N//2:]]
+    pk = max(abs(v) for v in seg); r = (sum(v*v for v in seg) / len(seg)) ** 0.5
+    return pk / max(r, 1e-9)
+_c0 = _crest(render(tone(438, amp=0.5), DRV=1, SAT=1)[0])
+_c1 = _crest(render(tone(438, amp=0.5), DRV=127, SAT=1)[0])
+check("TUBE reshapes the waveform with drive (crest falls)", _c1 < _c0 - 0.02,
+      f"crest {_c0:.2f} -> {_c1:.2f}")
+# INFL (OInflator) adds level -- the whole point of an inflator.
+_i0 = rms_db(render(tone(438, amp=0.13), DRV=0, SAT=2)[0])
+_i1 = rms_db(render(tone(438, amp=0.13), DRV=127, SAT=2)[0])
+check("INFL adds level as DRV rises", _i1 > _i0 + 1.0, f"{_i1 - _i0:+.1f} dB")
 
 # ---- 6. FOLD folds a ramp back ----------------------------------------------
 L, _ = render(ramp, FOLD=127, DRV=0, SAT=0)
@@ -195,28 +233,51 @@ m = abs(tail_mean(L, N // 4))
 check("RING at DC has ~zero mean (it is DC times a carrier)",
       m < 0.05 * 0.25 * 8388607, f"mean {m:.0f} of {0.25*8388607:.0f}")
 
-# ---- 8. COMP reduces more as the level rises, and never inverts -------------
+# ---- 8. the compressor is AC1's dip (JClones, 13 Sep 2026) -----------------
+# gr = (Lv^2/2 - 1)^2 + a*Lv, <= 1: a dip around Lv = 1 (level 0.25 FS at
+# COMP's 4x), unity well below it; the dip's depth is COMP. Above ~1.5 the
+# law lets go (the JSFX's AC101 mode, a division, is not ported).
 quiet, _ = render(tone(438, amp=0.05), COMP=127, CMOD=0)
-loud, _ = render(tone(438, amp=0.9), COMP=127, CMOD=0)
+dip, _ = render(tone(438, amp=0.25), COMP=127, CMOD=0)
 q0, _ = render(tone(438, amp=0.05), COMP=0)
-l0, _ = render(tone(438, amp=0.9), COMP=0)
+d0, _ = render(tone(438, amp=0.25), COMP=0)
 gr_q = rms_db(quiet) - rms_db(q0)
-gr_l = rms_db(loud) - rms_db(l0)
-check("COMP reduces the loud signal more than the quiet one",
-      gr_l < gr_q - 2, f"quiet {gr_q:+.1f} dB, loud {gr_l:+.1f} dB")
+gr_d = rms_db(dip) - rms_db(d0)
+check("COMP reduces the signal in the dip (0.25 FS at 4x) far more than a quiet one",
+      gr_d < gr_q - 6, f"quiet {gr_q:+.1f} dB, dip {gr_d:+.1f} dB")
+shallow, _ = render(tone(438, amp=0.25), COMP=40, CMOD=0)
+check("the dip deepens with COMP",
+      rms_db(shallow) - rms_db(d0) > gr_d + 3,
+      f"COMP 40 {rms_db(shallow) - rms_db(d0):+.1f} dB, COMP 127 {gr_d:+.1f} dB")
 unity, _ = render(tone(438, amp=0.3), COMP=0, CMOD=0)
 ref, _ = render(tone(438, amp=0.3), MIX=0)
-check("COMP=0 is unity gain (the halved-gain doubling is exact)",
-      abs(rms_db(unity) - rms_db(ref)) < 0.1,
-      f"{rms_db(unity) - rms_db(ref):+.2f} dB")
+check("COMP=0 is unity gain (the stage is skipped, bit-exact)",
+      unity == ref, f"{rms_db(unity) - rms_db(ref):+.2f} dB")
+glue, _ = render(tone(438, amp=0.13), COMP=40, CMOD=1)
+g0, _ = render(tone(438, amp=0.13), COMP=0)
+check("GLUE at COMP 40 lifts a 0.13 FS tone by about +1 dB (the makeup)",
+      0.4 < rms_db(glue) - rms_db(g0) < 1.6, f"{rms_db(glue) - rms_db(g0):+.2f} dB")
+# release, as the reference harness measures it: a 0.13 FS tone stepped up
+# 10 dB for a third and back; the time after the step down until the output
+# sits within 1 dB of its final level. COMP (50 ms) beats GLUE (500 ms).
+NS = 24000
+stepped = [int(0.13 * (10 ** 0.5 if NS // 3 <= i < 2 * NS // 3 else 1.0) * 8388607
+               * math.sin(2 * math.pi * 438 * i / SR)) for i in range(NS)]
+def env10(x, w=441):
+    return [20 * math.log10(max(1e-9, math.sqrt(sum(v * v for v in x[i:i + w]) / w) / 8388607))
+            for i in range(0, len(x) - w, w)]
+def release_ms(cmod):
+    y, _ = render(stepped, COMP=127, CMOD=cmod)
+    e = env10(y); k2 = 2 * len(e) // 3; fin = e[-1]
+    for j in range(k2, len(e)):
+        if abs(e[j] - fin) < 1.0:
+            return (j - k2) * 10.0
+    return 1e9
+rc, rg = release_ms(0), release_ms(1)
+check("COMP releases faster than GLUE (to within 1 dB after a 10 dB step down)",
+      rc < rg, f"COMP {rc:.0f} ms, GLUE {rg:.0f} ms")
 
-# ---- 9. TRNS makes a transient louder than the steady state -----------------
-step_sig = [0] * (N // 2) + [int(0.15 * 8388607 * math.sin(2 * math.pi * 438 * i / SR)) for i in range(N // 2)]
-L, _ = render(step_sig, COMP=127, CMOD=2)
-onset = max(abs(v) for v in L[N//2:N//2 + 300])
-steady = max(abs(v) for v in L[-N//4:])
-check("TRNS boosts the onset above the steady state", onset > steady * 1.05,
-      f"onset {onset} vs steady {steady}")
+# ---- 9. TRNS retired 13 Sep 2026 (was here) --------------------------------
 
 # ---- 10. WDTH -----------------------------------------------------------------
 # a stereo-different source: dsp_host feeds one stream to both channels, so

@@ -513,7 +513,7 @@ the ladder project — cause open, project-dependent.
 
 ---
 
-## Spectrum VOWL goes SILENT with RES up 🔴 MEASURED 13 Sep 2026 (image 96), CAUSE OPEN
+## Spectrum VOWL goes SILENT with RES up 🟡 MEASURED ONCE 13 Sep 2026 (image 96), never reproduced — and the two-peak VOWL it happened on is GONE (image 98: a three-formant resonator bank, bounded at RES 127 by measurement)
 
 **Measured (`out/hw/ladder/spectrum/VOWL_F*_R*.wav`, T3 soloed, FREQ/RES over
 CC 34/35, MODE set at the panel).** VOWL at RES 0 filters across FREQ (−42
@@ -525,6 +525,29 @@ collapses above some Q rather than ringing. Not a voicing choice: a defect
 to reproduce in the emulator (`dsp_host`, MODE 4, RES ≥ 100, FREQ ≤ 96) and
 fix; suspect the peak filters' coefficient range or a limiting store
 clamping the state to zero.
+
+**Later the same evening:** `dsp_host` does NOT reproduce it (every silent
+cell renders at −22..−34 dBFS, resonance rising with RES like LP/BP; 4 s
+renders at the unit's level flat within ±1.5 dB). And on the unit, image 97,
+with MODE set over CC 69 and the same knobs moved in BOTH orders (RES first
+then FREQ, FREQ first then RES, RES back and forth, a mode round-trip) VOWL
+never went silent (`out/hw/ladder/vowl_order.log`, −36..−44 dBFS). The one
+difference from the silent run: then T3's FX1 **page 2 was on screen** (Sam
+had just set MODE at the panel) while the page-1 CCs were sent, and Sam saw
+DRV (page-2 slot 0) flash on a CC 34. Hypothesis: an incoming page-1 CC is
+routed by the DISPLAYED page (MIDI.md's slot-2 on-screen dependency is the
+same family), so CC 35 = 100 landed in page-2 slot 1 = MODE = 100, out of
+its count of 5 — the index trap — and the DSP went silent on the next
+coefficient update. Discriminator: page 2 on screen, CC 35 = 100, watch
+MODE. **Tested, falsified (image 97):** with T3's page 2 on screen a CC 35 =
+100 left MODE at LP and landed on RES (page 1 read 100). And the EXACT
+sweep that went silent, repeated with MODE set over CC 69 and page 1 on
+screen, is clean in every cell (`VOWL2`: −35..−50 dBFS, RES 127 bounded at
+−22 dBFS peak). So the silence is bound to what differed: image 96, MODE set
+at the PANEL (the editor's refresher `0x40027e00` runs there and not on the
+CC path), page 2 displayed during the page-1 CCs. Seen once. If it recurs
+at the panel, capture before touching anything; the CC path is the one the
+voicing rounds use.
 
 ---
 

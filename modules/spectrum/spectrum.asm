@@ -80,6 +80,15 @@ init:
         tst     a
         tpl     x0,b                    ; base >= 0x4000: an FX2 slot
         move    b,x:(r7+$30)          ; 1 = dry pass
+        clr     a                       ; the VOWL bank's states ($00..$0f) and
+        move    r7,r1                   ; the coefficient slots after them
+        move    #>$ffffff,m1
+        do      #>18,>fs_iz
+        move    a,x:(r1)+
+fs_iz:
+        nop
+        move    a,x:(r7+$2e)            ; g2run and dg: the ramp starts from 0
+        move    a,x:(r7+$2f)
         rts
 
 proc:
@@ -110,8 +119,9 @@ proc:
         mpy     x0,y1,a                 ; base^2
         move    a,x0
         move    a,y1
-        mpy     x0,y1,a                 ; base^4
-        move    a,x:(r7+$21)
+        mpy     x0,y1,a                 ; base^4 = damp, the Chamberlin form's 1/Q
+        asr     #$1,a,a                 ; R = damp/2: the SEM core's damping is 2R
+        move    a,x:(r7+$21)            ; (13 Sep 2026: the same dial, the ZDF form)
 ; g4 = 0.25 + DRV * 0.75  (page-2 slot 6 KNOB field of r6+$c)
         move    x:(r6+$c),a
         and     #>$7f0000,a
@@ -237,8 +247,10 @@ fs_smod:
         move    #>$7f0000,x0
         cmp     x0,a
         tgt     x0,a                    ; clamp above at 127/128
-; fA = table(FREQm): an EXPONENTIAL taper, 24 Hz..7.2 kHz, one octave per
-; ~15.5 detents, read from the 33-word P table the manifest declares
+; g2 = table(FREQm): an EXPONENTIAL taper, 24 Hz..15 kHz, one octave per
+; ~13.8 detents (13 Sep 2026: the SEM core has no stable ceiling, so the top
+; went from 7.2 kHz, the Chamberlin form's limit, to 15 kHz), read from the
+; 33-word P table the manifest declares
 ; (DspSection.ptable; the build places it before this code and rewrites the
 ; literal below) and interpolated linearly: idx = FREQm >> 18 (0..31),
 ; frac = the 18 bits under it as Q23. Until 12 Sep 2026 the law was
@@ -246,8 +258,10 @@ fs_smod:
 ; loop's centroid on the drum loop barely moved from FREQ 24 to 56.
 ; AGU settle: r5/n5 are written two instructions before they address.
         move    a,x1                    ; FREQm, kept
-        move    #>$fab1e0,r5            ; FREQ_TABLE -- rewritten by build_bus.py
+        move    #>$fab1e0,r5            ; the P table -- rewritten by build_bus.py
         move    #>$ffffff,m5
+        move    r5,x:(r7+$4e)           ; its base, for VOWL's cosine lookup (the
+                                        ; build allows the literal once per module)
         asr     #$12,a,a                ; idx
         move    a1,n5
         move    x1,a
@@ -262,7 +276,41 @@ fs_smod:
         move    b,y1
         mpy     x0,y1,a                 ; frac * diff
         add     y0,a
-        move    a,x:(r7+$20)            ; fA
+        move    a,x:(r7+$20)            ; g2 = tan(pi fc/fs)/2, this block's target
+        move    x1,x:(r7+$4f)           ; FREQm, kept for VOWL's morph
+; ---- the cutoff RAMP (13 Sep 2026): dg = (g2 - g2run)/16 per block, added
+; once per sample in the loop, so a fast FREQ sweep or LFO has no block-rate
+; step (the ~2.8 kHz comb of a per-block jump). A 15-sample block reaches
+; 15/16 of the way and the next block starts from where it got to.
+        move    x:(r7+$2e),x0           ; g2run, where the last block ended
+        sub     x0,a
+        asr     #$4,a,a
+        move    a,x:(r7+$2f)            ; dg
+; ---- the SEM core's per-block words: c4 = (R + g2)/2 (so 4*c4 = 2R + g),
+; d = 1/(1 + 2Rg + g^2) = (1/8) / (1/8 + R*g2/2 + g2^2/2) -- the one real
+; division per block; den/8 <= 0.86 at every knob, d <= 1. Both frozen for
+; the block: FM and the ramp move g under a fixed d, an approximation that
+; is exact at the block's target and a fraction of a percent off beside it.
+        move    x:(r7+$20),a
+        move    x:(r7+$21),x0           ; R
+        add     x0,a
+        asr     #$1,a,a
+        move    a,x:(r7+$1f)            ; c4
+        move    x:(r7+$20),x0           ; g2
+        move    x:(r7+$20),y1
+        mpy     x0,y1,a                 ; g2^2
+        move    x:(r7+$21),y1           ; R
+        mac     x0,y1,a                 ; + R*g2
+        add     #>$200000,a             ; + 1/4
+        asr     #$1,a,a                 ; den/8
+        move    a,x0
+        move    #>$100000,y1            ; 1/8
+        move    y1,a                    ; a clean load: a0 = 0 for the divide
+        andi    #$fe,ccr                ; carry clear
+        rep     #$18
+        div     x0,a                    ; 24 quotient bits land in a0
+        move    a0,x0
+        move    x0,x:(r7+$33)           ; d
 
 ; ---- ROUT (slot 9 select of r6+$d): sel, kA, kB, kR, kFM -------------------
         clr     a
@@ -306,8 +354,9 @@ fs_rfm:
         move    x0,x:(r7+$2c)
 fs_rdone:
 
-; ---- MODE (slot 7 select of r6+$c): tap coefficients; VOWEL overrides -----
+; ---- MODE (slot 7 select of r6+$c): tap coefficients; VOWL runs the bank ---
         clr     a
+        move    a,x:(r7+$2d)            ; the SVF alternative unless VOWL says so
         move    a,x:(r7+$23)
         move    a,x:(r7+$24)
         move    a,x:(r7+$25)
@@ -342,107 +391,129 @@ fs_mntch:
         move    x0,x:(r7+$25)
         bra     fs_mdone
 fs_mvowl:
-; ---- VOWEL: A = band-pass at F1, B = a band at F2, routing forced PAR; ----
-; F1 (an SVF f) and F2 (a one-pole c) morph across A E I O U with FREQ:
-; idx = FREQ >> 5 (0..3) picks the pair, frac = (FREQ & 31)/32 interpolates.
-; Constants are 2*sin(pi*F/44100) and 1-exp(-2*pi*F/44100) in Q23 for
-; A 730/1090, E 530/1840, I 270/2290, O 570/840, U 300/870 Hz.
-        move    x0,x:(r7+$24)           ; kBP = 1
-        clr     a
-        move    a,x:(r7+$29)            ; sel = 0
-        move    a,x:(r7+$28)
-        move    a,x:(r7+$2c)
-        move    #>$400000,x0            ; PAR
-        move    x0,x:(r7+$26)
-        move    x0,x:(r7+$27)
-        move    x:(r6+$0),a
+; ---- VOWL (13 Sep 2026): three parallel constant-peak-gain resonators
+; (audiojs formant / resonator, JOS's two-zero form, MIT) replace the
+; two-peak trick. Per formant y = b0*(x - x2) + 2*m1*y1 - a2*y2 with
+; R = exp(-pi*bw/fs), m1 = R*cos(w0), a2 = R^2, b0 = (1-R^2)/2; gains
+; 1 / 0.5 / 0.3. FREQm (post-modulation, so DPTH and the LFO sweep the
+; vowels) morphs A E I O U: idx = FREQm >> 21 (0..3) picks the pair, frac =
+; the 5 bits under it. RES narrows the bandwidths: R' = R + 0.9(1-R)*RES.
+; ROUT and DRV are left as decoded -- the bank is filter A, B and the mix
+; run as in every other mode; FM has no cutoff to move here.
+        move    #>$1,x0
+        move    x0,x:(r7+$2d)           ; the loop runs the bank, not the SVF
+        move    x:(r7+$4f),a            ; FREQm
         asr     #$10,a,a
-        and     #>$1f,a                 ; FREQ & 31
-        asl     #$12,a,a                ; -> frac, Q23
+        and     #>$1f,a
+        asl     #$12,a,a
         move    a1,x0
         move    x0,a
         move    a,x:(r7+$49)            ; frac (the lfo park is dead by now)
-        move    x:(r6+$0),a
-        asr     #$15,a,a                ; idx = FREQ >> 5, 0..3
+        move    x:(r7+$4f),a
+        asr     #$15,a,a                ; idx 0..3 (FREQm >= 0: a2 clean)
         move    a1,x0
         move    x0,a
-        move    #>$1,x0
-        cmp     x0,a
-        blt     fs_v0
-        beq     fs_v1
-        move    #>$2,x0
-        cmp     x0,a
-        beq     fs_v2
-        move    #>$0a6466,x0            ; idx 3: O -> U
-        move    x0,x:(r7+$4a)
-        move    #>$05787d,x0
-        move    x0,x:(r7+$4b)
-        move    #>$0e7015,x0
-        move    x0,x:(r7+$4c)
-        move    #>$0eec14,x0
-        move    x0,x:(r7+$4d)
-        bra     fs_vint
-fs_v2:
-        move    #>$04ec75,x0            ; idx 2: I -> O
-        move    x0,x:(r7+$4a)
-        move    #>$0a6466,x0
-        move    x0,x:(r7+$4b)
-        move    #>$23a244,x0
-        move    x0,x:(r7+$4c)
-        move    #>$0e7015,x0
-        move    x0,x:(r7+$4d)
-        bra     fs_vint
-fs_v1:
-        move    #>$09a9cc,x0            ; idx 1: E -> I
-        move    x0,x:(r7+$4a)
-        move    #>$04ec75,x0
-        move    x0,x:(r7+$4b)
-        move    #>$1d8496,x0
-        move    x0,x:(r7+$4c)
-        move    #>$23a244,x0
-        move    x0,x:(r7+$4d)
-        bra     fs_vint
-fs_v0:
-        move    #>$0d4e94,x0            ; idx 0: A -> E
-        move    x0,x:(r7+$4a)
-        move    #>$09a9cc,x0
-        move    x0,x:(r7+$4b)
-        move    #>$12695e,x0
-        move    x0,x:(r7+$4c)
-        move    #>$1d8496,x0
-        move    x0,x:(r7+$4d)
-fs_vint:
-; v = a + frac * (b - a), both tables
-        move    x:(r7+$4b),a
-        move    x:(r7+$4a),x0
-        sub     x0,a
-        move    a,x0                    ; b - a (signed)
+        move    a,b
+        add     x0,b
+        add     x0,b                    ; 3*idx
+        move    b1,n5
+        move    x:(r7+$4e),r5           ; the P table's base (saved at the g2 lookup)
+        move    #>$ffffff,m5
+        move    (r5)+n5
+        move    #>33,n5
+        move    (r5)+n5                 ; r5 = COS_TABLE[idx][0] (33 words past G2)
+        move    #>3,n5
+; formant 0: cw = CW[idx][0] + frac*(CW[idx+1][0] - CW[idx][0]) (p:(r5)+n5
+; reads the first and steps to the next vowel, p:(r5)-n5 reads it and steps
+; back; (r5)+ moves to the next formant); R' = R0 + e0*RES narrows the band
+; with RES; m1 = R'*cw = -a1/2, a2 = R'^2, b0 = (1 - a2)/2.
+        move    p:(r5)+n5,y0            ; CW[idx][0]
+        move    p:(r5)-n5,b             ; CW[idx+1][0]
+        move    (r5)+
+        move    y0,a
+        sub     a,b                     ; diff
+        move    b,x0
         move    x:(r7+$49),y1           ; frac
         mpy     x0,y1,a
-        move    x:(r7+$4a),x0
-        add     x0,a
-        move    a,x:(r7+$20)            ; fA = F1 (no modulation in VOWEL)
-        move    x:(r7+$4d),a
-        move    x:(r7+$4c),x0
-        sub     x0,a
-        move    a,x0
-        move    x:(r7+$49),y1
+        add     y0,a                    ; cw
+        move    a,x1
+        move    x:(r6+$1),x0            ; RES/128
+        move    #>$00bc7a,y1       ; e0 = 0.9*(1 - R0)
         mpy     x0,y1,a
-        move    x:(r7+$4c),x0
-        add     x0,a
-        move    a,x:(r7+$2a)            ; cHP = F2
-        move    a,x:(r7+$2b)            ; cLP = F2: a band around F2
+        add     #>$7f2e95,a        ; R0 = exp(-pi*90/fs)
+        move    a,y1                    ; R' (> 0: the SEND-safe second operand)
+        mpy     x1,y1,b                 ; m1 = cw*R'
+        move    b,x:(r7+$10)
+        move    a,x0
+        mpy     x0,y1,b                 ; a2 = R'^2
+        move    b,x:(r7+$13)
+        asr     #$1,b,b
+        neg     b
+        add     #>$400000,b             ; b0 = 1/2 - a2/2
+        move    b,x:(r7+$16)
+; formant 1: cw = CW[idx][1] + frac*(CW[idx+1][1] - CW[idx][1]) (p:(r5)+n5
+; reads the first and steps to the next vowel, p:(r5)-n5 reads it and steps
+; back; (r5)+ moves to the next formant); R' = R1 + e1*RES narrows the band
+; with RES; m1 = R'*cw = -a1/2, a2 = R'^2, b0 = (1 - a2)/2.
+        move    p:(r5)+n5,y0            ; CW[idx][1]
+        move    p:(r5)-n5,b             ; CW[idx+1][1]
+        move    (r5)+
+        move    y0,a
+        sub     a,b                     ; diff
+        move    b,x0
+        move    x:(r7+$49),y1           ; frac
+        mpy     x0,y1,a
+        add     y0,a                    ; cw
+        move    a,x1
+        move    x:(r6+$1),x0            ; RES/128
+        move    #>$00e632,y1       ; e1 = 0.9*(1 - R1)
+        mpy     x0,y1,a
+        add     #>$7f003a,a        ; R1 = exp(-pi*110/fs)
+        move    a,y1                    ; R' (> 0: the SEND-safe second operand)
+        mpy     x1,y1,b                 ; m1 = cw*R'
+        move    b,x:(r7+$11)
+        move    a,x0
+        mpy     x0,y1,b                 ; a2 = R'^2
+        move    b,x:(r7+$14)
+        asr     #$1,b,b
+        neg     b
+        add     #>$400000,b             ; b0 = 1/2 - a2/2
+        move    b,x:(r7+$17)
+; formant 2: cw = CW[idx][2] + frac*(CW[idx+1][2] - CW[idx][2]) (p:(r5)+n5
+; reads the first and steps to the next vowel, p:(r5)-n5 reads it and steps
+; back; (r5)+ moves to the next formant); R' = R2 + e2*RES narrows the band
+; with RES; m1 = R'*cw = -a1/2, a2 = R'^2, b0 = (1 - a2)/2.
+        move    p:(r5)+n5,y0            ; CW[idx][2]
+        move    p:(r5)-n5,b             ; CW[idx+1][2]
+        move    (r5)+
+        move    y0,a
+        sub     a,b                     ; diff
+        move    b,x0
+        move    x:(r7+$49),y1           ; frac
+        mpy     x0,y1,a
+        add     y0,a                    ; cw
+        move    a,x1
+        move    x:(r6+$1),x0            ; RES/128
+        move    #>$0162ff,y1       ; e2 = 0.9*(1 - R2)
+        mpy     x0,y1,a
+        add     #>$7e758f,a        ; R2 = exp(-pi*170/fs)
+        move    a,y1                    ; R' (> 0: the SEND-safe second operand)
+        mpy     x1,y1,b                 ; m1 = cw*R'
+        move    b,x:(r7+$12)
+        move    a,x0
+        mpy     x0,y1,b                 ; a2 = R'^2
+        move    b,x:(r7+$15)
+        asr     #$1,b,b
+        neg     b
+        add     #>$400000,b             ; b0 = 1/2 - a2/2
+        move    b,x:(r7+$18)
 fs_mdone:
-
-        move    #>$7d0e56,x0            ; the SVF's stable f ceiling, staged for
-        move    x0,x:(r7+$1f)           ; the loop's FM clamp (1-word loads there)
 
 ; ---- BYPASS: the defaults are a bit-exact passthrough ---------------------
 ; FREQ 127, RES 0, BASE 0, WDTH 127, DRV 0, DPTH 64, MODE LP, ROUT SER. Every
 ; part that ever chose stock FILTER runs this on FX1 after the flash, so the
 ; neutral block copies nothing and only does the sends.
         clr     b
-        move    b,x:(r7+$2d)
         move    x:(r6+$0),a
         move    #>$7f0000,x0
         cmp     x0,a
@@ -473,7 +544,10 @@ fs_mdone:
 fs_live:
 
 ; ===========================================================================
-; THE SAMPLE LOOP
+; THE SAMPLE LOOP -- one MODEFORK: the SEM SVF, or the VOWL bank; filter B
+; and the mix are one straight-line callee both alternatives call per
+; channel (13 Sep 2026). CYCLES_FORWARD_BRANCHES: the fork's dispatch is the
+; only branch, and the pricer charges dispatch + the worst alternative.
 ; ===========================================================================
         move    #>$1,n0
         do      n7,>fs_end
@@ -487,72 +561,387 @@ fs_live:
         cmp     x0,a
         tlt     x0,a
         move    a,x:(r7+$1e)
+; ---- the cutoff ramp: g2run += dg, once per sample for both channels -------
+        move    x:(r7+$2e),a
+        move    x:(r7+$2f),x0
+        add     x0,a
+        move    a,x:(r7+$2e)            ; limited: g2 never past the rail
+; MODEFORK_BEGIN -- cycle_count.py: the dispatch, one flag test
+        move    x:(r7+$2d),a
+        tst     a
+        bne     fs_vowl
+; MODEFORK_MID -- alternative 1: the SEM zero-delay SVF, LP / BP / HP / NOTCH
 ; ===================== channel L =====================
         move    x:(r0),x0
         move    x0,x:(r7+$1d)           ; park x
-; FM: f = clamp(fA + kFM * B_prev)
+; FM: g = clamp(g2run * (1 + kFM * B_prev)), d frozen for the block
         move    x:(r7+$19),x0           ; B_prev L
         move    x:(r7+$2c),y1           ; kFM (0 unless ROUT = FM)
         mpy     x0,y1,a                 ; kFM * B, +-0.5
         move    a,x0
-        move    x:(r7+$20),y1           ; fA
-        mpy     x0,y1,a                 ; fA * kFM * B: MULTIPLICATIVE FM,
-        move    x:(r7+$20),x0           ; so f stays positive by construction
-        add     x0,a                    ; f = fA * (1 + kFM * B)
-        move    x:(r7+$1f),x0           ; 0.977, the SVF's stable ceiling
+        move    x:(r7+$2e),y1           ; g2run
+        mpy     x0,y1,a                 ; g2run * kFM * B: MULTIPLICATIVE FM,
+        move    x:(r7+$2e),x0           ; so g stays positive by construction
+        add     x0,a                    ; g = g2run * (1 + kFM * B)
+        move    #>$7f0000,x0            ; g2 < 1 (the halved g's own rail)
         cmp     x0,a
         tgt     x0,a
-        move    a,x:(r7+$1c)            ; f this sample
+        move    a,x:(r7+$1c)            ; g2 this sample
 ; drive
         move    x:(r7+$1d),x0
         move    x:(r7+$22),y1           ; g4
         mpy     x0,y1,a
         asl     #$2,a,a
         move    a,x1                    ; x_d, the limiter IS the drive clip
-; SVF A: lp += f*bp
-        move    x:(r7+$35),x0           ; bp
-        move    x:(r7+$1c),y1           ; f
+; t8 = (x_d - (2R+g)*s0 - s1)/8, pre-scaled so nothing clamps before hp
+        move    x:(r7+$34),x0           ; s0
+        move    x:(r7+$1f),y1           ; c4 = (R + g2)/2
         mpy     x0,y1,a
-        move    x:(r7+$34),b
-        add     b,a
-        move    a,x:(r7+$34)            ; lp'
-        move    a,b
-; hp = x_d - lp' - damp*bp
-        move    x:(r7+$21),y1           ; damp
-        mpy     x0,y1,a                 ; damp*bp (x0 still bp)
-        neg     a
-        sub     b,a
-        add     x1,a                    ; hp
+        asl     #$2,a,a                 ; (2R + g) * s0
+        move    x:(r7+$35),x0           ; s1
+        add     x0,a
+        move    x1,b
+        sub     a,b                     ; t
+        asr     #$3,b,b
+        move    b,x0                    ; t8, |t8| <= 0.63
+; hp = 8 * d * t8  (the ZDF's implicit solve)
+        move    x:(r7+$33),y1           ; d
+        mpy     x0,y1,a
+        asl     #$3,a,a
         move    a,x0                    ; hp, limited -- the resonance clamp
-        move    a,y0                    ; park hp
-; bp += f*hp
-        move    x:(r7+$1c),y1
-        mpy     x0,y1,a
-        move    x:(r7+$35),b
+        move    a,y0                    ; hp for the taps
+; p = 2*g*hp ; bp = s0 + p ; s0' = bp + p  (trapezoidal integrator)
+        move    x:(r7+$1c),y1           ; g2
+        mpy     x0,y1,b
+        asl     #$1,b,b                 ; p = g*hp
+        move    x:(r7+$34),a
+        add     b,a                     ; bp
+        move    a,x1                    ; bp, limited
         add     b,a
-        move    a,x:(r7+$35)            ; bp'
-; wetA = kBP*bp' + kHP*hp + kLP*lp'
-        move    a,x0
+        move    a,x:(r7+$34)            ; s0'
+; q = 2*g*bp ; lp = s1 + q ; s1' = lp + q
+        move    x1,x0
+        mpy     x0,y1,b
+        asl     #$1,b,b                 ; q = g*bp
+        move    x:(r7+$35),a
+        add     b,a                     ; lp
+        move    a,x:(r7+$1b)            ; lp parked (limited)
+        add     b,a
+        move    a,x:(r7+$35)            ; s1'
+; wetA = kBP*bp + kHP*hp + kLP*lp   (NOTCH = hp + lp)
+        move    x1,x0
         move    x:(r7+$24),y1
         mpy     x0,y1,a
         move    y0,x0
         move    x:(r7+$25),y1
         mpy     x0,y1,b
         add     b,a
-        move    x:(r7+$34),x0
+        move    x:(r7+$1b),x0
         move    x:(r7+$23),y1
         mpy     x0,y1,b
         add     b,a
         move    a,x:(r7+$1b)            ; wetA
-        move    a,x1
+; filter B and the mix (the shared callee); r3 -> this channel's B poles,
+; n3 -> its B_prev from there
+        move    r7,r3
+        move    #>$38,n3
+        move    (r3)+n3
+        move    #>$ffffe1,n3
+        bsr     fs_bmix
+        move    a,x:(r0)                ; out L (limited)
+; ===================== channel R =====================
+        move    x:(r0+n0),x0
+        move    x0,x:(r7+$1d)           ; park x
+; FM: g = clamp(g2run * (1 + kFM * B_prev)), d frozen for the block
+        move    x:(r7+$1a),x0           ; B_prev R
+        move    x:(r7+$2c),y1           ; kFM (0 unless ROUT = FM)
+        mpy     x0,y1,a                 ; kFM * B, +-0.5
+        move    a,x0
+        move    x:(r7+$2e),y1           ; g2run
+        mpy     x0,y1,a                 ; g2run * kFM * B: MULTIPLICATIVE FM,
+        move    x:(r7+$2e),x0           ; so g stays positive by construction
+        add     x0,a                    ; g = g2run * (1 + kFM * B)
+        move    #>$7f0000,x0            ; g2 < 1 (the halved g's own rail)
+        cmp     x0,a
+        tgt     x0,a
+        move    a,x:(r7+$1c)            ; g2 this sample
+; drive
+        move    x:(r7+$1d),x0
+        move    x:(r7+$22),y1           ; g4
+        mpy     x0,y1,a
+        asl     #$2,a,a
+        move    a,x1                    ; x_d, the limiter IS the drive clip
+; t8 = (x_d - (2R+g)*s0 - s1)/8, pre-scaled so nothing clamps before hp
+        move    x:(r7+$36),x0           ; s0
+        move    x:(r7+$1f),y1           ; c4 = (R + g2)/2
+        mpy     x0,y1,a
+        asl     #$2,a,a                 ; (2R + g) * s0
+        move    x:(r7+$37),x0           ; s1
+        add     x0,a
+        move    x1,b
+        sub     a,b                     ; t
+        asr     #$3,b,b
+        move    b,x0                    ; t8, |t8| <= 0.63
+; hp = 8 * d * t8  (the ZDF's implicit solve)
+        move    x:(r7+$33),y1           ; d
+        mpy     x0,y1,a
+        asl     #$3,a,a
+        move    a,x0                    ; hp, limited -- the resonance clamp
+        move    a,y0                    ; hp for the taps
+; p = 2*g*hp ; bp = s0 + p ; s0' = bp + p  (trapezoidal integrator)
+        move    x:(r7+$1c),y1           ; g2
+        mpy     x0,y1,b
+        asl     #$1,b,b                 ; p = g*hp
+        move    x:(r7+$36),a
+        add     b,a                     ; bp
+        move    a,x1                    ; bp, limited
+        add     b,a
+        move    a,x:(r7+$36)            ; s0'
+; q = 2*g*bp ; lp = s1 + q ; s1' = lp + q
+        move    x1,x0
+        mpy     x0,y1,b
+        asl     #$1,b,b                 ; q = g*bp
+        move    x:(r7+$37),a
+        add     b,a                     ; lp
+        move    a,x:(r7+$1b)            ; lp parked (limited)
+        add     b,a
+        move    a,x:(r7+$37)            ; s1'
+; wetA = kBP*bp + kHP*hp + kLP*lp   (NOTCH = hp + lp)
+        move    x1,x0
+        move    x:(r7+$24),y1
+        mpy     x0,y1,a
+        move    y0,x0
+        move    x:(r7+$25),y1
+        mpy     x0,y1,b
+        add     b,a
+        move    x:(r7+$1b),x0
+        move    x:(r7+$23),y1
+        mpy     x0,y1,b
+        add     b,a
+        move    a,x:(r7+$1b)            ; wetA
+; filter B and the mix (the shared callee); r3 -> this channel's B poles,
+; n3 -> its B_prev from there
+        move    r7,r3
+        move    #>$3c,n3
+        move    (r3)+n3
+        move    #>$ffffde,n3
+        bsr     fs_bmix
+        move    a,x:(r0+n0)                ; out R (limited)
+        bra     fs_join
+; MODEFORK_MID -- alternative 2: VOWL, the three-formant bank
+fs_vowl:
+; ===================== channel L =====================
+        move    x:(r0),x0
+        move    x0,x:(r7+$1d)           ; park x
+        move    x:(r7+$22),y1           ; g4: the drive, as in every mode
+        mpy     x0,y1,a
+        asl     #$2,a,a
+        move    a,x1                    ; x_d
+; dx/2 = (x_d - x2)/2, shared by the three resonators; then x2 <- x1 <- x_d
+        move    x:(r7+$01),x0           ; x2
+        move    x1,a
+        sub     x0,a
+        asr     #$1,a,a
+        move    a,x:(r7+$1b)            ; dx/2, parked (|.| <= 1)
+        move    x:(r7+$00),x0
+        move    x0,x:(r7+$01)
+        move    x1,x:(r7+$00)
+; formant 0: y = 2*b0*(dx/2) + 2*m1*y1 - a2*y2; then y2 <- y1 <- y
+        move    x:(r7+$1b),x0
+        move    x:(r7+$16),y1           ; b0
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        move    x:(r7+$02),x0           ; y1
+        move    x:(r7+$10),y1           ; m1 = -a1/2
+        mpy     x0,y1,b
+        asl     #$1,b,b
+        add     b,a
+        move    x:(r7+$03),x0           ; y2
+        move    x:(r7+$13),y1           ; a2
+        mpy     x0,y1,b
+        sub     b,a                     ; y
+        move    x:(r7+$02),x0
+        move    x0,x:(r7+$03)           ; y2 <- y1
+        move    a,x:(r7+$02)            ; y1 <- y (limited)
+        move    a,x0                    ; y, limited
+        move    #>$400000,y1          ; the formant's gain, halved
+        mpy     x0,y1,a
+        move    a,x:(r7+$1c)            ; the sum so far (halved)
+; formant 1: y = 2*b0*(dx/2) + 2*m1*y1 - a2*y2; then y2 <- y1 <- y
+        move    x:(r7+$1b),x0
+        move    x:(r7+$17),y1           ; b0
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        move    x:(r7+$04),x0           ; y1
+        move    x:(r7+$11),y1           ; m1 = -a1/2
+        mpy     x0,y1,b
+        asl     #$1,b,b
+        add     b,a
+        move    x:(r7+$05),x0           ; y2
+        move    x:(r7+$14),y1           ; a2
+        mpy     x0,y1,b
+        sub     b,a                     ; y
+        move    x:(r7+$04),x0
+        move    x0,x:(r7+$05)           ; y2 <- y1
+        move    a,x:(r7+$04)            ; y1 <- y (limited)
+        move    a,x0                    ; y, limited
+        move    #>$200000,y1          ; the formant's gain, halved
+        mpy     x0,y1,b
+        move    x:(r7+$1c),a
+        add     b,a
+        move    a,x:(r7+$1c)
+; formant 2: y = 2*b0*(dx/2) + 2*m1*y1 - a2*y2; then y2 <- y1 <- y
+        move    x:(r7+$1b),x0
+        move    x:(r7+$18),y1           ; b0
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        move    x:(r7+$06),x0           ; y1
+        move    x:(r7+$12),y1           ; m1 = -a1/2
+        mpy     x0,y1,b
+        asl     #$1,b,b
+        add     b,a
+        move    x:(r7+$07),x0           ; y2
+        move    x:(r7+$15),y1           ; a2
+        mpy     x0,y1,b
+        sub     b,a                     ; y
+        move    x:(r7+$06),x0
+        move    x0,x:(r7+$07)           ; y2 <- y1
+        move    a,x:(r7+$06)            ; y1 <- y (limited)
+        move    a,x0                    ; y, limited
+        move    #>$133333,y1          ; the formant's gain, halved
+        mpy     x0,y1,b
+        move    x:(r7+$1c),a
+        add     b,a
+        move    a,x:(r7+$1c)
+; wetA = 2 * the halved sum (= y0 + 0.5*y1 + 0.3*y2), limited
+        move    x:(r7+$1c),a
+        asl     #$1,a,a
+        move    a,x:(r7+$1b)            ; wetA
+        move    r7,r3
+        move    #>$38,n3
+        move    (r3)+n3
+        move    #>$ffffe1,n3
+        bsr     fs_bmix
+        move    a,x:(r0)                ; out L (limited)
+; ===================== channel R =====================
+        move    x:(r0+n0),x0
+        move    x0,x:(r7+$1d)           ; park x
+        move    x:(r7+$22),y1           ; g4: the drive, as in every mode
+        mpy     x0,y1,a
+        asl     #$2,a,a
+        move    a,x1                    ; x_d
+; dx/2 = (x_d - x2)/2, shared by the three resonators; then x2 <- x1 <- x_d
+        move    x:(r7+$09),x0           ; x2
+        move    x1,a
+        sub     x0,a
+        asr     #$1,a,a
+        move    a,x:(r7+$1b)            ; dx/2, parked (|.| <= 1)
+        move    x:(r7+$08),x0
+        move    x0,x:(r7+$09)
+        move    x1,x:(r7+$08)
+; formant 0: y = 2*b0*(dx/2) + 2*m1*y1 - a2*y2; then y2 <- y1 <- y
+        move    x:(r7+$1b),x0
+        move    x:(r7+$16),y1           ; b0
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        move    x:(r7+$0a),x0           ; y1
+        move    x:(r7+$10),y1           ; m1 = -a1/2
+        mpy     x0,y1,b
+        asl     #$1,b,b
+        add     b,a
+        move    x:(r7+$0b),x0           ; y2
+        move    x:(r7+$13),y1           ; a2
+        mpy     x0,y1,b
+        sub     b,a                     ; y
+        move    x:(r7+$0a),x0
+        move    x0,x:(r7+$0b)           ; y2 <- y1
+        move    a,x:(r7+$0a)            ; y1 <- y (limited)
+        move    a,x0                    ; y, limited
+        move    #>$400000,y1          ; the formant's gain, halved
+        mpy     x0,y1,a
+        move    a,x:(r7+$1c)            ; the sum so far (halved)
+; formant 1: y = 2*b0*(dx/2) + 2*m1*y1 - a2*y2; then y2 <- y1 <- y
+        move    x:(r7+$1b),x0
+        move    x:(r7+$17),y1           ; b0
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        move    x:(r7+$0c),x0           ; y1
+        move    x:(r7+$11),y1           ; m1 = -a1/2
+        mpy     x0,y1,b
+        asl     #$1,b,b
+        add     b,a
+        move    x:(r7+$0d),x0           ; y2
+        move    x:(r7+$14),y1           ; a2
+        mpy     x0,y1,b
+        sub     b,a                     ; y
+        move    x:(r7+$0c),x0
+        move    x0,x:(r7+$0d)           ; y2 <- y1
+        move    a,x:(r7+$0c)            ; y1 <- y (limited)
+        move    a,x0                    ; y, limited
+        move    #>$200000,y1          ; the formant's gain, halved
+        mpy     x0,y1,b
+        move    x:(r7+$1c),a
+        add     b,a
+        move    a,x:(r7+$1c)
+; formant 2: y = 2*b0*(dx/2) + 2*m1*y1 - a2*y2; then y2 <- y1 <- y
+        move    x:(r7+$1b),x0
+        move    x:(r7+$18),y1           ; b0
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        move    x:(r7+$0e),x0           ; y1
+        move    x:(r7+$12),y1           ; m1 = -a1/2
+        mpy     x0,y1,b
+        asl     #$1,b,b
+        add     b,a
+        move    x:(r7+$0f),x0           ; y2
+        move    x:(r7+$15),y1           ; a2
+        mpy     x0,y1,b
+        sub     b,a                     ; y
+        move    x:(r7+$0e),x0
+        move    x0,x:(r7+$0f)           ; y2 <- y1
+        move    a,x:(r7+$0e)            ; y1 <- y (limited)
+        move    a,x0                    ; y, limited
+        move    #>$133333,y1          ; the formant's gain, halved
+        mpy     x0,y1,b
+        move    x:(r7+$1c),a
+        add     b,a
+        move    a,x:(r7+$1c)
+; wetA = 2 * the halved sum (= y0 + 0.5*y1 + 0.3*y2), limited
+        move    x:(r7+$1c),a
+        asl     #$1,a,a
+        move    a,x:(r7+$1b)            ; wetA
+        move    r7,r3
+        move    #>$3c,n3
+        move    (r3)+n3
+        move    #>$ffffde,n3
+        bsr     fs_bmix
+        move    a,x:(r0+n0)                ; out R (limited)
+; MODEFORK_END
+fs_join:
+        move    #>$2,n0                 ; LONG immediates, deliberately: the
+        move    (r0)+n0                 ; short form `move #2,n0` assembled and
+        move    #>$1,n0                 ; stepped ONE word per frame (3 Sep 2026)
+fs_end:
+        nop
+        rts
+
+; ---------------------------------------------------------------------------
+; fs_bmix -- filter B (two HP poles at cHP, two LP poles at cLP) and the
+; mix, for one channel. In: x:(r7+$1b) = wetA, x:(r7+$1d) = the parked x,
+; r3 -> the channel's four B poles, (r3+n3) its B_prev (the FM source).
+; Out: a = kA*wetA + kB*B + kR*(2*wetA*B), for the caller's limiting store.
+; Straight-line (one Tcc, nothing between it and its tst): a loop callee.
+; ---------------------------------------------------------------------------
+fs_bmix:
 ; yB = sel ? wetA : x
+        move    x:(r7+$1b),x1           ; wetA
         move    x:(r7+$29),b
         tst     b
         move    x:(r7+$1d),a
         tne     x1,a
         move    a,x:(r7+$1d)            ; yB
-; B: two HP poles (HP = in - LP2(in)) at cHP
-        move    x:(r7+$38),b            ; h1
+; two HP poles (HP = in - LP2(in)) at cHP
+        move    x:(r3),b                ; h1
         sub     b,a                     ; yB - h1
         asr     #$1,a,a
         move    a,x0
@@ -560,21 +949,21 @@ fs_live:
         mpy     x0,y1,a
         asl     #$1,a,a
         add     b,a                     ; h1'
-        move    a,x:(r7+$38)
-        move    x:(r7+$39),b            ; h2
+        move    a,x:(r3)
+        move    x:(r3+$1),b             ; h2
         sub     b,a                     ; h1' - h2
         asr     #$1,a,a
         move    a,x0
         mpy     x0,y1,a
         asl     #$1,a,a
         add     b,a                     ; h2'
-        move    a,x:(r7+$39)
+        move    a,x:(r3+$1)
         move    a,x0
         move    x:(r7+$1d),a
         sub     x0,a                    ; hp2 = yB - h2'
         move    a,x:(r7+$1d)            ; park hp2
 ; two LP poles at cLP
-        move    x:(r7+$3a),b            ; l1
+        move    x:(r3+$2),b             ; l1
         sub     b,a
         asr     #$1,a,a
         move    a,x0
@@ -582,16 +971,16 @@ fs_live:
         mpy     x0,y1,a
         asl     #$1,a,a
         add     b,a
-        move    a,x:(r7+$3a)
-        move    x:(r7+$3b),b            ; l2
+        move    a,x:(r3+$2)
+        move    x:(r3+$3),b             ; l2
         sub     b,a
         asr     #$1,a,a
         move    a,x0
         mpy     x0,y1,a
         asl     #$1,a,a
         add     b,a
-        move    a,x:(r7+$3b)            ; B_out = l2'
-        move    a,x:(r7+$19)            ; B_prev for next sample's FM
+        move    a,x:(r3+$3)             ; B_out = l2'
+        move    a,x:(r3+n3)             ; B_prev for next sample's FM
 ; out = kA*wetA + kB*B + kR*(2*wetA*B)
         move    a,x0                    ; B_out
         move    x:(r7+$27),y1           ; kB
@@ -607,123 +996,6 @@ fs_live:
         move    x:(r7+$26),y1           ; kA
         mpy     x0,y1,b
         add     b,a
-        move    a,x:(r0)                ; out L (limited)
-; ===================== channel R =====================
-        move    x:(r0+n0),x0
-        move    x0,x:(r7+$1d)
-        move    x:(r7+$1a),x0           ; B_prev R
-        move    x:(r7+$2c),y1           ; kFM (0 unless ROUT = FM)
-        mpy     x0,y1,a                 ; kFM * B, +-0.5
-        move    a,x0
-        move    x:(r7+$20),y1           ; fA
-        mpy     x0,y1,a                 ; fA * kFM * B: MULTIPLICATIVE FM,
-        move    x:(r7+$20),x0           ; so f stays positive by construction
-        add     x0,a                    ; f = fA * (1 + kFM * B)
-        move    x:(r7+$1f),x0           ; 0.977, the SVF's stable ceiling
-        cmp     x0,a
-        tgt     x0,a
-        move    a,x:(r7+$1c)            ; f this sample
-        move    x:(r7+$1d),x0
-        move    x:(r7+$22),y1
-        mpy     x0,y1,a
-        asl     #$2,a,a
-        move    a,x1
-        move    x:(r7+$37),x0           ; bp R
-        move    x:(r7+$1c),y1
-        mpy     x0,y1,a
-        move    x:(r7+$36),b
-        add     b,a
-        move    a,x:(r7+$36)
-        move    a,b
-        move    x:(r7+$21),y1
-        mpy     x0,y1,a
-        neg     a
-        sub     b,a
-        add     x1,a
-        move    a,x0
-        move    a,y0
-        move    x:(r7+$1c),y1
-        mpy     x0,y1,a
-        move    x:(r7+$37),b
-        add     b,a
-        move    a,x:(r7+$37)
-        move    a,x0
-        move    x:(r7+$24),y1
-        mpy     x0,y1,a
-        move    y0,x0
-        move    x:(r7+$25),y1
-        mpy     x0,y1,b
-        add     b,a
-        move    x:(r7+$36),x0
-        move    x:(r7+$23),y1
-        mpy     x0,y1,b
-        add     b,a
-        move    a,x:(r7+$1b)
-        move    a,x1
-        move    x:(r7+$29),b
-        tst     b
-        move    x:(r7+$1d),a
-        tne     x1,a
-        move    a,x:(r7+$1d)
-        move    x:(r7+$3c),b
-        sub     b,a
-        asr     #$1,a,a
-        move    a,x0
-        move    x:(r7+$2a),y1
-        mpy     x0,y1,a
-        asl     #$1,a,a
-        add     b,a
-        move    a,x:(r7+$3c)
-        move    x:(r7+$3d),b
-        sub     b,a
-        asr     #$1,a,a
-        move    a,x0
-        mpy     x0,y1,a
-        asl     #$1,a,a
-        add     b,a
-        move    a,x:(r7+$3d)
-        move    a,x0
-        move    x:(r7+$1d),a
-        sub     x0,a
-        move    a,x:(r7+$1d)
-        move    x:(r7+$3e),b
-        sub     b,a
-        asr     #$1,a,a
-        move    a,x0
-        move    x:(r7+$2b),y1
-        mpy     x0,y1,a
-        asl     #$1,a,a
-        add     b,a
-        move    a,x:(r7+$3e)
-        move    x:(r7+$3f),b
-        sub     b,a
-        asr     #$1,a,a
-        move    a,x0
-        mpy     x0,y1,a
-        asl     #$1,a,a
-        add     b,a
-        move    a,x:(r7+$3f)
-        move    a,x:(r7+$1a)
-        move    a,x0
-        move    x:(r7+$27),y1
-        mpy     x0,y1,a
-        move    x:(r7+$1b),y1
-        mpy     x0,y1,b
-        asl     #$1,b,b
-        move    b,x0
-        move    x:(r7+$28),y1
-        mpy     x0,y1,b
-        add     b,a
-        move    x:(r7+$1b),x0
-        move    x:(r7+$26),y1
-        mpy     x0,y1,b
-        add     b,a
-        move    a,x:(r0+n0)             ; out R
-        move    #>$2,n0                 ; LONG immediates, deliberately: the
-        move    (r0)+n0                 ; short form `move #2,n0` assembled and
-        move    #>$1,n0                 ; stepped ONE word per frame (3 Sep 2026)
-fs_end:
-        nop
         rts
 
 ; ===========================================================================

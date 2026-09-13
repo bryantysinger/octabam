@@ -1,17 +1,18 @@
-"""MODULATION -- one modulated line, seven modes, FX1 only.
+"""MODULATION -- one modulated line, three modes, FX1 only.
 
 The third BamSep26 station. It REPLACES stock CHORUS (id 0x12) and covers
-what stock spreads over CHORUS, FLANGER, PHASER and COMB, plus the three the
-box never had -- tremolo, vibrato and auto-pan:
+what stock spreads over CHORUS, FLANGER and COMB:
 
-    CHOR  a 10 ms line swept slowly, no feedback: the classic
+    CHOR  a 10 ms line swept slowly, no feedback: the classic (MIX 127 is
+          vibrato: the wet alone)
     FLNG  a 0.3 ms line swept wide, with feedback: the jet
-    PHSR  four allpass stages swept together, no line at all (STGS taps
-          the chain at 2, 4, 6 or 8 poles)
     COMB  a short line tuned by DLY with heavy feedback: a resonator
-    TREM  the LFO on amplitude
-    VIB   the line, wet only: pitch modulation
-    PAN   the LFO on amplitude, opposite in the two channels
+
+13 Sep 2026: PHSR, TREM, VIB and PAN retired (Sam). The phaser was the
+pricer's dearest station loop (464 cycles/sample, two allpass chains);
+tremolo and auto-pan are the OT's own LFO on AMP VOL / BAL; vibrato is CHOR
+at MIX 127. A part that stored 3..6 in MODE runs CHOR (the decode matches
+1 and 2 only). The freed words and cycles fund Spectrum.
 
 ⚠️ **FX1 ONLY, and it enforces that itself.** It needs a per-track delay line,
 and beside the servers the only free per-track buffer is the FX1 slot: every
@@ -46,7 +47,7 @@ MODULE = Module(
     name="modulation",
     key="MODULATION",
     kind=Kind.DSP_EFFECT,
-    doc="BamSep26 station: chorus/flanger/phaser/comb/trem/vib/pan, FX1 only.",
+    doc="BamSep26 station: chorus / flanger / comb, FX1 only.",
     menu=MenuEntry(
         fx2_id=0x12,
         replaces="CHORUS",
@@ -60,19 +61,19 @@ MODULE = Module(
         Param(b"RATE", 40, active=True, formatter=_PLAIN,
               doc="LFO speed, ~0.05 Hz to ~8 Hz on a squared taper"),
         Param(b"DPTH", 48, active=True, formatter=_PLAIN,
-              doc="how far the LFO sweeps the line (or the amplitude, in TREM/PAN)"),
+              doc="how far the LFO sweeps the line"),
         Param(b"FDBK", 0, active=True, formatter=_PLAIN,
               doc="feedback around the line: the flanger's jet, the comb's ring; 0 = none"),
         Param(b"MIX", 0, active=True, formatter=_PLAIN,
-              doc="dry/wet; 0 = exact passthrough, 64 = classic chorus, 127 = vibrato"),
+              doc="dry/wet; 0 = exact passthrough, 64 = classic chorus, 127 = the wet alone (vibrato in CHOR)"),
         _BLANK,   # -DEL: the stations lost their sends in the one-aux rig (7 Sep 2026)
         _BLANK,   # -VRB: the stations lost their sends in the one-aux rig (7 Sep 2026)
         # ---- page 2: knob / select / knob / select / knob / select ----------
         Param(b"DLY", 30, 128, active=True, formatter=_PLAIN,
               doc="the line's centre time, 0.2..23 ms -- in COMB it is the pitch"),
-        Param(b"MODE", 0, 7, active=True, formatter=_STEP,
-              labels=("CHOR", "FLNG", "PHSR", "COMB", "TREM", "VIB", "PAN"),
-              doc="which engine: three line modes, a phaser, and three amplitude ones"),
+        Param(b"MODE", 0, 3, active=True, formatter=_STEP,
+              labels=("CHOR", "FLNG", "COMB"),
+              doc="which line: chorus, flanger or comb (PHSR/TREM/VIB/PAN retired 13 Sep 2026)"),
         Param(b"TONE", 100, 128, active=True, formatter=_PLAIN,
               doc="one-pole damping inside the feedback path; lower = darker each pass"),
         Param(b"SHPE", 0, 4, active=True, formatter=_STEP,
@@ -80,14 +81,11 @@ MODULE = Module(
               doc="LFO shape: TRI, SIN, SQR (steps the line: a chorus that jumps), SAW (a ramp)"),
         Param(b"WID", 64, 128, active=True, formatter=_PLAIN,
               doc="how far the right channel's LFO lags the left, 0 = mono, 64 = quarter"),
-        Param(b"STGS", 1, 4, active=True, formatter=_STEP,
-              labels=("2P", "4P", "6P", "8P"),
-              doc="PHSR only: where the allpass chain is tapped, 2 to 8 poles"),
+        _BLANK,   # was STGS, the phaser's tap select; the phaser retired 13 Sep 2026
     ),
     # ---- what each MODE renames and re-defaults ---------------------------
-    # DLY is the line's centre time in the line modes, the comb's PITCH, and
-    # dead in the amplitude ones; FDBK is the flanger's jet and the comb's
-    # ring and nothing at all in TREM/PAN; STGS is the phaser's alone.
+    # DLY is the line's centre time and the comb's PITCH; FDBK is the
+    # flanger's jet and the comb's ring.
     mode_slot=7,
     mode_views=(
         ModeView(mode=0,                        # CHOR
@@ -95,21 +93,11 @@ MODULE = Module(
         ModeView(mode=1,                        # FLNG
                  defaults={0: 24, 1: 90, 2: 90, 3: 64, 6: 10, 10: 64}),
         # ⚠️ ONLY SLOTS WHOSE MEANING CHANGES ARE RENAMED. Marking a knob
-        # dead with "----" in the four modes that ignore it read well and
-        # cost 56 bytes of a cave with 4 to spare -- the doc line says it
-        # instead. Renaming is for a knob that does something ELSE.
-        ModeView(mode=2,                        # PHSR
-                 names={2: b"RES"},
-                 defaults={0: 30, 1: 90, 2: 40, 3: 64, 11: 1}),
-        ModeView(mode=3,                        # COMB
+        # dead with "----" in the modes that ignore it read well and cost a
+        # cave with 4 bytes to spare -- the doc line says it instead.
+        ModeView(mode=2,                        # COMB (was 3 until 13 Sep 2026)
                  names={2: b"RING", 6: b"PTCH"},
                  defaults={0: 8, 1: 20, 2: 110, 3: 64, 6: 20}),
-        ModeView(mode=4,                        # TREM: WID 0 -- at the knob's 64
-                 defaults={0: 70, 1: 90, 2: 0, 3: 127, 10: 0}),   # it was half a panner (ear, 12 Sep 2026)
-        ModeView(mode=5,                        # VIB
-                 defaults={0: 45, 1: 40, 2: 0, 3: 127, 6: 20, 10: 64}),
-        ModeView(mode=6,                        # PAN: WID 0, so R is exactly L inverted
-                 defaults={0: 55, 1: 100, 2: 0, 3: 127, 10: 0}),
     ),
     dsp=DspSection(
         asm="modules/modulation/modulation.asm",

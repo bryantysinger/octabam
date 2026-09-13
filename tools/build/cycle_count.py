@@ -352,6 +352,13 @@ def _measure_loop(name, src, lines, i):
     # satdrv rolled the two per-line sat+drive copies into one subroutine --
     # the roll is a WORD saving; the cycles are still paid per call, and this
     # keeps the tool honest about that instead of refusing the shape.
+    # ⚠️ A CALL SITE INSIDE A MODEFORK ALTERNATIVE BELONGS TO THAT ALTERNATIVE
+    # (13 Sep 2026): the surcharge is attributed by the SITE's address, like a
+    # roll, so a fork whose alternatives each call their own callee is priced
+    # as dispatch + the worst alternative, not every callee at once. Character's
+    # SAT fork (TAPE/TUBE/INFL, each calling its pair) read 685 cycles/sample
+    # under the global rule against ~484 on the true worst path. A site
+    # outside any fork stays global, as before.
     BSR = re.compile(r"^\s*bsr\s+(\w+)", re.I)
     bsr_lines = {}
     for j in range(i + 1, end_line):
@@ -412,9 +419,11 @@ def _measure_loop(name, src, lines, i):
     bsr_marks = []
     for nidx, (j, (lbl, k0, k1)) in enumerate(sorted(bsr_lines.items())):
         mstart, mend = f"__cyc_bsr{nidx}", f"__cyc_bsre{nidx}"
+        msite = f"__cyc_bsrc{nidx}"
         inserts.append((k0 + 1, f"{mstart}:"))   # after the label line
         inserts.append((k1 + 1, f"{mend}:"))     # after the rts
-        bsr_marks.append((lbl, mstart, mend))
+        inserts.append((j - 1, f"{msite}:"))     # BEFORE the bsr: the call site's address
+        bsr_marks.append((lbl, mstart, mend, msite))
     inner_at = []
     for j, m in inner:
         trips = int(m.group(1), 16 if lines[j].count("$") else 10)
@@ -444,13 +453,15 @@ def _measure_loop(name, src, lines, i):
     words = syms[end_label] - syms[MARKER]
     cycles, notes = words, []
     rolls = []
-    for lbl, mstart, mend in bsr_marks:
-        if mstart not in syms or mend not in syms:
+    calls = []                                    # (call-site address, surcharge)
+    for lbl, mstart, mend, msite in bsr_marks:
+        if mstart not in syms or mend not in syms or msite not in syms:
             sys.exit(f"{name}: assembler dropped a bsr marker for {lbl}")
         callee = syms[mend] - syms[mstart]        # body + rts, in words
         # the bsr word itself is already inside the body span; the callee
         # executes per call, plus a couple of cycles for the call/return pair
         cycles += callee + 4
+        calls.append((syms[msite], callee + 4))
         notes.append(f"bsr {lbl} {callee}w/call")
     for trips, inner_end, label in inner_at:
         if label not in syms or inner_end not in syms:
@@ -478,13 +489,17 @@ def _measure_loop(name, src, lines, i):
         # formula when no alternative is rolled.
         alt_sur = [sum(s for at, s in rolls if bounds[k] <= at < bounds[k + 1])
                    for k in range(len(alt_w))]
-        alt_cyc = [w + s for w, s in zip(alt_w, alt_sur)]
+        # ... and each bsr surcharge to the alternative whose range contains
+        # its CALL SITE (13 Sep 2026; a call outside the fork stays global).
+        alt_call = [sum(s for at, s in calls if bounds[k] <= at < bounds[k + 1])
+                    for k in range(len(alt_w))]
+        alt_cyc = [w + s + c for w, s, c in zip(alt_w, alt_sur, alt_call)]
         # The span priced EVERY alternative; at most one runs per sample.
         # Charge the dispatch (always) plus the worst alternative.
         cycles -= sum(alt_cyc) - max(alt_cyc)
         notes.append("fork worst-path (dispatch %dw, alts %s)"
-                     % (disp_w, "/".join(f"{w}w" if not s else f"{w}w+{s}roll"
-                                         for w, s in zip(alt_w, alt_sur))))
+                     % (disp_w, "/".join(f"{w}w" + (f"+{s}roll" if s else "") + (f"+{c}call" if c else "")
+                                         for w, s, c in zip(alt_w, alt_sur, alt_call))))
     note = ", ".join(notes) if notes else ""
     return dict(name=name, words=words, cycles=cycles, inner=note,
                 loop_end=end_label, total_words=len(blob) // 3, marked=marked)

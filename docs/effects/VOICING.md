@@ -2147,3 +2147,49 @@ a hazard on the master** (1x..48x gain sized for a quiet insert); CRSH 64
 dB); WDTH 127 L/R corr 0.65, WDTH 0 mono. The band deltas above 4 kHz are
 material-dependent (captures are not synchronous) -- read the rms.
 Ear pass by Sam pending on the excerpts.
+
+## 13 Sep 2026, late — Modulation trimmed to CHOR / FLNG / COMB
+
+PHSR, TREM, VIB and PAN retired (Sam: tremolo and auto-pan are the OT's own
+LFO on AMP VOL / BAL; vibrato is CHOR at MIX 127; the phaser was the pricer's
+dearest station loop). MODE is count 3 (CHOR 0, FLNG 1, COMB 2 — COMB moved
+from 3); a stored 3..6 runs CHOR. STGS (page-2 slot 11) is blank. The three
+survivors render word-identical before and after (24 cases: view defaults,
+two extreme sets, tone and noise, MIX 0, the FX2 dry pass). Modulation
+1,275 → 767 words on core A (core A FREE 70 → 578), 464 → 386 cycles/sample
+(the LINE loop); the worst core is now four Characters (466 each, 3,654,
+headroom 234) rather than four Modulations. The verify gate measures the LFO
+on CHOR at MIX 127 (the tone's period wobble) since TREM is gone.
+
+## 13 Sep 2026, late — Spectrum's core is the Oberheim SEM zero-delay SVF
+
+The Chamberlin core (one integrator pair, FREQ capped at 0.977 = 7.2 kHz,
+RES clamped short of the pole) is replaced by the SEM state-variable filter
+in Zavalishin's trapezoidal form, per audiojs/filter's `oberheim`: per block
+g = tan(π fc/fs), R = 1 − res, d = 1/(1 + 2Rg + g²) through the one real
+division; per sample hp/bp/lp with no ceiling, FREQ 24 Hz → 14.5 kHz
+(exponential, 24·625^(FREQ/128); the table tops at 15 kHz), RES 127 = Q ~34.
+FM is an offset on g with d frozen for the block; g ramps per sample across
+the block (dg = Δg/16), which is what takes the LFO's block-rate comb down.
+VOWL no longer borrows the SVF: it is a three-formant bank of constant-peak
+resonators (JOS), Peterson & Barney a/e/i/o/u morphed by FREQ, RES narrowing
+the bandwidths, coefficients from the P-table. That closes the "VOWL goes
+silent at RES ≥ 100 for FREQ ≤ 96" failure mode above (the old vowel reused
+the SVF's damping): RES 127 at F1 now reads −17 dBFS on a −17 dBFS tone.
+
+Measured, local only (dsp_host against a float reference of the same
+equations, `verify_spectrum.py` 41/41): SVF peak error ≤ 5e-3 over FREQ
+0/32/64/96/127 × RES 0/64/100/127 × LP/BP/HP/NTCH (1e-6 to 1e-5 away from the
+Q23 floor), level within ±0.02 dB; BP peaks at 120 / 600 / 3000 Hz for FREQ
+32 / 64 / 96, identical to the reference; the bank's peak error ≤ 8e-5 across
+five vowels × four RES. Block-rate comb on an LFO-swept LP (2940 Hz and
+harmonics): −62 / −79 / −86 → −73 / −99 / −112 dB relative to the FFT's
+440 Hz line. RES 127 with a 0.5 FS tone AT fc clips (so does the float
+reference — Q 34 is +30 dB) and lets go: the ring falls 8 dB per 17 ms after
+the burst. The Q23 stopband floor is −60 to −90 dBFS at FREQ 0 (g = 0.0017,
+the integrators' truncation); inside the band the match is 0.1 dB.
+
+Cost: Spectrum 861 → 1,141 words (core A FREE 578 → 283, core B 680 → 385),
+322 → 462 cycles/sample (the SVF and VOWL alternatives are a mode fork: the
+pricer charges the worse, VOWL). Worst core unchanged at 3,654 (four
+Characters), headroom 234. Unheard; nothing flashed.
