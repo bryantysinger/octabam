@@ -32,7 +32,15 @@ alternate-list swap whose semantics are unknown, and a root leaf with no
 window descriptor is a shape stock never uses. CONTROL is the shape stock
 already runs. The row can move up once the emulator has walked this one.
 
-⚠️ UNFLASHED, and priced honestly in MAINMENU.md section 7 at ~65% for a
+❌ REPORTED BROKEN ON HARDWARE and REMOVED FROM THE RIG (13 Sep 2026).
+Sam, having run it in the flashed images: "can we remove it, it's broken and
+we are showing the controls on the effects now". The failure mode was not
+characterised before it came out of `remixes/bamsep26.py`, so what exactly
+misbehaves is unrecorded -- if this is ever picked up again, that is the
+first thing to establish. The module is kept in the tree; nothing else
+depended on it, and CC PAGE 2 took its cave budget.
+
+⚠️ Priced honestly in MAINMENU.md section 7 at ~65% for a
 first flash. The two inferences that carry the risk: that closing the menu
 from inside an action is safe (stock's own [NO] does it) and that the
 per-track FX2 id array is where tempo_cave.s reads it. The second degrades
