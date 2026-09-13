@@ -354,9 +354,13 @@ def write_excerpt(x, sr, path):
 
 
 def assert_connections(clock, layout, verbose=True):
-    """Every knob the rung relies on, over page-1 CCs (FX2 slot k = CC 40+k,
-    FX1 slot k = CC 34+k, on the track's channel). Page 2 cannot be driven
-    (FAILURE_MODES: CC PAGE 2 does not write on hardware)."""
+    """EVERY page-1 slot of every placed module, from the same bytes the
+    project was stamped with (FX2 slot k = CC 40+k, FX1 slot k = CC 34+k, on
+    the track's channel). Not just the rung's explicit knobs: after a stress
+    the other knobs hold their last stress value (13 Sep 2026 -- the unit sat
+    with the delay at FDBK 127 and the stations' page 1 at 0 after the first
+    stress run). Page 2 cannot be driven (FAILURE_MODES: CC PAGE 2 does not
+    write on hardware)."""
     sys.path.insert(0, str(HERE.parent)); import toolpath  # noqa: E402,F401
     from remix import registry
     mods = registry.modules()
@@ -367,13 +371,15 @@ def assert_connections(clock, layout, verbose=True):
                 continue
             key, knobs = spec
             m = mods[key]
-            kmap = m.knob_map_all()
-            for name, val in knobs.items():
-                slot = kmap[name] if isinstance(name, str) else name
-                if slot >= 6:
-                    continue                  # page 2: not reachable over MIDI
-                clock.cc(t, base + slot, val)
-                sent.append(f"T{t} CC{base + slot}={val}")
+            if getattr(m, "is_stock", False):
+                continue                      # a stock row's page is its own
+            vals = P.module_defaults(m, knobs)
+            for slot in range(6):
+                prm = m.params[slot] if slot < len(m.params) else None
+                if prm is None or not prm.name:
+                    continue                  # a blank slot publishes nothing
+                clock.cc(t, base + slot, vals[slot])
+                sent.append(f"T{t} CC{base + slot}={vals[slot]}")
                 time.sleep(0.02)
     if verbose and sent:
         print("  asserted: " + " ".join(sent))
@@ -646,6 +652,153 @@ def reanalyse(args):
     print("\n".join(rows))
 
 
+# ---------------------------------------------------------------------------
+# stress: drive every page-1 knob MIDI can reach through its extremes while
+# the rung plays (Sam, 13 Sep 2026: the errors "were happening constantly",
+# so a static soak has little value; the knobs are what a set does)
+# ---------------------------------------------------------------------------
+def _cc_for(mods, layout, t, fx, name):
+    spec = layout[t][0 if fx == "fx1" else 1]
+    if spec is None:
+        return None
+    m = mods[spec[0]]
+    slot = m.knob_map_all().get(name)
+    if slot is None or slot >= 6:
+        return None
+    return (34 if fx == "fx1" else 40) + slot
+
+
+def _page1_names(mods, spec):
+    if spec is None:
+        return []
+    m = mods[spec[0]]
+    return [p.name.decode("latin1") for p in m.params[:6] if p.name and p.active]
+
+
+def stress_script(mods, layout):
+    """-> [(t_seconds, phase, [(track, cc, value), ...])]. Restores the rung's
+    own values at the end (assert_connections does the bus knobs)."""
+    ev = []
+    t = 0.0
+
+    def at(dt, phase, moves):
+        nonlocal t
+        t += dt
+        ev.append((t, phase, [m for m in moves if m[1] is not None]))
+
+    aux = [(tr, _cc_for(mods, layout, tr, "fx2", "AUX"), 127) for tr in range(1, 8)]
+    ret = (8, _cc_for(mods, layout, 8, "fx1", "RET"), 127)
+    at(30, "sends 127", aux + [ret])
+    # the delay host (T1): FDBK 127 / TONE 0, then TIME sweep
+    d = lambda n, v: (1, _cc_for(mods, layout, 1, "fx2", n), v)
+    at(20, "delay FDBK 127 TONE 0", [d("FDBK", 127), d("TONE", 0)])
+    for i, v in enumerate(list(range(0, 128, 16)) + list(range(127, -1, -16))):
+        at(1.0 if i else 15, "delay TIME sweep", [d("TIME", v)])
+    at(10, "delay PING 127 MIX 127", [d("PING", 127), d("MIX", 127)])
+    # the reverb host (T5)
+    r = lambda n, v: (5, _cc_for(mods, layout, 5, "fx2", n), v)
+    at(10, "reverb TIME/MOD/SIZE 127", [r("TIME", 127), r("MOD", 127), r("SIZE", 127)])
+    for i, v in enumerate(list(range(127, -1, -16)) + list(range(0, 128, 16))):
+        at(1.0 if i else 15, "reverb TIME sweep", [r("TIME", v)])
+    at(10, "reverb TONE 0 then 127", [r("TONE", 0)])
+    at(5, "reverb TONE 127", [r("TONE", 127)])
+    # the stations: every active page-1 knob to 127, then 0
+    for tr in range(1, 9):
+        spec = layout[tr][0]
+        names = _page1_names(mods, spec)
+        if not names:
+            continue
+        hi = [(tr, _cc_for(mods, layout, tr, "fx1", n), 127) for n in names if n != "RET"]
+        lo = [(tr, _cc_for(mods, layout, tr, "fx1", n), 0) for n in names if n != "RET"]
+        at(8, f"T{tr} {spec[0]} page 1 all 127", hi)
+        at(8, f"T{tr} {spec[0]} page 1 all 0", lo)
+    # toggles: the return and the sends slammed
+    for i in range(10):
+        at(0.5, "RET toggle", [(8, ret[1], 127 if i % 2 else 0)])
+    for i in range(10):
+        at(0.5, "AUX toggle", [(tr, cc, 127 if i % 2 else 0) for tr, cc, _ in aux])
+    for i in range(6):
+        at(1.0, "delay FDBK toggle", [d("FDBK", 127 if i % 2 else 0)])
+    at(5, "restore", [])
+    return ev
+
+
+def stress(args):
+    if not REC.is_file():
+        sys.exit(f"compile the recorder: swiftc -O tools/hw/rec.swift -o {REC}")
+    import numpy as np
+    sys.path.insert(0, str(HERE.parent)); import toolpath  # noqa: E402,F401
+    from remix import registry
+    mods = registry.modules()
+    bank, name, what, layout = rung_by_bank(args.rung)
+    out = ROOT / "out/hw/ladder" / args.label
+    out.mkdir(parents=True, exist_ok=True)
+    script = stress_script(mods, layout)
+    total = script[-1][0] + 30
+    ref = None
+    rp = ROOT / "out/hw/ladder/pass1/results.json"
+    if rp.is_file():
+        ref = json.loads(rp.read_text()).get("A", {}).get("play")
+    clock = Clock(args.bpm, args.port)
+    log = []
+    try:
+        print(f"== stress rung {bank} {name}: {len(script)} moves over {total:.0f} s")
+        clock.stop(); time.sleep(1.0)
+        clock.pc(args.pc_channel, BANKS.index(bank) * 16); time.sleep(1.5)
+        assert_connections(clock, layout)
+        clock.start()
+        t0 = time.time()
+        stop = threading.Event()
+
+        def driver():
+            for t, phase, moves in script:
+                while time.time() - t0 < t and not stop.is_set():
+                    time.sleep(0.05)
+                if stop.is_set():
+                    return
+                for tr, cc, v in moves:
+                    clock.cc(tr, cc, v); time.sleep(0.01)
+                log.append((round(time.time() - t0, 1), phase))
+                print(f"  t={time.time() - t0:5.0f}s  {phase}")
+            # the rung's own values back
+            assert_connections(clock, layout, verbose=False)
+            log.append((round(time.time() - t0, 1), "rung values restored"))
+
+        th = threading.Thread(target=driver, daemon=True); th.start()
+        chunks = []; events = []
+        n_chunks = int(np.ceil(total / args.chunk))
+        for c in range(n_chunks):
+            path = out / f"{bank}_{name}_stress{c:02d}.wav"
+            x, sr = capture(args.chunk, path, args.device)
+            L = x[:, 2]; chunks.append(L)
+            a = analyse_play(L, sr)
+            hot = ""
+            if ref and a.get("bands"):
+                dl = [(k, a["bands"][k] - ref["bands"][k]) for k in a["bands"] if a["bands"][k] is not None]
+                hot = " ".join(f"{k}:{d:+.0f}" for k, d in dl if d >= 3)
+            tc = round(time.time() - t0 - args.chunk, 1)
+            if a["silent"] or a["freeze_at"] is not None:
+                at = tc + (a["freeze_at"] or 0)
+                events.append((at, "FREEZE"))
+                print(f"  *** FREEZE at t={at:.0f}s during '{[p for tt, p in log if tt <= at][-1:]}'  >>> transport restart")
+                clock.stop(); time.sleep(1.0); clock.start()
+            print(f"  chunk {c} (t={tc:.0f}s): rms {a['rms']:.1f} peak {a['peak']:.1f}"
+                  + (f"  bands up: {hot}" if hot else "") + (f"  {a['dropouts']} dropouts" if a["dropouts"] else ""))
+        stop.set(); th.join(timeout=2)
+        tpath = out / f"{bank}_{name}_stress_tail.wav"
+        stop_nominal = capture_with_stop(args.tail, tpath, args.device, clock, 3.0)
+        xt, sr = read_wav(tpath)
+        tail = analyse_tail(xt[:, 2], sr, stop_nominal)
+        play = analyse_play(np.concatenate(chunks), sr)
+        res = dict(rung=bank, name=name, play=play, tail=tail, events=events, phases=log,
+                   when=time.strftime("%H:%M:%S"))
+        (out / "stress.json").write_text(json.dumps(res, indent=1))
+        print(fmt_row(bank, name + "*", play, tail, ref))
+        print(f"  freezes: {len(events)}   peak {play['peak']:.1f} dBFS")
+    finally:
+        clock.stop(); clock.close()
+
+
 def summary(args):
     """The report rows plus the solo table: per-track rms of each rung minus
     rung A's (the same track, the same material -- the rig's contribution to
@@ -688,6 +841,11 @@ def main():
     p.add_argument("--solo", action="store_true", help="after the play phase, solo each track for 8 s")
     p = sub.add_parser("analyse"); p.add_argument("label")
     p = sub.add_parser("summary"); p.add_argument("label")
+    p = sub.add_parser("stress"); p.add_argument("label")
+    p.add_argument("--rung", default="G"); p.add_argument("--chunk", type=float, default=30.0)
+    p.add_argument("--tail", type=float, default=14.0); p.add_argument("--pc-channel", type=int, default=1)
+    p.add_argument("--bpm", type=float, default=121.0); p.add_argument("--port", default="UM-ONE")
+    p.add_argument("--device", default="MicroBook")
     sub.add_parser("rungs")
     args = ap.parse_args()
     if args.cmd == "proj":
@@ -698,6 +856,8 @@ def main():
         reanalyse(args)
     elif args.cmd == "summary":
         summary(args)
+    elif args.cmd == "stress":
+        stress(args)
     elif args.cmd == "rungs":
         cmd_rungs()
 
