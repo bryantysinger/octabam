@@ -242,6 +242,35 @@ warning.
 
 ---
 
+## PARSE ERROR loading a generated project — a PART record copied whole keeps the DONOR'S INDEX ✅ MEASURED 13 Sep 2026
+
+**Symptom.** LOAD PROJECT on a project written by our tooling stops with
+"PARSE ERROR"; the same tooling's earlier projects (rigproj, testproj) load
+fine, and so does the source project. Reliable, not intermittent, for the
+affected project.
+
+**Cause (measured).** Every PART record in a bank file carries **its own
+index in byte 8 of the record** (the pad byte after the 8-byte tag+length
+header): parts 1–4 hold 0, 1, 2, 3 and the saved mirrors 5–8 repeat 0, 1,
+2, 3 — on every bank of the set. The first ladder project
+(`tools/hw/ot_ladder.py proj`) copied the material's part 1 record whole
+into all eight slots, so parts 2–4 claimed index 0, and the loader refused
+the bank. rigproj/testproj never tripped it because they edit fields inside
+a record and never move a record.
+
+**Fix.** Write `p % 4` into byte 8 after any whole-record copy
+(`ot_ladder.PART_INDEX_OFF`); the generator's read-back now checks the tag
+and the index of every record. The other known parse error is different:
+`project.work` edited in text mode loses its CRLF (Flash 7 notes,
+`hw_flash7.stage`).
+
+**Falsifier.** A whole-record copy with byte 8 corrected that still throws
+PARSE ERROR would mean another per-record field is indexed; the PTRN
+chunks carry no such byte (their 16-byte headers are identical across
+patterns) and pattern 1 <- A2 loads.
+
+---
+
 ## Sequencer stuck on step 1 (DSP hang) — CYCLE OVERRUN or a wild value
 
 **Symptom.** Press play, the playhead lights **step 1 solid and never

@@ -72,6 +72,7 @@ import ot_midi                                        # noqa: E402
 import ot_project as P                                # noqa: E402
 
 REC = HERE / "rec"
+PART_INDEX_OFF = 8       # the record's own index, 0..3 -- measured on every bank of the set
 DEAD_DBFS = -80.0
 BANKS = "ABCDEFGH"
 
@@ -124,7 +125,7 @@ RUNGS = (
      _rung({**_STATIONS_PASS, 8: _RET}, _sends(_RIG_AUX, verb=True, delay=True))),
     ("G", "RIG", "the RIG table: stations + T8 GLUE comp 40 (= ot_project.RIG)",
      _rung({**_STATIONS_PASS, 8: _RET_GLUE}, _sends(_RIG_AUX, verb=True, delay=True))),
-    ("H", "RIG+DLY", "the RIG with the stock DELAY on T3's FX2 (that track loses its AUX)",
+    ("H", "RIGDLY", "the RIG with the stock DELAY on T3's FX2 (that track loses its AUX)",
      _rung({**_STATIONS_PASS, 8: _RET_GLUE},
            {**_sends(_RIG_AUX, verb=True, delay=True), 3: ("DELAY", {})})),
 )
@@ -216,6 +217,12 @@ def make_ladder_project(src, dest, remix_name, pattern="A2"):
             for p in range(P.NPARTS_ALL):
                 off = P.PART_BASE + p * P.PART_STRIDE
                 data[off:off + P.PART_STRIDE] = part_cur if p < 4 else part_sav
+                # A PART record carries ITS OWN INDEX in byte 8 (0..3, the
+                # saved mirrors 5-8 repeat 0..3). A record copied whole into
+                # another slot keeps the donor's index and the unit refuses
+                # the project with "PARSE ERROR" (13 Sep 2026, first ladder
+                # write). FAILURE_MODES "PARSE ERROR loading a generated project".
+                data[off + PART_INDEX_OFF] = p % 4
                 for t, (id1, v1), (id2, v2) in plan:
                     i = t - 1
                     data[off + P.FX1_OFF + i] = id1
@@ -239,6 +246,8 @@ def make_ladder_project(src, dest, remix_name, pattern="A2"):
             sys.exit(f"bank{num:02d}: pattern 1 read-back disagrees")
         for p in range(P.NPARTS_ALL):
             off = P.PART_BASE + p * P.PART_STRIDE
+            if data[off:off + 4] != b"PART" or data[off + PART_INDEX_OFF] != p % 4:
+                sys.exit(f"bank{num:02d} part {p + 1}: record header/index read-back disagrees")
             for t, (id1, v1), (id2, v2) in plan:
                 i = t - 1
                 a = off + P.P1_OFF + i * P.TRACK_STRIDE

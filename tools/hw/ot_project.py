@@ -11,6 +11,9 @@ image R58; anchors verified against values we wrote over MIDI and Sam's own
   bank##.work     FORM/DPS1BANK chunks: 16x PTRN (each 8 TRAC + 8 MTRA),
                   then 8x PART (parts 1-4 current, then parts 1-4 saved),
                   PART stride 0x18bb from 0x8eed6.
+                  PART+0x008: the record's OWN index 0-3 (mirrors 5-8 repeat
+                             0-3) -- a record copied whole must be re-indexed
+                             or the unit throws PARSE ERROR (13 Sep 2026)
                   PART+0x009: FX1 effect id per track (8 bytes)
                   PART+0x011: FX2 effect id per track (8 bytes)
                              (BusDelay=0x06, BusVerb=0x07, SEND=0x09)
