@@ -2261,3 +2261,24 @@ passes: thin and quiet. INFL is the master's usable drive as it stands. The
 harness-level trap (send_probe / the FX1 render level) again: voice a
 saturator at the level it will actually see. To diagnose/fix: dsp_host with a
 bass-heavy signal at -35 dBFS rms, not a 0.13 FS tone.
+
+**Update (same round): dsp_host does NOT reproduce the thinning — it shows the
+OPPOSITE.** On the same bass-heavy mix at -29/-35/-45 dBFS rms, with and
+without the real GLUE, TAPE gets LOUDER with drive in the emulator (+6 at DRV
+32, +20 at 127), TUBE a flat +6, INFL +0..+3.5. The unit measured TAPE DRV 1
+= -7 dB and thin. **Same image, opposite sign.** So the unit's thinning is
+NOT in the DSP arithmetic the emulator runs — it is un-modeled (the master /
+mixer path or parameter delivery on T8), the page-2-lane / mixer-level class.
+⚠️ A CURVE FIX FLASHED NOW MAY NOT TOUCH IT. The port must reproduce the
+thinning first (the stop/start port fork added transport control, the vehicle).
+
+**Confirmed design flaw, separate, emulator-visible: DRV is a PREAMP, not a
+saturator.** At mix level a band times the 7.9x drive reaches only ~0.24,
+below the smoothstep's knee, so ss(v) approx 1.5*d*v -- output scales
+LINEARLY with drive (+20 dB at DRV 127, ~7% THD): a gain knob. TUBE is a flat
++6 dB makeup. INFL crossfades harmonics at near-constant level (why it
+"works"). Fix (proven in a float model, NOT in asm, on hold until the port
+reproduces the hardware bug): (1) post-multiply the saturated bands by 1/d
+(a per-block 1/d P-table, ~9-17 words, no per-sample cost) to hold level;
+(2) widen the drive max from 7.9x to ~30x so it saturates at mix level with
+level held -- dmax is Sam's ear. Same for TUBE.
