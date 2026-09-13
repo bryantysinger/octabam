@@ -182,6 +182,19 @@ and TIME responds by ear. So the pinned knobs and the silence were **RAM
 state, not stored data** — a runtime fault that will recur, not something
 wrong on the card. That is the useful half of this entry.
 
+**13 Sep 2026 evening — THE VALUES WERE STORED IN THE PART, not only RAM.**
+OCTABAM86 bank A part 1 (the part yesterday's session played) holds BusDelay
+`AUX 90, TIME 20, FDBK 85, TONE 68, PING 28` (page 2 `MRAT 70, SIZE 0, PTCH
+68`), every other track's AUX at 110–127, and BusVerb at `AUX 0, MIX 0`; parts
+2–4 hold TONE 68 and banks B/C TONE 0. So the "pinned 68/0/84" reading was
+the part's own bytes (85 read as 84 at the panel, or one step moved), and a
+rig with every send near full into a delay at FDBK 85 with a dark TONE is the
+"loops and mess" of the last days by construction. Read with
+`tools/hw/ot_ladder.py`'s diff on the card; the rig re-stamped from the
+manifests (`OCTABAM87`, rigproj with the fixed stamper) measured clean on the
+ladder at every rung and under a 5-minute page-1 stress. Why the encoders
+would not move a stored value is still open.
+
 **Cause. NOT ESTABLISHED.** Scene locks are ruled out: Sam checked by holding
 scene A and scene B, no locks. Untested: whether the delay is audible with
 BusVerb out of the chain entirely (T5 FX2 → a stock effect), and what the
@@ -239,6 +252,58 @@ same test on the stamped project gave -2.13 dB.
 measurement, never after a re-select: return level `CC 36` on the master's
 channel, `AUX` `CC 40` per track. `ot_soak.py`'s docstring carries the
 warning.
+
+---
+
+## A station stamped "at its defaults" was running its default MODE'S VIEW — a chorus on T5 in every RIG project since 12 Sep 2026 ✅ MEASURED 13 Sep 2026
+
+**Symptom.** A station that documents a bit-exact passthrough at its
+defaults changes the track's level. On the 13 Sep ladder, adding the
+stations at "passthrough" (rung F against rung E) dropped T5's solo by
+2.5 dB; the emulator renders Modulation CHOR at MIX 64 as −2.1 dB on a tone
+and −3.8 dB on noise against MIX 0.
+
+**Cause (measured).** `ot_project.module_defaults` applied the ModeView of
+whatever MODE the manifest defaults select — for Modulation that is CHOR,
+whose view sets MIX 64 and RATE 30 — so `rigproj` and `stamp-defaults`
+wrote a chorus at half mix into every T5 since the mode-aware stamper
+(PR #217). No other module's default-mode view differs from its manifest.
+
+**Fix.** A view applies only when the MODE is explicitly chosen (given in
+the knob dict); the manifest defaults are the stamped default. Re-stamp
+the RIG projects.
+
+**Falsifier.** Re-stamped, T5 with Modulation must solo within the
+rung-to-rung scatter (±0.4 dB) of T5 without it.
+
+---
+
+## PARSE ERROR loading a generated project — a PART record copied whole keeps the DONOR'S INDEX ✅ MEASURED 13 Sep 2026
+
+**Symptom.** LOAD PROJECT on a project written by our tooling stops with
+"PARSE ERROR"; the same tooling's earlier projects (rigproj, testproj) load
+fine, and so does the source project. Reliable, not intermittent, for the
+affected project.
+
+**Cause (measured).** Every PART record in a bank file carries **its own
+index in byte 8 of the record** (the pad byte after the 8-byte tag+length
+header): parts 1–4 hold 0, 1, 2, 3 and the saved mirrors 5–8 repeat 0, 1,
+2, 3 — on every bank of the set. The first ladder project
+(`tools/hw/ot_ladder.py proj`) copied the material's part 1 record whole
+into all eight slots, so parts 2–4 claimed index 0, and the loader refused
+the bank. rigproj/testproj never tripped it because they edit fields inside
+a record and never move a record.
+
+**Fix.** Write `p % 4` into byte 8 after any whole-record copy
+(`ot_ladder.PART_INDEX_OFF`); the generator's read-back now checks the tag
+and the index of every record. The other known parse error is different:
+`project.work` edited in text mode loses its CRLF (Flash 7 notes,
+`hw_flash7.stage`).
+
+**Falsifier.** A whole-record copy with byte 8 corrected that still throws
+PARSE ERROR would mean another per-record field is indexed; the PTRN
+chunks carry no such byte (their 16-byte headers are identical across
+patterns) and pattern 1 <- A2 loads.
 
 ---
 

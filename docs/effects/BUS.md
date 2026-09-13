@@ -1157,6 +1157,17 @@ the first suspect.
 
 ## Known limitations
 
+**A muted track keeps sending (measured 13 Sep 2026, `tools/hw/ot_ladder.py`
+pass1 solos).** The OT mutes a track AFTER its effects, and the AUX send is
+taken inside FX2, so a muted track's audio still reaches the delay and the
+reverb, and the return on the master keeps printing it. Soloing a silent
+track under any bus rung gives a steady wet-only signal 13–17 dB below the
+mix for as long as the others play (rung C −52 dBFS, D −48, E −48, G −48;
+rung A −102). Not a loop, and not a defect of ours — it is where the stock
+mute sits — but a performance fact: killing a track's send needs its AUX at
+0, not its mute.
+
+
 - **The position-0 double-buffer swap has to be duplicated verbatim in all
   three effect types.** There's no global per-block hook to hang it on
   (Memory/Mechanism sections above), so `SEND`, `DELAY SERVER` and

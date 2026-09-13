@@ -169,6 +169,7 @@ last section), the hardware rig — protocol in `docs/effects/CAPTURE.md`:
 | `tools/hw/level_cap.py` | quick capture with peak/RMS/crest/clip-run reporting per channel |
 | `tools/hw/gain_pass.py` | gain-matches a whole project bank-by-bank over MIDI |
 | `tools/hw/ot_project.py` | reads (and carefully writes) Octatrack project/bank files on the CF card — reverse-engineered format |
+| `tools/hw/ot_ladder.py` | the rig LADDER: one configuration per bank in a card project (effect selection without the panel), stepped by program change, each rung measured by level, spectrum and the tail after STOP (bus connected, reverb T60, delay time); `proj` / `run` / `analyse` / `summary` |
 | `tools/hw/decode_tempo_probe.py` | decodes captures from the tempo probe build, which streams the DSP's parameter staging block out through the audio |
 
 ## Conventions the tooling enforces
