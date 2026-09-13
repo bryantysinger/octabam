@@ -2297,3 +2297,18 @@ THREE hardware breaks (comp R-channel, TAPE thins, TUBE collapses), all green
 on the local gates. Recommendation: roll Character back to the pre-port
 (image-97) version for the set; fix the ports on the branch with stereo
 renders at real levels + the port modelling the master path.
+
+**LOCALIZED on the unit (clean, transport running), out/hw/ladder/master_localize.log:**
+the right-channel collapse under compression is MASTER-TRACK + STEREO specific.
+- T8 (master) COMP 80: R-L = -33.7 dB (R collapses). T1 (same Character, same
+  COMP 80, as a normal insert): R-L = -3.4, no collapse.
+- RET 0 and RET 127 identical (-46.3 / -44.6) -> NOT the return injection.
+- Both CMOD flavours (GLUE and COMP).
+- WDTH 0 (mono the master): R-L = -0.1, recovers -> needs L != R.
+So: compression on the MASTER track with real stereo content. The DSP code is
+channel-symmetric (proven: dsp_host -stereo, two-core bus, panned/decorrelated
+all symmetric). Neither harness models the OT master track's stereo path.
+Next: feed the REAL captured stereo mix (out/hw/ladder/ml_*.wav) through
+dsp_host -stereo COMP80/WDTH64 -- if it reproduces on real content, trace/fix
+without the master track; else the ColdFire port with OCTABAM88 + samples +
+the master track is the instrument.
