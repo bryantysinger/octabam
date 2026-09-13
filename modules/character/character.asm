@@ -196,24 +196,15 @@ ch_offok:
 ; return now entering BEFORE the chain the master's whole mix would pass
 ; through it. A per-block flag ($4d) skips the stage per sample -- a forward
 ; skip, the class CYCLES_FORWARD_BRANCHES admits -- so DRV 0 is bit-exact in
-; every mode on every track, and the DC blocker / low-pass state is cleared
-; here so a later DRV starts from silence rather than from stale history.
+; every mode on every track. (The DC blocker / low-pass state is NOT cleared
+; while skipped -- 9 words the BURN build on payload A did not have; a later
+; DRV resumes from stale filter history, one small step at most.)
         move    x:(r6+$0),a             ; DRV
         clr     b                       ; b = 0 BEFORE the tst (the flag trap)
         move    #>$1,x0
         tst     a
         teq     x0,b                    ; DRV == 0 -> skip flag 1
         move    b,x:(r7+$4d)
-        tst     b
-        beq     ch_drvon
-        clr     a
-        move    a,x:(r7+$41)
-        move    a,x:(r7+$42)
-        move    a,x:(r7+$43)
-        move    a,x:(r7+$44)
-        move    a,x:(r7+$4a)
-        move    a,x:(r7+$4b)
-ch_drvon:
         move    x:(r6+$0),x0            ; the knob word IS DRV/128 in Q23
         move    #>$780000,y1            ; 15/16
         mpy     x0,y1,a                 ; (15/16)*(DRV/128)

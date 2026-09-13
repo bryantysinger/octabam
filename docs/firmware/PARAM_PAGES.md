@@ -737,10 +737,25 @@ takes three six-byte page-2 blocks per track out of the 72-byte live lane
 | `+0x32..+0x37` | DSP record hw 18-20 | **FX1 page 2** |
 | `+0x38..+0x3d` | DSP record hw 24-26 | **FX2 page 2** |
 
-Measured with marker bytes (scratchpad `copier_markers.py`). The page-2
-editor `0x4003a474` writes the lane at `+0x20 + idx*6 + slot` with `idx` the
-staged index at `0x460d5c30`, so it reaches the DSP for FX1 only at idx 3
-and for FX2 only at idx 4; what the panel stages on hardware is the open
-read (FAILURE_MODES "An FX1 station's PAGE 2 does not reach the DSP on
-T1"). The page-1 writer `0x40054cd8(track, flat, value)` is symmetric:
-FX1 slot k at `+0x12 + k`, FX2 slot k at `+0x18 + k`.
+Measured with marker bytes (scratchpad `copier_markers.py`).
+
+**Each page has its own page-2 editor** (measured 13 Sep 2026, later the
+same evening; ⚠️ RETRACTS the reading that `0x4003a474` is "the FX page-2
+editor" — it is the PLAYBACK page's: its `0x460d5c30` indexes the PLAYBACK
+descriptor table `0x400d5f38[machine]` by machine type, its Part store is
+`+0x8ef5a + track*30 + machine*6 + slot` and its live write is fixed at
+`0x80000830 + track*72 + slot`):
+
+| editor | entry | Part store | shadow | live lane |
+|---|---|---|---|---|
+| FX1 page 2 | `0x4003abe4(slot2, delta)` | `DB + part*6322 + 0x8f07e + track*30 + slot` (pc `0x4003acb2`) | `0x100a51cc + …` | `0x80000842 + track*72 + slot` = **+0x32** |
+| FX2 page 2 | `0x4003a9dc(slot2, delta)` | `… + 0x8f084 + track*30 + slot` (pc `0x4003aaaa`) | `0x100a51d2 + …` | `0x80000848 + …` = **+0x38** |
+| AMP page 2 | `~0x4003ae..` | — | — | `0x8000083c + …` = +0x2c |
+
+Each reads the slot's FX id from the Part (`+0x8ed80 + track` / `+0x8ed88 +
+track`), takes the descriptor from `0x400d5f58[id]` / `0x400d5fdc[id]`,
+clamps by `+0x6a` / `+0x9a`, and has **no page or index term**. Called under
+the emulator for T1, T3 and T8 the FX1 editor's three writes landed exactly
+there on every track, THRU included. The page-1 writer
+`0x40054cd8(track, flat, value)` is symmetric: FX1 slot k at `+0x12 + k`,
+FX2 slot k at `+0x18 + k`.

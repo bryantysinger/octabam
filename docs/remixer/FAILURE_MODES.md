@@ -415,46 +415,33 @@ test (SAT = TAPE at the panel, knob 3 to 127 over CC 36 while playing)
 decides whether page 2 reaches the DSP on the master only, or only via the
 stamp and never via the panel.
 
-**MECHANISM, HALF MEASURED (port, 13 Sep evening; scratchpad
-`fx1p2_trace.py`, `copier_markers.py`).** The per-frame copier `0x4000cae8`
-takes THREE six-byte page-2 blocks per track out of the 72-byte live lane
-(`0x80000810 + track*72`) into the DSP record (`0x80000110 + 64*track`,
-hw 21-23 / 18-20 / 24-26): **AMP p2 from +0x2c, FX1 p2 from +0x32, FX2 p2
-from +0x38.** Bytes +0x20..+0x2b (PLAYBACK, LFO p2) never reach the DSP. The
-panel's page-2 editor `0x4003a474` writes the Part (`+0x8ef5a + track*30 +
-idx*6 + slot`), the shadow (`0x100a50a8 + ...`) and the live lane at
-`+0x20 + idx*6 + slot` with `idx = long 0x460d5c30`, the STAGED INDEX -- so
-an FX2 edit reaches the DSP only when idx = 4 and an FX1 edit only when
-idx = 3. The emulator cannot show what the real key press stages (the
-setter does not run there; it reads 0 after every page call). Two
-candidates for T1: the FX1 page stages a different index on T1 (a THRU
-machine; T8 is FLEX -- a page ordinal per machine type would do it) or
-payload B unpacks hw 18-20 differently. The stamp reaches both because the
-load-time refresher fills the lane from the Part directly. **Discriminator:**
-a page-2 edit on a STATIC track (T3 Spectrum MODE LP->HP with FREQ low
-over CC 34) -- if it reaches, the machine-type ordinal is the cause.
+**MECHANISM: THE COLDFIRE SIDE IS EXONERATED (port, 13 Sep evening, two
+runs).** ❌ The first run's model — one page-2 editor `0x4003a474` writing the
+lane at `+0x20 + staged_index*6`, so a THRU track's FX1 page "stages the
+wrong index" — is RETRACTED: that routine is the PLAYBACK page's editor. The
+FX1 page has its own, `0x4003abe4`, which writes the Part at `+0x8f07e +
+track*30 + slot`, the shadow at `0x100a51cc + …` and the live lane at
+`0x80000842 + track*72 + slot` (= +0x32, exactly the lane the per-frame
+copier `0x4000cae8` delivers to the DSP record as FX1 page 2), with no page
+or index term — and called under the emulator for T1 (THRU), T3 and T8 its
+three writes landed exactly there on every track (PARAM_PAGES.md "The
+page-2 lanes"). So the panel edit reaches the right lane on T1. **The fault
+is downstream of the lane**: the DSP side at position 0 on payload B, or a
+per-frame refresh of that lane peculiar to a THRU machine — not measured.
+Hardware facts that any explanation must fit: T3 (STATIC, Spectrum MODE
+LP→HP, `out/hw/ladder/bisect95/t3mode_{LP,HP}.wav`: rms −74 → −58, low
+bands +27 dB) and T8 (FLEX master, Character SAT) take a panel page-2 edit;
+T1 (THRU) does not; a T1 one-step SAT edit showed on neither the AMP nor the
+LFO page 2; the stamp reaches all three. Next instrument: the port with
+`--watch` on `0x80000842..0x80000847` and on T1's DSP record bytes 36-41
+across frames after an FX1 editor call, THRU machine loaded.
 **Consequence found on the way:** the CC PAGE 2 cave (`modules/ccpage2`)
-writes the lane at +0x20 + slot, PLAYBACK's block, never the DSP's -- which
-is why CC 62-67 are inert on hardware; its Part/shadow stores are at the
-same wrong index. Fix: live +0x38 + slot, Part/shadow +24 + slot. The 5 Sep
-"FX2 stages index 0" reading was the emulator's own artefact -- ⚠️ BUT
-`cc_page2.s` records SHMR moving over CC on hardware that day with the +0
-store (tag 13), which contradicts the lane map if "moved" meant the sound
-and not the panel value. Unresolved: the +0x38 fix is a candidate, to be
-proven on the unit (a CC 63 with the reverb audible), not assumed.
-
-**DISCRIMINATOR RUN (13 Sep, later the same evening; `out/hw/ladder/bisect95/t3mode_{LP,HP}.wav`).**
-T3 (a STATIC machine) soloed, Spectrum FREQ 20 over CC 34, 6 s under our
-clock: MODE = LP (stamped) rms −74.1 dBFS, low bands −109; after Sam set
-MODE = HP at the panel: rms −58.3, low bands −81.7. **A page-2 edit on an
-FX1 station reaches the DSP on a STATIC track.** With T1 (THRU) failing and
-T8 (FLEX, master) working, the staged page index is per MACHINE TYPE and
-the THRU machine's FX1 page stages the wrong one. Fix candidate: a cave at
-the editor's three stores (`0x4003a5ba`, `0x4003a5c2`, `0x4003a610`) that
-derives the offset from the page KIND (`0x460d1684`: FX1 → +18 / lane
-+0x32, FX2 → +24 / lane +0x38) instead of the staged index -- the same
-derivation the CC page-2 cave should use. Pending: which page a THRU edit
-lands in (a one-step SAT edit on T1 showing up on its AMP or LFO page 2).
+used the PLAYBACK editor's three stores, so every CC 62-67 corrupted the
+track's PLAYBACK page-2 byte and never touched FX2's; SHMR "moved" on 5 Sep
+only because its DISPOFF write happened to hit the real FX2 Part byte. Now
+on the FX2 editor's own stores (Part `+0x8f084`, shadow `0x100a51d2`, lane
++0x38), `verify_ccpage2` real and green — a candidate until a CC 63 is
+heard on the unit.
 
 **Interim for the set:** keep every station's knob 3 at 0 on FX1 tracks;
 the stamp writes 0 there.

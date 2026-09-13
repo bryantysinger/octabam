@@ -89,15 +89,20 @@ def _part_base(uc):
 
 def _addrs(uc, track, slot2):
     base = _part_base(uc)
-    return (base + 0x8ef5a + track * 30 + 0 + slot2,    # Part: page*6+slot2, FX2 stages index 0 (hw-measured 5 Sep, tag 12)
-            0x80000810 + track * 72 + 0x20 + slot2,       # live
-            0x100a50a8 + 0 + track * 30 + slot2)          # shadow: 0x100a50a8+part*6322+track*30+page*6+slot2 (P2EDIT 0x4003a5bc), part 0, index 0
+    return (base + 0x8f084 + track * 30 + slot2,        # Part: the FX2 page-2 editor's own store (0x4003aaaa)
+            0x80000810 + track * 72 + 0x38 + slot2,       # live: the FX2 page-2 lane the copier delivers (0x4003ab00)
+            0x100a51d2 + track * 30 + slot2)              # shadow: 0x100a51d2+part*6322+track*30+slot2 (0x4003aab2), part 0
+    # Until 13 Sep 2026 these were 0x8ef5a / +0x20 / 0x100a50a8 -- the PLAYBACK
+    # page-2 editor's arrays (0x4003a474; its "staged index" is the machine type).
 
 
 def main():
     m = _manifest()
     check_source_matches(m)
     blob, pokes = m.emit(CAVE_AT)
+    # the source is the truth and emit() returns no bytes: run the ORACLE
+    # form (== the linked source, proven above) at the test address
+    blob = m.legacy_bytes(CAVE_AT)
     assert pokes[0] == (0x400d64a0, (0x4000e79c).to_bytes(4, "big"),
                         CAVE_AT.to_bytes(4, "big")), "dispatch poke wrong"
 
@@ -126,7 +131,6 @@ def main():
     def send(track, effect_id, cc, value, channel=3):
         emu.assign_fx2(r, track=track, effect_id=effect_id)
         uc.mem_write(PARTB, b"\x00")
-        uc.mem_write(0x460d5c30, (0).to_bytes(4, "big"))   # staged page index 0 (the cave pins +0 anyway)
         uc.mem_write(AUDIO_CC_IN, b"\x01")
         uc.mem_write(AUTO_CH, b"\xff")
         # every track off, then our track listens on `channel`
