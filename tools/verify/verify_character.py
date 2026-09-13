@@ -310,5 +310,59 @@ check("FX2 instance trips no write guard",
       "guard clean" in g,
       next((ln.strip() for ln in reversed(g.splitlines()) if "guard" in ln), ""))
 
+# ---- 12. STEREO CHANNEL SYMMETRY (13 Sep 2026) -------------------------------
+# The mono renders above feed L == R, so a per-channel bug is invisible: the
+# right-channel compressor collapse Sam heard on the unit passed 28/28. These
+# feed DIFFERENT L and R through dsp_host -stereo and assert the chain treats
+# the channels identically -- swap the inputs, the outputs must swap exactly;
+# a stereo signal through COMP must reduce both channels equally. (The unit's
+# collapse does NOT reproduce here even in stereo, so it is the master path /
+# delivery, not this arithmetic -- but this gate catches any future asymmetry
+# in the code.)
+def render_stereo(Ls, Rs, **kw):
+    inter = []
+    for i in range(len(Ls)):
+        inter.append(Ls[i]); inter.append(Rs[i])
+    src = TMP / "ch_st_in.raw"
+    src.write_bytes(b"".join(struct.pack("<i", m) for m in inter))
+    out = TMP / "ch_st_out.raw"
+    cmd = [HOST, "-mem", MEM, "-init", f"{init:x}", "-proc", f"{proc:x}",
+           "-inst", "1", "-r7", "1", "-alloc", "0", "-inmask", "1", "-stereo",
+           "-frames", str(FRAMES), "-blocks", str(len(Ls) // FRAMES),
+           "-in", str(src), "-out", str(out),
+           "-params", ",".join(str(x) for x in params(**kw))]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        sys.exit(f"stereo host failed for {kw}:\n{r.stdout}\n{r.stderr}")
+    d = out.read_bytes(); w = struct.unpack(f"<{len(d)//4}i", d)
+    return list(w[0::2])[:len(Ls)], list(w[1::2])[:len(Ls)]
+
+def _maxdiff(a, b):
+    return max((abs(a[i] - b[i]) for i in range(len(a) // 2, len(a))), default=0)
+
+Lin = tone(1000, amp=0.15)
+Rin = tone(220, amp=0.06)                      # different content and level per channel
+# COMP 80 GLUE: swap the inputs, the outputs must swap (channel symmetry)
+L1, R1 = render_stereo(Lin, Rin, DRV=0, CMOD=1, COMP=80, MIX=127)
+L2, R2 = render_stereo(Rin, Lin, DRV=0, CMOD=1, COMP=80, MIX=127)
+check("COMP is channel-symmetric (swap L/R, outputs swap)",
+      _maxdiff(L1, R2) <= 4 and _maxdiff(R1, L2) <= 4,
+      f"L1~R2 {_maxdiff(L1, R2)}  R1~L2 {_maxdiff(R1, L2)}")
+# neither channel collapses: with equal-level L/R, COMP reduces both alike
+Le, Re = tone(1000, amp=0.12), tone(1000, amp=0.12)
+L0, R0 = render_stereo(Le, Re, DRV=0, CMOD=1, COMP=0, MIX=127)
+Lc, Rc = render_stereo(Le, Re, DRV=0, CMOD=1, COMP=127, MIX=127)
+dL = rms_db(Lc) - rms_db(L0); dR = rms_db(Rc) - rms_db(R0)
+check("COMP 127 reduces L and R equally, neither collapses",
+      abs(dL - dR) < 1.0 and rms_db(Rc) > -50,
+      f"dL {dL:.1f} dR {dR:.1f} Rrms {rms_db(Rc):.1f}")
+# TAPE/TUBE channel symmetry too
+for sat, name in ((0, "TAPE"), (1, "TUBE"), (2, "INFL")):
+    a1, b1 = render_stereo(Lin, Rin, DRV=64, SAT=sat, COMP=0, MIX=127)
+    a2, b2 = render_stereo(Rin, Lin, DRV=64, SAT=sat, COMP=0, MIX=127)
+    check(f"SAT {name} is channel-symmetric",
+          _maxdiff(a1, b2) <= 6 and _maxdiff(b1, a2) <= 6,
+          f"{_maxdiff(a1, b2)} / {_maxdiff(b1, a2)}")
+
 print(f"\n{fails} gate(s) failed" if fails else "\nOK")
 sys.exit(1 if fails else 0)

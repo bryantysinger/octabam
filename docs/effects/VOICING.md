@@ -2238,3 +2238,140 @@ VOWL's 433, so VOWL still sets the line); worst core unchanged at 3,654
 (four Characters + delay + three sends), headroom 234 against the 3,888
 credited line. Four Spectrums in LADR on a core sit under it (the worst
 Spectrum layout prices below the Character one). Unheard; nothing flashed.
+
+## 13 Sep 2026 late — the Character live round on the unit (image 100), first finding
+
+On the master (Character on T8 FX1, the full mix ~-35 dBFS rms, bass-heavy),
+driven over MIDI while the set played:
+
+| stage | rms vs DRV 0 | by ear |
+|---|---|---|
+| TAPE DRV 1 | -7 dB | already quiet |
+| TAPE DRV 32 | -5 to -10 dB, bass gone | thin (Sam) |
+| TUBE DRV 32 | -28 dB | nearly gone |
+| INFL DRV 32 | +0.3 dB, full | good |
+| DRV 0 | unity | the reference |
+
+So **TAPE and TUBE have a level/tone fault on a full-band mix at its real
+level** -- the opposite of the emulator's +6..+17 dB, which voiced TAPE
+against a 0.13 FS tone (~-18 dBFS, far hotter than the mix). The TapeHead
+band split saturates the low and mid bands and passes the highs clean, so on
+bass-heavy material at -35 dBFS the loud low band is crushed while the top
+passes: thin and quiet. INFL is the master's usable drive as it stands. The
+harness-level trap (send_probe / the FX1 render level) again: voice a
+saturator at the level it will actually see. To diagnose/fix: dsp_host with a
+bass-heavy signal at -35 dBFS rms, not a 0.13 FS tone.
+
+**Update (same round): dsp_host does NOT reproduce the thinning — it shows the
+OPPOSITE.** On the same bass-heavy mix at -29/-35/-45 dBFS rms, with and
+without the real GLUE, TAPE gets LOUDER with drive in the emulator (+6 at DRV
+32, +20 at 127), TUBE a flat +6, INFL +0..+3.5. The unit measured TAPE DRV 1
+= -7 dB and thin. **Same image, opposite sign.** So the unit's thinning is
+NOT in the DSP arithmetic the emulator runs — it is un-modeled (the master /
+mixer path or parameter delivery on T8), the page-2-lane / mixer-level class.
+⚠️ A CURVE FIX FLASHED NOW MAY NOT TOUCH IT. The port must reproduce the
+thinning first (the stop/start port fork added transport control, the vehicle).
+
+**Confirmed design flaw, separate, emulator-visible: DRV is a PREAMP, not a
+saturator.** At mix level a band times the 7.9x drive reaches only ~0.24,
+below the smoothstep's knee, so ss(v) approx 1.5*d*v -- output scales
+LINEARLY with drive (+20 dB at DRV 127, ~7% THD): a gain knob. TUBE is a flat
++6 dB makeup. INFL crossfades harmonics at near-constant level (why it
+"works"). Fix (proven in a float model, NOT in asm, on hold until the port
+reproduces the hardware bug): (1) post-multiply the saturated bands by 1/d
+(a per-block 1/d P-table, ~9-17 words, no per-sample cost) to hold level;
+(2) widen the drive max from 7.9x to ~30x so it saturates at mix level with
+level held -- dmax is Sam's ear. Same for TUBE.
+
+**CONFIRMED, clean measurement (transport running): the AC1 compressor KILLS
+THE RIGHT CHANNEL.** On the master, DRV 0, INFL, sweeping COMP: L holds ~-32
+dBFS at every COMP; R is -33.9 at COMP 40 (already decorrelating, 0.95->0.85),
+-71.9 at COMP 80, -76.4 at COMP 127 -- the right channel collapses ~40 dB and
+what remains is distorted (HF tilt +40 dB over L). With SAT skipped (DRV 0)
+COMP 80 still does it, so it is the COMPRESSOR (tonight's AC1 port), not
+INFL/TAPE. Sam heard it at COMP 40 (the stamp). A channel-specific gain bug:
+the mono detector's gain is misapplied to R (a stale register / wrong state
+slot / A2 staleness on the R path). Reproducible LOCALLY with a STEREO render
+(dsp_host -stereo) -- the 28/28 gate rendered mono. Tonight's Character has
+THREE hardware breaks (comp R-channel, TAPE thins, TUBE collapses), all green
+on the local gates. Recommendation: roll Character back to the pre-port
+(image-97) version for the set; fix the ports on the branch with stereo
+renders at real levels + the port modelling the master path.
+
+**LOCALIZED on the unit (clean, transport running), out/hw/ladder/master_localize.log:**
+the right-channel collapse under compression is MASTER-TRACK + STEREO specific.
+- T8 (master) COMP 80: R-L = -33.7 dB (R collapses). T1 (same Character, same
+  COMP 80, as a normal insert): R-L = -3.4, no collapse.
+- RET 0 and RET 127 identical (-46.3 / -44.6) -> NOT the return injection.
+- Both CMOD flavours (GLUE and COMP).
+- WDTH 0 (mono the master): R-L = -0.1, recovers -> needs L != R.
+So: compression on the MASTER track with real stereo content. The DSP code is
+channel-symmetric (proven: dsp_host -stereo, two-core bus, panned/decorrelated
+all symmetric). Neither harness models the OT master track's stereo path.
+Next: feed the REAL captured stereo mix (out/hw/ladder/ml_*.wav) through
+dsp_host -stereo COMP80/WDTH64 -- if it reproduces on real content, trace/fix
+without the master track; else the ColdFire port with OCTABAM88 + samples +
+the master track is the instrument.
+
+**WDTH scaling + balance (out/hw/ladder/wdth_scaling.log, balance_test.log):**
+at COMP 80 the R collapse SCALES with WDTH and cliffs at the neutral 64:
+R-L = -0.1 / -4.5 / -9.5 / -16.7 / -44.4 / -46.2 / -47.8 at WDTH
+0/16/32/48/64/96/127. Balance (CC 8) does NOT change it (centre/hard-L/hard-R
+all -44); with COMP 0, balance doesn't skew the channels at all. And the STAMP
+(COMP 40) caught R 16 dB down on wide content. So: master-track + compression
++ mid/side side content, cliff at neutral width, balance- and
+return-independent, code proven symmetric. Both cheap hardware hypotheses
+(return, balance) RULED OUT. Next (Sam: 2 then 1): extend the ColdFire port to
+model the master track's main/cue summing and reproduce it locally.
+
+**14 Sep 2026, the compressor R-collapse, what is PROVEN and what is not.**
+- Character's compressor apply, width and write-back were DISASSEMBLED at the
+  shipping address (dsp_asm at -org 17f3, dsp56kDisassemble -pc 17f3): the L
+  and R blocks are word-identical (`0a77c4 000035 / 2000c0 / 0c1d04 / 0a778e
+  000035` and the same with $36), one gain scalar in y1 from the mono key.
+  The arithmetic cannot zero one channel; the bit-accurate oracle on the real
+  captured mix agrees. NOT in Character's code.
+- The collapsed R at WDTH 64 is isolated SPIKES (crest 79, kurtosis ~2000),
+  and at WDTH 16..48 R is a clean copy of L at exactly the mid/side level for
+  R_comp = 0 (predicted -4.4 / -9.5 / -16.9 dB, measured -4.5 / -9.5 /
+  -16.7): the R the width stage sees is ~0 by then. WDTH 0 recovers by
+  averaging (L drops ~6 dB), which also says the drop is not downstream.
+- At the stamp (COMP 40) the collapse is BISTABLE across captures at
+  identical knobs: R-L -1.5 (corr 0.95) in some runs, -16 (corr 0.5) in
+  others. A stored/continuous state the local render (which resets state
+  per render) never reaches.
+- The "T1 insert is fine" comparison was VOID: T1 is a THRU with no input;
+  its solo measured the bus returns through T8 at -48 dBFS.
+- comptest (OCTABAM2) was SILENT, not hung: Character's id in the stamped
+  project resolved to the null stub on T8 = the master, and COMPRESSOR was
+  not in the FX1 chooser. OCTABAM3 lists it on FX1. The "COMB overlap"
+  claim was wrong (LO-FI 537 + DJ EQ 345 end at 0x01eca > Modulation's
+  0x01e57) and is retracted.
+- Usable now: INFL drive + GLUE COMP ~20 (clean) on the master; heavy
+  compression on the wide master collapses R until the mechanism is found.
+
+**14 Sep 2026 (Opus session): the port RUNS the master-track scenario and does
+NOT collapse R -- a fourth confirmation the cause is not in Character.** The
+port (`ot_emu`) boots image 100, loads the rig fixture (`out/o9d/proj_oneaux`)
+with MASTER_TRACK on and Character stamped on T8 FX1 at COMP 80 / GLUE / WDTH
+64 / DRV 0, and the summed stereo mix through it. Measured from the block dump
+(`tools/harness/port_compare.py`, and T8's chain-output readback directly):
+- T8 is genuinely the master: its chain output level equals T1 + T2 summed
+  (COMP 0: T1 -28.5 + T2 -27.7 dBFS ~= T8 -25.0; the summing is real).
+- T8 chain output is genuinely stereo: L/R correlation 0.938, not mono.
+- COMP 80 vs COMP 0 on T8: **R - L stays +0.1 dB, Rcrest 3.3, corr 0.938** --
+  no collapse, only the +1.8 dB the makeup gain adds. The stock-compressor
+  A/B is moot: the port would feed it the same summed input and show the same.
+So Character, over the port's real summed stereo master, does not collapse R.
+With the disassembly (L/R blocks word-identical), the oracle on the captured
+mix, and the new `verify_character` stereo gate (6 checks: swap L/R and the
+outputs swap; COMP 127 reduces both channels alike, neither collapses; TAPE/
+TUBE/INFL symmetric) all green, the compressor arithmetic is cleared FOUR
+ways. What the port still does not model is the OT master track's own stereo
+FEED and main/cue output stage (COLDFIRE_PORT.md O9c: the +0x80 A/B output
+pair is never written by the port's mix; the master's cue/main summing is not
+implemented). That path -- not Character's DSP -- is the remaining suspect,
+and modeling it in the port (or a hardware pass) is the next instrument. Do
+NOT re-conclude "OT master path, unfixable"; it is un-INSTRUMENTED, not proven
+unfixable. Pragmatic set constraint until then: master GLUE COMP <= ~20 is
+clean; heavy compression on the wide master collapses R on hardware only.
