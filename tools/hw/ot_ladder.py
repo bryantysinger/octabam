@@ -799,6 +799,52 @@ def stress(args):
         clock.stop(); clock.close()
 
 
+def probe(args):
+    """No program change, no assert: play whatever is up for `--secs` under
+    our clock, then the STOP tail, then an idle capture -- the delay time,
+    the reverb decay and the idle bursts of the project as loaded."""
+    import numpy as np
+    out = ROOT / "out/hw/ladder" / args.label
+    out.mkdir(parents=True, exist_ok=True)
+    clock = Clock(args.bpm, args.port)
+    tag = ""
+    try:
+        if args.rung:
+            bank, name, what, layout = rung_by_bank(args.rung)
+            tag = f"{bank}_"
+            clock.stop(); time.sleep(1.0)
+            clock.pc(args.pc_channel, BANKS.index(bank) * 16); time.sleep(1.5)
+            assert_connections(clock, layout, verbose=False)
+            print(f"== probe rung {bank} {name}: {what}")
+        clock.start(); time.sleep(args.secs)
+        stop_nominal = capture_with_stop(args.tail, out / f"{tag}probe_tail.wav", args.device, clock, 3.0)
+        xt, sr = read_wav(out / f"{tag}probe_tail.wav")
+        tail = analyse_tail(xt[:, 2], sr, stop_nominal)
+        print("tail:", {k: (round(v, 2) if isinstance(v, float) else v) for k, v in tail.items()
+                        if k in ("tail_s", "t60_s", "repeat_ms", "repeat_corr", "pre_level", "floor")})
+        time.sleep(1.0)
+        xi, sr = capture(args.idle, out / f"{tag}probe_idle.wav", args.device)
+        c = xi[:, 2]
+        win = int(0.05 * sr)
+        e = np.array([db(np.sqrt(np.mean(c[i:i + win]**2))) for i in range(0, len(c) - win, win)])
+        # bursts: local maxima above -45 dBFS at least 0.5 s apart
+        pk = []; last = -100
+        for i, v in enumerate(e):
+            if v > -45 and (i - last) * 0.05 > 0.5 and v >= e[max(0, i - 2):i + 3].max():
+                pk.append((round(i * 0.05, 1), round(float(v), 1))); last = i
+        # the floor between bursts, and the strongest tone in it
+        quiet = np.percentile(e, 20)
+        qi = [i for i, v in enumerate(e) if v < quiet + 3]
+        seg = c[qi[len(qi) // 2] * win: qi[len(qi) // 2] * win + 2 * sr] if qi else c[:2 * sr]
+        S = np.abs(np.fft.rfft(seg * np.hanning(len(seg)))); f = np.fft.rfftfreq(len(seg), 1 / sr)
+        k = int(np.argmax(S[f > 30])) ; fk = f[f > 30][k]
+        tone_db = db(np.sqrt(2) * S[f > 30][k] / (np.sum(np.hanning(len(seg))) / 2) / 2)
+        print(f"idle {args.idle:g}s: floor {quiet:.1f} dBFS  bursts {len(pk)} {pk[:6]}  "
+              f"tone {fk:.0f} Hz at {tone_db:.0f} dBFS")
+    finally:
+        clock.stop(); clock.close()
+
+
 def summary(args):
     """The report rows plus the solo table: per-track rms of each rung minus
     rung A's (the same track, the same material -- the rig's contribution to
@@ -841,6 +887,11 @@ def main():
     p.add_argument("--solo", action="store_true", help="after the play phase, solo each track for 8 s")
     p = sub.add_parser("analyse"); p.add_argument("label")
     p = sub.add_parser("summary"); p.add_argument("label")
+    p = sub.add_parser("probe"); p.add_argument("label")
+    p.add_argument("--rung", default=None); p.add_argument("--pc-channel", type=int, default=1)
+    p.add_argument("--secs", type=float, default=20.0); p.add_argument("--idle", type=float, default=30.0)
+    p.add_argument("--tail", type=float, default=14.0); p.add_argument("--bpm", type=float, default=121.0)
+    p.add_argument("--port", default="UM-ONE"); p.add_argument("--device", default="MicroBook")
     p = sub.add_parser("stress"); p.add_argument("label")
     p.add_argument("--rung", default="G"); p.add_argument("--chunk", type=float, default=30.0)
     p.add_argument("--tail", type=float, default=14.0); p.add_argument("--pc-channel", type=int, default=1)
@@ -858,6 +909,8 @@ def main():
         summary(args)
     elif args.cmd == "stress":
         stress(args)
+    elif args.cmd == "probe":
+        probe(args)
     elif args.cmd == "rungs":
         cmd_rungs()
 

@@ -31,7 +31,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import too
 BASE = 0x40000400
 BUF = 0x47f00800
 IMAGE = pathlib.Path("out/mainos_bus.bin")
-NAMES_AT = 0x4e
+NAMES_AT = 0x16          # P-relative: P + 0x16 = E + 0x4e (P = E + 0x38); 0x4e here was the 13 Sep 2026 bug
 NAME_LEN = 6
 
 

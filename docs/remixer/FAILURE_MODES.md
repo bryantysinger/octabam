@@ -134,7 +134,31 @@ to the return; if both do, it is the return or the bus itself.
 
 ---
 
-## BusDelay went silent with its knobs pinned 🔴 SEEN 13 Sep 2026, CLEARED BY A REBOOT
+## BusDelay went silent with its knobs pinned ✅ CAUSE MEASURED 13 Sep 2026 evening: the MODE formatter cave wrote its rename bytes over the MINIMUM table
+
+**THE CAUSE (measured under the ColdFire emulator with a write watch, 13 Sep
+2026 evening; fixed the same evening in `tools/build/mode_names.py`).** The
+MODE-select formatter that renames a mode's neighbouring knobs
+(`mode_names.py`, 3 Sep 2026) was handed the clone's PAGE descriptor `P` and
+wrote the names at `P + 0x4e + 6·slot`. The names live at `E + 0x4e` and
+`P = E + 0x38` (PARAM_PAGES.md), so every rename landed 0x38 too high: in the
+**minimum-value table** (`P + 0x6a + 4·slot`). BusDelay's GRAIN names
+("MDEP"/"MRAT" restored, "SCAT"/"DENS" set) hit `min[3..5]` — **TONE, PING,
+MIX** — with 0x4d444550 and 0x4d524154: a knob whose minimum is 1.3 billion
+cannot be turned and publishes nonsense, so the delay went dead and its
+encoders locked **whenever the panel formatted the delay's MODE** (page 2
+drawn). A reboot reloads the image and clears it; the ladder never drew the
+page and measured the delay working all evening. Sam's second sighting
+named exactly TONE, PING and MIX. `verify_modenames` read the names back
+from the same wrong offset and passed — a verifier circular with the write
+it checks. Character's SAT view (slot 2 → `P+0x5a`, defaults[0..1]) and
+Modulation's COMB view (slot 6 → `P+0x72`, `min[2]` = FDBK) had the same
+fault with smaller blast radius. Fixed: `NAMES_AT = 0x16` (P-relative), the
+verifier reads there, the emulator shows mins untouched and SCAT/DENS
+landing. Needs a flash (a ColdFire cave). The earlier text below is kept as
+the record of how it presented.
+
+## BusDelay went silent with its knobs pinned (the earlier record)
 
 **Symptom.** No delay is audible anywhere in the rig. Sam by ear first
 ("it's been on mix 127 this whole time which seems strange as I can't hear
