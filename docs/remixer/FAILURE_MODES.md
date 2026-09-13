@@ -242,6 +242,29 @@ warning.
 
 ---
 
+## A station stamped "at its defaults" was running its default MODE'S VIEW — a chorus on T5 in every RIG project since 12 Sep 2026 ✅ MEASURED 13 Sep 2026
+
+**Symptom.** A station that documents a bit-exact passthrough at its
+defaults changes the track's level. On the 13 Sep ladder, adding the
+stations at "passthrough" (rung F against rung E) dropped T5's solo by
+2.5 dB; the emulator renders Modulation CHOR at MIX 64 as −2.1 dB on a tone
+and −3.8 dB on noise against MIX 0.
+
+**Cause (measured).** `ot_project.module_defaults` applied the ModeView of
+whatever MODE the manifest defaults select — for Modulation that is CHOR,
+whose view sets MIX 64 and RATE 30 — so `rigproj` and `stamp-defaults`
+wrote a chorus at half mix into every T5 since the mode-aware stamper
+(PR #217). No other module's default-mode view differs from its manifest.
+
+**Fix.** A view applies only when the MODE is explicitly chosen (given in
+the knob dict); the manifest defaults are the stamped default. Re-stamp
+the RIG projects.
+
+**Falsifier.** Re-stamped, T5 with Modulation must solo within the
+rung-to-rung scatter (±0.4 dB) of T5 without it.
+
+---
+
 ## PARSE ERROR loading a generated project — a PART record copied whole keeps the DONOR'S INDEX ✅ MEASURED 13 Sep 2026
 
 **Symptom.** LOAD PROJECT on a project written by our tooling stops with
