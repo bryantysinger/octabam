@@ -497,7 +497,13 @@ def module_defaults(m, knobs=None):
         return kmap[n]
     for n, v in knobs.items():
         vals[idx(n)] = int(v) & 0x7f
-    if getattr(m, "mode_slot", None) is not None:
+    # A mode's view applies only when the MODE was CHOSEN (given in knobs):
+    # the manifest defaults are the stamped default, and for a station they
+    # are the bit-exact passthrough. Applying the default mode's view stamped
+    # Modulation's CHOR at MIX 64 -- a chorus on T5 in every RIG project since
+    # the mode-aware stamper (12 Sep 2026) -- measured on the 13 Sep ladder as
+    # T5 -2.5 dB against the same track with no station (rung E vs F).
+    if getattr(m, "mode_slot", None) is not None and m.mode_slot in {idx(n) for n in knobs}:
         view = next((mv for mv in m.mode_views if mv.mode == vals[m.mode_slot]), None)
         if view is not None:
             for slot, v in view.defaults.items():
