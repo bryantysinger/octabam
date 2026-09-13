@@ -376,7 +376,9 @@ switch (page_kind) {                                   // MIDI tracks (>= 8)
 
 Every fixed return is an entry start + 0x38, which confirms that **the canonical
 struct base is the pointer stored in the tables, `P = E + 0x38`** — not the entry
-start used for the field table in §2. Re-based, the two arrays the decompiler
+start used for the field table in §2. ⚠️ A cave handed `P` must use the P-relative
+offsets: the mode-rename cave used `E`'s `+0x4e` on `P` from 3 to 13 Sep 2026 and
+wrote names over the minimum table (FAILURE_MODES "BusDelay went silent"). Re-based, the two arrays the decompiler
 reads directly are `min = P+0x6a` and `count = P+0x9a`, exactly the offsets
 `NOTES.md` already recorded for this function. Add `0x38` to every §2 offset to
 get the P-relative form; the fields listed *before* `E+0x38` belong to the
