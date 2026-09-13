@@ -84,8 +84,8 @@ BANKS = "ABCDEFGH"
 # manifest's -- ot_project.module_defaults.
 # ---------------------------------------------------------------------------
 _RIG_AUX = {1: 30, 2: 40, 3: 30, 4: 40, 5: 40, 6: 50, 7: 40}   # the RIG table's sends
-_RET = ("CHARACTER", {"SAT": 3, "RET": 127})
-_RET_GLUE = ("CHARACTER", {"SAT": 3, "RET": 127, "CMOD": 1, "COMP": 40})
+_RET = ("CHARACTER", {"RET": 127})            # RET = slot 4 by position (13 Sep 2026)
+_RET_GLUE = ("CHARACTER", {"RET": 127, "CMOD": 1, "COMP": 40})
 
 
 def _sends(aux, verb=False, delay=False):
@@ -113,7 +113,7 @@ RUNGS = (
     # bank, name, what it adds, layout
     ("A", "STOCK", "no effect of ours: FX1 NONE, FX2 SEND with AUX 0",
      _rung({}, _sends({}))),
-    ("B", "RETURN", "+ T8 Character SAT=BUS, RET 127 (nothing to return yet)",
+    ("B", "RETURN", "+ T8 Character RET 127 (nothing to return yet)",
      _rung({8: _RET}, _sends({}))),
     ("C", "VERB", "+ BusVerb on T5, the RIG's AUX on every track",
      _rung({8: _RET}, _sends(_RIG_AUX, verb=True))),

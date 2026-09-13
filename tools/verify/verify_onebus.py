@@ -3,7 +3,7 @@
 
 Sam's direction of 6 Sep 2026: emulate a live mixer -- ONE aux send per
 track (AUX, slot 0, hosts included), a chain hardwired delay -> reverb, the
-wet returned on TRACK 8 by a Character station in BUS mode (RET), the send
+wet returned on TRACK 8 by a Character station with RET up (by position since 13 Sep 2026), the send
 REFUSED on track 8 so the master loop that silenced the unit is impossible by
 construction, stations without sends, and a MIX knob on each engine so a
 stage passes its input through at 0. Each stage stamps itself live and the
@@ -199,7 +199,7 @@ def main():
     D = lambda **k: Inst("DELAY SERVER", 1, 0, PING=0, **k)   # noqa: E731
     S6 = lambda **k: Inst("SEND", 0, 1, fed=True, AUX=100, **k)   # noqa: E731
     S2 = lambda **k: Inst("SEND", 1, 1, fed=True, AUX=100, **k)   # noqa: E731
-    RET = lambda **k: Inst("CHARACTER", 0, 3, fx=1, SAT=3, RET=127, **k)  # noqa: E731
+    RET = lambda **k: Inst("CHARACTER", 0, 3, fx=1, RET=127, **k)  # noqa: E731  (RET by position since 13 Sep 2026: no SAT=BUS)
 
     print("== the chain: T2/T6 send, T1 delay -> T5 reverb -> T8 return ==")
     both = [R(), S6(), RET(), D(), S2()]
@@ -281,15 +281,15 @@ def main():
     check("a SEND on T4 (core 1 pos 3, the mirror) DOES change it", st_4[2] != ret)
 
     print("\n== the return is pinned to track 8, and only there ==")
-    r4 = [R(), S6(), D(), S2(), Inst("CHARACTER", 1, 3, fx=1, SAT=3, RET=127)]
+    r4 = [R(), S6(), D(), S2(), Inst("CHARACTER", 1, 3, fx=1, RET=127)]
     st_r4 = run(mems, r4, tag="ret4")
-    check("a BUS-mode station on T4 (core 1 pos 3) returns nothing",
+    check("a station with RET 127 on T4 (core 1 pos 3) returns nothing",
           peak(st_r4[4][0] + st_r4[4][1]) == 0, f"peak {peak(st_r4[4][0] + st_r4[4][1])}")
     check("... and the hosts keep printing (it stamped nothing)",
           rms_db(st_r4[0][0]) > -45 and rms_db(st_r4[2][0]) > -45)
-    r7 = [R(), S6(), Inst("CHARACTER", 0, 2, fx=1, SAT=3, RET=127), D(), S2()]
+    r7 = [R(), S6(), Inst("CHARACTER", 0, 2, fx=1, RET=127), D(), S2()]
     st_r7 = run(mems, r7, tag="ret7")
-    check("a BUS-mode station on T7 (core 0 pos 2) returns nothing",
+    check("a station with RET 127 on T7 (core 0 pos 2) returns nothing",
           peak(st_r7[2][0] + st_r7[2][1]) == 0)
 
     print("\n== the stations have no sends ==")

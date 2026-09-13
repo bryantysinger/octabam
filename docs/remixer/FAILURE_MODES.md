@@ -352,6 +352,32 @@ either — only the unit can.
 
 ---
 
+## The RET/CRSH trap: a mode change on the master turned a 127 return into a 127 crusher ✅ REMOVED BY DESIGN 13 Sep 2026 (unflashed)
+
+**Symptom.** With T8's Character in BUS mode and knob 3 (RET) at 127, turning
+SAT to TAPE made the whole mix a 4-bit crush at full scale — the same knob
+was RET in BUS and CRSH everywhere else (Sam: "huge noise, something wrong
+with this effect").
+
+**Cause.** By design: BUS was a mode of SAT that repurposed CRSH and RING as
+the return levels (3 Sep 2026), so the return's existence depended on a
+page-2 select — which on a THRU track the panel cannot even set (the entry
+above). Two ways to blow up the master with one turn.
+
+**Fix (built 13 Sep evening, gated, unflashed).** No BUS mode. Character is
+one insert with TAPE / TUBE / FUZZ on every track, T8 included; slot 4 is
+**RET**, the return level, live by DISPATCH POSITION (position 3 on payload
+A, the same pin the return always had) and inert elsewhere; the wet enters
+at the FRONT of the chain on the master, so glue, saturation, width treat
+dry plus wet (safe: the stations have no sends, T8 cannot send). And **DRV 0
+now skips the saturator stage entirely** (bit-exact, a per-block flag): the
+tanh curve at 1x drive was unity only for small signals, which the one-aux
+gate exposed once the wet went through the chain. `verify_character` 22/22,
+`verify_onebus` 25/25. Sam's bar: "the Elektron way, where everything works
+everywhere."
+
+---
+
 ## An FX1 station's PAGE 2 does not reach the DSP on T1: the panel's SAT and the stamped bytes both ignored 🔴 MEASURED 13 Sep 2026 evening, MECHANISM OPEN
 
 **Symptom.** Character on T1 (a THRU, FX1) makes a quiet tone at idle on the

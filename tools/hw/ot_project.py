@@ -547,7 +547,7 @@ def stamp_defaults(pdir, remix_name, replaced_only=True, guard=True, keep_mode=F
     one of their ids. Returns the number of (part, track, slot) writes.
 
     keep_mode=True keeps a stored MODE byte that is within its select's count
-    and applies that mode's ModeView defaults (T8's Character stays SAT=BUS
+    and applies that mode's ModeView defaults (BusDelay in GRAIN keeps GRAIN
     with RET 127; a BusDelay in GRAIN keeps GRAIN and gets GRAIN's knobs). Off
     by default because a replaced id's stored bytes are the STOCK effect's
     layout, where the byte at the mode slot means something else entirely --
@@ -878,8 +878,7 @@ RIG = (
     # a third here (was CHARACTER) priced ~3106 of 3120 as a FLOOR and hung
     # the sequencer on frame 1 (tag 91, step 1 solid). Character on T7 for a
     # vocal set is a manual part swap that drops T5 to Spectrum -- design page.
-    (8, ("CHARACTER", {"SAT": 3, "RET": 127,
-                               "CMOD": 1, "COMP": 40}), (None, {})),   # the return; no FX2 (no send from T8)
+    (8, ("CHARACTER", {"RET": 127, "CMOD": 1, "COMP": 40}), (None, {})),   # the return by position (RET = slot 4, 13 Sep 2026); no FX2 (no send from T8)
 )
 
 
@@ -1004,7 +1003,7 @@ def make_rig_project(src, dest, remix_name):
     for t, f1, f2 in RIG:
         lines.append(f"T{t}  FX1 {f1[0] or '-':20s} {f1[1]}   FX2 {f2[0] or '-':20s} {f2[1]}")
     lines += ["", "ONE AUX (7 Sep 2026): every track's AUX feeds the delay (T1), then the",
-              "reverb (T5); T8 returns the last live stage (SAT=BUS, RET = CRSH at 127).",
+              "reverb (T5); T8 returns the last live stage (RET, slot 4, at 127).",
               "Turn T8's RET to 0 and the hosts print again within 3 blocks. T8 has no",
               "FX2: the SEND is refused there anyway, and the stations have no sends."]
     (dest / "OCTABAM_RIG_MAP.txt").write_text("\n".join(lines) + "\n")

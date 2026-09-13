@@ -11,6 +11,7 @@
 ; header for the full argument).
 ;
 ; ---- the chain, fixed order ----------------------------------------------
+;   x    += RET * wet                                    RET (T8 only)
 ;   held  = SRR ? (hold each sample 2/4/8) : x          SRR
 ;   q     = quantise(held, bits)                        CRSH
 ;   f     = fold(q * (1 + 7*FOLD/128))                  FOLD
@@ -51,7 +52,7 @@
 ;   $41/$42 DC block x1 L/R, $43/$44 y1 L/R (PERSISTENT, zeroed at init; long-form slots)
 ;   $46 DC block k (1 or 0), $47 R (0.999 or 0): on in TUBE / FUZZ only (per block)
 ;   $49 post low-pass kl  $4a/$4b its state L/R (PERSISTENT)
-;   $4c low-pass kl/DRV (0.6 TAPE, 0.3 FUZZ, 0 TUBE / BUS; per block)
+;   $4c low-pass kl/DRV (0.6 TAPE, 0.3 FUZZ, 0 TUBE; per block)  $4d DRV==0: skip the saturator (per block)
 ;   $3c/$3d reverb / delay liveness grace (BUS mode, per block)
 ;   per sample / persistent (ALL BELOW $40 -- an r7 displacement past 63
 ;   assembles to the two-word long form, which cost the Spectrum station 30
@@ -65,17 +66,15 @@
 ;   r4 / r5: the REVERB / DELAY wet read pointers (BUS mode), linear, per
 ;   block from the rotation -- two buffers back, like every bus read.
 ;
-; ---- BUS mode: the returns (3 Sep 2026) -----------------------------------
-; With SAT = BUS the station is the master's glue chain, and on a master
-; chain CRSH and RING are knobs nobody turns -- so BUS repurposes them as
-; the RVRB and DLY RETURN levels (the panel prints those names: ModeView in
-; the manifest). Each sample, AFTER the send taps, the two shared wet buffers
-; (stereo, four deep, docs/effects/BUS.md "The returns") are read two buffers back
-; and added at those levels; and each block the station STAMPS the bus's
-; liveness word (y:$9d8 / y:$9d9) while a return level is up, which is what
-; tells that engine to stop printing its wet on its own host. Added after
-; the taps, never before: a return inside the tap would feed the wet back
-; into the bus and the reverb would run away.
+; ---- the return, by position (13 Sep 2026; was "BUS mode", 3 Sep) -------
+; Slot 4, RET, is the return level: on the master (dispatch position 3 on
+; payload A, track 8) each sample the last live stage's wet -- the reverb's
+; if it runs, else the delay's -- is added at that level BEFORE the chain,
+; and each block the station stamps the bus's liveness word (y:$9d8 /
+; y:$9d9) while RET is up, which tells that engine to stop printing its wet
+; on its own host. Anywhere else RET is inert (a return only exists where
+; the mix is). There is no mode switch any more: SAT is TAPE / TUBE / FUZZ
+; on every track, T8 included, and no knob changes meaning by mode.
 ;
 ; CYCLES_FORWARD_BRANCHES -- the SRR hold and the RING gate are the only
 ; branches left in the sample loop, both forward and both skipping work, so
@@ -192,6 +191,29 @@ ch_offok:
 ; drive gain/16 = (1 + 15*DRV/128)/16 -- 1x .. 16x into the curve (the loop
 ; shifts by 4; the limiting store IS the clip). Was 1x..4x, same reason as
 ; the fold: at the unit's level TAPE 127 measured +11 dB and 2.4 % THD.
+; DRV 0 = NO saturation stage at all (13 Sep 2026): the curve is tanh at 1x
+; drive, unity only for small signals (tanh 0.5 = 0.46), and with the
+; return now entering BEFORE the chain the master's whole mix would pass
+; through it. A per-block flag ($4d) skips the stage per sample -- a forward
+; skip, the class CYCLES_FORWARD_BRANCHES admits -- so DRV 0 is bit-exact in
+; every mode on every track, and the DC blocker / low-pass state is cleared
+; here so a later DRV starts from silence rather than from stale history.
+        move    x:(r6+$0),a             ; DRV
+        clr     b                       ; b = 0 BEFORE the tst (the flag trap)
+        move    #>$1,x0
+        tst     a
+        teq     x0,b                    ; DRV == 0 -> skip flag 1
+        move    b,x:(r7+$4d)
+        tst     b
+        beq     ch_drvon
+        clr     a
+        move    a,x:(r7+$41)
+        move    a,x:(r7+$42)
+        move    a,x:(r7+$43)
+        move    a,x:(r7+$44)
+        move    a,x:(r7+$4a)
+        move    a,x:(r7+$4b)
+ch_drvon:
         move    x:(r6+$0),x0            ; the knob word IS DRV/128 in Q23
         move    #>$780000,y1            ; 15/16
         mpy     x0,y1,a                 ; (15/16)*(DRV/128)
@@ -465,10 +487,8 @@ ch_tnone:
         move    #>$20000,x0
         cmp     x0,a
         beq     ch_sfuzz
-        move    #>$030000,x0            ; 3<<16 = BUS (zero-padded, see above)
-        cmp     x0,a
-        beq     ch_sbus
-        bra     ch_sdone                ; TAPE: the curve alone
+        bra     ch_sdone                ; TAPE: the curve alone (a stored 3,
+                                        ; the old BUS, lands here too)
 ch_stube:
         move    #>$200000,x0            ; neg = 0.5: the positive half is
         move    x0,x:(r7+$37)           ; driven twice as hard, so even
@@ -492,27 +512,18 @@ ch_dcon:                                ; TUBE and FUZZ: the DC blocker on (the
         move    #>$7fdf3b,x0            ; material; TUBE's asymmetry is the
         move    x0,x:(r7+$47)           ; point). R = 0.999, ~7 Hz. One tail
         bra     ch_sdone                ; for both: 8 words (13 Sep 2026)
-ch_sbus:
-        move    #>$200000,x0            ; pre = 0.5 ...
-        move    x0,x:(r7+$38)
-        move    #>$7fffff,x0            ; ... post = 2.0
-        move    x0,x:(r7+$39)
-; BUS: CRSH and RING are the RETURN levels. The crush mask goes all-ones and
-; the carrier step 0, so the stages those knobs used to drive are neutral.
-        move    #>$ffffff,x0
-        move    x0,x:(r7+$23)           ; crush: identity
-        clr     a
-        move    a,x:(r7+$24)            ; ring: no carrier
-        move    a,x:(r7+$4c)            ; ... and a return is clean: no low-pass
-; ONE RETURN (the one-aux rig, 7 Sep 2026): RET (the CRSH knob) is the level
-; of the LAST LIVE STAGE's output -- the reverb's if it is running, else the
-; delay's, else nothing -- resolved below from the engines' liveness stamps.
-; The RING knob is inert in BUS mode. And the return is PINNED to TRACK 8:
-; dispatch position 3 on payload A only -- a BUS-mode
-; station anywhere else, core 1's position 3 (track 4) included, returns
-; nothing.
-        move    x:(r6+$2),x0
-        move    x0,x:(r7+$3e)           ; RET level (the CRSH knob)
+ch_sdone:
+; ---- RET: the return level, BY POSITION (13 Sep 2026) ---------------------
+; Slot 4 is the return level. It does something on ONE track: the return is
+; pinned to dispatch position 3 on payload A (track 8, the master) exactly
+; as it was when BUS was a mode of SAT -- only the mode is gone. Character is
+; one insert with every mode on every track, T8 included; the master gets a
+; RET knob and the bus wet enters at the FRONT of the chain (the sample
+; loop), so glue, saturation, width and tone treat dry plus wet together.
+; Safe by construction: the stations have had no sends since 7 Sep 2026 and
+; T8 cannot send, so a return before the chain can never re-enter a bus.
+        move    x:(r6+$4),x0
+        move    x0,x:(r7+$3e)           ; RET level (slot 4)
 ; ... on PAYLOAD A ONLY: the mirror position on core 1 is track 4. An insert
 ; carries no per-payload literal (an FX1 module may own no buffers, so the
 ; build refuses it a base), so the core is read off the DISPATCH TABLE: in
@@ -548,7 +559,6 @@ ch_nopos:
         clr     a
         move    a,x:(r7+$3e)            ; not track 8: no return
 ch_pos3:
-ch_sdone:
 ; post/2 *= 1/sqrt(1 + 15*DRV/128) (12 Sep 2026): the drive's 1x..16x
 ; pre-gain would otherwise read as a +16 dB fader at the unit's level. With
 ; the square root, a saturated signal (the curve caps at 2/3) comes out near
@@ -731,6 +741,35 @@ ch_live:
 ; ===========================================================================
         move    #>$1,n0
         do      n7,>ch_end
+; ---- the return FIRST (13 Sep 2026): the bus wet enters before the chain --
+; Skipped per sample when both levels are 0 -- a forward skip, the class
+; CYCLES_FORWARD_BRANCHES admits. The wet in x0 goes negative, so the mpy is
+; the audited-signed x0,y1 order; the level is the knob word (val/128, >= 0).
+        move    x:(r7+$3e),a
+        move    x:(r7+$3f),b
+        add     b,a
+        beq     ch_noret
+        move    x:(r0),a
+        move    y:(r4)+,x0              ; wet L (the last live stage's)
+        move    x:(r7+$3e),y1           ; RET
+        mpy     x0,y1,b
+        add     b,a
+        move    y:(r5)+,x0
+        move    x:(r7+$3f),y1           ; 0 since the one-aux rig
+        mpy     x0,y1,b
+        add     b,a
+        move    a,x:(r0)
+        move    x:(r0+n0),a
+        move    y:(r4)+,x0              ; wet R
+        move    x:(r7+$3e),y1
+        mpy     x0,y1,b
+        add     b,a
+        move    y:(r5)+,x0
+        move    x:(r7+$3f),y1
+        mpy     x0,y1,b
+        add     b,a
+        move    a,x:(r0+n0)
+ch_noret:
 ; ---- park the dry, and take the key (the mono sum) ------------------------
         move    x:(r0),a
         move    a,x:(r7+$33)
@@ -829,6 +868,11 @@ ch_nosrr:
         move    a,x:(r7+$36)
 ch_noring:
 ; ---- SATURATE: drive, the curve, the character -- BRANCHLESS ------------
+; (skipped whole when DRV is 0: $4d, set per block above; the post-fold/ring
+; values in $35/$36 then go straight to the compressor)
+        move    x:(r7+$4d),a
+        tst     a
+        bne     ch_nosat
 ; Both channels take the identical path: scale the negative half by `neg`
 ; (one tst + one Tcc, nothing between them), apply `pre`, run the cubic,
 ; apply `post`, clamp to +-clip. The character lives in those four per-block
@@ -952,6 +996,7 @@ ch_noring:
         move    a,x:(r7+$4b)
         move    a,x:(r7+$36)            ; saturated R, DC-free, darkened
         move    x1,x:(r7+$35)           ; L back from its park
+ch_nosat:
 ; ---- COMPRESS: the block-max detector, and the gain slewed to the block's
 ; target -- attack while it falls, release while it rises (12 Sep 2026) ---
         move    x:(r7+$32),a            ; key
@@ -1027,35 +1072,7 @@ ch_grz:
         move    a,x:(r0+n0)
 ; (the send taps left with the sends, 12 Sep 2026: the stations have had no
 ; send since the one-aux rig; the returns below still need the bus)
-; ---- the returns (BUS mode): added LAST, after the send taps -------------
-; Skipped per sample when both levels are 0 -- a forward skip, the class
-; CYCLES_FORWARD_BRANCHES admits. The wet in x0 goes negative, so the mpy is
-; the audited-signed x0,y1 order; the level is the knob word (val/128, >= 0).
-        move    x:(r7+$3e),a
-        move    x:(r7+$3f),b
-        add     b,a
-        beq     ch_noret
-        move    x:(r0),a
-        move    y:(r4)+,x0              ; reverb wet L
-        move    x:(r7+$3e),y1           ; RVRB
-        mpy     x0,y1,b
-        add     b,a
-        move    y:(r5)+,x0              ; delay wet L
-        move    x:(r7+$3f),y1           ; DLY
-        mpy     x0,y1,b
-        add     b,a
-        move    a,x:(r0)
-        move    x:(r0+n0),a
-        move    y:(r4)+,x0              ; reverb wet R
-        move    x:(r7+$3e),y1
-        mpy     x0,y1,b
-        add     b,a
-        move    y:(r5)+,x0              ; delay wet R
-        move    x:(r7+$3f),y1
-        mpy     x0,y1,b
-        add     b,a
-        move    a,x:(r0+n0)
-ch_noret:
+; (the return moved to the top of the loop, 13 Sep 2026)
         move    #>$2,n0
         move    (r0)+n0
         move    #>$1,n0
