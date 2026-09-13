@@ -539,7 +539,15 @@ routed by the DISPLAYED page (MIDI.md's slot-2 on-screen dependency is the
 same family), so CC 35 = 100 landed in page-2 slot 1 = MODE = 100, out of
 its count of 5 — the index trap — and the DSP went silent on the next
 coefficient update. Discriminator: page 2 on screen, CC 35 = 100, watch
-MODE. Not a Spectrum defect if so; a rule for every MIDI test.
+MODE. **Tested, falsified (image 97):** with T3's page 2 on screen a CC 35 =
+100 left MODE at LP and landed on RES (page 1 read 100). And the EXACT
+sweep that went silent, repeated with MODE set over CC 69 and page 1 on
+screen, is clean in every cell (`VOWL2`: −35..−50 dBFS, RES 127 bounded at
+−22 dBFS peak). So the silence is bound to what differed: image 96, MODE set
+at the PANEL (the editor's refresher `0x40027e00` runs there and not on the
+CC path), page 2 displayed during the page-1 CCs. Seen once. If it recurs
+at the panel, capture before touching anything; the CC path is the one the
+voicing rounds use.
 
 ---
 
