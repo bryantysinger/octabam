@@ -109,6 +109,66 @@ either — only the unit can.
 
 ---
 
+## A one-sample tick on an exact 2048-sample grid at idle 🔴 MEASURED, CAUSE OPEN
+
+**Symptom.** With the sequencer STOPPED and nothing playing, the main outs
+carry a **one-sample downward spike, common-mode on L and R, −45 dBFS peak**,
+at irregular intervals of a few hundred ms. Audible in a quiet room as an
+intermittent tick; occasionally one is large enough that its reverb tail
+lifts the noise floor to ~−90 dB for about a second, which is what reads by
+ear as a "static burst". Present with the reverb's track MUTED.
+
+**Measured (13 Sep 2026, image 93, ChongBongolo26, two 30 s captures off the
+MicroBook, `tools/hw/rec`).** Reproducible to 0.001 samples between captures:
+
+| | capture A | capture B |
+|---|---|---|
+| ticks in 30 s | 23 | 24 |
+| grid period | 2048.050 samples | 2048.049 samples |
+| fit residual over 631 periods | 0.29 samples | 0.25 samples |
+| peak \|Δ\| between adjacent samples | 6.06e-3 | 6.04e-3 |
+
+Three things follow from the fit and are worth reusing:
+
+- **The unit generates it, not the capture rig.** The grid is +24 ppm off
+  2048.000; forcing the period to exactly 2048 (the recorder's own clock)
+  makes the fit 33× worse. Two unsynchronised converter crystals. A USB or
+  CoreAudio dropout would land on exactly 2048.000.
+- **It is not a cycle overrun.** An overrun drops blocks at arbitrary times;
+  this is locked to a buffer boundary to a third of a sample over 30 s.
+- **It is intermittent AT the boundary, not always-wrong.** Folding all 632
+  wraps onto the grid: 96% of wraps are clean at the wrap point and 4% spike.
+  The gaps between ticks are 8, 10, 18, 21, 29, 31, 47… wraps with no common
+  divisor — a beat against a second process, not a sub-period.
+
+**Cause. NOT ESTABLISHED.** 2048 samples has at least three owners and the
+capture cannot choose between them:
+1. BusVerb's lines — diffusers, allpasses, shimmer and a 2048-word pre-delay
+   are all 2048-word modulo buffers (`m5 = $7ff`).
+2. Modulation's buffer — `buffer_words=2048` on the stock instance buffer
+   (`modules/modulation/manifest.py`), and it was on T5 FX1.
+3. The firmware's PCM-pool block — `0x800` = 2048 samples for mono 24-bit in
+   the recorder's block table at `0x80003c20` (`RTOS_FORK.md` §10.16), i.e.
+   possibly not our code at all.
+
+Ruled out on this capture: BusDelay's GRAIN grain-size table (its idx 0 is
+G = 2048, and its own source warns a head past the bound gives "a full-scale
+discontinuity once per grain") — the stored page 2 on T1 is MODE 0 = CLEAN,
+SIZE 1 = 93 ms, so that code never runs.
+
+**Falsifier / next step.** One load settles whether it is ours: put a project
+with no octabam engines on the same image (260810, or a Pheasant set), stop
+the sequencer, capture 30 s. Tick present → stock OS or the unit, and none of
+our modules. Tick gone → bisect by taking T1 FX2, T5 FX2 and the FX1 stations
+to STOCK effects one at a time. ⚠️ Take them to a **stock effect, not NONE** —
+NONE is id 0, which is SEND (see the entry below), so "off" is not nothing.
+
+**Instrument note.** `tools/hw/rec` must be the HAL recorder (PR #224); the
+AVAudioEngine version silently captured zero frames whenever a Bluetooth
+device was the system default input.
+
+---
+
 ## Sequencer stuck on step 1 with EVERY effect turned off — id 0 IS SEND
 
 **Symptom (measured, 13 Sep 2026, the first rig-burn image 85B).** Step 1
