@@ -934,3 +934,52 @@ answer:
    so this is the first measurement of that chain anywhere.
 5. His Part save/reload menu actions (Part Save, Part Reload) under her
    Kit menus — the unmeasured half. Whatever happens is the finding.
+
+## Flash 12 restaged — `mods` as OCTABAM85, the smoke test before it goes to the mods' authors (13 Sep 2026)
+
+Flash 12 above was staged on 10 Sep and never flashed. Since then: midisc
+is his 1.40MSCN6, built straight from his repository (he merged the gas
+port), and he leaves `apply_part` stock — so **there is no apply chain any
+more**; Octakit owns `0x40009094` alone and SCENES KITS bridges only the
+CC dispatch. The port's "3 tracks armed" finding against midisc was
+retracted (it was the port's own saved-bank watch, `FAILURE_MODES.md`).
+The 14 stock effects are now listed so the FX2 chooser is the stock one
+(the recfix one-row trap). Nothing from this pipeline has run on
+hardware yet: **this flash is the smoke test**, on Sam's unit, before the
+build recipe is shared with the mods' authors.
+
+`make image REMIX=mods BUILD=85` → `out/OCTATRACK_OCTABAM85.bin`, sha256
+`0ed4a3ce1e59291c…` (5,537 bytes changed in the OS + 75,497 B appended:
+loader, her packed runtime 72,947 B, ours). `make check REMIX=mods`
+green, `verify_dram_boot` reads both DRAM windows back exact.
+
+**Project:** `OCTABAM_MODS85` (built in the `mods-smoke` worktree from
+`OCTABAM_ONEAUX`, Sam's own material): T1 FX2 = DELAY, T5 = PLATE REV,
+every other track NONE, in all 8 parts of all 16 banks, so every part
+plays through code that is in the image (the bus ids ONEAUX carried
+would alias to NONE). **Back up the card's projects first** — Octakit
+migrates Parts into Kits on load.
+
+In order of cost; a failure at 1 is ours and stops everything, a failure
+at 3–4 alone is a composition question for the port:
+
+1. **Boots, splash `OCTABAM85`, PROJECT › MEMORY ~72 MB** (both
+   reservations). LOAD PROJECT `OCTABAM_MODS85`, play: T1 delays, T5
+   reverbs, the rest dry. Falsified by a "Z" screen, a hang at load, or
+   silence.
+2. **FX2 chooser is the stock 14 + NONE** on any track (the one-row trap).
+3. **His side:** over MIDI, hold a scene and move a parameter; XF morphs
+   between scenes. Locks move; nothing sticks after release.
+4. **Her side:** PART menu shows Kits; SAVE KIT then LOAD KIT round-trips a
+   part edit.
+5. **The cross (expected to fail, and that is the label, not a stop):** a
+   scene-lock edit, SAVE KIT, LOAD PROJECT again — do his locks survive?
+   His pack/unpack still address the stock bank file; she moves parts
+   into her store. A "no" here goes to him with the seam suggestion
+   already in his hands; a "yes" is a pleasant surprise worth recording.
+6. **CC 62–67 reach page 2 and her CCs still work** — the chained CC
+   dispatch, first measurement anywhere.
+
+After: `docs/remixer/FAILURE_MODES.md` for anything new, and if 1–4 pass,
+the recipe (`make image REMIX=mods`, from their own 1.40C — never an
+image) goes to bkkbrls-del and Em with 5's answer stated plainly.

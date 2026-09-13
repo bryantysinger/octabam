@@ -504,6 +504,11 @@ def main():
              # projects, so taking a reverb away would be a regression in
              # the one build whose whole job is to change nothing else.
              "recfix": (),
+             # mods is the community family alone (13 Sep 2026): no DSP words
+             # placed, all fourteen listed for the same reason as recfix --
+             # it goes to the mods' own authors, who carry on with their
+             # own projects.
+             "mods": (),
              "nimbuslite": ("PLATE REV", "SPRING REV"),   # keeps DARK REV
              # deliberately gives up two more, to put a non-reverb donor on
              # the unit for the first time (docs/effects/FLASHPLAN.md)
