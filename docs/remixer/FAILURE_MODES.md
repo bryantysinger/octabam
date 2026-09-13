@@ -352,7 +352,7 @@ either — only the unit can.
 
 ---
 
-## A DC thump every 10.59 s at idle, from TRACK 6's effect chain 🔴 MEASURED 13 Sep 2026 evening, CAUSE OPEN
+## A DC thump every 10.59 s at idle, from TRACK 6 ✅ SOURCE MEASURED 13 Sep 2026 evening: T6's LFO 2
 
 **Symptom.** Transport stopped, nothing playing: a thump every 10.59 s, heard
 as "bursts"; through the return it rings for 2 s.
@@ -378,7 +378,21 @@ as "bursts"; through the return it rings for 2 s.
 **Not on the MicroBook's other inputs** (channels 0/1/4/5 clean), so it is
 the unit's output.
 
-**Suspect.** T6's FX chain in rung A is SEND on both slots (id 0 runs SEND
+**SOURCE (measured, same evening).** Zeroing T6's three LFO depths over MIDI
+(CC 29/31/33 on channel 6) removes the thump entirely (floor −104.7, no
+bursts); raising LFO 2's depth alone to 64 brings it back at the full −21
+dBFS, LFO 1 and LFO 3 alone do nothing. The 10.588 s period is 64 steps at
+121 BPM with a 3/4X scale — an LFO cycle, free-running with the transport
+stopped. Confirmed independent of the effect slots first: a ladder bank with
+T6 = Spectrum + stock DELAY (no SEND on T6) and every bank of OCTABAM87
+(different T6 content per bank) thumped identically. What the LFO's
+destination is, and why a parameter step lands as a DC step of +0.23/+0.46
+FS in the audio with nothing playing, is the open half — the panel read of
+T6's LFO 2 (DEST/SPD/MULT/WAVE/TRIG) decides whether it is the set's own
+setting or a destination our image turns into DC. It was absent on 13 Sep
+morning because those captures played a different part.
+
+**Earlier suspect, retracted by the above:** T6's FX chain in rung A is SEND on both slots (id 0 runs SEND
 on this image), the only code of ours in that rung — INFERRED, not shown:
 the stock null effect and the track's own output path are not excluded.
 The discriminator is a ladder bank with T6's FX2 = stock DELAY and FX1 =
