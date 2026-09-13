@@ -411,7 +411,11 @@ over CC 34) -- if it reaches, the machine-type ordinal is the cause.
 writes the lane at +0x20 + slot, PLAYBACK's block, never the DSP's -- which
 is why CC 62-67 are inert on hardware; its Part/shadow stores are at the
 same wrong index. Fix: live +0x38 + slot, Part/shadow +24 + slot. The 5 Sep
-"FX2 stages index 0" reading was the emulator's own artefact.
+"FX2 stages index 0" reading was the emulator's own artefact -- ⚠️ BUT
+`cc_page2.s` records SHMR moving over CC on hardware that day with the +0
+store (tag 13), which contradicts the lane map if "moved" meant the sound
+and not the panel value. Unresolved: the +0x38 fix is a candidate, to be
+proven on the unit (a CC 63 with the reverb audible), not assumed.
 
 **Interim for the set:** keep every station's knob 3 at 0 on FX1 tracks;
 the stamp writes 0 there.
