@@ -2312,3 +2312,14 @@ Next: feed the REAL captured stereo mix (out/hw/ladder/ml_*.wav) through
 dsp_host -stereo COMP80/WDTH64 -- if it reproduces on real content, trace/fix
 without the master track; else the ColdFire port with OCTABAM88 + samples +
 the master track is the instrument.
+
+**WDTH scaling + balance (out/hw/ladder/wdth_scaling.log, balance_test.log):**
+at COMP 80 the R collapse SCALES with WDTH and cliffs at the neutral 64:
+R-L = -0.1 / -4.5 / -9.5 / -16.7 / -44.4 / -46.2 / -47.8 at WDTH
+0/16/32/48/64/96/127. Balance (CC 8) does NOT change it (centre/hard-L/hard-R
+all -44); with COMP 0, balance doesn't skew the channels at all. And the STAMP
+(COMP 40) caught R 16 dB down on wide content. So: master-track + compression
++ mid/side side content, cliff at neutral width, balance- and
+return-independent, code proven symmetric. Both cheap hardware hypotheses
+(return, balance) RULED OUT. Next (Sam: 2 then 1): extend the ColdFire port to
+model the master track's main/cue summing and reproduce it locally.
