@@ -1292,3 +1292,207 @@ they cite octabam, octamax or octakit for each. And two of their retractions
 came from reading us: `0x100b14cf` is the part, not the pattern (our §6
 writer), and `0x4006de34` is a stage-then-commit input, not a publisher
 (our `MAINMENU.md`).
+
+## 10. Bryan T: absolute X addresses are payload-relative (received 14 Sep 2026)
+
+`~/Downloads/note-for-bam-xtables.md`, dated 13 Sep 2026, found while chasing
+a LOFI2 bug in his fork. The note is reproduced in full in §10.4; this is
+what we checked and what it changes.
+
+### 10.1 ✅ Re-verified here, 14 Sep 2026, from our own image
+
+His claim: the two payloads are separately linked, their X data blocks are
+not at the same addresses, and a module assembled once into both carries
+any absolute X address correctly on A and wrongly on B.
+
+Measured (`tools/build/dsp_disasm_all.py` over `out/raw/section_3_MAIN_OS.bin`,
+the section walker's X/Y blocks per payload):
+
+| block | payload A | payload B | words | content |
+|---|---|---|---|---|
+| curve bank | `X:0x438` | `X:0x42b` | 6,305 | identical, word for word |
+| block below it | `X:0x421` | `X:0x421` | 23 on A, 10 on B | the 13-word cause |
+| AMPH table | `X:0x4840` | `X:0x4840` | 4,096 | identical |
+| BRR reciprocal region | `X:0x6c00` | `X:0x6c00` | 3,730 | identical |
+| Y table | `Y:0x290` | `Y:0x2a0` | 1,024 | identical |
+| Y tables | `Y:0x690` / `0x710` / `0x715` | `Y:0x6a0` / `0x720` / `0x725` | 128 / 5 / 128 | not compared |
+
+So: 13 words on the X side exactly as he says, and the delta is purely a
+relocation (the 6,305 words compare equal). **The Y side moves too**, by 16
+words, which his note does not cover; the same rule applies to any absolute
+Y address in a stock table.
+
+The EQUALIZER instruction pair he quotes is in our disassembly at the same
+addresses with the same encodings (`payload_A.asm` `0x000c07` = `0a73ce
+0013c7`, `payload_B.asm` `0x0009c7` = `0a73ce 0013ba`; the `r5` pair
+`0x1c59`/`0x1c4c` likewise). Stock code is linked per payload; the opcode
+words match and only the extension word differs.
+
+### 10.2 ✅ Our modules, scanned 14 Sep 2026 — no exposure found, with the caveat he names
+
+Every `#>` immediate in `modules/*/*.asm` whose value falls in the relocated
+range `0x438..0x1cd8` (156 sites) was listed and each context read. All are
+one of: modulo masks and sizes (`$7ff`, `$fff`, `$800`, `$1000`, `$1800`,
+2048, 4096); our own bus scratch (`$901`, `$961`, `$983`, `$9c3`, `$9c7`,
+`$9cb`, `$9d8`, `$9da`), which the build places and which sits at the same
+address on both cores by construction (the two-core harness gate would show
+a difference); a tap length written to r7 scratch (`1407`, reverb allpass
+0); and a decay coefficient (`$755`, streamz). None reads a stock table.
+
+Same caveat as his: grep cannot tell an address from a constant, and this is
+a reading of contexts, not a build-time proof. Character, Ripple and
+WarpFold were included in the scan and had no candidates beyond the bus
+scratch.
+
+### 10.3 What it changes for us
+
+- **A new failure mode**, recorded in `docs/remixer/FAILURE_MODES.md`: a
+  module reading a stock X or Y table by absolute address is mistuned on
+  tracks 1–4 only, and the audition render cannot show it. His LOFI2
+  symptom (knobs 125 and 126 identically dull, 127 fine) was the read
+  running off the end of the relocated table into an address the image
+  never uploads.
+- **Instrument blindness, again.** `send_probe`'s single-payload render
+  dumps payload A (`dump_mem(..., payload="A")`), so an audition of a module
+  that reads a stock table validates the half that is right. Our two-core
+  harness (`rig_render.py`, both payloads) would render the B copy on
+  tracks 1–4 — INFERRED, not exercised for this case, since no module of
+  ours reads a stock table.
+- **His fix is declarative and matches our precedent**: an `xtables` field
+  on `DspSection` beside `ptable`, the source spelling each address as a
+  `#>$xxxx` long immediate, and the build rewriting the immediate for the
+  non-A payload with the delta *read from the image being built* and
+  refused unless the two blocks compare equal. Not landed here; the patch
+  is in his fork, and he offers it. Open.
+- **Three build checks he argues for**, all open here:
+  1. Flag any absolute X literal in the relocated range in module source
+     and require it declared (turns the class into a build failure).
+  2. A four-character limit on `Formatter.STEPPED` labels: a ten-character
+     label threw ColdFire `VEC:04` at `ADDR 4E007890` when the MODE encoder
+     was turned. Same family as the descriptor-name overrun in `CLAUDE.md`.
+  3. A range check on `lua` displacements: a seven-bit signed field that
+     `dsp_asm` wraps silently, so `lua (r7+$40),r1` assembles as `r7-$40`.
+     Same family as the assembler traps; unverified here.
+
+### 10.4 The note as received
+
+> # Absolute X addresses are payload-relative, and modules have no linker
+>
+> Bryan, 13 September 2026. Found while chasing a LOFI2 bug; the bug turned out
+> to be a symptom of something that applies to any module.
+>
+> ## The thing itself
+>
+> The two payloads are separately linked, and their X data blocks are not at the
+> same addresses. The big curve bank starts at `X:0x438` in payload A and
+> `X:0x42b` in payload B. Thirteen words, because the block immediately below it
+> is 23 words on A and 10 on B, and everything above slides.
+>
+> Stock never has to think about this. Each payload is its own link, so the table
+> address is a constant baked at link time. EQUALIZER's coefficient block is the
+> same instruction stream in both, byte for byte, with only the extension word
+> differing:
+>
+> ```
+> A  000c07: move x:(r3+$13c7),a   ; 0a73ce 0013c7
+> B  0009c7: move x:(r3+$13ba),a   ; 0a73ce 0013ba
+> A  000c09: move x:(r5+$1c59),y0  ; 0a75c6 001c59
+> B  0009c9: move x:(r5+$1c4c),y0  ; 0a75c6 001c4c
+> ```
+>
+> A remix module is one source assembled into both payloads and has no linker
+> doing that for it. Any absolute X address in that block, written once, is
+> correct on A and 13 words wrong on B. `build_bus.py`'s only per-payload source
+> substitution is the `$30000` to `$38000` ybase rewrite, which is gated on
+> `YBase.ALWAYS` or `XBUS`, so a module declaring `YBase.NEVER` gets no
+> per-payload treatment at all.
+>
+> Not every table is affected. `X:0x4840` (4096 words) and `X:0x6c00` (3730
+> words) are at identical addresses in both payloads, so LO-FI's AMPH table and
+> the BRR reciprocal table at `X:0x7400` are safe. It is the `0x438`/`0x42b`
+> block specifically, and whatever else the layout difference pushes around.
+>
+> Worth noting for its own sake: the 6,305 words of that block are bit-identical
+> between payloads. It is purely a relocation.
+>
+> ## How it showed up
+>
+> LOFI2's LPF is stock EQUALIZER's HIGH shelf with GN pinned at index 32, and it
+> had A's four addresses hardcoded. Payload B serves tracks 1 to 4
+> (`docs/firmware/DSP.md` line 1708), so:
+>
+> * On tracks 1 to 4 the whole LPF travel ran about three times too bright. At
+>   knob 64 the corner was 265 Hz instead of 84, at 112 it was 6.9 kHz instead of
+>   2.1 kHz.
+> * The `$13c7` frequency-index table is 512 words. Reading it at `$13c7 + 4k`
+>   runs off the end once `4k >= 499`, so at knob 125, 126 and 127 the read
+>   returned `0x7ffffe`, which as an index term put `0x8015ab` in r3. Outside
+>   anything the image uploads.
+> * Knobs 125 and 126 landed on the same bogus address and sounded identically
+>   dull; 127 landed one word away and happened to pass. That was the reported
+>   symptom, and it is what made the fault look like a table discontinuity rather
+>   than an addressing error.
+> * Tracks 5 to 8 were correct throughout, confirmed by ear after the analysis
+>   predicted it.
+>
+> The part that should probably bother us: **no render could ever have shown
+> this.** `dsp_host` boots payload A, so the audition path validated the half
+> that was already right. The fault survived a week of A/B renders and several
+> flashes.
+>
+> ## What I did about it, locally
+>
+> Declarative, following the `ptable` / `$fab1e0` precedent already in
+> `DspSection`. A new field:
+>
+> ```python
+>     xtables: tuple[int, ...] = ()
+> ```
+>
+> LOFI2 declares payload A's four addresses and spells each one in the source as
+> a `#>$xxxx` long immediate. `build_bus.py` grows `_xdelta` and `_xtables` next
+> to `_ybase`, applied at the same call site, and rewrites the immediates for the
+> non-A payload.
+>
+> The delta is not hardcoded. It is read out of the image being built: locate the
+> X block spanning the declared addresses in payload A, find the block of the
+> same word count in the other payload, and refuse to rewrite unless all 6,305
+> words compare equal. A future image that relocates or edits the curve bank
+> stops the build rather than emitting a quietly mistuned module. It also stops
+> if a declared address has no matching immediate in the source, so the manifest
+> and the assembly cannot drift apart silently.
+>
+> Regex matches `#>$xxxx` only, so prose in comments naming the same address is
+> left alone. Both addresses are two-word long immediates, so nothing changes
+> length: LOFI2 is 823 words in both payloads before and after.
+>
+> Verified in the emitted image rather than by reading the code that emits it.
+> The four extension words appear once each in LOFI2's placed run in each
+> payload, at identical offsets from the run start (`0x73`, `0x7a`, `0x82`,
+> `0x89`), with neither payload carrying the other's. Same standard the
+> `$30000`/`$38000` substitution was held to on 9 August.
+>
+> ## What I have not done
+>
+> **Checked whether anything else is exposed.** I grepped the other modules'
+> literals for values in the `0x438`..`0x1cd8` range and nothing jumped out, but
+> grep cannot tell an address from a constant, so that is an absence of an
+> obvious second case, not a clean bill of health. Ripple, Character and WarpFold
+> would be the ones to look at properly.
+>
+> **A `make verify` rule.** Flagging any absolute X literal in the relocated
+> range that appears in module source, and requiring it to be declared, would
+> turn this from a class of silent mistuning into a build failure. That seems
+> more useful than the fix itself, and it is the reason I am writing this rather
+> than just keeping the patch local.
+>
+> The two other build-time checks this session argued for, both from LOFI2 and
+> both the same shape, if you want them in the same pass: a four-character limit
+> on `Formatter.STEPPED` labels (ten characters threw a ColdFire `VEC:04` at
+> `ADDR 4E007890` when the MODE encoder was turned), and a range check on `lua`
+> displacements, which take a seven-bit signed field that `dsp_asm` wraps
+> silently, so `lua (r7+$40),r1` assembles happily as `r7-$40`.
+>
+> Happy to send the patch if it is useful, or to leave it in my fork if you would
+> rather solve it differently. It touches `schema.py` and `build_bus.py`, so it
+> is your call more than mine.
