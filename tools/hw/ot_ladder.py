@@ -513,7 +513,7 @@ def fmt_row(bank, name, play, tail, ref):
     return (f"| {bank} {name:8s} | {status:12s} | {play['rms']:6.1f} | {play['peak']:6.1f} | {d_rms:5s} "
             f"| {hf:24s} | {('%.2f' % tl['tail_s']) if tl.get('tail_s') is not None else '-':>6s} "
             f"| {('%.1f' % tl['t60_s']) if tl.get('t60_s') else '-':>6s} "
-            f"| {('%.0f' % tl['repeat_ms']) if tl.get('repeat_ms') else '-':>6s} "
+            f"| {(('%.0f' % tl['repeat_ms']) + ('' if tl.get('repeat_corr', 0) >= 0.5 else '?')) if tl.get('repeat_ms') else '-':>6s} "
             f"| {tl.get('ticks', '-')} |")
 
 
