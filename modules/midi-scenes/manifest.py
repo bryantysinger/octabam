@@ -35,7 +35,7 @@ now; the only bytes this module changes inside the OS are the 35 detour
 sites, the two pokes, and (when Octakit is not in the image) the boot
 site's three-byte redirect into the loader.
 
-THE DETOURS are his 37 sites -- 33 Detours and 4 Pokes -- each
+THE DETOURS are his 41 sites -- 37 Detours and 4 Pokes -- each
 asserted against stock before it is rewritten, wired by SYMBOL: jmp for
 the stubs that replay what they displaced and jump on, jsr for the
 callable ones, one `lea` operand rewrite (SAVE_ALL), two `bne->bra` flips
@@ -53,6 +53,37 @@ unpacking it every tick (his fix for locks vanishing between encoder
 events); and bank switch/invalidate now preserve d1-d7/a0-a6 across the
 sample load. octabam tracks all of it by regenerating `gas/*.s` from his
 builders -- no transcription -- and re-proving the five regions.
+
+1.40MIDISC8 (14 Sep 2026, his eb8b4bc + the gas regeneration, his PR #5):
+the Octakit seam he was asked for -- `part_window`, one accessor (index in
+d3 -> window in a0, stride in d1, index masked to 8 bits for 256 kits)
+that pack/unpack/save/clear/freeze all call, in a new SEAM_CAVE with the
+two bank routines; `KITS_GATE`, a DRAM byte that turns off the bank<->part
+coupling in bank_switch/bank_invalidate; Part Save parks a freeze twin
+and Reload restores it (his "HW-confirmed" persistence); an apply bridge
+at the four part-change UI sites (STOCK_APPLY still stock); paste in its
+own cave. Thirteen units now, ten of his regions (SEAM_CAVE split in two
+so the linker can order part_window before pack/unpack and the bank
+routines after). NOT carried: his MIDI CONTROL CC48/55/56 tick rows --
+UI tables with absolute pointers plus ~10 menu pokes (midi_filter.py),
+not a cave; CCs behave as stock. The kit WRITE protocol (gk_workspace_*)
+is the open last mile, ours/Em's.
+
+⚠️ HIS OWN 1.40MIDISC8 IMAGE FAILS PROJECT LOAD UNDER THE PORT, AND THIS
+BUILD DOES NOT (14 Sep 2026, dram_card.img OCTABAM/RIG). Not the hooks:
+the sets are identical. His CAVE2 (0x400d2ee6) lies inside a stock
+descriptor at 0x400d2e8a (selected by `move.l #0x400d2e8a,d0` at
+0x40031e7e, an all-zero "no effect" record ending at 0x400d301c) whose
+enable-bitmap words at +0x18a/+0x18e = 0x400d3014/0x400d3018 the loader
+reads from 0x4004e56c, 0x4004e5a4 and 0x4004e7fa (read watch, this
+port). 1.40MSC..MSCN6's 300-byte CAVE2 ended at 0x400d3012, two bytes
+short; MIDISC8's freeze_alt grew it to 308, over both words, and the
+loader then walks a "descriptor" made of his code and jumps into space.
+Stock also WRITES 0x400d2e84..89 (0x40005388..), where his
+VOICE_RELOAD_CAVE starts. Both are placement facts about HIS zero-run
+choices; every unit here links into DRAM, so this image is immune (and
+measured: arms the control's five). Told him; a fix is his (move CAVE2
+and VOICE_RELOAD, or build from the linked form).
 
 1.40MSCN6 (13 Sep 2026, his 58b27c9): the apply_part wrapper at 0x40009094
 is GONE -- he leaves STOCK_APPLY stock ("apply pack/unpack during project
@@ -89,11 +120,15 @@ H = bytes.fromhex
 UNITS = (
     Linked("msc", UP + "msc.s", dram=True),
     Linked("state", UP + "state.s", dram=True),
-    Linked("safe_cave", UP + "safe_cave.s", dram=True),
-    Linked("cave2", UP + "cave2.s", dram=True),
-    Linked("stub", UP + "stub.s", dram=True),
+    Linked("seam", UP + "seam.s", dram=True),                 # part_window: no deps
+    Linked("cave2", UP + "cave2.s", dram=True),               # rebuild, freeze_alt
     Linked("voice_reload", UP + "voice_reload.s", dram=True),
-    Linked("code2", UP + "code2.s", dram=True),
+    Linked("safe_cave", UP + "safe_cave.s", dram=True),       # pack/unpack/... call part_window, rebuild
+    Linked("reload_cave", UP + "reload_cave.s", dram=True),   # rel_after: freeze_alt + pack/unpack
+    Linked("code2", UP + "code2.s", dram=True),               # reload -> rel_after; write_mix -> voice_rel
+    Linked("scene_paste", UP + "scene_paste.s", dram=True),
+    Linked("seam_bank", UP + "seam_bank.s", dram=True),       # bank_sw/bank_inv call pack/unpack
+    Linked("stub", UP + "stub.s", dram=True),
     Linked("project_cave", UP + "project_cave.s", dram=True),
     Linked("enc_unlock", UP + "enc_unlock.s", dram=True),
 )
@@ -113,7 +148,7 @@ DETOURS = (
     Detour(0x40054CB6, H("42b9460d1694"), "stub", "release", "scene-pad release mix"),
     Detour(0x40062F24, H("4eb940038c30"), "stub", "clr_sc", "CLEAR SCENE menu row", kind="jsr"),
     Detour(0x40062FBE, H("4eb9400274cc"), "stub", "cpy_sc", "COPY SCENE menu row", kind="jsr"),
-    Detour(0x40062E3C, H("4eb940027578"), "stub", "pst_sc", "PASTE SCENE menu row", kind="jsr"),
+    Detour(0x40062E3C, H("4eb940027578"), "scene_paste", "pst_sc", "PASTE SCENE menu row", kind="jsr"),
     Detour(0x4002E828, H("4eb94004a9d0"), "project_cave", "clr_pt", "FUNC+Part clear", kind="jsr"),
     Detour(0x40053A9E, H("4ab980000012660008aa"), "enc_unlock", "hook_a", "scene+encoder unlock, engine A", pad_to=10),
     Detour(0x40054392, H("4ab980000012660008b8"), "enc_unlock", "hook_b", "scene+encoder unlock, engine B", pad_to=10),
@@ -127,12 +162,19 @@ DETOURS = (
     Detour(0x4002DD12, H("4eb94004a908"), "safe_cave", "save", "Part Save menu action", kind="jsr"),
     Detour(0x4002DD56, H("4eb94004aab4"), "code2", "reload", "Part Reload, menu path", kind="jsr"),
     Detour(0x4005E05A, H("4eb94004aab4"), "code2", "reload", "Part Reload, non-menu path", kind="jsr"),
-    Detour(0x400622AA, H("23c046c82456"), "code2", "bank_sw", "bank-pointer refresh on switch A", kind="jsr"),
+    Detour(0x400622AA, H("23c046c82456"), "seam_bank", "bank_sw", "bank-pointer refresh on switch A", kind="jsr"),
     Detour(0x40087D44, H("23c046c82456"), "stub", "bank_pub", "bank publish (no pack) on switch B", kind="jsr"),
-    Detour(0x4001FBD0, H("23c046c82456"), "code2", "bank_inv", "bank-pointer refresh on init A", kind="jsr"),
-    Detour(0x40025AA2, H("23c046c82456"), "code2", "bank_inv", "bank-pointer refresh on init B", kind="jsr"),
+    Detour(0x4001FBD0, H("23c046c82456"), "seam_bank", "bank_inv", "bank-pointer refresh on init A", kind="jsr"),
+    Detour(0x40025AA2, H("23c046c82456"), "seam_bank", "bank_inv", "bank-pointer refresh on init B", kind="jsr"),
     Detour(0x400622C6, H("4eb9400418e0"), "project_cave", "after_proj", "post-project-load CKPT seed + unpack", kind="jsr"),
     Detour(0x4002DCD4, H("45f94004a908"), "safe_cave", "save", "SAVE ALL's lea -> the ported Save", kind="lea"),
+    # 1.40MIDISC8: the part-change UI sites that called STOCK_APPLY go through
+    # his apply bridge (pack, stock apply, unpack + mix); STOCK_APPLY itself
+    # stays stock, so project load and Octakit never see it.
+    Detour(0x4002B59A, H("4eb940009094"), "safe_cave", "apply_bridge", "part-change UI apply -> bridge, site 1", kind="jsr"),
+    Detour(0x4002B8F8, H("4eb940009094"), "safe_cave", "apply_bridge", "part-change UI apply -> bridge, site 2", kind="jsr"),
+    Detour(0x4004A8FC, H("4eb940009094"), "safe_cave", "apply_bridge", "set pattern's part then apply -> bridge, site 3", kind="jsr"),
+    Detour(0x40029AF8, H("4ef940009094"), "safe_cave", "apply_bridge", "part-change UI apply (jmp) -> bridge"),
 )
 
 POKES = (

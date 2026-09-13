@@ -311,7 +311,11 @@ namespace ot
 			return static_cast<uint8_t>(peripheralRead(_a0, 1));
 		const uint32_t _addr = alias(_a0);
 		if(auto* const r = find(_addr, 1))
-			return r->data[_addr - r->base];
+		{
+			const auto v = r->data[_addr - r->base];
+			if(!m_readWatches.empty()) noteWatchedRead(_addr, 1, v);
+			return v;
+		}
 		noteUnmapped('r', _addr, 1, 0xff);
 		if(m_autoMap)
 			return *autoByte(_addr, true);
@@ -326,7 +330,9 @@ namespace ot
 		if(auto* const r = find(_addr, 2))
 		{
 			const auto o = _addr - r->base;
-			return static_cast<uint16_t>((r->data[o] << 8) | r->data[o + 1]);
+			const auto v = static_cast<uint16_t>((r->data[o] << 8) | r->data[o + 1]);
+			if(!m_readWatches.empty()) noteWatchedRead(_addr, 2, v);
+			return v;
 		}
 		noteUnmapped('r', _addr, 2, 0xffff);
 		if(m_autoMap)
@@ -416,8 +422,10 @@ namespace ot
 		if(auto* const r = find(_addr, 4))
 		{
 			const auto o = _addr - r->base;
-			return (static_cast<uint32_t>(r->data[o]) << 24) | (static_cast<uint32_t>(r->data[o + 1]) << 16)
+			const auto v = (static_cast<uint32_t>(r->data[o]) << 24) | (static_cast<uint32_t>(r->data[o + 1]) << 16)
 				 | (static_cast<uint32_t>(r->data[o + 2]) << 8) | r->data[o + 3];
+			if(!m_readWatches.empty()) noteWatchedRead(_addr, 4, v);
+			return v;
 		}
 		noteUnmapped('r', _addr, 4, 0xffffffff);
 		if(m_autoMap)
@@ -525,6 +533,19 @@ namespace ot
 	void Machine::addWriteWatch(const uint32_t _begin, const uint32_t _end, WriteWatch _cb)
 	{
 		m_writeWatches.push_back({_begin, _end, std::move(_cb)});
+	}
+
+	void Machine::addReadWatch(const uint32_t _begin, const uint32_t _end, WriteWatch _cb)
+	{
+		m_readWatches.push_back({_begin, _end, std::move(_cb)});
+	}
+
+	void Machine::noteWatchedRead(const uint32_t _a0, const uint8_t _size, const uint32_t _val)
+	{
+		const uint32_t _addr = alias(_a0);
+		for(const auto& w : m_readWatches)
+			if(_addr + _size > w.begin && _addr <= w.end)
+				w.cb(_addr, _size, _val, currentPc());
 	}
 
 	void Machine::noteWatchedWrite(const uint32_t _a0, const uint8_t _size, const uint32_t _val)

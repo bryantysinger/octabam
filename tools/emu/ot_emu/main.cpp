@@ -70,6 +70,7 @@ int main(int _argc, char** _argv)
 	int bankOverride = -1;		// with --sequencer: switch to this bank (default: the file's saved bank)
 	std::string m6cGolden;		// the M6c facts as JSON, for tools/emu/ot_emu/oracle.py
 	std::string watchMem;		// ADDR,LEN -- log every write into that range (route A's own flag)
+	std::string watchRead;		// ADDR,LEN -- log the first 64 data READS of that range, with the reading PC
 	std::string watchPc;		// comma-separated addresses -- log registers there (route A's own flag)
 	bool namesEarly = false;	// write the SET/PROJECT names BEFORE the mount -- see O7b
 	std::string hostPortLog;	// every write into the DSP host-port window -> FILE (O8)
@@ -130,6 +131,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--bank" && i + 1 < _argc)		bankOverride = std::atoi(_argv[++i]);
 		else if(a == "--m6c-golden" && i + 1 < _argc)	m6cGolden = _argv[++i];
 		else if(a == "--watch-mem" && i + 1 < _argc)	watchMem = _argv[++i];
+		else if(a == "--watch-read" && i + 1 < _argc)	watchRead = _argv[++i];
 		else if(a == "--watch-pc" && i + 1 < _argc)	watchPc = _argv[++i];
 		else if(a == "--names-early")			namesEarly = true;
 		else if(a == "--hostport-log" && i + 1 < _argc)	hostPortLog = _argv[++i];
@@ -337,6 +339,23 @@ int main(int _argc, char** _argv)
 					static_cast<int32_t>(e.tcdField(_ch, 0x18, 4)), e.tcdField(_ch, 0x1c, 2), e.tcdField(_ch, 0x1e, 2));
 				edmaOut << line;
 			});
+		}
+		if(!watchRead.empty())
+		{
+			const auto comma = watchRead.find(',');
+			const auto wa = static_cast<uint32_t>(std::strtoul(watchRead.c_str(), nullptr, 0));
+			const auto wl = comma == std::string::npos ? 4u
+				: static_cast<uint32_t>(std::strtoul(watchRead.c_str() + comma + 1, nullptr, 0));
+			auto* const n = new int(0);
+			m.addReadWatch(wa, wa + wl - 1, [n](const uint32_t _addr, const uint8_t _size, const uint32_t _val, const uint32_t _pc)
+			{
+				if(*n < 64)
+					std::printf("   read%u 0x%08x -> 0x%0*x at pc 0x%08x\n", _size, _addr, _size * 2, _val, _pc);
+				else if(*n == 64)
+					std::printf("   ... (more reads not listed)\n");
+				++*n;
+			});
+			std::printf("watch-read : %#x..%#x\n", wa, wa + wl - 1);
 		}
 		if(!watchMem.empty())
 		{

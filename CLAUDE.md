@@ -67,7 +67,11 @@ but only because the dangling commits were still there. In a worktree:
 and excluded in `.git/info/exclude`); `out/raw/section_3_MAIN_OS.bin`
 must be there too (`make os && make recon`, or copy it); without them the
 selftest reports "remix X does not build" and every gate fails before it
-starts. `git submodule update --init` in the worktree as well.
+starts. `git submodule update --init` in the worktree as well. **Do NOT
+symlink `out/emu`**: its CMake cache names the main checkout's sources,
+so `cmake --build` there compiles THEIR `tools/emu/ot_emu`, not yours
+(14 Sep 2026: a port edit "built" fine and the binary did not have it).
+Build the port into the worktree: `make emu-cf` (a fresh cache, ~1 min).
 
 ## Traps that have already cost real work
 
