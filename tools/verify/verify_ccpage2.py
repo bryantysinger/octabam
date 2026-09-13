@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove the CC->FX2 page-2 cave (modules/ccpage2) in the emulator.
+"""Prove the CC->FX2 (CC 62-67) and CC->FX1 (CC 68-73) page-2 cave (modules/ccpage2) in the emulator.
 
 1. Re-assemble modules/ccpage2/cc_page2.s and check it matches the pinned
    CODE in the manifest (drifted source cannot pass).
@@ -92,6 +92,17 @@ def _addrs(uc, track, slot2):
     return (base + 0x8f084 + track * 30 + slot2,        # Part: the FX2 page-2 editor's own store (0x4003aaaa)
             0x80000810 + track * 72 + 0x38 + slot2,       # live: the FX2 page-2 lane the copier delivers (0x4003ab00)
             0x100a51d2 + track * 30 + slot2)              # shadow: 0x100a51d2+part*6322+track*30+slot2 (0x4003aab2), part 0
+
+
+def _addrs1(uc, track, slot2):
+    """The FX1 page-2 editor's stores (0x4003abe4, disassembled 13 Sep 2026)."""
+    base = _part_base(uc)
+    return (base + 0x8f07e + track * 30 + slot2,        # Part (0x4003acb2)
+            0x80000810 + track * 72 + 0x32 + slot2,       # live lane +0x32 (0x4003ad08)
+            0x100a51cc + track * 30 + slot2)              # shadow (0x4003acba), part 0
+
+
+FX1_ID_OFF = 0x8ed80                                    # Part: +track, the FX1 id (0x4003ac1e)
     # Until 13 Sep 2026 these were 0x8ef5a / +0x20 / 0x100a50a8 -- the PLAYBACK
     # page-2 editor's arrays (0x4003a474; its "staged index" is the machine type).
 
@@ -187,6 +198,51 @@ def main():
     good = (reached["stock"] and l == 0)
     ok &= good
     print(f"  stock={reached['stock']} page2-live={l}  {'ok' if good else 'FAIL'}")
+
+    # 4. FX1 page 2 via CC 68-73 (13 Sep 2026): every track, Character (0x1c)
+    #    on FX1, CC 69 (page-2 slot 7 = SAT, count 3) value 1 -> lands as 1
+    print("CC 69 (FX1 page-2 slot 7) on each track's own channel, FX1 = Character:")
+    CHAR = 0x1c
+    def send1(track, fx1_id, cc, value, channel=3):
+        emu.assign_fx2(r, track=track, effect_id=9)             # SEND on FX2, irrelevant here
+        uc.mem_write(_part_base(uc) + FX1_ID_OFF + track, bytes([fx1_id]))
+        uc.mem_write(PARTB, b"\x00"); uc.mem_write(AUDIO_CC_IN, b"\x01"); uc.mem_write(AUTO_CH, b"\xff")
+        for t in range(8):
+            uc.mem_write(TRIG_CH + t, b"\xff")
+        uc.mem_write(TRIG_CH + track, bytes([channel]))
+        pa, la, ma = _addrs1(uc, track, cc - 68)
+        for a in (pa, la, ma):
+            uc.mem_write(a, b"\x00")
+        # the FX2 lane of the same slot must stay untouched
+        _, la2, _ = _addrs(uc, track, cc - 68)
+        uc.mem_write(la2, b"\x00")
+        uc.mem_write(MSG_AT, bytes([0xB0 | channel, cc & 0x7f, value & 0x7f]))
+        reached["stock"] = False
+        emu._call(uc, CAVE_AT, (MSG_AT,), count=5_000_000)
+        return pa, la, ma, la2
+    for track in range(8):
+        pa, la, ma, la2 = send1(track, CHAR, 69, 1)
+        p, l, mm, l2 = (uc.mem_read(a, 1)[0] for a in (pa, la, ma, la2))
+        good = (p == 1 and l == 1 and mm == 1 and l2 == 0 and not reached["stock"])
+        ok &= good
+        print(f"  t{track} Character: Part={p} live={l} mirror={mm} fx2lane={l2} "
+              f"stock={reached['stock']}  {'ok' if good else 'FAIL'}")
+    # the clamp from the DESCRIPTOR: SAT count 3 -> 99 clamps to 2; MIX (slot 6, count 128) passes 120
+    pa, la, ma, _ = send1(2, CHAR, 69, 99)
+    l = uc.mem_read(la, 1)[0]; good = (l == 2); ok &= good
+    print(f"  clamp: Character SAT (count 3) value 99 -> live={l} (want 2)  {'ok' if good else 'FAIL'}")
+    pa, la, ma, _ = send1(2, CHAR, 68, 120)
+    l = uc.mem_read(la, 1)[0]; good = (l == 120); ok &= good
+    print(f"  knob: Character MIX (count 128) value 120 -> live={l} (want 120)  {'ok' if good else 'FAIL'}")
+    # FX1 = NONE (id 0): nothing written anywhere
+    pa, la, ma, _ = send1(5, 0x00, 69, 77)
+    vals = [uc.mem_read(a, 1)[0] for a in (pa, la, ma)]
+    good = (vals == [0, 0, 0]); ok &= good
+    print(f"  FX1 NONE: CC 69 writes nothing  Part/live/mirror={vals}  {'ok' if good else 'FAIL'}")
+    # CC 74 (past the range) tail-calls stock
+    pa, la, ma, _ = send1(2, CHAR, 74, 5)
+    good = reached["stock"]; ok &= good
+    print(f"  CC 74 -> stock={reached['stock']}  {'ok' if good else 'FAIL'}")
 
     print("\nALL PASS" if ok else "\nFAILURES ABOVE")
     return 0 if ok else 1

@@ -513,6 +513,21 @@ the ladder project — cause open, project-dependent.
 
 ---
 
+## Spectrum VOWL goes SILENT with RES up 🔴 MEASURED 13 Sep 2026 (image 96), CAUSE OPEN
+
+**Measured (`out/hw/ladder/spectrum/VOWL_F*_R*.wav`, T3 soloed, FREQ/RES over
+CC 34/35, MODE set at the panel).** VOWL at RES 0 filters across FREQ (−42
+to −45 dBFS, the tilt moving with FREQ); at **RES 100 with FREQ 96, 64, 32
+or 0 the output is −102 dBFS — silence**, and RES 127 at FREQ 64 likewise.
+FREQ 127 RES 100 still passes (−45 dBFS). LP, BP, HP and NTCH stay bounded
+at RES 127 (peaks −17 to −23 dBFS). So the two-peak vowel's resonant path
+collapses above some Q rather than ringing. Not a voicing choice: a defect
+to reproduce in the emulator (`dsp_host`, MODE 4, RES ≥ 100, FREQ ≤ 96) and
+fix; suspect the peak filters' coefficient range or a limiting store
+clamping the state to zero.
+
+---
+
 ## A one-sample tick on an exact 2048-sample grid at idle 🔴 MEASURED, CAUSE OPEN
 
 **Symptom.** With the sequencer STOPPED and nothing playing, the main outs
