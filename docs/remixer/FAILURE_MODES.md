@@ -331,6 +331,34 @@ patterns) and pattern 1 <- A2 loads.
 
 ---
 
+## The set went silent after a test flash: the firmware RESET the project under an image that did not know its ids 🟡 14 Sep 2026 (mechanism inferred, effect measured)
+
+**Symptom.** After flashing a test image whose remix omitted Character (and
+listed no COMPRESSOR on FX1), OCTABAM88 loaded under it printed nothing.
+Back on the rig image the same project was still silent with the sequencer
+running ("no DSP") while OCTABAM_LADDER played.
+
+**Measured.** The card's bank records had every part reset: FX1 id 4 with
+FILTER's page-2 bytes on all tracks, FX2 = the stock delay, T1/T2 no longer
+THRU, T8 = FX1 NONE / FX2 COMPRESSOR (0x18). On the rig image 0x18 is a
+harvested donor id → the null stub (proven silent) on the MASTER → silence.
+
+**Inferred.** The firmware sanitises part records whose FX ids are not in the
+running image's tables and writes the .work files back. A project that has
+been loaded under a different remix is not the same project afterwards.
+Rule: never load THE SET under a test image; use a throwaway project.
+
+**Recovery.** Regenerate from the material: `ot_project.py rigproj
+PRESETS/OCTABAM86 <fresh> bamsep26` + `lfo-clear <fresh> all`, copy the
+banks over the card's project in place (rm on the card is denied), BUT keep
+the project's OWN project.work: the fresh copy carries the source's
+`OS_VERSION=R0178OCTABAM94` tag and the unit reported PARSE ERROR until 88's
+own file (`…OCTABAM1`) was put back (the tag as the cause is inferred from
+the diff: the only other differences were the tempo and the last selected
+track). Save a copy of the card's project before any overwrite.
+
+---
+
 ## Sequencer stuck on step 1 AT PROJECT LOAD: an init that moved r1 ✅ CAUSE MEASURED under the port, 13 Sep 2026 (image 99)
 
 **Symptom.** Image 99 flashed, project loaded: play sticks on step 1, AED
