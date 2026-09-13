@@ -953,12 +953,11 @@ build recipe is shared with the mods' authors.
 loader, her packed runtime 72,947 B, ours). `make check REMIX=mods`
 green, `verify_dram_boot` reads both DRAM windows back exact.
 
-**Project:** `OCTABAM_MODS85` (built in the `mods-smoke` worktree from
-`OCTABAM_ONEAUX`, Sam's own material): T1 FX2 = DELAY, T5 = PLATE REV,
-every other track NONE, in all 8 parts of all 16 banks, so every part
-plays through code that is in the image (the bus ids ONEAUX carried
-would alias to NONE). **Back up the card's projects first** — Octakit
-migrates Parts into Kits on load.
+**Project:** `OCTABAM_MODS85` — a byte-identical copy of `F7CLEAN_BASE`,
+the blank project the unit itself saved (stock defaults: FX1 FILTER, FX2
+DELAY on every track, no samples, nothing of Sam's in it). Load a sample
+or arm a THRU on the panel for step 1's audio. **Back up the card's
+projects first** — Octakit migrates Parts into Kits on load.
 
 In order of cost; a failure at 1 is ours and stops everything, a failure
 at 3–4 alone is a composition question for the port:
