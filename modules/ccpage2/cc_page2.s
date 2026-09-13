@@ -43,17 +43,22 @@
                                        | page-1 writer uses 0x100b14cf instead;
                                        | builds 96-98 followed that and wrote the
                                        | wrong part's page-2 store when they differ.
-        .set    P2OFF,    0x8ef5a      | page-2 Part offset (storage)
-        .set    DISPOFF,  0x8f084      | displayed-value array the FX2 dial READS
+        .set    P2OFF,    0x8f084      | FX2 page-2 Part store: DB+part*6322+track*30+slot2
+                                       | + 0x8f084 -- the FX2 PAGE-2 EDITOR's own store
+                                       | (0x4003aaaa, disassembled 13 Sep 2026). 0x8ef5a,
+                                       | used until then, is the PLAYBACK page-2 array of
+                                       | the machine-index editor 0x4003a474 (its
+                                       | "staged index" 0x460d5c30 is the MACHINE type):
+                                       | a CC there corrupted the track's playback page 2.
+        .set    DISPOFF,  0x8f084      | the same byte (kept: the FX2 dial READS it)
         .set    LIVEB,    0x80000810    | live block base
         .set    MIRRB,    0x100a50c0   | (old, part-0 view of SHADOW+24; unused)
-        .set    SHADOW,   0x100a50a8   | shadow: +part*6322+track*30+page*6+slot2 (P2EDIT 0x4003a5bc)
+        .set    SHADOW,   0x100a51d2   | FX2 page-2 shadow: +part*6322+track*30+slot2 (FX2 editor 0x4003aab2; 0x100a50a8 was the PLAYBACK editor's)
         .set    CHGBITS,  0x95048      | DB+: part-changed bitmask |= 1<<part (0x4003a5ca)
         .set    MODBITS,  0x100b145e   | byte: |= 1<<part (0x4003a5e2)
         .set    CHGFLAG,  0x9b332      | DB+: long "changed" = 1 (0x4003a5f0) -> refresh
         .set    GCHG,     0x100f8598   | long: global "changed" = 1 (0x4003a5f4)
-        .set    PAGEIDX,  0x460d5c30   | long: staged page index (P2EDIT 0x4003a4b4)
-        .set    FX2P2,    0            | FX2 page-2 store displacement = staged index 0 * 6 (measured)
+        .set    FX2P2,    0            | no page term: the FX2 page-2 arrays are per track (30 B), slot2 direct
         .set    VERBID,   7            | BusVerb FX2 id
         .set    DLYID,    6            | BusDelay FX2 id
 | VCOUNT / DCOUNT are the two count tables at the END of this file: the
@@ -159,6 +164,12 @@ wpos:   | d2 = clamped value (>=0 by construction)
         | builds 97-99 hardcoded 4 (+24) and never took. Pinned so it works
         | with the FX2 page NOT on screen (the voicing case).
         | + page*6 where page = the staged index 0x460d5c30 (P2EDIT 0x4003a4b4).
+        | ⚠️ 13 Sep 2026: the block below is the HISTORY of a wrong model. The
+        | "staged index" belongs to the PLAYBACK page-2 editor (it is the machine
+        | type); the FX2 page-2 editor at 0x4003a9dc..0x4003ab1a has no page term.
+        | SHMR "moved over CC" on 5 Sep because the DISPOFF write below hit the real
+        | FX2 Part byte (0x8f084) by accident; the P2OFF/live/shadow writes went to
+        | PLAYBACK's arrays. Now all three target the FX2 editor's own stores.
         | MEASURED 5 Sep 2026: with the FX2 page up the staged index is 0 --
         | tag 12 wrote index*16 into GATE and the dial sat at zero, while MODE
         | and SHMR moved over CC. So the FX2 page-2 store is +0 + slot2. The
@@ -183,16 +194,19 @@ wpos:   | d2 = clamped value (>=0 by construction)
         addal   %d1,%a0                | (page*6 already in the base)
         addal   %d4,%a0
         moveb   %d2,%a0@               | displayed value <- value
-        | live = LIVEB + track*72 + 0x20 + slot2
+        | live = LIVEB + track*72 + 0x38 + slot2 -- the FX2 page-2 lane the per-frame
+        | copier 0x4000cae8 delivers to the DSP record (measured under the port 13 Sep
+        | 2026: +0x2c AMP, +0x32 FX1, +0x38 FX2; +0x20 is PLAYBACK's and never reaches
+        | the DSP -- the FX2 editor writes 0x80000848+track*72+slot2 at 0x4003ab00)
         movel   %d6,%d1
         moveq   #72,%d3
         mulu.l  %d3,%d1
         lea     LIVEB,%a0
         addal   %d1,%a0
-        addal   #0x20,%a0
+        addal   #0x38,%a0
         addal   %d4,%a0
         moveb   %d2,%a0@
-        | shadow = SHADOW + part*6322 + track*30 + 24 + slot2   (d0 still = DB+part*6322)
+        | shadow = SHADOW + part*6322 + track*30 + slot2   (d0 still = DB+part*6322)
         movel   %d6,%d3
         moveq   #30,%d1
         mulu.l  %d1,%d3                | d3 = track*30

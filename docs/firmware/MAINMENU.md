@@ -386,6 +386,14 @@ mode select on a page nobody can reach.**
 
 ### 9c-ii. The PAGE-2 store, located ✅ (4 Sep 2026)
 
+> ⚠️ **CORRECTED 13 Sep 2026:** the routine below, `0x4003a548..0x4003a5e8`
+> with the entry `0x4003a474`, is the **PLAYBACK** page's page-2 editor (its
+> "page" index selects the PLAYBACK descriptor by machine type). The FX1 and
+> FX2 pages have their own editors, `0x4003abe4` and `0x4003a9dc`, with fixed
+> stores (`+0x8f07e` / `+0x8f084` in the Part, live lane +0x32 / +0x38) and
+> no index — `docs/firmware/PARAM_PAGES.md` "The page-2 lanes". The
+> `cc_page2.s` cave built on this section wrote PLAYBACK's bytes until then.
+
 The stock page-1 writer stops at 30 values (9c). The panel edits page 2
 every time you turn an encoder there, so a second path exists, and this is
 it: the routine around **`0x4003a548..0x4003a5e8`**, reached from the FX

@@ -33,18 +33,17 @@ The compressor's detector reads a KEY that is the station's own input today;
 the ->KEY bus send on the backlog swaps in another track's, which is the
 only change needed for sidechain ducking.
 
-BUS MODE IS ALSO THE RETURN (3 Sep 2026; ONE return since the one-aux rig
-of 7 Sep 2026, docs/effects/BUS.md "The one aux bus"). With SAT = BUS the
-station is the master's glue chain, and on a master chain CRSH is a knob
-nobody turns -- so BUS repurposes it as RET, the return level: the panel
-prints that name (the ModeView below), the crush and ring stages go neutral
-(RING is inert, drawn "----"), and each sample the LAST LIVE STAGE's output
--- the reverb's if it runs, else the delay's -- is added in AFTER the send
-taps. While RET is up the station stamps both hosts quiet: the reverb leaves
-T5 and enters the mix here, on T8 only (the return is pinned to track 8).
-RET down, or any other SAT, and the engines print on their hosts exactly as
-before -- a wrong setting on the master can never make the reverb vanish
-from the set.
+THE RETURN IS A KNOB, BY POSITION (13 Sep 2026; "BUS mode" from 3 Sep to
+13 Sep). Slot 4, RET, is the bus return level, and it does something on one
+track: the master (T8, dispatch position 3 on payload A -- the same pin the
+BUS mode used). There the last live stage's wet -- the reverb's if it runs,
+else the delay's -- enters at the FRONT of the chain, so glue, saturation,
+width and tone treat dry plus wet together, and while RET is up the station
+stamps both hosts quiet. Everywhere else RET is inert. Character is one
+insert with every mode on every track, T8 included: nothing on the master
+can become a bit crusher by turning a select, and nothing off the master
+can return the bus. Sam, 13 Sep: "the Elektron way, where everything works
+everywhere."
 
 FX1 ONLY (12 Sep 2026): an FX2 instance runs as a dry pass, decided from the
 allocator base at init (Claims.fx1_only); the FX2 chooser hides the row.
@@ -105,19 +104,20 @@ MODULE = Module(
         Param(b"FOLD", 0, active=True, formatter=_PLAIN,
               doc="wavefolder drive, 1x..8x into the fold; 0 = no folding"),
         Param(b"CRSH", 0, active=True, formatter=_PLAIN,
-              doc="bit depth: 0 = 24 bits, 127 = about 3; in SAT=BUS it is RET, the return level"),
+              doc="bit depth: 0 = 24 bits, 127 = about 3"),
         Param(b"COMP", 0, active=True, formatter=_PLAIN,
               doc="compression amount; 0 = no gain reduction at any level"),
-        _BLANK,   # -DEL: the stations lost their sends in the one-aux rig (7 Sep 2026)
+        Param(b"RET", 0, active=True, formatter=_PLAIN,
+              doc="the bus return level; live on the master (T8) only, inert elsewhere (13 Sep 2026)"),
         _BLANK,   # -VRB: the stations lost their sends in the one-aux rig (7 Sep 2026)
         # ---- page 2: knob / select / knob / select / knob / select ----------
         Param(b"MIX", 127, 128, active=True, formatter=_PLAIN,
               doc="dry/wet across the whole chain; 0 = exact passthrough"),
-        Param(b"SAT", 0, 4, active=True, formatter=_STEP,
-              labels=("TAPE", "TUBE", "FUZZ", "BUS"),
-              doc="saturation character; BUS = the master chain, and the returns come in"),
+        Param(b"SAT", 0, 3, active=True, formatter=_STEP,
+              labels=("TAPE", "TUBE", "FUZZ"),
+              doc="saturation character (BUS left 13 Sep 2026: the return is a knob, by position)"),
         Param(b"RING", 0, 128, active=True, formatter=_PLAIN,
-              doc="ring-mod carrier, ~5 Hz..3 kHz; 0 = off; in SAT=BUS it is inert (drawn ----)"),
+              doc="ring-mod carrier, ~5 Hz..3 kHz; 0 = off"),
         Param(b"CMOD", 0, 3, active=True, formatter=_STEP,
               labels=("COMP", "GLUE", "TRNS"),
               doc="COMP fast 4:1 - GLUE slow soft-knee 2:1 (the master) - TRNS transient shaper"),
@@ -127,17 +127,7 @@ MODULE = Module(
               labels=("OFF", "/2", "/4", "/8"),
               doc="sample-rate reduction: hold each sample 2, 4 or 8 times"),
     ),
-    # SAT = BUS renames the knob it repurposes (CRSH -> RET, the one return
-    # level since the one-aux rig of 7 Sep 2026) and brings it up at unity:
-    # the engines' wet used to land on their hosts at exactly 1. RING is
-    # inert in BUS mode -- drawn "----", no default (a value there did
-    # nothing and read as a second return, 12 Sep 2026).
-    mode_slot=7,
-    mode_views=(
-        ModeView(mode=3,                        # BUS
-                 names={2: b"RET", 8: b"----"},
-                 defaults={2: 127}),
-    ),
+    # No mode views (13 Sep 2026): no knob changes meaning by mode.
     dsp=DspSection(
         asm="modules/character/character.asm",
         ptable=DRIVE_COMP + TANH_TD,

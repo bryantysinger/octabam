@@ -174,11 +174,11 @@ for sel, hold in ((1, 2), (2, 4), (3, 8)):
 
 # ---- 5. saturation is unity small-signal and bounded -------------------------
 small = [int(0.001 * 8388607 * math.sin(2 * math.pi * 438 * i / SR)) for i in range(N)]
-for sat, name in ((0, "TAPE"), (1, "TUBE"), (2, "FUZZ"), (3, "BUS")):
+for sat, name in ((0, "TAPE"), (1, "TUBE"), (2, "FUZZ")):
     L, _ = render(small, DRV=0, SAT=sat)
     err = max(abs(a - b) for a, b in zip(L[N//2:], small[N//2:]))
     check(f"SAT {name} is unity small-signal at DRV=0", err <= 40, f"max err {err} LSB")
-for sat, name in ((0, "TAPE"), (1, "TUBE"), (2, "FUZZ"), (3, "BUS")):
+for sat, name in ((0, "TAPE"), (1, "TUBE"), (2, "FUZZ")):
     L, _ = render(tone(438, amp=0.9), DRV=127, SAT=sat)
     check(f"SAT {name} stays bounded at DRV=127",
           max(abs(v) for v in L) <= 8388607, f"peak {max(abs(v) for v in L)}")

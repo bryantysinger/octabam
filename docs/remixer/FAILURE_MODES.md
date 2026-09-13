@@ -228,7 +228,7 @@ moved.
 
 ---
 
-## CC PAGE 2 does not write on hardware 🔴 MEASURED 13 Sep 2026, image 94
+## CC PAGE 2 does not write on hardware ✅ CAUSE FOUND AND FIXED 13 Sep 2026 evening (image 96): the cave used the PLAYBACK page's stores — see "An FX1 station's PAGE 2" below (was 🔴 MEASURED 13 Sep 2026, image 94)
 
 **Symptom.** CC 62-67 change nothing. The panel value does not move, with the
 transport stopped or running.
@@ -349,6 +349,103 @@ crossed-slot byte after a layout change — the MODE re-slot family).
 current remix before playing (`ot_project.py rigproj`/`stamp-defaults`) so no
 stale byte reaches an engine. The single-core, no-project emulator cannot see
 either — only the unit can.
+
+---
+
+## The RET/CRSH trap: a mode change on the master turned a 127 return into a 127 crusher ✅ REMOVED BY DESIGN 13 Sep 2026 (unflashed)
+
+**Symptom.** With T8's Character in BUS mode and knob 3 (RET) at 127, turning
+SAT to TAPE made the whole mix a 4-bit crush at full scale — the same knob
+was RET in BUS and CRSH everywhere else (Sam: "huge noise, something wrong
+with this effect").
+
+**Cause.** By design: BUS was a mode of SAT that repurposed CRSH and RING as
+the return levels (3 Sep 2026), so the return's existence depended on a
+page-2 select — which on a THRU track the panel cannot even set (the entry
+above). Two ways to blow up the master with one turn.
+
+**Fix (built 13 Sep evening, gated, unflashed).** No BUS mode. Character is
+one insert with TAPE / TUBE / FUZZ on every track, T8 included; slot 4 is
+**RET**, the return level, live by DISPATCH POSITION (position 3 on payload
+A, the same pin the return always had) and inert elsewhere; the wet enters
+at the FRONT of the chain on the master, so glue, saturation, width treat
+dry plus wet (safe: the stations have no sends, T8 cannot send). And **DRV 0
+now skips the saturator stage entirely** (bit-exact, a per-block flag): the
+tanh curve at 1x drive was unity only for small signals, which the one-aux
+gate exposed once the wet went through the chain. `verify_character` 22/22,
+`verify_onebus` 25/25. Sam's bar: "the Elektron way, where everything works
+everywhere."
+
+---
+
+## An FX1 station's PAGE 2 does not reach the DSP on T1: the panel's SAT and the stamped bytes both ignored 🔴 MEASURED 13 Sep 2026 evening, MECHANISM OPEN
+
+**Symptom.** Character on T1 (a THRU, FX1) makes a quiet tone at idle on the
+set project; Sam: "it's the ret knob (3) on character ... turning that up
+introduces trash ... it says CRSH on TAPE and RET on BUS, both cause the
+issue".
+
+**Measured (`out/hw/ladder/t1crush_{bus,tape}.log`).** Transport stopped,
+T1's THRU gate open (an open input, ~−100 dBFS floor), knob 3 driven over
+CC 36 on channel 1 with the panel's SAT at BUS, then at TAPE:
+
+| knob 3 | SAT = BUS (panel) | SAT = TAPE (panel) |
+|---|---|---|
+| 0 | −101.7 dBFS | −101.7 |
+| 64 | −100.7 | −100.7 |
+| 100 | — | −71.3, flat + 500 Hz |
+| 127 | **−47.2, flat broadband + 500 Hz tone** | **−47.2, identical bands** |
+
+That is the BIT CRUSHER on the input floor (masking the low bits of
+near-zero negative samples snaps them to a large negative value: at 4 bits a
+−100 dBFS floor becomes a −47 dBFS square-ish mess; at 14 bits it quantises
+to nothing). In BUS mode the source sets the crush mask to identity AFTER the
+knob decode and clears the return level on payload B, so knob 3 should be
+inert on T1 — **the DSP on T1 is in TAPE whatever the panel says.** The idle
+"tone" at −77 dBFS was this crusher on the floor (Sam: disabling or
+re-selecting the effect removed it; re-select loads defaults, CRSH 0).
+
+**What it implies.** For an FX1 slot on T1, a page-2 edit at the panel does
+not reach the DSP; the stamped page-2 bytes (`P2_OFF + track*30 + 0..5`)
+are therefore also unverified for FX1 — the Stage B blocker ("which staged
+index/lane an FX1 page-2 edit uses") with a symptom. Contradiction to
+resolve: T8's Character in BUS mode DOES return the bus on hardware (flash
+7, tonight's tails), so on T8 the SAT byte reached the DSP — the T8 crush
+test (SAT = TAPE at the panel, knob 3 to 127 over CC 36 while playing)
+decides whether page 2 reaches the DSP on the master only, or only via the
+stamp and never via the panel.
+
+**MECHANISM: THE COLDFIRE SIDE IS EXONERATED (port, 13 Sep evening, two
+runs).** ❌ The first run's model — one page-2 editor `0x4003a474` writing the
+lane at `+0x20 + staged_index*6`, so a THRU track's FX1 page "stages the
+wrong index" — is RETRACTED: that routine is the PLAYBACK page's editor. The
+FX1 page has its own, `0x4003abe4`, which writes the Part at `+0x8f07e +
+track*30 + slot`, the shadow at `0x100a51cc + …` and the live lane at
+`0x80000842 + track*72 + slot` (= +0x32, exactly the lane the per-frame
+copier `0x4000cae8` delivers to the DSP record as FX1 page 2), with no page
+or index term — and called under the emulator for T1 (THRU), T3 and T8 its
+three writes landed exactly there on every track (PARAM_PAGES.md "The
+page-2 lanes"). So the panel edit reaches the right lane on T1. **The fault
+is downstream of the lane**: the DSP side at position 0 on payload B, or a
+per-frame refresh of that lane peculiar to a THRU machine — not measured.
+Hardware facts that any explanation must fit: T3 (STATIC, Spectrum MODE
+LP→HP, `out/hw/ladder/bisect95/t3mode_{LP,HP}.wav`: rms −74 → −58, low
+bands +27 dB) and T8 (FLEX master, Character SAT) take a panel page-2 edit;
+T1 (THRU) does not; a T1 one-step SAT edit showed on neither the AMP nor the
+LFO page 2; the stamp reaches all three. Next instrument: the port with
+`--watch` on `0x80000842..0x80000847` and on T1's DSP record bytes 36-41
+across frames after an FX1 editor call, THRU machine loaded.
+**Consequence found on the way:** the CC PAGE 2 cave (`modules/ccpage2`)
+used the PLAYBACK editor's three stores, so every CC 62-67 corrupted the
+track's PLAYBACK page-2 byte and never touched FX2's; SHMR "moved" on 5 Sep
+only because its DISPOFF write happened to hit the real FX2 Part byte. Now
+on the FX2 editor's own stores (Part `+0x8f084`, shadow `0x100a51d2`, lane
++0x38), `verify_ccpage2` real and green — ✅ **CONFIRMED on image 96, 13 Sep
+2026 evening:** CC 63 on channel 5 moved the SHMR knob on the panel (Sam) and
+raised the tail's 2–8 kHz bands by 5–8 dB (`out/hw/ladder/ret96.log`).
+
+**Interim for the set:** keep every station's knob 3 at 0 on FX1 tracks;
+the stamp writes 0 there.
 
 ---
 
