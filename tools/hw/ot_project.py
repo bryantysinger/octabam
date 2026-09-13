@@ -920,22 +920,26 @@ def lfo_clear(pdir, track, lfo, guard=True):
     running LFO nobody meant (T6 LFO2 on AMP BAL, 13 Sep 2026: a DC thump
     every cycle at idle) goes everywhere it was copied."""
     pdir = pathlib.Path(pdir)
-    t, n = int(track) - 1, int(lfo) - 1
+    every = str(track) == "all"
+    t, n = (0, 0) if every else (int(track) - 1, int(lfo) - 1)
+    cells = [(tt, nn) for tt in range(NTRACKS) for nn in range(3)] if every else [(t, n)]
     for bank in sorted(pdir.glob("bank*.work")):
         num = int(bank.name[4:6])
 
         def mut(data):
             for p in range(NPARTS_ALL):
                 off = PART_BASE + p * PART_STRIDE
-                data[off + LFO_P1_OFF + t * 24 + 3 + n] = 0
+                for tt, nn in cells:
+                    data[off + LFO_P1_OFF + tt * 24 + 3 + nn] = 0
         _bank_write(pdir, num, mut, guard=guard)
         d = bank.read_bytes()
         if int.from_bytes(d[-2:], "big") != (sum(d[0x10:-2]) & 0xFFFF):
             sys.exit(f"{bank.name}: checksum did not take -- do NOT use this")
         for p in range(NPARTS_ALL):
-            if d[PART_BASE + p * PART_STRIDE + LFO_P1_OFF + t * 24 + 3 + n] != 0:
-                sys.exit(f"{bank.name} part {p + 1}: read-back disagrees")
-    print(f"T{track} LFO{lfo} depth -> 0 in every part of every bank of {pdir.name}")
+            for tt, nn in cells:
+                if d[PART_BASE + p * PART_STRIDE + LFO_P1_OFF + tt * 24 + 3 + nn] != 0:
+                    sys.exit(f"{bank.name} part {p + 1}: read-back disagrees")
+    print(f"{'every LFO' if every else f'T{track} LFO{lfo}'} depth -> 0 in every part of every bank of {pdir.name}")
 
 
 def make_rig_project(src, dest, remix_name):
@@ -1044,7 +1048,8 @@ if __name__ == "__main__":
     elif cmd == "testproj": make_test_project(sys.argv[2], sys.argv[3], sys.argv[4])
     elif cmd == "rigproj": make_rig_project(sys.argv[2], sys.argv[3], sys.argv[4])
     elif cmd == "lfo": lfo_report(pdir)                                      # every live LFO, per part
-    elif cmd == "lfo-clear": lfo_clear(pdir, int(sys.argv[3]), int(sys.argv[4]), guard=False)   # <project> <track> <lfo>
+    elif cmd == "lfo-clear":                                                # <project> <track> <lfo> | <project> all
+        lfo_clear(pdir, sys.argv[3], sys.argv[4] if len(sys.argv) > 4 else 0, guard=False)
     elif cmd == "stamp-defaults":
         # a REAL set, before its first load on a flashed image: only the ids
         # a station replaced are touched; BusVerb/BusDelay keep Sam's knobs.
