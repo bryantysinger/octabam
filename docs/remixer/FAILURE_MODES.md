@@ -352,6 +352,48 @@ either — only the unit can.
 
 ---
 
+## An FX1 station's PAGE 2 does not reach the DSP on T1: the panel's SAT and the stamped bytes both ignored 🔴 MEASURED 13 Sep 2026 evening, MECHANISM OPEN
+
+**Symptom.** Character on T1 (a THRU, FX1) makes a quiet tone at idle on the
+set project; Sam: "it's the ret knob (3) on character ... turning that up
+introduces trash ... it says CRSH on TAPE and RET on BUS, both cause the
+issue".
+
+**Measured (`out/hw/ladder/t1crush_{bus,tape}.log`).** Transport stopped,
+T1's THRU gate open (an open input, ~−100 dBFS floor), knob 3 driven over
+CC 36 on channel 1 with the panel's SAT at BUS, then at TAPE:
+
+| knob 3 | SAT = BUS (panel) | SAT = TAPE (panel) |
+|---|---|---|
+| 0 | −101.7 dBFS | −101.7 |
+| 64 | −100.7 | −100.7 |
+| 100 | — | −71.3, flat + 500 Hz |
+| 127 | **−47.2, flat broadband + 500 Hz tone** | **−47.2, identical bands** |
+
+That is the BIT CRUSHER on the input floor (masking the low bits of
+near-zero negative samples snaps them to a large negative value: at 4 bits a
+−100 dBFS floor becomes a −47 dBFS square-ish mess; at 14 bits it quantises
+to nothing). In BUS mode the source sets the crush mask to identity AFTER the
+knob decode and clears the return level on payload B, so knob 3 should be
+inert on T1 — **the DSP on T1 is in TAPE whatever the panel says.** The idle
+"tone" at −77 dBFS was this crusher on the floor (Sam: disabling or
+re-selecting the effect removed it; re-select loads defaults, CRSH 0).
+
+**What it implies.** For an FX1 slot on T1, a page-2 edit at the panel does
+not reach the DSP; the stamped page-2 bytes (`P2_OFF + track*30 + 0..5`)
+are therefore also unverified for FX1 — the Stage B blocker ("which staged
+index/lane an FX1 page-2 edit uses") with a symptom. Contradiction to
+resolve: T8's Character in BUS mode DOES return the bus on hardware (flash
+7, tonight's tails), so on T8 the SAT byte reached the DSP — the T8 crush
+test (SAT = TAPE at the panel, knob 3 to 127 over CC 36 while playing)
+decides whether page 2 reaches the DSP on the master only, or only via the
+stamp and never via the panel.
+
+**Interim for the set:** keep every station's knob 3 at 0 on FX1 tracks;
+the stamp writes 0 there.
+
+---
+
 ## A DC thump every 10.59 s at idle, from TRACK 6 ✅ SOURCE MEASURED 13 Sep 2026 evening: T6's LFO 2
 
 **Symptom.** Transport stopped, nothing playing: a thump every 10.59 s, heard
