@@ -513,7 +513,7 @@ the ladder project — cause open, project-dependent.
 
 ---
 
-## Spectrum VOWL goes SILENT with RES up 🟡 MEASURED ONCE 13 Sep 2026 (image 96) — NOT REPRODUCED, suspect the CC-follows-the-displayed-page quirk
+## Spectrum VOWL goes SILENT with RES up 🟡 MEASURED ONCE 13 Sep 2026 (image 96), never reproduced — and the two-peak VOWL it happened on is GONE (image 98: a three-formant resonator bank, bounded at RES 127 by measurement)
 
 **Measured (`out/hw/ladder/spectrum/VOWL_F*_R*.wav`, T3 soloed, FREQ/RES over
 CC 34/35, MODE set at the panel).** VOWL at RES 0 filters across FREQ (−42
