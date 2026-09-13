@@ -331,6 +331,27 @@ patterns) and pattern 1 <- A2 loads.
 
 ---
 
+## Sequencer stuck on step 1 AT PROJECT LOAD: an init that moved r1 ✅ CAUSE MEASURED under the port, 13 Sep 2026 (image 99)
+
+**Symptom.** Image 99 flashed, project loaded: play sticks on step 1, AED
+preview does not move; every project that loads a Spectrum on FX1 (the
+ladder's rungs F/G, OCTABAM88); a project without one plays.
+
+**Cause (measured, the port's last-PC ring, both cores).** The stock FX1
+dispatcher keeps the effect id in r1 across `jsr init` and indexes the proc
+table with it afterwards (`P:0x4c8..0x4d7`). Spectrum's init (the SEM /
+formant / LADR rewrite) zeroed its state slots through r1 and returned with
+r1 = r7+24: the proc lookup read garbage, `jsr (r2)` landed on P:0 = the
+reset vector, `FAULT: PC 0xfff000`. `dsp_host` never sees it: it calls init
+and proc itself and never reads r1 between them.
+
+**Fix.** Zero through r5 (image 100); `tools/verify/verify_initregs.py`
+refuses any module init that writes r1/n1/m1, in `make check`. CLAUDE.md
+carries the trap. Recovery on the unit: a power-cycle and a project without
+the module.
+
+---
+
 ## Sequencer stuck on step 1 (DSP hang) — CYCLE OVERRUN or a wild value
 
 **Symptom.** Press play, the playhead lights **step 1 solid and never

@@ -80,12 +80,21 @@ init:
         tst     a
         tpl     x0,b                    ; base >= 0x4000: an FX2 slot
         move    b,x:(r7+$30)          ; 1 = dry pass
+; ⚠️ INIT MUST PRESERVE r1: the stock FX1 dispatcher keeps the effect id in
+; r1 across `jsr init` and indexes PROC_TABLE with it afterwards (P:0x4c8..
+; 0x4d7, disassembled 13 Sep 2026 under the ColdFire port). Zeroing through
+; r1 here returned r1 = r7+24, the proc lookup read garbage, `jsr (r2)`
+; landed on P:0 = the reset vector, and image 99 hung every core that loaded
+; a Spectrum on FX1 -- at load, before a frame. dsp_host calls init and proc
+; itself and never reads r1 between them, which is why no gate saw it. r5 is
+; free at init (the tables load it later); tools/verify/verify_initregs.py
+; now refuses any module init that writes r1.
         clr     a                       ; the VOWL bank's states ($00..$0f) and
-        move    r7,r1                   ; the coefficient slots after them
-        move    #>$ffffff,m1
+        move    r7,r5                   ; the coefficient slots after them
+        move    #>$ffffff,m5
         do      #>24,>fs_iz            ; $00..$17: the VOWL bank's states, the
                                         ; coefficient slots, LADR's ramp ($16)
-        move    a,x:(r1)+
+        move    a,x:(r5)+
 fs_iz:
         nop
         move    a,x:(r7+$2e)            ; g2run and dg: the ramp starts from 0
