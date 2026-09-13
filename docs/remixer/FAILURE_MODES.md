@@ -88,6 +88,152 @@ Localised without a flash:
 
 ---
 
+## The audio engine wedges with ONLY BusVerb + the return 🔴 REPRODUCED UNDER MEASUREMENT, CAUSE OPEN
+
+**Symptom.** Playing, the output drops to the noise floor and never comes
+back while the transport keeps running. Same family as "Audio engine wedged,
+sequencer alive" above, but this entry pins the *minimal* configuration and
+gives a repeatable harness.
+
+**Measured (13 Sep 2026, image 94, `tools/hw/ot_soak.py`).** The layout was
+T5 FX2 = BusVerb and T8 FX1 = Character in `SAT=BUS` as the return — nothing
+else of ours. No stations, no Modulation, no BusDelay:
+
+| configuration | return level | 3 min soak |
+|---|---|---|
+| return alone, no engines | 127 | clean |
+| BusVerb, return at 0 | **0** | clean (twice) |
+| **BusVerb + return** | **127** | **silent at 131.5 s, never recovered** |
+| the same, repeated | 127 | clean |
+| the same, 9 min | 127 | clean |
+
+**So it is NOT the cycle wall.** This layout is nowhere near it. The 13 Sep
+morning reading — "core 0's shipped layout is over the real wall", from
+T6/T7's stations going to NONE and the unit then playing — cannot explain a
+wedge with two modules loaded. That reading is not retracted (the layout may
+*also* be over the wall) but it is no longer sufficient.
+
+**Rate: one freeze in ~15 minutes** at this layout. Rare enough that a single
+3-minute pass cannot clear a configuration, which is the trap to avoid when
+bisecting: two of the rungs above "passed" before the return was noticed to
+be at 0.
+
+**Recovery: a transport restart cleared it** — no power-cycle needed, unlike
+the 5 Sep instance recorded above. Worth knowing whether those are the same
+mode.
+
+**Cause. NOT ESTABLISHED.** The only configuration that has ever wedged is
+the one where the reverb's output actually reaches the mix, which points at
+the return path rather than at the reverb's own DSP. Not enough runs to call
+it.
+
+**Falsifier / next step.** Soak `BusVerb + return` against `BusDelay +
+return` for long enough to compare rates (tens of minutes each, given one
+event per 15 min). If only the reverb wedges, it is the reverb's contribution
+to the return; if both do, it is the return or the bus itself.
+
+---
+
+## BusDelay produces no audible repeats — TIME is inert 🔴 MEASURED 13 Sep 2026
+
+**Symptom.** No delay is audible anywhere in the rig. Sam by ear first
+("it's been on mix 127 this whole time which seems strange as I can't hear
+delay"); confirmed by measurement.
+
+**Measured.** With everything the chain needs — T1 AUX 90 feeding the bus,
+BusDelay `MIX 127` (repeats only), BusVerb `MIX 0` so the reverb passes its
+input through, return at 127 — the output's envelope autocorrelation peaks at
+248 ms and **does not move when TIME changes**:
+
+| BusDelay TIME | strongest envelope repeat |
+|---|---|
+| 40 | 248 ms (rel 0.665) |
+| 100 | 248 ms (rel 0.640) |
+| 15 | 248 ms (rel 0.558) |
+
+248 ms is an eighth note at 121 BPM, i.e. the material's own pulse. A delay
+contributing anything would move that peak, or add a second one, when TIME
+changes. It does neither.
+
+⚠️ **The first explanation offered was wrong and is retracted**: that both
+stages at `MIX 127` give "reverb-of-delay" so the repeats are smeared rather
+than absent. Taking BusVerb's MIX to 0 (the reverb then passes the delay
+through by the stage law `out = in*(1-MIX) + wet*MIX`) did not make repeats
+appear.
+
+**AND ITS KNOBS ARE LOCKED (Sam, same session, the key observation).**
+BusDelay's `TONE`, `PING` and `FDBK` sat at **68 / 0 / 84** and **the panel
+encoders would not move them**. Those are not the manifest defaults (TONE
+100, PING 0, FDBK 60), so they are stale values from somewhere, held against
+the knobs. Then: *"when I jiggled around the knobs on the delay it started
+working and is working now. Knobs still locked."* So the delay's silence and
+the frozen parameters are the same fault, and it is recoverable by panel
+activity without the values unlocking.
+
+That a page-1 parameter can be pinned against the encoder has one obvious
+stock mechanism: **page-1 params are scene-lockable** (BUS.md: "sends are
+page 1 → scene-lockable: scene A dry, scene B wet"), and a held scene
+overrides the knob. The crossfader position would then be selecting 68/0/84.
+NOT YET TESTED — the discriminator is to move the crossfader (CC 48) and see
+whether the three values move with it.
+
+**Cause. NOT ESTABLISHED.** Also untested: whether the delay is audible with
+BusVerb out of the chain entirely (T5 FX2 → a stock effect), which separates
+"the delay makes nothing" from "the reverb stage discards it".
+
+---
+
+## CC PAGE 2 does not write on hardware 🔴 MEASURED 13 Sep 2026, image 94
+
+**Symptom.** CC 62-67 change nothing. The panel value does not move, with the
+transport stopped or running.
+
+**Measured.** Sam set T5's BusVerb SHMR to 0 on the panel; one `CC63 ch5 =
+127` was sent; the panel still read 0. Repeated with the transport running
+(a running transport redraws the screen constantly, so a stale display was
+the alternative explanation) — still 0.
+
+**The image is correct**, so this is not a build or link fault: the cave sits
+at `0x400d7700` in `out/mainos_bus.bin`, and the CC dispatch vector at
+`0x400d64a0` holds exactly that address. The unit reports `OCTABAM94`, so the
+flash took.
+
+**Cause. NOT ESTABLISHED.** `tools/verify/verify_ccpage2.py` proves the write
+**in the emulator** against the firmware editor `0x4003a474`, and passes. So
+this is the standing rule again — the harness's model of the dispatcher is
+not the dispatcher, and a hardware failure the lock-step harness cannot show
+goes to the ColdFire port before it goes to a guess.
+
+**Consequence for anything measured on page 2.** BusVerb's DIFF, SHMR, SHFT,
+GATE, RATE and MODE cannot be driven remotely. A page-2 sweep run over MIDI
+on 13 Sep reported "no change at any value" for all six and **that result is
+void** — the CCs never landed. Page 2 is untested, not cleared. Page 1 *was*
+swept with verified CCs and is genuinely clear.
+
+---
+
+## Re-selecting an effect zeroes the bus: the return level and every AUX ⚠️ 13 Sep 2026
+
+**Symptom.** A rig that measures dead after ordinary panel work: no wet, the
+engines apparently doing nothing, soak after soak passing because nothing is
+connected.
+
+**Cause (measured).** A re-select loads the module's MANIFEST DEFAULTS, and
+the two knobs that connect the bus both default to 0 — BusVerb's `AUX` (0 is
+load-bearing: a non-zero default registers every idle host as a bus client
+and dilutes the real senders by N/(N+1), the -6.02 dB phantom-client defect)
+and Character's return level, which in `SAT=BUS` is the repurposed `CRSH`
+slot. Two ladder rungs passed spuriously this way before it was caught: the
+give-away was that killing every send changed the output by +0.68 dB when the
+same test on the stamped project gave -2.13 dB.
+
+**Fix.** Assert the connections over MIDI immediately before every
+measurement, never after a re-select: return level `CC 36` on the master's
+channel, `AUX` `CC 40` per track. `ot_soak.py`'s docstring carries the
+warning.
+
+---
+
 ## Sequencer stuck on step 1 (DSP hang) — CYCLE OVERRUN or a wild value
 
 **Symptom.** Press play, the playhead lights **step 1 solid and never
@@ -156,12 +302,32 @@ G = 2048, and its own source warns a head past the bound gives "a full-scale
 discontinuity once per grain") — the stored page 2 on T1 is MODE 0 = CLEAN,
 SIZE 1 = 93 ms, so that code never runs.
 
-**Falsifier / next step.** One load settles whether it is ours: put a project
-with no octabam engines on the same image (260810, or a Pheasant set), stop
-the sequencer, capture 30 s. Tick present → stock OS or the unit, and none of
-our modules. Tick gone → bisect by taking T1 FX2, T5 FX2 and the FX1 stations
-to STOCK effects one at a time. ⚠️ Take them to a **stock effect, not NONE** —
-NONE is id 0, which is SEND (see the entry below), so "off" is not nothing.
+**Ruled out, 13 Sep 2026, all measured.**
+- **Not the capture rig** — the +24 ppm grid offset (above).
+- **Not Character.** Removing Character from every track cleared the tick AND
+  dropped the floor 28 dB — but Character on T8 is the one-aux RETURN
+  (`SAT=BUS`, `RET 127`), with `DRV 0`/`FOLD 0`/`RING 0`/`SRR OFF`, so
+  removing it removed the whole wet bus's only path to the outputs. It was
+  never a source. This also explains why muting T5 never silenced the reverb:
+  with the return up the reverb leaves T5 by design and enters at T8.
+- **Not in the stored project.** A stock project measured -103.0 dBFS with
+  zero events; the rig project RELOADED from the card measured -104.6 with
+  zero events, against -73.9 and 23 ticks before the reload. The tick needs a
+  LIVE edit that the card does not hold.
+- **Not the input path.** Nothing is plugged into the inputs (Rytm on T1,
+  synths on T2, both disconnected), and unmuting T2 moved the floor 3.3 dB.
+  The -73.9 dB idle floor was therefore generated inside the DSP.
+- **Not BusVerb page 1.** Every page-1 knob to extremes over verified CCs
+  (AUX/TIME/MOD/SIZE/TONE/MIX at 127, then TONE 0): floor unchanged at
+  -101.4, zero ticks.
+- **Page 2 is UNTESTED, not cleared** — see the CC PAGE 2 entry: the sweep
+  that reported it clean was run over CCs that never landed.
+
+**Falsifier / next step.** The tick has not reappeared since the reload, so
+the live state that produced it is lost; recovering it means reconstructing
+what was changed by hand, or fixing CC PAGE 2 and sweeping page 2 properly.
+⚠️ When bisecting by hand, take slots to a **stock effect, not NONE** — NONE
+is id 0, which is SEND (see below), so "off" is not nothing.
 
 **Instrument note.** `tools/hw/rec` must be the HAL recorder (PR #224); the
 AVAudioEngine version silently captured zero frames whenever a Bluetooth
