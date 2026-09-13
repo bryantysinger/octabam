@@ -352,6 +352,44 @@ either — only the unit can.
 
 ---
 
+## A DC thump every 10.59 s at idle, from TRACK 6's effect chain 🔴 MEASURED 13 Sep 2026 evening, CAUSE OPEN
+
+**Symptom.** Transport stopped, nothing playing: a thump every 10.59 s, heard
+as "bursts"; through the return it rings for 2 s.
+
+**Measured (image 95 and image 94, OCTABAM87 and the ladder project,
+`tools/hw/ot_ladder.py probe`/mute bisect, `out/hw/ladder/bisect95/`).**
+- A **DC step**: +0.23 FS on L, +0.46 FS on R (R = 2·L exactly), rising in
+  two samples, then the output DC blocker bleeds it away over ~35 ms.
+  Period 10.577 / 10.588 / 10.592 s (466,930 samples).
+- **On every ladder rung including A** (FX1 NONE, FX2 SEND with AUX 0 — no
+  bus engine, no station), identical level; so not BusVerb, BusDelay, the
+  stations, or the mode-rename cave fix (94 and 95 alike).
+- **Track 6.** All eight tracks muted: −37 dBFS residual. Unmute T6 alone:
+  the full −21 dBFS; any other track alone: −37. The residual is T6's send
+  returning through the master, which a mute does not cut. T6 is a STATIC
+  machine (slot 13, "Chupa Gat.wav", 23.78 s) with NO trigs in A02.
+- **Between amp and level on T6:** AMP VOL 0 (CC 25) leaves it; track LEVEL
+  0 (CC 46) removes it to the residual; all-sound-off / all-notes-off on
+  channel 6 leave it; STOP sent twice leaves it.
+- **Absent from all seven of the 13 Sep morning idle captures** (image 94,
+  OCTABAM86 with the delay hosted on T1 at FDBK 85, sends 90–127).
+
+**Not on the MicroBook's other inputs** (channels 0/1/4/5 clean), so it is
+the unit's output.
+
+**Suspect.** T6's FX chain in rung A is SEND on both slots (id 0 runs SEND
+on this image), the only code of ours in that rung — INFERRED, not shown:
+the stock null effect and the track's own output path are not excluded.
+The discriminator is a ladder bank with T6's FX2 = stock DELAY and FX1 =
+NONE, and one with FX1 = a station and FX2 = stock DELAY (no SEND on T6):
+if the thump goes with SEND, it is SEND. Why T6 (position 1 on payload A)
+and why 10.59 s are open. A separate 593.5 Hz tone at −75 dBFS (with a
+1187 Hz harmonic, mono) was measured after STOP on OCTABAM87 only, not on
+the ladder project — cause open, project-dependent.
+
+---
+
 ## A one-sample tick on an exact 2048-sample grid at idle 🔴 MEASURED, CAUSE OPEN
 
 **Symptom.** With the sequencer STOPPED and nothing playing, the main outs
