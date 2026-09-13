@@ -708,6 +708,32 @@ the tag, warm-up runs, buffers zero. Judge no defect until you have rebooted.
 
 ---
 
+## A module is mistuned on tracks 1–4 only — an absolute stock-table address, correct in payload A, 13 words off in B (Bryan T, 13 Sep 2026)
+
+**Symptom.** An effect behaves differently on tracks 1–4 than on 5–8:
+Bryan's LOFI2 low-pass ran about three times too bright on 1–4, and knobs
+125 and 126 were identically dull while 127 was fine. Renders and A/B
+auditions look clean.
+
+**Cause.** The two payloads are linked separately and their X data blocks
+are not at the same addresses: the 6,305-word curve bank is `X:0x438` in A
+and `X:0x42b` in B (the block below it is 23 words on A, 10 on B); the Y
+tables shift by 16 words likewise. A module is one source assembled into
+both payloads, so an absolute address into a stock table is right on A
+(tracks 5–8) and wrong on B (tracks 1–4). Off the end of the relocated table
+the read returns a value that, used as an index, lands outside anything
+the image uploads. ✅ MEASURED here from our own image (`EXTERNAL.md` §10).
+The single-payload audition render dumps payload A, so it cannot show it.
+
+**Fix.** Never write a stock X or Y table address as a bare literal in a
+module. Declare it (his `xtables` field, patch in his fork, not landed here)
+so the build rewrites the immediate per payload, or read the table through
+a base the build supplies. Until a build check exists, audit any new stock
+table read by rendering the module on BOTH payloads (`rig_render.py`), not
+`make render`.
+
+---
+
 ## Self-oscillating squeal — a page-2 value out of range, or deep overrun
 
 **Symptom.** A rising/holding squeal.

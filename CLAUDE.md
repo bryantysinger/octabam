@@ -331,6 +331,21 @@ instruction probes were spent clearing the emulator first. `send_probe`
 passes `-audio 0` for a stock render; if a stock effect sounds wrong
 locally, suspect the harness before the effect.
 
+**AN ABSOLUTE STOCK-TABLE ADDRESS IS RIGHT IN PAYLOAD A AND 13 WORDS OFF IN
+B, AND THE AUDITION RENDER CANNOT SHOW IT.** The payloads are linked
+separately: the 6,305-word curve bank is `X:0x438` in A and `X:0x42b` in B
+(the block below it is 23 words on A and 10 on B), and the Y tables shift by
+16. Stock code carries a different extension word per payload; a module is
+one source assembled into both, so a bare literal into a stock table is
+correct on tracks 5–8 and mistuned on 1–4, and past the end of the relocated
+table it reads garbage. Bryan T's LOFI2 shipped that way through a week of
+renders and several flashes (13 Sep 2026, `docs/firmware/EXTERNAL.md` §10;
+measured here from our own image). `send_probe`'s single-payload render dumps
+payload A. Declare stock table addresses so the build rewrites them per
+payload, or read through a build-supplied base; and audit any stock-table
+read on BOTH payloads under `rig_render.py`. Our own modules were scanned
+14 Sep 2026 and read none.
+
 **A DESCRIPTOR NAME THAT EXACTLY FILLS ITS FIELD LEAVES NO NUL, AND THE
 CRASH LANDS SOMEWHERE ELSE ENTIRELY.** `abbr` is a 5-byte field holding FOUR
 characters plus a terminator; `fullname` is 13 bytes holding TWELVE (and the
