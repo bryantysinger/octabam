@@ -392,6 +392,18 @@ T6's LFO 2 (DEST/SPD/MULT/WAVE/TRIG) decides whether it is the set's own
 setting or a destination our image turns into DC. It was absent on 13 Sep
 morning because those captures played a different part.
 
+**The LFO, read from the part (`ot_project.py lfo`, octalab's offsets +9,
+matching the panel):** T6 LFO 2 = destination 16 (AMP BAL), triangle, speed
+18, depth 21, FREE — not deliberate (Sam). Any non-zero depth gives the
+same −21 dBFS pulse; a plain BAL move over CC 8 never does, on any track;
+the pulse rate follows the LFO speed (SPD 127: every 65 ms). The set's
+parts also carried T8 LFO 2 on AMP BAL (depth 47) and T5 LFO 1 at depth
+127 on an effect page. **Cleared: every LFO depth in OCTABAM87 and the
+ladder (`lfo-clear all`, 13 Sep 2026 evening).** Open: whether a balance
+LFO pulses on stock 1.40C too, or only on our image (the pan stage is
+stock; its table may sit in harvested memory) — the port with a fast LFO
+fixture decides it without a flash.
+
 **Earlier suspect, retracted by the above:** T6's FX chain in rung A is SEND on both slots (id 0 runs SEND
 on this image), the only code of ours in that rung — INFERRED, not shown:
 the stock null effect and the track's own output path are not excluded.
