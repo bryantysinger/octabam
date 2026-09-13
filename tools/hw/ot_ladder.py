@@ -466,21 +466,24 @@ def analyse_tail(x, sr, stop_nominal):
             A, B = np.polyfit(tt[seg], tail[seg], 1)
             res["decay_db_per_s"] = float(A)
             res["t60_s"] = float(-60.0 / A) if A < 0 else None
-    # repeats: autocorrelation of the linear envelope of the tail
-    lin = e[k0:k0 + int(min(len(e) - k0, 8.0 / 0.010))]
-    lin = lin - lin.mean()
-    if len(lin) > 200 and lin.std() > 0:
-        ac = np.correlate(lin, lin, "full")[len(lin) - 1:]
-        ac /= ac[0]
-        lo, hi = 6, min(150, len(ac) - 1)          # 60 ms .. 1.5 s
-        if hi > lo + 5:
-            seg = ac[lo:hi]
-            k = int(np.argmax(seg)) + lo
-            # a peak that is a local maximum and stands out
-            if 0 < k < len(ac) - 1 and ac[k] > ac[k - 1] and ac[k] > ac[k + 1] and ac[k] > 0.25:
-                y0, y1, y2 = ac[k - 1], ac[k], ac[k + 1]
-                frac = 0.5 * (y0 - y2) / (y0 - 2 * y1 + y2) if (y0 - 2 * y1 + y2) != 0 else 0.0
-                res["repeat_ms"] = float((k + frac) * 10.0); res["repeat_corr"] = float(ac[k])
+    # repeats: autocorrelation of the DETRENDED dB envelope over the tail's
+    # audible span (the linear envelope is owned by the first repeat and read
+    # 98 ms on a 124 ms delay, pass1 rung D). The first local maximum above
+    # 0.2 between 60 ms and 1.5 s is the spacing; its harmonics follow.
+    n_aud = int(t_len / 0.010) if t_len else len(tail)
+    if n_aud > 30:
+        seg = tail[:n_aud] - np.linspace(tail[0], tail[n_aud - 1], n_aud)
+        seg = seg - seg.mean()
+        if seg.std() > 0:
+            ac = np.correlate(seg, seg, "full")[len(seg) - 1:]
+            ac /= ac[0]
+            for k in range(6, min(150, len(ac) - 1)):
+                if ac[k] > ac[k - 1] and ac[k] > ac[k + 1] and ac[k] > 0.2:
+                    y0, y1, y2 = ac[k - 1], ac[k], ac[k + 1]
+                    den = (y0 - 2 * y1 + y2)
+                    frac = 0.5 * (y0 - y2) / den if den != 0 else 0.0
+                    res["repeat_ms"] = float((k + frac) * 10.0); res["repeat_corr"] = float(ac[k])
+                    break
     # ticks in the quiet part
     quiet_from = k0 * win + int((t_len or 0) * sr) + int(0.5 * sr)
     q = x[quiet_from:]
