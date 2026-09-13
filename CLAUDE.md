@@ -388,6 +388,19 @@ measured under the port (`ot_emu --dsp-pcwatch`), never modelled in
 `dsp_host`; and a hardware failure the lock-step harness cannot show goes to
 the port before it goes to a guess.
 
+**AN EFFECT'S `init` MUST PRESERVE r1: THE FX1 DISPATCHER KEEPS THE EFFECT
+ID THERE ACROSS THE INIT CALL.** `P:0x4c8..0x4d7`: `move b,r1`, `jsr
+INIT_TABLE[r1]`, then `move x:(r1+$235),r2 / jsr (r2)` for proc — so an init
+that returns with r1 moved sends the proc call through a garbage word to
+P:0 = the reset vector, and the core dies AT PROJECT LOAD, before a frame.
+Image 99 (13 Sep 2026) did this on every core that loaded a Spectrum on FX1:
+its new init zeroed 24 state slots with `move a,x:(r1)+`. It looked like the
+step-1 DSP hang and was found under the ColdFire port's last-PC ring in an
+hour; `dsp_host` cannot see it because it calls init and proc itself and
+never reads r1 between them. Proc may use r1 (the dispatcher reloads it
+after proc). `tools/verify/verify_initregs.py` refuses an init that writes
+r1/n1/m1 and runs in `make check`. Zero through r5.
+
 **A parameter slot can draw a knob and publish nothing.** The page descriptor
 and the DSP-side read are separate mechanisms; `dsp_host` pokes r6 directly, so
 everything looks live locally even when the real unit would publish nothing.
