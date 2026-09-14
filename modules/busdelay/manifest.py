@@ -44,7 +44,13 @@ SIZE_ROWS = (
     (16384, 512,  0,     0x1fff, 0x800, 0x400,  0x80000,  0),
     (2048,  4096, 28608, 0x1fff, 0x800, 0x400,  0x80000,  0),   # 4+: garbage index
 )
-PTABLE = tuple(w for row in SIZE_ROWS for w in row)
+# The sticky snap's ten tempo divisions, M << 11 for M in 2, 3, 4, 6, 8, 9,
+# 12, 16, 18, 24 (1/32T .. 1/4; 1/2T and 1/4. never fit the 370 ms line
+# below ~170 BPM), smallest first -- last match wins in the engine's loop,
+# exactly as the ladder they replace evaluated them. At offset 40.
+SNAP_DIVS = (0x1000, 0x1800, 0x2000, 0x3000, 0x4000,
+             0x4800, 0x6000, 0x8000, 0x9000, 0xc000)
+PTABLE = tuple(w for row in SIZE_ROWS for w in row) + SNAP_DIVS
 
 MODULE = Module(
     name="busdelay",

@@ -1041,66 +1041,22 @@ dwarmdone:
         move    a,x1                    ; tolerance = free/16
         move    x:(r6+$7),x0            ; ticks Q12.4 << 8 (0 = not published)
         clr     b                       ; candidate: 0 = nothing near
-        move    #>$1000,y0              ; M=2  (1/32T)
+; THE TEN DIVISIONS ARE A TABLE (14 Sep 2026): M << 11 for M in {2, 3, 4,
+; 6, 8, 9, 12, 16, 18, 24}, the manifest's SNAP_DIVS, appended to the P
+; table after the SIZE rows. One `do` over them; the table read leads the
+; body so each trip's cmp and tlt stay adjacent (the shared-flag idiom), and
+; nothing in the body but the read changes between trips. 70 words -> 12.
+        move    n4,r5                   ; the P table (block preamble)
+        move    #$28,n5                 ; + 40: the divisions
+        move    (r5)+n5
+        do      #10,>snapz
+        move    p:(r5)+,y0              ; M << 11, smallest first
         mpy     y0,x0,a                 ; ticks*M
         sub     y1,a
         abs     a                       ; |d - free|
         cmp     x1,a
         tlt     y0,b                    ; within tolerance -> candidate
-        move    #>$1800,y0              ; M=3  (1/32)
-        mpy     y0,x0,a                 ; ticks*M
-        sub     y1,a
-        abs     a                       ; |d - free|
-        cmp     x1,a
-        tlt     y0,b                    ; within tolerance -> candidate
-        move    #>$2000,y0              ; M=4  (1/16T)
-        mpy     y0,x0,a                 ; ticks*M
-        sub     y1,a
-        abs     a                       ; |d - free|
-        cmp     x1,a
-        tlt     y0,b                    ; within tolerance -> candidate
-        move    #>$3000,y0              ; M=6  (1/16)
-        mpy     y0,x0,a                 ; ticks*M
-        sub     y1,a
-        abs     a                       ; |d - free|
-        cmp     x1,a
-        tlt     y0,b                    ; within tolerance -> candidate
-        move    #>$4000,y0              ; M=8  (1/8T)
-        mpy     y0,x0,a                 ; ticks*M
-        sub     y1,a
-        abs     a                       ; |d - free|
-        cmp     x1,a
-        tlt     y0,b                    ; within tolerance -> candidate
-        move    #>$4800,y0              ; M=9  (1/16.)
-        mpy     y0,x0,a                 ; ticks*M
-        sub     y1,a
-        abs     a                       ; |d - free|
-        cmp     x1,a
-        tlt     y0,b                    ; within tolerance -> candidate
-        move    #>$6000,y0              ; M=12 (1/8)
-        mpy     y0,x0,a                 ; ticks*M
-        sub     y1,a
-        abs     a                       ; |d - free|
-        cmp     x1,a
-        tlt     y0,b                    ; within tolerance -> candidate
-        move    #>$8000,y0              ; M=16 (1/4T)
-        mpy     y0,x0,a                 ; ticks*M
-        sub     y1,a
-        abs     a                       ; |d - free|
-        cmp     x1,a
-        tlt     y0,b                    ; within tolerance -> candidate
-        move    #>$9000,y0              ; M=18 (1/8.)
-        mpy     y0,x0,a                 ; ticks*M
-        sub     y1,a
-        abs     a                       ; |d - free|
-        cmp     x1,a
-        tlt     y0,b                    ; within tolerance -> candidate
-        move    #>$c000,y0              ; M=24 (1/4)
-        mpy     y0,x0,a                 ; ticks*M
-        sub     y1,a
-        abs     a                       ; |d - free|
-        cmp     x1,a
-        tlt     y0,b                    ; within tolerance -> candidate
+snapz:
 ; ---- knob moved? then held = candidate, else keep ---------------------------
         move    b,x1                    ; candidate (B2 clean: clr/Tcc only)
         move    x:(r6+$1),a             ; TIME (slot 1)
