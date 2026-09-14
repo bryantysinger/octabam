@@ -99,7 +99,7 @@ MODULE = Module(
     params=(
         # ---- page 1: the performance surface, scene/CC-reachable -----------
         Param(b"FREQ", 127, active=True, formatter=_PLAIN,
-              doc="cutoff, 60 Hz..15 kHz exponential; in VOWL the vowel A-E-I-O-U; in CAP the LOW cut (never closed)"),
+              doc="cutoff, 60 Hz..15 kHz exponential; in VOWL the vowel A-E-I-O-U; in CAP the LOW cut"),
         Param(b"RES", 0, active=True, formatter=_PLAIN,
               doc="resonance, up to Q~33 (bounded); in VOWL the formants' bandwidth; in CAP the HIGH cut"),
         Param(b"ENV", 64, 128, active=True, formatter=_BIPOL,
