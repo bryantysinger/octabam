@@ -482,8 +482,13 @@ ch_pos3:
         andi    #$fe,ccr                ; carry clear
         rep     #$18
         div     x0,a                    ; 24 quotient bits land in a0
-        move    a0,x0
-        move    x0,x:(r7+$22)           ; TAPE unity trim
+        move    a0,x0                   ; (1/11)/d8, flat unity
+; ... plus a gentle lift with drive (Sam, same round: flat unity "loses a
+; little oomph" as the top goes): +0.023 on the trim is +0.3 dB at DRV 0,
+; +0.7 at 64, +2.0 at 127, small-signal.
+        move    x0,a
+        add     #>$02fb7f,a             ; 0.0233
+        move    a,x:(r7+$22)            ; TAPE trim
         move    x:(r6+$5),a             ; TONE/128
         and     #>$7f0000,a
         move    a1,x0
