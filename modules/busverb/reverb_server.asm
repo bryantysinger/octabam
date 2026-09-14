@@ -1074,290 +1074,45 @@ warmdone:
                                         ; step) as the short immediates the
                                         ; dispatch below compares against
 ; MODE_OVERRIDE
-        tst     a                       ; (the override substitutes a `move #>N,a`
-                                        ; above; the $6e park-and-reload it used
-                                        ; to sit between went 14 Sep 2026)
-        beq     md_room
-        move    #$1,x0                  ; SHORT immediates, which the DSP56300
-        cmp     x0,a                    ; places MSB-ALIGNED ($010000) -- which
-        beq     md_plate                ; is why the extract above is `asl #$8`
-; HALL removed (9 Aug 2026): the three remaining modes are well-separated on
-; decay, damping, modulation and tap spread; HALL sat between PLATE and BIG on
-; every lever and was never distinguishable from BIG in blind A/B (VOICING.md).
-; Removing it frees the md_hall block (~50 words) and the beq dispatch.
-
-; Per-mode levers — each md_* block sets these constants:
-;
-;   $72  damping scale  -- multiplies the HI-derived coefficient. SMALLER is
-;                          darker, because the one-pole is s += c*(d-s).
-;   $73  mod depth scale -- multiplies MOD. Only ever scales DOWN, so BIG sits
-;                          at unity and the tighter spaces move less.
-;
-; A big space is darker and more moving in its tail, not merely longer; that
-; is the part tap scale was never going to express.
-md_big:                                 ; 2, and anything unexpected
-; DECAY SCALE, 1.00 -> ~11.6 s, unchanged; BIG is the long one.
-; MODE did not touch decay time AT ALL. Measured at TIME=64 the four modes
-; ran 6.9 / 9.8 / 10.3 / 11.6 s -- and what spread there was came only
-; incidentally, from shorter lines circulating more often. Decay time is
-; the single biggest room-vs-hall cue, so ROOM vs HALL stayed the weakest
-; pair however the other five levers were set.
-;
-; Parked in $1e for the TIME block below to fold in -- the r7 block ends at
-; $83 and $7e..$81 went to the diffuser taps, so there is no spare slot.
-; Scaling g DOWN is always safe; it is scaling UP that self-oscillates.
-;
-; R18: 0.60 -> 0.67578. The 0.60 was cut from 2/√8 for "headroom" before the
-; 1.1 norm proof existed; with it, stability needs only $1e < 1/√8 = 0.3536,
-; and 0.67578 keeps max $1e = 0.4995*0.67578 = 0.3376 (radius <= 0.976 at the
-; shortest line, strictly < 1 BY NORM at every knob). What it buys: BIG's
-; decay CEILING was ~-15 dB/s (RT60 ~4 s) -- the Valhalla Shimmer reference
-; rings at -8.3 dB/s (~7 s) and its size knob was only at HALF. TIME's top
-; now reaches ~-5 dB/s; the whole knob lengthens (T64 ~-10 dB/s, was -21).
-; Falsifier: quiet-click stability sweep TIME 127 x SIZE corners, no growth.
-        move    #$20,a                    ; k_mode 0.25 (13 Sep 2026: the TIME law
-        move    a,x:(r7+$1e)              ; below; was the decay scale 0.67578)
-        move    #$5a,a                  ; wet gain/2 = -3 dB vs ROOM/PLATE.
-        move    a,x:(r7+$20)            ; Two-step history, same day (18 Aug
-                                        ; 2026): capture B measured BIG +8.4 dB
-                                        ; over ROOM and a -6 trim shipped in
-                                        ; R33 -- but those captures ran on the
-                                        ; OLD PART, whose stored LP strips more
-                                        ; HF from ROOM/PLATE (low damping) than
-                                        ; from BIG, inflating BIG's relative
-                                        ; tail. The clean-part number is ~+5.4
-                                        ; (emulator), Sam's ear called the -6
-                                        ; "a bit of a volume drop", and -3 is
-                                        ; the correction: BIG lands ~+2 with a
-                                        ; long-tail loudness discount on top.
-                                        ; The part-state lesson, a second time,
-                                        ; in the same session it was learned.
-; INPUT DIFFUSER taps, LONG since Round 13 (14-44 ms): the diffusers are the
-; bloom generator now, and the 4-13 ms Dattorro set could not stretch the
-; attack. All modes share the tap set (641 1051 1511 1949, primes), stored
-; as (2048 - tap) for the modulo read. Round 7's dispersion warning was for
-; the IN-LOOP allpasses; on the input side, dispersion IS the bloom.
-; (Diffuser taps + LFO RATE scale HOISTED to md_done, v8: all three modes
-; stored the same five constants -- Round 13's "a huge space barely moves"
-; rationale for RATE 1.0 lives on there. 20 words x2 reclaimed; what let
-; verify_burn's plain layout fit.)
-; EARLY-REFLECTION ARRIVALS removed — six discrete taps were a flutter echo.
-; A short input diffuser now fills this role (see the allpass tap constants above).
-; TAP SPREAD, 1.69 : 1 (longest:shortest) -- wide, CAPPED by the buffer.
-; The four line lengths used to be hardcoded once and merely SCALED by
-; MODE, so every mode was ONE modal pattern transposed. That is why they
-; sounded alike however the scale moved.
-;
-; The MEAN tap is held at 3178 in every mode, so MODE's tap scale keeps its
-; full effect on size and the spread varies INDEPENDENTLY of it. Pinning the
-; longest instead (first attempt) moved each mode's mean delay -- PLATE +12%,
-; BIG -13% -- so the new lever pushed against the one already working, and
-; the modes measured CLOSER together. See VOICING.md Round 3.
-        move    #>$3F4800,a             ; line 0: 4050 of 4096
-        move    a,x:(r7+$74)
-        move    #>$352C00,a             ; line 1: 3403 of 4096
-        move    a,x:(r7+$75)
-        move    #>$2CB000,a             ; line 2: 2860 of 4096
-        move    a,x:(r7+$76)
-        move    #>$258C00,a             ; line 3: 2403 of 4096
-        move    a,x:(r7+$77)
-        move    #>$7fffff,a             ; tap scale 1.00 -- the largest space
-        move    a,x:(r7+$6f)
-        move    #$0c,a                  ; diffusion offset, ROOM's old level
-                                        ; (Round 13; 0.031 was too dry to
-                                        ; wash the end-ring)
-        move    a,x:(r7+$3f)
-        move    #>$733333,a             ; damping 0.90 (R18, was 0.8125; R13
-                                        ; had raised it from 0.5625): the loop
-                                        ; keeps its highs; tone lives in the
-                                        ; wet high-cut. At 0.8125 the compound
-                                        ; loss still ran ~-10 dB vs the VV ref
-                                        ; across 6-9k through the body -- the
-                                        ; binding HF lever, measured: the wet
-                                        ; high-cut raise alone moved 6-9k by
-                                        ; <1 dB, this is where the band dies.
-        move    a,x:(r7+$72)            ; against PASS RATE, not per pass: the
-                                        ; (Round 11: BIG keeps 0.5625 -- already
-                                        ; darkest, its HF hang was the scatter,
-                                        ; which the wet high-cut now handles)
-                                        ; first attempt used 0.60 against HALL's
-                                        ; 0.75 and measured BIG the BRIGHTER of
-                                        ; the two, because damping applies once
-                                        ; per circulation and BIG's lines are
-                                        ; 1.39x longer, so it damps 0.72x as
-                                        ; often per second. Retention over equal
-                                        ; time goes as c^(1/tapscale), which is
-                                        ; what these constants are chosen on.
-        move    #>$4CCCCD,a             ; mod depth 0.60 (Round 13, was 1.0:
-                                        ; at the x8 base rate, full depth
-                                        ; would be ~19 cents of vibrato --
-                                        ; fast-shallow, never fast-deep).
-        move    a,x:(r7+$73)            ; scale comes from movement, not length
-        move    #>$4CCCCD,a             ; wet high-cut 0.60, ~6.4 kHz (R18; was
-        move    a,x:(r7+$7a)            ; 0.523 ~5.2k). The Valhalla Shimmer ref
-                                        ; (high cut 8k, color bright) measured
-                                        ; 6-9k a full 5-10 dB brighter through
-                                        ; the body; the 5.2k corner was the
-                                        ; single biggest shading on that band.
-                                        ; Still below PLATE's 0.68 -- BIG stays
-                                        ; the darker of the two by design.
-        move    #$65,a                  ; lines 4-7 tap scale 0.789 -- wide
-        move    a,x:(r7+$6c)            ; interleave suits the 1.69 spread
-        bra     md_done
-md_room:
-; DECAY SCALE, 0.92 -> RT60 ~2.0 s. A room is SHORT; 6.9 s is a cathedral.
-; MODE did not touch decay time AT ALL. Measured at TIME=64 the four modes
-; ran 6.9 / 9.8 / 10.3 / 11.6 s -- and what spread there was came only
-; incidentally, from shorter lines circulating more often. Decay time is
-; the single biggest room-vs-hall cue, so ROOM vs HALL stayed the weakest
-; pair however the other five levers were set.
-;
-; Parked in $1e for the TIME block below to fold in -- the r7 block ends at
-; $83 and $7e..$81 went to the diffuser taps, so there is no spare slot.
-; Scaling g DOWN is always safe; it is scaling UP that self-oscillates.
-        move    #$40,a                    ; k_mode 0.5 (13 Sep 2026: the TIME law;
-        move    a,x:(r7+$1e)              ; was the decay scale 0.6505)
-; (wet gain $20, diffusion offset $3f and movement scale $73 are ROOM/PLATE
-; -common -- stored once at rp_tail, v8; only BIG differs on those three)
-; INPUT DIFFUSER taps, LONG since Round 13 (14-44 ms): the diffusers are the
-; modes share the tap set (641 1051 1511 1949, primes).
-; (Diffuser taps + LFO RATE scale hoisted to md_done, v8 -- see BIG's note.)
-; EARLY-REFLECTION ARRIVALS removed — six discrete taps were a flutter echo.
-; A short input diffuser now fills this role (see the allpass tap constants above).
-; TAP SPREAD, 1.60 : 1 (longest:shortest) -- the reference -- unchanged.
-; The four line lengths used to be hardcoded once and merely SCALED by
-; MODE, so every mode was ONE modal pattern transposed. That is why they
-; sounded alike however the scale moved.
-;
-; The MEAN tap is held at 3178 in every mode, so MODE's tap scale keeps its
-; full effect on size and the spread varies INDEPENDENTLY of it. Pinning the
-; longest instead (first attempt) moved each mode's mean delay -- PLATE +12%,
-; BIG -13% -- so the new lever pushed against the one already working, and
-; the modes measured CLOSER together. See VOICING.md Round 3.
-        move    #>$3DD800,a             ; line 0: 3958 of 4096
-        move    a,x:(r7+$74)
-        move    #>$34E800,a             ; line 1: 3386 of 4096
-        move    a,x:(r7+$75)
-        move    #>$2D3800,a             ; line 2: 2894 of 4096
-        move    a,x:(r7+$76)
-        move    #>$26A800,a             ; line 3: 2474 of 4096
-        move    a,x:(r7+$77)
-        move    #>$4CCCCD,a             ; tap scale 0.60 (Round 13, was 0.45:
-                                        ; the room grew for bloom + density)
-        move    a,x:(r7+$6f)
-        move    #$7a,a                  ; damping 0.953 -- the loop barely
-                                        ; damps (Round 13); in-loop damping
-                                        ; compounds per pass and was thinning
-                                        ; + darkening the late tail. Tone
-                                        ; lives in the wet high-cut now. (Was
-                                        ; 0.75; Round 11's retune of the old
-        move    a,x:(r7+$72)            ; inverted-HF finding -- VV room's HF
-                                        ; dies FASTEST, ours hung on)
-        move    #$43,a                  ; wet high-cut 0.523 (Round 13) -- VV room
-        move    a,x:(r7+$7a)            ; is "darker tone"
-        move    #$5c,a                  ; lines 4-7 tap scale 0.71875 -- tighter
-        move    a,x:(r7+$6c)            ; interleave for a smaller space
-        bra     rp_tail                 ; ROOM/PLATE-common stores, then md_done
-md_plate:
-; DECAY SCALE, 0.965 -> ~4.8 s.
-; MODE did not touch decay time AT ALL. Measured at TIME=64 the four modes
-; ran 6.9 / 9.8 / 10.3 / 11.6 s -- and what spread there was came only
-; incidentally, from shorter lines circulating more often. Decay time is
-; the single biggest room-vs-hall cue, so ROOM vs HALL stayed the weakest
-; pair however the other five levers were set.
-;
-; Parked in $1e for the TIME block below to fold in -- the r7 block ends at
-; $83 and $7e..$81 went to the diffuser taps, so there is no spare slot.
-; Scaling g DOWN is always safe; it is scaling UP that self-oscillates.
-        move    #>$333333,a               ; k_mode 0.4 (13 Sep 2026: the TIME law;
-        move    a,x:(r7+$1e)            ; was the decay scale 0.6299). Round 12:
-; (wet gain $20 -- and $3f/$73 below -- are ROOM/PLATE-common: rp_tail, v8)
-                                        ; decay (TIME=0) measured MF -15.1 dB/s
-                                        ; against VV plate's -18.9 -- the knob
-                                        ; could not reach a real plate's
-                                        ; tightness. Set EMPIRICALLY, not by
-                                        ; gain accounting: $1e feeds the per-
-                                        ; line formula through the 1/√8 anchor
-                                        ; spread, so a naive x0.972 delivered
-                                        ; only 2.5 dB/s of the needed 6.9
-                                        ; (measured sensitivity ~2.5 dB/s per
-                                        ; 0.019 of scale). This value targets
-                                        ; VV plate's rate at TIME~32, whole
-                                        ; upper knob left for longer tails.
-; INPUT DIFFUSER taps, LONG since Round 13 (14-44 ms): the diffusers are the
-; modes share the tap set (641 1051 1511 1949, primes).
-; (Diffuser taps + LFO RATE scale hoisted to md_done, v8 -- see BIG's note.)
-; EARLY-REFLECTION ARRIVALS removed — six discrete taps were a flutter echo.
-; A short input diffuser now fills this role (see the allpass tap constants above).
-; TAP SPREAD, 1.24 : 1 (longest:shortest) -- TIGHTEST -- most homogeneous.
-; The four line lengths used to be hardcoded once and merely SCALED by
-; MODE, so every mode was ONE modal pattern transposed. That is why they
-; sounded alike however the scale moved.
-;
-; The MEAN tap is held at 3178 in every mode, so MODE's tap scale keeps its
-; full effect on size and the spread varies INDEPENDENTLY of it. Pinning the
-; longest instead (first attempt) moved each mode's mean delay -- PLATE +12%,
-; BIG -13% -- so the new lever pushed against the one already working, and
-; the modes measured CLOSER together. See VOICING.md Round 3.
-        move    #>$372000,a             ; line 0: 3528 of 4096
-        move    a,x:(r7+$74)
-        move    #>$334C00,a             ; line 1: 3283 of 4096
-        move    a,x:(r7+$75)
-        move    #>$2FC000,a             ; line 2: 3056 of 4096
-        move    a,x:(r7+$76)
-        move    #>$2C7400,a             ; line 3: 2845 of 4096
-        move    a,x:(r7+$77)
-        move    #$48,a                  ; tap scale 0.5625 (was 0.65)
-        move    a,x:(r7+$6f)
-        move    #$64,a                  ; damping 0.78 (was 0.953 ~= none: the
-                                        ; ⚠️ 18 Aug 2026: a PLATE-brighten to
-                                        ; 0.879 was built and REVERTED within
-                                        ; the hour -- the hardware tilt that
-                                        ; justified it (PLATE darkest, HF -12)
-                                        ; was confounded by the test part's
-                                        ; STORED LP, which multiplies this
-                                        ; constant and hits PLATE (smallest
-                                        ; damping) hardest. Re-measure with
-                                        ; LP=127 confirmed before touching.
-        move    a,x:(r7+$72)            ; tail literally BRIGHTENED as it
-                                        ; decayed -- Round 11. Still the
-                                        ; brightest mode of the three.)
-        move    #$57,a                  ; wet high-cut 0.68 (~8 kHz) -- plate
-        move    a,x:(r7+$7a)            ; stays the bright one
-        move    #$62,a                  ; lines 4-7 tap scale 0.765625 -- moderate
-        move    a,x:(r7+$6c)            ; interleave for a dense plate
-rp_tail:
-; ---- ROOM/PLATE-common stores (v8): both modes carried these identically;
-; only BIG differs on all three. PLATE falls through, ROOM branches here.
-; Values unchanged -- placement, not voicing.
-        move    #>$7e8000,a             ; wet gain/2 (R18 full-wet, per-mode
-        move    a,x:(r7+$20)            ; since 18 Aug 2026; BIG stores its
-                                        ; own -6/-3 dB trim in its block)
-        move    #$10,a                  ; diffusion offset, highest (Round 13)
-        move    a,x:(r7+$3f)
-        move    #>$7fffff,a             ; movement scale 1.0 (18 Aug relaw;
-        move    a,x:(r7+$73)            ; the knob spans it, taste lives there)
-md_done:
-
-; ---- MODE-COMMON constants, hoisted out of all three md_* blocks (v8) -----
-; Every mode stored the SAME five values, one copy per block. The values are
-; unchanged -- this is placement, not voicing: INPUT DIFFUSER taps, LONG
-; since Round 13 (14-44 ms; the diffusers are the bloom generator; set
-; 641/1051/1511/1949, primes, stored as 2048-tap for the modulo read), and
-; the LFO RATE scale pinned at 1.0 (~2.2 Hz) -- Round 13: "a huge space
-; barely moves" left a static tank, and a static tank RINGS; VV's hall mods
-; at 2.53 Hz. $2f is folded into the RATE block's own result below; the r7
-; block ends at $83 ($84+ is host-owned and HANGS, DSP.md).
-        move    #>1407,a
-        move    a,x:(r7+$7e)            ; allpass 0, tap 641 (14.5 ms)
-        move    #>997,a
-        move    a,x:(r7+$7f)
-        move    #>537,a
-        move    a,x:(r7+$80)
-        move    #>99,a
-        move    a,x:(r7+$81)            ; allpass 3, tap 1949 (44.2 ms)
-        move    #>$7fffff,a             ; MODE's LFO RATE scale 1.0
-        move    a,x:(r7+$2f)
+; ---- MODE: one table copy (14 Sep 2026) ----------------------------------
+; The three md_* blocks (and rp_tail / md_done after them) were ~110 words of
+; `move #>const,a / move a,x:(r7+$nn)` pairs, twelve per-mode levers and five
+; mode-independent ones. They are ROWS of the module's P table now
+; (modules/busverb/manifest.py: _MODE_SLOTS / _MODE_ROWS / _MODE_COMMON,
+; with the voicing notes that used to sit beside each constant), seventeen
+; (slot, value) pairs per MODE at a 64-word stride after the eight
+; reciprocals, copied into the r7 block by the loop below. The levers:
+;   $1e  k_mode (the TIME law)      $20  wet gain/2       $74..$77 line taps
+;   $6f  tap scale                  $3f  diffusion offset $72  damping scale
+;   $73  mod depth scale            $7a  wet high-cut     $6c  lines 4-7 tap scale
+;   $7e..$81 diffuser taps (common) $2f  LFO RATE scale (common)
+; The override marker above still works: it substitutes a `move #>N,a`, and the
+; index is whatever `a` holds here. Anything past BIG is BIG, as the old
+; dispatch's fall-through made it: a part saved under an older slot layout
+; can hold any byte in this field (CLAUDE.md, the stored-form trap), and a
+; wild index would read past the table.
+; Rn pairs only with its own Nn on this core, so the walk is r5/n5 (m5 is
+; linear here: set with the table base, kept by the warm-up) and the store
+; is x:(r7+n7) with n7 -- the sample count -- parked in y1, exactly the LFO
+; loop's discipline. r1..r4 are the line pointers by now and r6 the knobs,
+; so no other register can stand in for r7.
+        move    #$2,x0                  ; BIG, MSB-aligned like the index
+        cmp     x0,a
+        tgt     x0,a                    ; index > 2 -> 2
+        asr     #$a,a,a                 ; $010000 per step -> 64 per step,
+                                        ; the row stride
+        move    a,n5
+        move    n4,r5                   ; the table (n4 since the bus gain)
+        move    (r5)+n5                 ; + 64 * MODE
+        move    #8,n5                   ; + the eight reciprocals that lead
+        move    (r5)+n5                 ; the table (short: zero-extended)
+        move    n7,y1                   ; park the sample count
+        do      #17,>mdcpy
+        move    p:(r5)+,n7              ; the r7 slot
+        move    p:(r5)+,a               ; this MODE's value for it
+        move    a,x:(r7+n7)
+mdcpy:
+        move    y1,n7                   ; the sample count back
 
     ; ---- SIZE: scale all eight tap lengths ----------------------------------
     ; tap = 3958*f on the longest line, so f = 0.400 .. 0.989 gives 1583..3914
