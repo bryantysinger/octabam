@@ -906,20 +906,12 @@ dwarmz:
         move    b,y:>$941               ; the REVERB host's ->DEL flag (v8):
                                         ; zeroed once here, so a rig without
                                         ; a reverb never counts garbage in it
-        move    b,x:(r7+$23)            ; PITCH head ages start at 0 (they are
-        move    b,x:(r7+$24)            ; masked on load too, but determinism
-                                        ; is what verify-delay bit-compares)
-        move    b,x:(r7-$30)            ; grain-jitter state: previous ages and
-        move    b,x:(r7-$2f)            ; the four latched offsets all start at
-        move    b,x:(r7-$2e)            ; 0, so a fresh instance is
-        move    b,x:(r7-$2d)            ; reproducible (verify-delay compares
-        move    b,x:(r7-$2c)            ; bit-exactly, and a boot-garbage
-        move    b,x:(r7-$2b)            ; offset would index a wild read)
-        move    b,x:(r7-$2a)
-        move    b,x:(r7-$29)
-        move    b,x:(r7-$28)
-        move    b,x:(r7-$25)            ; shifted output taps: only read in
-        move    b,x:(r7-$24)            ; PITCH, cleared for determinism
+; (14 Sep 2026: thirteen clears left with the dead code they served. $19-$1f
+; are GRAIN v5's per-sample parks and $1e/$1f its wet sums, every one written
+; before it is read in the same sample; $20/$21 have had no reader since the
+; PITCH jitter retired; $24/$25 are only ever LOADED into a Tcc source that
+; does not fire outside GRAIN/REVERSE, which write them first; $6c is skipR,
+; decoded every block before the loop; $6d had no reader at all.)
         move    b,x:(r7-$22)            ; TAPE LFO phases: persistent, and
         move    b,x:(r7-$21)            ; masked on load, but determinism is
                                         ; what verify-delay bit-compares
@@ -2802,11 +2794,11 @@ dry:
         move    r7,a                    ; the r7 REBASE undone: the raw
         sub     #>$49,a                 ; state block goes back to the
         move    a,r7                    ; dispatcher exactly as it came
-        move    #>$ffffff,m0
-        move    #>$ffffff,m1
-        move    #>$ffffff,m2
-        move    #>$ffffff,m4
-        move    #>$ffffff,m5
+        move    #>$ffffff,m1            ; the global linear invariant for the
+        move    #>$ffffff,m2            ; two pointers this file never sets
+                                        ; (m0/m4/m5 are set linear every block
+                                        ; above and never changed: their
+                                        ; restores here were no-ops, 14 Sep 2026)
         rts
 
 ; ---- modtap: the modulated lerped line read, shared by both lines ---------
