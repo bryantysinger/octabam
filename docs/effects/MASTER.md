@@ -1,12 +1,10 @@
-# The master, as it works today (14 Sep 2026)
+# The master (14 Sep 2026)
 
-A short page for anyone touching the rig: what track 8 does, in what order,
-with which knobs, and what we know is true because it was measured on the
-unit. Longer arguments live in `docs/effects/BUS.md` (the bus and the
-returns), `modules/character/character.asm` (the chain, line by line) and
-`docs/effects/VOICING.md` (the listening log). Confidence marks as in
-`CLAUDE.md`: ✅ measured on the unit, 🟡 measured under the port or the
-harness only, ❓ inferred.
+What track 8 does, in what order, with which knobs. The bus and the returns:
+`docs/effects/XBUS.md`; the chain line by line:
+`modules/character/character.asm`; the listening log:
+`docs/history/VOICING.md`. ✅ measured on the unit, 🟡 measured under the
+port or the harness only, ❓ inferred.
 
 ## The shape
 
@@ -59,10 +57,9 @@ layout feeds the new layout its old bytes.
 ## Character on the master, knob by knob (the 14 Sep 2026 surface, image 12)
 
 Page 1: DRV, FOLD, TXTR, COMP, RET, TONE. Page 2: MIX, SAT, —, —, WDTH, —.
-The chain runs in the fixed order drawn above; distortion sits BEFORE
-dynamics on purpose (a compressor after the dirt is a tool, before it is a
-fader for the dirt). Every stage holds its level as its knob rises (the
-tape lifts about +2 dB by 127, by ear), so what you hear is the character.
+The chain runs in the fixed order drawn above, distortion before dynamics.
+Every stage holds its level as its knob rises (the tape lifts about +2 dB
+by 127, by ear).
 
 - **RET** — the return level. 127 in the stamp. Only meaningful on T8.
 - **DRV / SAT** — DRV 0 is bit-exact, no saturation stage at all. SAT picks
@@ -86,24 +83,21 @@ tape lifts about +2 dB by 127, by ear), so what you hear is the character.
   the sides.
 - **MIX** — out = x + MIX·(w − x); 127 in the stamp.
 
-## What it cost us to learn, and the rule that came out of it
+## Dirty state (13–14 Sep 2026)
 
-**"The master compressor collapses the RIGHT channel above COMP 40"
-(13–14 Sep 2026) was not the compressor.** A station whose init did not
-clear all of its state ran with whatever the block held before it:
-Spectrum's filter B keeps its two HP poles frozen at the passthrough stamp,
-and `hp2 = yB − h2` subtracted a stale value from every sample forever — up
-to a full-scale DC on that track's output. An AC-coupled capture cannot see
-DC, so it surfaced as the master's makeup clipping DC + audio to a constant
-on one channel. ✅ Localised on the unit by track LEVEL (post-FX mute cleared
-it, pre-FX mute did not), reproduced under `dsp_host` with the block
-pre-filled with garbage, fixed by zeroing every persistent slot at init in
-Spectrum, Modulation and Character (PR #246), confirmed on image 8.
-
-The rule now in `make verify` (`tools/verify/verify_dirtystate.py`): every
-module of the remix is rendered from a garbage-filled instance block on
-silence, at its defaults and with every knob nudged, and must stay silent.
-The unit's RAM is never zeroed; the port and the harness always are.
+"The master compressor collapses the RIGHT channel above COMP 40" was
+Spectrum's filter B: its two HP poles were not cleared at init and stayed
+frozen at the passthrough stamp, so `hp2 = yB − h2` subtracted a stale value
+from every sample, up to a full-scale DC on that track's output; the
+master's makeup clipped DC + audio to a constant on one channel. An
+AC-coupled capture cannot see DC. ✅ Localised on the unit by track LEVEL
+(post-FX mute cleared it, pre-FX mute did not), reproduced under `dsp_host`
+with the block pre-filled with garbage, fixed by zeroing every persistent
+slot at init in Spectrum, Modulation and Character (PR #246), confirmed on
+image 8. `tools/verify/verify_dirtystate.py` (in `make verify`) renders
+every module of the remix from a garbage-filled instance block on silence,
+at its defaults and with every knob nudged, and refuses any output. The
+unit's RAM is never zeroed; the port and the harness always are.
 
 ## Open, as of 14 Sep 2026
 

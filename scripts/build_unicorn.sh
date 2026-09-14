@@ -3,7 +3,7 @@
 # way the MCF5445x does (tools/patches/unicorn_emac_fractional.patch), and park the
 # library where tools/emu/emu_bringup.py picks it up automatically.
 #
-# Why (docs/firmware/RTOS_FORK.md section 10.16): stock Unicorn 2.1.4
+# Why (docs/history/RTOS_FORK.md section 10.16): stock Unicorn 2.1.4
 # computes a fractional `macl`/`macw` as an UNSIGNED product shifted right
 # by 32; the hardware's is a signed product shifted right by 31 (the 2.62
 # product left-shifted one bit, upper 40 bits accumulated). Every EMAC

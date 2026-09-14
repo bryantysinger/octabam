@@ -1,4 +1,4 @@
-# Scene morph / crossfader — RE scout (24 Aug 2026)
+# Scene morph / crossfader (OS 1.40C, ColdFire)
 
 Static read of `out/raw/section_3_MAIN_OS.bin` (base `0x40000400`), disassembled
 with `m68k-elf-objdump -m m68k:cfv4e` (radare2's m68k plugin cannot decode
@@ -15,8 +15,7 @@ ColdFire `mvs/mvz/byterev/mac`, which is most of this code). Markers as in
 * A scene block covers **page 1 of five pages only — 30 knobs per track**.
   Page 2 (slots 6..11) and the companion fields are unreachable, and the
   exclusion is structural (block size, buffer size, loop extents), not one
-  `cmp`. Recommendation: **Tier 2 (publish the fader value) — three
-  instructions in the existing tempo cave.**
+  `cmp`.
 
 ## 1. Scene block layout ✅
 
@@ -140,13 +139,11 @@ Two spare bytes per track could host **one** extra halfword, not three, and
 the DSP-side companion packing would still be lost at every intermediate
 position. Not worth it.
 
-**Do instead (Tier 2)** 🟡: in `modules/tempo-sync/tempo_cave.s` (hooked at `0x40004d40`,
-`a2` = this track's record) add `move.l 0x460d16c8,%d0 ; move.w %d0,0x28(%a2)`
-inside the id-6/7 branch → `r6+$8` (documented dead) carries 0..127 every
-frame for our servers. The DSP thresholds FREEZE/MODE with hysteresis, and
-because `0x460d16c8` is fed by both the hardware fader and CC 48, MIDI comes
-for free. Per-track fader values, if ever wanted, already have a home: the
-weight table at `0x80003c60` is indexed per track.
+The tempo cave (`modules/tempo-sync/tempo_cave.s`, hooked at `0x40004d40`,
+`a2` = this track's record) publishes `0x460d16c8` + 1 at `+0x28` → `r6+$8`
+every frame for the two servers; both the hardware fader and CC 48 feed
+`0x460d16c8`. Nothing of ours reads it. Per-track fader values would have a
+home in the weight table at `0x80003c60`, indexed per track.
 
 Falsifiers: a hardware flash where the fader at the A end changes a page-1
 lock the wrong way (would invert §2's endpoint claim); a `TPROBE`-style capture

@@ -13,7 +13,7 @@
 ; literal per payload):
 ;   lines      base+0x0000 .. base+0x7fff   4096 words each, spacing 0x1000
 ;              taps to ~3914 (89 ms) at SIZE max
-;   input APs  shared+0x2000 .. 0x3fff      2048 words each, taps 179..547
+;   input APs  shared+0x2000 .. 0x3fff      2048 words each, taps 641..1949
 ;   pre-delay  shared+0x1000 .. 0x1fff      4096 words (93 ms)
 ;   shimmer    shared+0x0800 ..             2048 words (NOSHIM=1 excises it)
 ;   in-loop AP shared+0x4000/0x4200         512 words each, taps 298 446
@@ -334,7 +334,7 @@ bus_mine:
         move    a,x:(r7+$63)            ; this call's read address
 ; ---- this call's REVERB WET write address: STEREO, FOUR DEEP (3 Sep 2026) --
 ; The wet is READ now -- by a Character station in BUS mode, the return on
-; the master (docs/effects/BUS.md "The returns") -- so it carries the same cross-core
+; the master (docs/history/BUS.md "The returns") -- so it carries the same cross-core
 ; race the accumulators do and takes the same four-buffer rotation, and it
 ; carries L and R (32 words a buffer, interleaved) because the return is what
 ; the master hears: a mono M would have thrown the reverb's width away. The

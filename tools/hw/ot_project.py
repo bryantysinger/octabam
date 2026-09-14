@@ -712,7 +712,7 @@ def make_test_project(src, dest, remix_name):
 
 # ---- the RIG project: the set's layout, with the returns wired ------------
 # One part = the whole rig on its eight tracks, as designed (the BamSep26
-# page and docs/effects/BUS.md "The returns"): stations on FX1 everywhere, the two
+# page and docs/history/BUS.md "The returns"): stations on FX1 everywhere, the two
 # engines in T1's and T5's FX2, the stock delay where a track wants one, and
 # T8's Character station in SAT=BUS with both returns up. Every part of every
 # bank gets the same layout, so any pattern is the rig. Knob bytes are the
