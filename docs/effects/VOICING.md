@@ -2473,3 +2473,12 @@ drawn on image 12). TUBE's +6 dB step at DRV 1 (the JSFX's default output
 slider) modelled. And a bug of mine: the tape trim had landed in the
 detector's K/4 slot on images 10/11, so the COMP verdict on image 10 was on
 a wrong ratio — re-judge on 12.
+
+**14 Sep 2026, ROUND 2 on the unit (image 12).** TAPE: Sam "pretty happy
+with tape ... all happy with all params now in tape mode, including txtr,
+tone, width etc." DECIDED. TUBE: "drv doesn't do much on tube, but that's
+ok if it needs to keep its set for tape. everything else good" DECIDED (the
+DaTube drive is subtle by the plugin's own law). Panel: "rather than sat
+label being static with the mode flashing for a sec, get rid of sat and
+just have it showing tape | tube | infl" → the SAT select renames itself
+by ModeView (image 13).

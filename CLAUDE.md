@@ -94,7 +94,15 @@ register. `tools/patches/dsp56300.patch` adds the one-word form; every
 word or cycle number recorded for a displaced move before that date is 2
 where the assembler now emits 1 (the emulator's own cycle table prices the
 forms 3 and 2; hardware timing of the one-word form under OUR code is
-unmeasured — stock runs it every frame).
+unmeasured — stock runs it every frame). **THE BINARY IS NOT THE SOURCE:**
+the encoder lives in the vendored `assembler.cpp` behind that patch, and
+a `dsp_asm` built before it silently emits the two-word form for every
+site — five images (8–12, 14 Sep 2026) and every price quoted with them
+were ~800 words / ~500 cycles heavier than the tree said, found only when
+another session's FREE table did not match. After any change under
+`tools/patches/` or `tools/harness/dsp_host/`: `scripts/setup.sh` (or
+apply the hunk and `cmake --build vendor/dsp56300/build --target dsp_asm
+dsp_host`), then assemble `move x:(r7+$15),a` and expect `0257de`.
 
 **READING `a0` EXPOSES THE FRACTIONAL LEFT SHIFT THAT READING `a1` HIDES.**
 `mpy` aligns the Q46 product into Q47, so `a1` is the plain fractional
