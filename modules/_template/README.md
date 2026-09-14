@@ -1,15 +1,11 @@
 # <Module name>
 
-One paragraph: what it is and why it exists.
-
-(`modules/hello/README.md` is this template filled in, for a module small
-enough to read whole.)
+One paragraph: what it is. (`modules/hello/README.md` is this template
+filled in.)
 
 ## Status
 
-Where it actually stands. Separate **measured** from **inferred** — this
-project has been burned by confident numbers more than once, so say what
-would falsify a claim rather than writing "found it" for something reasoned.
+Measured vs inferred, with what would falsify each claim.
 
 ## Parameters
 
@@ -19,12 +15,10 @@ would falsify a claim rather than writing "found it" for something reasoned.
 
 ## Open
 
-What you know is unresolved. A named open question is worth more than a
-clean-looking README.
+What is unresolved.
 
 ## Gates
 
-How a reader reproduces your measurements, in the order they must run.
-`tools/verify/verify_hello.py` is the pattern: predict the arithmetic exactly, drive
-both signs, and make the tool refuse to run if the id it resolves is the
-fallback rather than your effect.
+How a reader reproduces the measurements, in order. `tools/verify/verify_hello.py`
+is the pattern: predict the arithmetic exactly, drive both signs, refuse to
+run if the id it resolves is the fallback rather than the effect.

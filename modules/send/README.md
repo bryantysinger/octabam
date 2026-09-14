@@ -1,26 +1,22 @@
 # SEND
 
-The bus client. Two knobs, one per bus: `-DEL` into BusDelay, `-VRB` into
-BusVerb. Driving the wrong one renders silence, which reads as a broken
-algorithm — they are separate knobs on separate accumulators.
+The bus client: one knob, AUX, this track's level into the one aux bus
+(delay, then reverb, wet back on track 8).
 
-It never writes the audio buffer, only taps it, so a SEND with both levels at
-zero is indistinguishable from "no effect". That is why a fresh, unassigned
-track (FX2 id 0) is aliased to this rather than to NONE: unlike NONE it does
-the per-block bus housekeeping, so making every unassigned track a SEND
-removes the "first track set to NONE stalls the bus" hazard by construction.
+It taps the audio buffer and never writes it, so a SEND at AUX 0 is
+indistinguishable from no effect. A fresh, unassigned track (FX2 id 0) is
+aliased to it rather than to NONE because SEND does the per-block bus
+housekeeping, so no track can stall the bus. It is also the fallback: an id
+a bus-carrying remix does not implement resolves here. The send is refused
+on track 8 by construction (the return lives there).
 
-It is also the default **fallback**: an id a remix does not implement resolves
-here, so selecting a missing effect makes the track a send.
+## The auto-gain
 
-## The auto-gain, and the thing to know about it
+The accumulator is divided by 1/√N of the registered clients, so eight
+senders drive a server as hard as one. A quiet sender turns the loud sender's
+reverb down: three senders, two of them 10–15 dB quieter, measured 4.8 dB
+below the loud sender alone. A client that registers and contributes nothing
+dilutes everyone (−6.02 dB with one sender), which is why every level knob
+gates its own registration.
 
-The accumulator is divided by the number of registered clients (1/√N), so
-eight senders drive a server as hard as one. The consequence worth knowing:
-**a quiet sender turns the loud sender's reverb down.** Three senders, two of
-them 10–15 dB quieter, measured 4.8 dB below the loud sender alone.
-
-A client that registers and then contributes nothing steals everyone else's
-level, which is why every level knob gates its own registration.
-
-See [`docs/effects/XBUS.md`](../../docs/effects/XBUS.md).
+[`docs/effects/XBUS.md`](../../docs/effects/XBUS.md).

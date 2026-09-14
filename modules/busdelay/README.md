@@ -1,175 +1,67 @@
 # BusDelay
 
-A multi-mode delay — CLEAN, GRAIN (a pitched granular cloud over the delay
+A multi-mode delay: CLEAN, GRAIN (a pitched granular cloud over the delay
 lines: Nimbus's grain readers, four per line, one continuous pitch) and
-REVERSE — with tape-style wow/flutter (DPTH/RATE), drive (DRV, doubling as
-GRAIN's scatter depth) and a FREEZE hold available in **every** mode. PITCH
-mode was retired in v5 (3 Sep 2026): GRAIN's pitch is the harmoniser now. Its wet can be sent on into BusVerb over the bus (`-VRB`),
-which is the series topology the stock firmware has no path for.
-
-Hosted on payload B (core 1), which serves **tracks 1–4**.
-
-MODE still counts five positions; the retired TAPE slot aliases CLEAN now
-that the tape character is global.
+REVERSE, with tape wow (MDEP / MRAT) and a freeze hold in every mode. Hosted
+on payload B (core 1), which serves tracks 1–4. Stage 1 of the one aux bus:
+its output goes on to BusVerb and to the return.
 
 TIME is a free dial with a sticky snap: near a division it snaps, holds that
 division through tempo changes, and lets go when the knob moves. The panel
-label comes from the [`tempo-sync`](../tempo-sync/) module's formatter cave.
+label comes from the [`tempo-sync`](../tempo-sync/) formatter cave.
 
-## Local rendering
-
-`dsp_host` cannot boot payload B, so this module renders only through the DEV
-hatch (`make render-delay`), which places it out of region in payload A.
-`DFRZAT=n` engages FREEZE after n blocks so a render can catch it mid-flight.
-
-## The knob map since v5.1 (3 Sep 2026) — one meaning per knob per mode
-
-Sam's redesign, done in one pass after a day of piecemeal fixes: IN is
-retired (the host track's own send into the delay is its FX1 station's
-→DEL, or SEND on FX1), GRAIN's pitch moves onto the scene page in its place,
-and the two tape-modulation knobs are named for what they are.
+## Knobs
 
 | | CLEAN | GRAIN | REVERSE |
 |---|---|---|---|
-| **page 1** TIME · FDBK · TONE · PING · →VRB | the same everywhere | | |
-| **PTCH** (page 1, was IN) | no effect | pitch, ±2 oct, 64 = unison; a held MIDI note overrides | no effect |
-| MDEP | tape mod depth | **scatter** | tape mod depth |
-| MODE | CLEAN | GRAIN | REVRS |
-| MRAT | tape mod rate, 64 = 1× | **density** | tape mod rate |
-| SIZE | unused | grain size | segment |
-| DRV | drive | drive | drive |
+| page 1: AUX · TIME · FDBK · TONE · PING · MIX | the same everywhere | | |
+| MODE (p6) | CLEAN | GRAIN | REVRS |
+| MDEP (p7) | wow depth | SCAT: how far apart the grains read | wow depth |
+| MRAT (p8) | wow rate, 64 = 1× | DENS: density, level-flat | wow rate |
+| SIZE (p9) | unused | grain length 46 / 93 / 23 ms, XTRM 186 ms | segment; XTRM = 371 ms |
+| PTCH (p10) | no effect | ±2 oct, 64 = unison; a held MIDI note overrides | no effect |
+| FRZE (p11) | hold | hold (the grains keep grazing) | hold |
 
-**v6 (4 Sep 2026): MODE is page-2 slot 6 and MDEP slot 7** — swapped so
-MODE sits on a slot the panel's page-2 knob editor writes, which a main-menu
-bus screen needs (`docs/firmware/MAINMENU.md` §9c-ii). Locally bit-identical in every
-mode. A part saved before v6 loads its old MDEP byte as MODE (48 clamps to
-REVRS): re-select the effect or stamp defaults.
-| FRZE | freeze | freeze | freeze |
+Each mode's `ModeView` re-defaults the knobs and renames MDEP/MRAT in GRAIN.
+PING 0 and MDEP 0 by default: an aux delay sits still; the bounce and the
+wow are the knobs'. In REVERSE the two 16K lines are one 32K mono ring
+(XTRM = 16,384 samples = 371 ms, the mode's default), PING is forced off and
+the output is mono to both channels.
 
-GRAIN carries a **fixed gentle wow** (knob 12's worth at exactly 1×) that no
-knob touches: the grains read the lines the repeats recirculate through, and
-at MDEP 127 they used to wobble by ±254 samples ("modulating heavily"). The
-per-mode label cave on the backlog will print SCAT / DENS in GRAIN. The IN
-arithmetic is still in the loop, pinned to exactly zero (bit-identical to
-every IN=0 render); removing it is a cycle trim.
+## Local rendering
 
-⚠️ Old parts store IN's value in slot 5, which is PTCH now: the project
-stamper (plan A6) writes fresh defaults.
+`dsp_host` renders payload B only under `rig_render.py` (both cores); the
+DEV hatch (`make render-delay`) places the delay out of region in payload A.
+`DFRZAT=n` engages FREEZE after n blocks.
 
-## GRAIN v5 (3 Sep 2026) — Nimbus's readers over the delay lines, pitched; PITCH mode retired
+## Measured
 
-The v2 GRAIN was the delay's cost centre (eight lerped heads, per-grain
-rates, a rolled builder: 1,385 of 2,372 worst-path cycles). v5 is
-`modules/nimbus/`'s engine over the delay lines with two things put back
-that the first cut (v4, the same day) lost by Sam's ear: **four overlapping
-grains per line** (two buzzed at the grain rate with scatter up) and
-**pitch** — one continuous rate for all eight grains, on the RATE knob, ±2
-octaves, 64 = unison. With that, PITCH mode was redundant (GRAIN at full
-density, scatter 0, RATE 96 is a granular +12 on the same non-cascading
-topology) and it is gone: **MODE is CLEAN / GRAIN / REVRS**, three positions.
-The PTCH switch is **SIZE** (46 / 93 / 23 ms, XTRM = 186 ms grains and
-**371 ms REVERSE segments** — REVERSE's own order, one select for both
-modes; XTRM was a 12 ms REVERSE "stutter" until 13 Sep 2026).
+- CLEAN and REVERSE bit-identical across the `verify_delay` cases (defaults,
+  PING 0/127, TIME 0/127, FDBK+TONE, split, MIX 0, wow, the unknown-mode
+  fallback); `verify-bus` 21/21.
+- GRAIN DC gate (0.25 FS DC, full density, unison): p-p 0 across scatter
+  0/64/127 and every size (four windows a quarter period apart sum to
+  exactly 2).
+- GRAIN pitch (438 Hz tone, 93 ms grains, TIME 127): PTCH 64 → 438.7 Hz;
+  96 → 869.4 (876 expected); 32 → 223.4 (219); 48 → 309.5 (310); 127 → 1709
+  (1714). MIDI note 96 → 869.4, 91 → 654.1, 72 → 223.4. Below about −1.5
+  octaves the finder reads 10–25 % low (note 60 → 94 for 110): finder or
+  engine, unverified. 186 ms grains at TIME 100 clamp PTCH 127 to 2.5×.
+- GRAIN density law (0.5 FS tone, 93 ms): −14.6 / −11.2 / −10.7 / −11.3 /
+  −12.0 dBFS at DENS 0/32/64/96/127; GRAIN's peaks sit level with CLEAN's
+  (RMS ~4 dB under).
+- PING at FDBK 60: 0 mono (L/R correlation 1.000), 32 / 64 near-mono (0.998
+  / 0.965), 96 / 127 the bounce (0.73 / 0.01); 127 leans +4.4 dB left (L
+  gets repeats 1, 3, 5: L/R = 1/feedback).
+- REVERSE at 371 ms: a 50 ms burst comes back reversed ~300 ms later; the
+  sine is continuous at every size.
+- Cost: 2,151 words; worst path 1,757 cycles (GRAIN, rolled).
 
-Knobs in GRAIN (v5.1 names): TIME = position, SIZE = grain length, PTCH =
-pitch (page 1), MDEP = scatter (up to 4,095 samples), MRAT = density (R61 law
-and makeup), DRV = drive, FREEZE holds the lines and the grains keep grazing
-them. A held MIDI note (the tempo cave's `r6+$9`, latched) replaces PTCH with
-2^((note−84)/12), ±24 semitones — the same law the retired mode drove.
-
-**Cost:** delay 2,469 → **2,151 words** (payload B FREE 5 → **323**); worst
-path 2,372 → **1,757 cycles** (GRAIN, rolled: 345 words + 718 of roll).
-
-**Two defects found on the way, both measured:**
-
-- **The grain read geometry played an octave up at "unity".** Nimbus's
-  `W − (base + s + G − phase)` moves with the write head AND the phase, so
-  the absolute read advances two samples per sample. Measured: 955 Hz out for
-  438 in, and 3× at +12. Invisible to the DC gate (rate has no DC signature).
-  Fixed with a `+ phase` term (unity = a fixed tap behind the head) and
-  per-sample distance clamps to `[2, 16383]`. The standalone Nimbus very
-  likely carries it — noted in its README, unverified there.
-- **The latched MIDI note slot is boot garbage in `dsp_host`**, so every
-  local GRAIN render ran its pitch from a garbage note until the RATE knob
-  visibly did nothing. The warm-up now clears `y:>$090a` (the build's
-  core-private census went 2 → 3 for a source with the clear).
-
-Measured (`make render-delay` hatch, 438 Hz tone, 93 ms grains, TIME 127):
-
-| PTCH | measured | expected | note | measured | expected |
-|---|---|---|---|---|---|
-| 64 | 438.7 | 438 | 84 | = PTCH 64, bit-identical | |
-| 96 | 869.4 | 876 | 96 | 869.4 | 876 |
-| 32 | 223.4 | 219 | 91 | 654.1 | 656 |
-| 48 | 309.5 | 310 | 72 | 223.4 | 219 |
-| 127 | 1709 | 1714 | 60 | 94 | 110 (see below) |
-
-Peaks are read off a comb at the grain rate (10.8 Hz at 93 ms), so ±1 line
-is the finder, not the engine. Below about −1.5 octaves the finder reads
-10–25 % low on both paths (RATE 16 → 137 for 155, note 60 → 94 for 110):
-**unverified** whether that is the engine or the measurement; a longer FFT
-on a lower tone would settle it. The pitch ceiling behaves as derived:
-186 ms grains at TIME 100 clamp RATE 127 to 2.5× (1106 Hz measured).
-
-- **DC gate** (0.25 FS DC, full density, unison): p-p 0 across scatter 0/64/127
-  and every size — four windows a quarter period apart sum to exactly 2.
-- **Bit-identity vs v3:** CLEAN in every case (defaults, PING 0/127, TIME
-  0/127, FDBK+TONE, split, MIX 0), REVERSE at both sizes, CLEAN with wow at
-  DPTH 100 and 127/FDBK 127, and the unknown-mode fallback — all identical
-  (`verify_delay` for CLEAN; REVERSE/wow by hand with the mode numbers mapped).
-- **Density law** (0.5 FS tone, DRV 64, 93 ms): −14.6 / −11.2 / −10.7 /
-  −11.3 / −12.0 dBFS at DPTH 0/32/64/96/127 — flat within 1.3 dB from 32 up,
-  sparse end 3.9 dB down. Peaks touch 0.86 FS at DPTH 32 (the +6 dB makeup
-  on a lone grain).
-- **Level vs v3** on real material at matched settings: v5 is ~6 dB quieter
-  (four decorrelated grains sum less coherently than their DC normalisation;
-  the `_lm` copies in `out/ab/grain_v4/` are level-matched). A voicing item.
-
-⬜ **Ear pass pending** (Sam): `out/ab/grain_v4/{glow_intro,guitar_dry}_v3.wav`
-vs `_v5_r64_lm.wav` (unison) and `_v5_r96_lm.wav` (+12).
-
-## Ear pass (12 Sep 2026, Sam on the level-matched kits in `out/ab/dly_*`)
-
-- **GRAIN was broken from 7 Sep to 12 Sep 2026 and it shipped on flash 7 that
-  way.** The one-aux commit (`2e4a7dd`) parked MIX / 1−MIX and two per-sample
-  scratch words in `r7+$44..$47` on the strength of a stale r7 map — v5's
-  line-L grain records (grain 1's w/acc, grain 2's s/w). Every block rewrote a
-  grain's window multiplier and read advance: "crashing, glitching, metallic"
-  by ear; 288 discontinuities a second on a 440 Hz sine; DC in came back
-  rippling 0.00–0.31 where Nimbus's DC gate gives 0.00000. Bisected on the
-  hatch (R61, v4, v5.1, 4 Sep all clean; 7 Sep broken); the four words moved
-  to `$85/$87` (freed by that same commit) and `$6e/$6f` (retired PITCH's).
-  Now: DC flat to 5 decimals, the sine continuous, DENS 32 → 127 on the loop
-  "sounds pretty good". The 21 bus layouts stay bit-identical (they run CLEAN).
-- **PING defaults 0 and MDEP (wow) 0** in every mode view: an aux delay on a
-  mixer sits still by default; the alternation (top quarter of PING) and the
-  wow are the knobs'. Measured: PING 0 mono (L/R correlation 1.000), 32/64
-  near-mono (0.998/0.965), 96/127 the bounce (0.73/0.01); 127 leans +4.4 dB
-  left, which is ping-pong's own arithmetic (L gets repeats 1, 3, 5: L/R =
-  1/feedback), not a defect. The wow at 48 read as motion on a mono loop.
-- **REVERSE at 93 ms is a flutter**, on drums and on a pad. **REVERSE-32K
-  (13 Sep 2026): in REVERSE the two 16K lines are ONE 32K MONO ring** — the
-  L ring's mask is a per-block word (`$6b`: `$7fff` in REVERSE, `$3fff`
-  elsewhere, so CLEAN and GRAIN are bit-identical), the R line's read and
-  write are skipped per sample (they would land in the upper half), PING is
-  forced off, the write-phase load/save masks follow the same word, and the
-  reverse output is mono to both channels. **XTRM = 16,384 samples = 371 ms
-  and the mode's default**; the other sizes keep their lag caps at 32704 −
-  2S. Measured: sine continuous at every size (a first cut that left the
-  persisted write phase under `$3fff` never wrote the upper half — one click
-  a second and no reversed burst at 371; fixed), a 50 ms burst comes back
-  reversed ~300 ms later at 371, verify-bus 21/21, GRAIN DC still flat.
-  **Heard** (13 Sep, 93 vs 371 on the pad and the loop): "the long one is
-  better — a wavey something that could be useful"; on the loop "way better".
-- `rig_render` in this checkout predates #208's ModeView rule, so the kits set
-  PING/MDEP explicitly; on hardware the views carry them.
+On Sam's unit in every rig flash. Heard: REVERSE 371 ms over 93 ("the long
+one is better"); GRAIN DENS 32 → 127 on the loop "sounds pretty good".
 
 ## Open
 
-- REVERSE's segment ceiling is 371 ms now (the whole 32K ring); a beat at
-  slow tempos wants more, and that would need memory the window has not got.
-- ~~The GRAIN level item~~ re-measured whole: with the +6 dB makeup GRAIN was
-  +2.1 dB RMS / +6.6 dB peak over CLEAN; the makeup is gone and GRAIN's
-  peaks sit level with CLEAN's (RMS ~4 dB under: a scattered cloud's crest).
-- Pitch accuracy below −1.5 octaves: finder or engine, unverified.
+- REVERSE's segment ceiling is 371 ms (the whole 32K ring).
+- Pitch accuracy below −1.5 octaves: finder or engine.
 - The delay return is ~4 dB quieter than the reverb at equal send.
