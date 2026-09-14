@@ -49,7 +49,8 @@
 ;   $40 FX2-slot flag (set at init: 1 = this instance is on FX2, dry; per block)
 ;   $41/$42 DC block L x1/y1, $43/$44 R x1/y1 (TUBE; PERSISTENT, zeroed at init; long-form slots)
 ;   $37 d/2  $38 d  $4c (0.5+d)/2  $39 comp/4 (TUBE, per block)   $3a e/2  $3b 1-e (INFL, per block)
-;   $46 DC block k (1 or 0), $47 R (0.999 or 0): on in TUBE only (per block)
+;   $46/$47 (free since 14 Sep 2026: the DC blocker's k = 1 and R = 0.999 are
+;   immediates in chtube, which only TUBE calls)
 ;   $49 chtube's u/2 park (per sample)
 ;   $4d DRV==0: skip the saturator (per block)
 ;   $3c/$3d reverb / delay liveness grace (BUS mode, per block)
@@ -177,11 +178,9 @@ ch_offok:
 ; PER-BLOCK KNOB DECODE
 ; ===========================================================================
 ; MIX: page-2 slot 6, the KNOB field of r6+$c (the word SAT's select shares)
-        move    x:(r6+$c),a
+        move    x:(r6+$c),a             ; a knob word: bit 23 clear, a2 = 0
         and     #>$7f0000,a
-        move    a1,x0
-        move    x0,a
-        move    a,x:(r7+$20)            ; m
+        move    a1,x:(r7+$20)           ; m (a1 straight to memory)
 ; fold gain/64 = (1 + 47*FOLD/128)/64 -- 1x .. 48x into the fold, pre-divided
 ; by 64 so the fold's (v+1)/2 arithmetic keeps its guard bits (the loop
 ; shifts by 5). WarpFold's 1x..8x law (until 12 Sep 2026) was sized for the
@@ -193,7 +192,7 @@ ch_offok:
 ; 28) while 80 -> 127 still grew (ear, 12 Sep 2026); doubled to 64x, 127
 ; was "insane, maybe too much": 48x.
         move    x:(r6+$1),x0            ; the knob word IS FOLD/128 in Q23
-        move    #>$5e0000,y1            ; 47/64
+        move    #$5e,y1                 ; 47/64 (short immediate: bits 23-16)
         mpy     x0,y1,a                 ; (47/64)*(FOLD/128)
         add     #>$020000,a             ; + 1/64 -> gain/64, 0.016 .. 0.75
         move    a,x:(r7+$21)            ; gq
@@ -212,13 +211,14 @@ ch_offok:
         move    b,x:(r7+$4d)
 ; CRSH -> a bit MASK, built ONCE PER BLOCK (the per-sample cost is then one
 ; AND). The knob picks how many low bits are cleared, 0..21; the mask is
-; $ffffff shifted left that many times, and the shift runs in a `do` loop
-; here rather than a `rep` per sample.
+; $ffffff shifted left that many times, under a `rep` here rather than one
+; per sample. The shifts carry into A2, so the mask leaves through a1 (a
+; `move a,x:` would saturate: the A2-staleness trap, CLAUDE.md).
 ; bits = 21 * knob / 128. The knob word IS knob/128 in Q23, so the product
 ; with 21/128 is 21*knob/2^14 as a fraction; one asr #16 of the accumulator
 ; leaves the plain integer.
         move    x:(r6+$2),x0
-        move    #>$150000,y1            ; 21/128
+        move    #$15,y1                 ; 21/128 (short immediate: bits 23-16)
         mpy     x0,y1,a
         asr     #$10,a,a                ; -> the integer, 0..20
         move    a1,x0
@@ -230,22 +230,16 @@ ch_offok:
         tst     a                       ; (tst takes an ACCUMULATOR, never a
         move    #>$ffffff,a             ; register; a move does not disturb it)
         beq     ch_mskz                 ; knob 0: the all-ones mask, unshifted
-        do      y0,>ch_mskl
-        asl     #$1,a,a
-        move    a1,x0                   ; asl leaves A2 stale every trip
-        move    x0,a
-ch_mskl:
-        nop
+        rep     y0                      ; (a rep of 0 would be 65536 trips: the
+        asl     #$1,a,a                 ; guard above)
 ch_mskz:
-        move    a,x:(r7+$23)            ; the mask: AND clears the low bits
+        move    a1,x:(r7+$23)           ; the mask: AND clears the low bits
 ; RING: carrier step, WarpFold's squared taper; 0 = OFF (a step of 0 leaves
 ; the phase still, and the per-sample gate below skips the multiply)
-        move    x:(r6+$d),a
+        move    x:(r6+$d),a             ; a knob word: bit 23 clear, a2 = 0
         and     #>$7f0000,a
-        move    a1,x0
-        move    x0,a
-        move    a,x0
-        move    a,y1
+        move    a1,x0                   ; (no clean reload: the input was positive)
+        move    a1,y1
         mpy     x0,y1,a                 ; RING^2
         move    a,x0
         move    #>$116000,y1            ; 2.95 kHz at full knob: step = 2f/fs
@@ -256,19 +250,16 @@ ch_mskz:
         mpy     x0,y1,a
         move    a,x:(r7+$24)            ; carrier step
 ; SRR (slot 11 select of r6+$e): hold mask 0 / 1 / 3 / 7
+; The select is bits 8-15 of the knob word (bit 23 clear, so a2 = 0 and
+; the and leaves it 0): compare the masked field where it sits, no shift
+; and no clean reload (14 Sep 2026; long immediates, never the 6-bit form).
         move    x:(r6+$e),a
         and     #>$ff00,a
-        move    a1,x0
-        move    x0,a
-        asl     #$8,a,a
-        move    #>$10000,x0
-        cmp     x0,a
+        cmp     #>$100,a
         beq     ch_srr2
-        move    #>$20000,x0
-        cmp     x0,a
+        cmp     #>$200,a
         beq     ch_srr4
-        move    #>$030000,x0            ; 3<<16 (zero-padded: not the base
-        cmp     x0,a                    ; literal the build rewrites)
+        cmp     #>$300,a
         beq     ch_srr8
         clr     a                       ; OFF, and anything unexpected
         bra     ch_srrz
@@ -295,13 +286,9 @@ ch_srrz:
 ; 1/(1 - 0.3375*COMP/128), HALF the JSFX's auto-gain in dB terms (that one
 ; restores unity at the dip's bottom and lifts a mix that mostly sits below
 ; the dip: +2.1 dB at COMP 40; this is +1.0 dB, today's GLUE on the unit).
-        move    x:(r6+$d),a
+        move    x:(r6+$d),a             ; the select field where it sits (as SRR)
         and     #>$ff00,a
-        move    a1,x0
-        move    x0,a
-        asl     #$8,a,a
-        move    #>$10000,x0
-        cmp     x0,a
+        cmp     #>$100,a
         beq     ch_cglue
         move    #>$7fffff,x0            ; COMP: K/4 = 1.0 (4x), release 50 ms
         move    x0,x:(r7+$22)
@@ -309,7 +296,7 @@ ch_srrz:
         move    x0,x:(r7+$2e)
         bra     ch_cset
 ch_cglue:
-        move    #>$600000,x0            ; GLUE: K/4 = 0.75 (3x), release 500 ms
+        move    #$60,x0                 ; GLUE: K/4 = 0.75 (3x), release 500 ms
         move    x0,x:(r7+$22)
         move    #>$00017c,x0
         move    x0,x:(r7+$2e)
@@ -327,7 +314,7 @@ ch_cset:
         neg     a
         add     #>$7fffff,a             ; den = 1 - 0.3375*COMP/128 (0.66..1)
         move    a,x0
-        move    #>$200000,a             ; num = 0.25 (a1), a0 = 0
+        move    #$20,a                  ; num = 0.25 (a1), a2 = a0 = 0 (short: bits 23-16)
         andi    #$fe,ccr
         rep     #$18
         div     x0,a
@@ -341,23 +328,16 @@ ch_cdone:
 ; (the old BUS) lands on TAPE. Per-mode words, all from DRV = d (0..0.992):
 ;   TUBE  $37 = d/2 (the positive half's scale)  $38 = d (the negative half's)
 ;         ($4c = (0.5 + d)/2 input gain and $39 = comp/2 below, every mode)
-;         $46/$47 = the DC blocker on (k 1, R 0.999)
+;         (the DC blocker's k = 1, R = 0.999 are chtube's own immediates)
 ;   INFL  $3a = e/2 with e = d            $3b = 1 - e
         clr     a
-        move    a,x:(r7+$46)            ; the DC blocker off (k = R = 0) unless TUBE
-        move    a,x:(r7+$47)
         move    a,x:(r7+$3e)            ; return level: 0 until RET is read below
         move    a,x:(r7+$29)            ; sat mode: 0 = TAPE
-        move    x:(r6+$c),a
+        move    x:(r6+$c),a             ; the select field where it sits (as SRR)
         and     #>$ff00,a
-        move    a1,x0
-        move    x0,a
-        asl     #$8,a,a
-        move    #>$10000,x0
-        cmp     x0,a
+        cmp     #>$100,a
         beq     ch_stube
-        move    #>$20000,x0
-        cmp     x0,a
+        cmp     #>$200,a
         beq     ch_sinfd
         bra     ch_sdone                ; TAPE (a stored 3, the old BUS, too)
 ch_stube:
@@ -367,10 +347,10 @@ ch_stube:
         move    a,x:(r7+$38)            ; the negative half: d
         asr     #$1,a,a
         move    a,x:(r7+$37)            ; the positive half: d/2
-        move    #>$7fffff,x0            ; the DC blocker on: TUBE's asymmetry
-        move    x0,x:(r7+$46)           ; leaves DC (JClones' own 3 Hz remover;
-        move    #>$7fdf3b,x0            ; ours is R = 0.999, ~7 Hz, as it was)
-        move    x0,x:(r7+$47)
+                                        ; (the DC blocker -- TUBE's asymmetry
+                                        ; leaves DC; JClones' own 3 Hz remover,
+                                        ; ours R = 0.999, ~7 Hz -- is chtube's,
+                                        ; its k and R immediates there)
         bra     ch_sdone
 ch_sinfd:
         move    #>$2,x0
@@ -452,7 +432,7 @@ ch_pos3:
         move    a,y1
         mpy     x0,y1,a                 ; D8
         move    a,x0                    ; den
-        move    #>$080000,y1            ; 1/16
+        move    #$08,y1                 ; 1/16
         move    y1,a                    ; a clean load: a0 = 0 for the divide
         andi    #$fe,ccr                ; carry clear
         rep     #$18
@@ -471,7 +451,7 @@ ch_pos3:
 ; k3mag = 1.4*k2 = (0.7*k2)*2. The table sits in the manifest after DaTube's
 ; curve, so the one P-table literal above still finds everything.
         move    r1,r3
-        move    #>34,n3
+        move    #$22,n3                 ; 34 (short immediate: an integer)
         move    #>$ffffff,m3
         move    x1,a                    ; DRV/128
         asr     #$13,a,a
@@ -505,15 +485,13 @@ ch_pos3:
 ; WDTH -> mid and side gains. 64 = (1, 1); 0 = (1, 0) mono; 127 = (1, ~2).
 ; side gain = WDTH/64, mid stays 1 -- widening only touches the difference,
 ; so a mono source is untouched at every setting.
-        move    x:(r6+$e),a
+        move    x:(r6+$e),a             ; a knob word: bit 23 clear, a2 = 0
         and     #>$7f0000,a
-        move    a1,x0
-        move    x0,a
 ; ⚠️ STORED HALVED. A y1 operand is a FRACTION, and a side gain of WDTH/64
 ; tops out near 2.0, which would wrap the word. The knob's own value IS
 ; WDTH/128, so it is stored as-is and the product is doubled back in the
 ; accumulator's guard bits. 64 -> 0.5 -> x2 = exactly 1.0, i.e. untouched.
-        move    a,x:(r7+$2b)            ; side gain / 2
+        move    a1,x:(r7+$2b)           ; side gain / 2 (a1 straight to memory)
 ; ---- the return read pointers, and the liveness stamps -------------------
 ; Two buffers back, like every bus read (an idle block each side of the
 ; reader on both cores); x2 throughout because the wet buffers are stereo,
@@ -559,7 +537,7 @@ ch_pos3:
         move    x0,b
         move    #>$1,x0
         sub     x0,b
-        move    #>$0,x0
+        move    #$0,x0
         tmi     x0,b
         move    y:>$9c4,a
         move    x0,y:>$9c4              ; clear-on-read
@@ -573,7 +551,7 @@ ch_pos3:
         move    x0,b
         move    #>$1,x0
         sub     x0,b
-        move    #>$0,x0
+        move    #$0,x0
         tmi     x0,b
         move    y:>$9c5,a
         move    x0,y:>$9c5              ; clear-on-read
@@ -627,7 +605,7 @@ ch_ndl:
         tst     a
         bne     ch_live
         move    x:(r7+$2b),a            ; side gain/2: 64 -> exactly 0.5
-        move    #>$400000,x0
+        move    #$40,x0
         cmp     x0,a
         beq     ch_bypass
 ch_live:
@@ -635,7 +613,7 @@ ch_live:
 ; ===========================================================================
 ; THE SAMPLE LOOP
 ; ===========================================================================
-        move    #>$1,n0
+        move    #$1,n0                  ; (short immediate, stock's own form)
         do      n7,>ch_end
 ; ---- the return FIRST (13 Sep 2026): the bus wet enters before the chain --
 ; Skipped per sample when the level is 0 -- a forward skip, the class
@@ -677,11 +655,10 @@ ch_noret:
         move    b1,x0
         move    x0,b
         move    b,x:(r7+$1b)
-        and     x0,a                    ; counter & mask
-        move    a1,x0
-        move    x0,a
-        tst     a
-        bne     ch_hold                 ; not a fresh sample: reuse the held
+        and     x0,a                    ; counter & mask -- AND sets Z from A1,
+        bne     ch_hold                 ; which is what the tst on a clean
+                                        ; reload saw (a2 = a0 = 0 here); not a
+                                        ; fresh sample: reuse the held
         move    x:(r0),x0               ; fresh: latch this pair
         move    x0,x:(r7+$19)
         move    x:(r0+n0),x0
@@ -693,28 +670,26 @@ ch_hold:
         move    x0,x:(r7+$34)
 ch_nosrr:
 ; ---- CRSH: one AND per channel with the per-block mask -------------------
-; ⚠️ AND leaves A2 STALE and the next store would saturate (CLAUDE.md), so
-; each value leaves through a1 into a clean register first.
+; ⚠️ AND leaves A2 STALE and a `move a,x:` would saturate (CLAUDE.md), so
+; each value leaves through a1 -- straight to memory, which no limiter sees.
         move    x:(r7+$23),x0           ; mask
         move    x:(r7+$33),a
         and     x0,a
-        move    a1,x1
-        move    x1,x:(r7+$33)
+        move    a1,x:(r7+$33)
         move    x:(r7+$34),a
         and     x0,a
-        move    a1,x1
-        move    x1,x:(r7+$34)
+        move    a1,x:(r7+$34)
 ; ---- FOLD: WarpFold's wrap-and-reflect, both channels --------------------
         move    x:(r7+$33),x0
         move    x:(r7+$21),y1           ; gq = gain/64
         mpy     x0,y1,a                 ; v/64
         asl     #$5,a,a                 ; v/2
-        move    #>$400000,x1
+        move    #$40,x1                 ; 0.5 (short immediate: bits 23-16)
         add     x1,a                    ; (v+1)/2
         move    a1,x1                   ; s = wrap(...), raw A1: the fold
         move    x1,a                    ; clean re-load, A2 consistent
         abs     a
-        move    #>$400000,b
+        move    #$40,b                  ; 0.5, b2 = b0 = 0
         sub     b,a                     ; |s| - 0.5
         asl     #$1,a,a                 ; fold in [-1,1)
         move    a,x:(r7+$35)            ; wet L
@@ -722,12 +697,12 @@ ch_nosrr:
         move    x:(r7+$21),y1
         mpy     x0,y1,a
         asl     #$5,a,a
-        move    #>$400000,x1
+        move    #$40,x1
         add     x1,a
         move    a1,x1
         move    x1,a
         abs     a
-        move    #>$400000,b
+        move    #$40,b
         sub     b,a
         asl     #$1,a,a
         move    a,x:(r7+$36)            ; wet R
@@ -743,7 +718,7 @@ ch_nosrr:
         move    x0,x:(r7+$1c)
         move    x0,a
         abs     a
-        move    #>$800000,y1            ; -1.0
+        move    #$80,y1                 ; -1.0 (short immediate: bits 23-16)
         add     y1,a                    ; |p| - 1
         neg     a                       ; t = 1 - |p|
         move    a,y1
@@ -771,13 +746,13 @@ ch_noring:
         bne     ch_s12
 ; MODEFORK_MID -- alternative 1: TAPE = TapeHead
 ; r3 -> the channel's y1/y2 pair (the SVF state).
-        move    #>$15,n3
+        move    #$15,n3
         move    r7,r3
         move    x:(r7+$35),a            ; L in (post fold/ring)
         move    (r3)+n3                 ; r3 = r7+$15: L y1, y2
         bsr     chtape
         move    b,x:(r7+$35)            ; LIMITING store: the hard clip
-        move    #>$17,n3
+        move    #$17,n3
         move    r7,r3
         move    x:(r7+$36),a            ; R in
         move    (r3)+n3                 ; r3 = r7+$17: R y1, y2
@@ -790,13 +765,13 @@ ch_s12:
         cmp     x0,a
         bne     ch_sinfl
 ; r3 -> the channel's DC-blocker pair (x1, y1).
-        move    #>$41,n3
+        move    #$41,n3
         move    r7,r3
         move    x:(r7+$35),a            ; L in
         move    (r3)+n3                 ; r3 = r7+$41: L x1, y1
         bsr     chtube
         move    b,x:(r7+$35)            ; LIMITING store: the clip
-        move    #>$43,n3
+        move    #$43,n3
         move    r7,r3
         move    x:(r7+$36),a            ; R in
         move    (r3)+n3                 ; r3 = r7+$43: R x1, y1
@@ -913,9 +888,8 @@ ch_capd:
 ; (the send taps left with the sends, 12 Sep 2026: the stations have had no
 ; send since the one-aux rig; the returns below still need the bus)
 ; (the return moved to the top of the loop, 13 Sep 2026)
-        move    #>$2,n0
-        move    (r0)+n0
-        move    #>$1,n0
+        move    (r0)+n0                 ; the frame advance: n0 is 1 for the
+        move    (r0)+n0                 ; whole loop, so two steps, no reload
 ch_end:
         nop
         rts
@@ -953,7 +927,7 @@ chtube:
         neg     a
         add     #>$400000,a             ; u/2 = 0.5 - |xin/2|, in [-0.25, 0.5]
         move    a,x:(r7+$49)            ; park u/2
-        move    #>$0,x0                 ; (a move does not disturb the flags)
+        move    #$0,x0                  ; (a move does not disturb the flags)
         tst     a
         tmi     x0,a                    ; the lookup's argument: max(u, 0)/2
         move    a,b
@@ -989,12 +963,12 @@ chtube:
         move    a,x0                    ; x, the DC blocker's input (LIMITING)
         move    x:(r3),x1               ; x1
         move    x0,x:(r3)               ; x1 <- x
-        move    x:(r7+$46),y1           ; k = 1.0
+        move    #>$7fffff,y1            ; k = 1.0 (an immediate: chtube is TUBE's)
         mpy     x1,y1,b                 ; k*x1 (mpysu: y1 is positive)
         move    x0,a
         sub     b,a                     ; x - x1
         move    x:(r3+$1),x0            ; y1
-        move    x:(r7+$47),y1           ; R = 0.999
+        move    #>$7fdf3b,y1            ; R = 0.999
         mac     x0,y1,a                 ; + R*y1
         move    a,x:(r3+$1)             ; y1 <- y
         move    a,b
@@ -1016,7 +990,7 @@ chinfl:
         move    a,x1
         abs     a
         move    a,x0                    ; |x2|
-        move    #>$200000,y1            ; 0.25
+        move    #$20,y1                 ; 0.25
         mpy     x0,y1,a
         add     #>$300000,a             ; g/2 = 0.375 + 0.25*|x2|
         move    a,y1
