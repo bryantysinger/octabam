@@ -607,7 +607,7 @@ fs_mdone:
         move    a,x:(r7+$2c)            ; ($25 is the SVF's HP tap -- 14 Sep 2026's first build put this there and every LP leaked half its HP)
 
 ; ---- BYPASS: the defaults are a bit-exact passthrough ---------------------
-; FREQ 127, RES 0, ENV 64, LDP 0, WDTH 64, TAME 0, MODE 0 (LSP is inert at LDP 0 / ENV 64).
+; FREQ 127, RES 0, ENV 64, LDP 0, WDTH 64, MODE 0, any TAME (LSP is inert at LDP 0 / ENV 64).
 ; Every part that ever chose stock FILTER runs this on FX1 after the flash,
 ; so the neutral block copies nothing at all.
         clr     b
@@ -628,8 +628,8 @@ fs_mdone:
         move    x:(r6+$5),a
         cmp     x0,a
         bne     fs_live
-        move    x:(r6+$c),a             ; the MODE select and TAME's knob field
-        and     #>$7fff00,a             ; (TAME 0, MODE 0)
+        move    x:(r6+$c),a             ; the MODE select; TAME's knob field is
+        and     #>$ff00,a               ; masked out (nothing for it to saturate here)
         bne     fs_live                 ; AND sets Z from A1 (a2 = a0 = 0 here)
         bra     fs_bypass
 fs_live:

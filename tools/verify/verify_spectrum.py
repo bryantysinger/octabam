@@ -97,6 +97,7 @@ def render(samples, slot="fx1", guard=False, **kw):
     12 Sep 2026 (Claims.fx1_only) -- the gate below proves it. Until then
     every gate here rendered on alloc 1 and would now read dry."""
     kw.setdefault("MODE", LP)
+    kw.setdefault("TAME", 0)   # the linear filters are what the gates predict; TAME's own gates set it
     src = TMP / "fs_in.raw"
     src.write_bytes(b"".join(struct.pack("<i", m) for m in samples))
     out = TMP / "fs_out.raw"
@@ -337,8 +338,10 @@ _q0 = rms_db(render(tone(1000, 0.02), FREQ=127, RES=0, TAME=0)[0])
 _q1 = rms_db(render(tone(1000, 0.02), FREQ=127, RES=0, TAME=127)[0])
 check("TAME 127 leaves a -34 dBFS tone within 0.5 dB (small signals at unity)", abs(_q0 - _q1) < 0.5, f"{_q0:.2f} vs {_q1:.2f} dBFS")
 _t0 = render(tone(1000, 0.4), FREQ=100, RES=64, TAME=0)[0]
-_t1 = render(tone(1000, 0.4), FREQ=100, RES=64)[0]
-check("TAME 0 is bit-exact (the default renders identically)", _t0 == _t1)
+_t1 = render(tone(1000, 0.4), FREQ=100, RES=64, TAME=MOD.params[K["TAME"]].default)[0]
+check("TAME 0 and TAME at its default (50) render differently on a resonant tone", _t0 != _t1)
+_L, _R = render(ramp, MODE=0, TAME=127)
+check("the stamp with any TAME is still the bit-exact passthrough", _L == ramp and _R == ramp)
 
 # ---- 7. every knob at its extremes renders -----------------------------------
 for name in K:

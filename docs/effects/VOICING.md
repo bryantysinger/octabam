@@ -2618,3 +2618,9 @@ ports. Sam: "yeah lets do it." Built (image 20):
 - ⚠️ CC 49 (mute) and CC 50 (solo) on a track's channel do not act on the
   unit: sent twice on image 19, the capture stayed within 2 dB. Cause open;
   the panel's [MUTE] + [TRACK] is the route.
+
+**14 Sep 2026, Sam's round on image 20:** "tame at 50" -- TAME's default
+is 50 (image 21). The passthrough detector masks TAME out of the page-2
+word (at the stamp there is no state for it to saturate), so every FILTER
+part still runs the bit-exact bypass; the verifier renders its linear
+gates at TAME 0 and tests TAME on its own.

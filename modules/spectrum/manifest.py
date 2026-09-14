@@ -111,7 +111,7 @@ MODULE = Module(
         Param(b"WDTH", 64, 128, active=True, formatter=_BIPOL,
               doc="stereo width of the output, drawn -64..+63: 0 untouched, -64 mono, +63 double sides"),
         # ---- page 2: knob / select / knob / select / knob / select ----------
-        Param(b"TAME", 0, active=True, formatter=_PLAIN,
+        Param(b"TAME", 50, active=True, formatter=_PLAIN,   # 50: Sam, image 20
               doc="the filter's own saturation (the SEM/Moog tanh), every mode: 0 off; up tames resonance"),
         Param(b"MODE", 0, 5, active=True, formatter=_STEP,
               labels=("LADR", "LP", "BP", "ISO", "VOWL"),
