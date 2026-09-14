@@ -13,7 +13,7 @@
 ; literal per payload):
 ;   lines      base+0x0000 .. base+0x7fff   4096 words each, spacing 0x1000
 ;              taps to ~3914 (89 ms) at SIZE max
-;   input APs  shared+0x2000 .. 0x3fff      2048 words each, taps 179..547
+;   input APs  shared+0x2000 .. 0x3fff      2048 words each, taps 641..1949
 ;   pre-delay  shared+0x1000 .. 0x1fff      4096 words (93 ms)
 ;   shimmer    shared+0x0800 ..             2048 words (NOSHIM=1 excises it)
 ;   in-loop AP shared+0x4000/0x4200         512 words each, taps 298 446
