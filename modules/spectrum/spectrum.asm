@@ -163,23 +163,18 @@ proc:
         move    a,x:(r7+$2b)
 ; RATE (slot 10 KNOB of r6+$e): lfo inc = RATE^2 * $7000 + $100 per block
 ; (~0.08..9 Hz); fall = $7fe000 - RATE * $1e00 (~370 ms .. ~3 ms release)
-        move    x:(r6+$e),a
+        move    x:(r6+$e),a             ; a knob word: bit 23 clear, a2 = 0
         and     #>$7f0000,a
-        move    a1,x0
-        move    x0,a
-        move    a,x0
-        move    a,y1
+        move    a1,x0                   ; (no clean reload: the input was positive)
+        move    a1,y1
+        move    a1,x1                   ; RATE, kept for the fall below
         mpy     x0,y1,a
         move    a,x0
         move    #>$7000,y1
         mpy     x0,y1,a
         add     #>$100,a
         move    a,x:(r7+$47)            ; lfo inc
-        move    x:(r6+$e),a
-        and     #>$7f0000,a
-        move    a1,x0
-        move    x0,a
-        move    a,x0
+        move    x1,x0                   ; RATE again (decoded once, above)
         move    #$0f,y1
         mpy     x0,y1,a                 ; RATE * $1e00 in Q23
         neg     a
@@ -189,10 +184,8 @@ proc:
 ; ---- LFO: phase += inc, triangle -> bipolar Q23 ---------------------------
         move    x:(r7+$31),a
         move    x:(r7+$47),x0
-        add     x0,a
-        and     #>$7fffff,a
-        move    a1,x0
-        move    x0,a
+        add     x0,a                    ; phase <= $7fffff + inc <= $7100 < 2^24:
+        and     #>$7fffff,a             ; no carry into a2, which stays 0
         move    a,x:(r7+$31)
         move    #$40,x0
         sub     x0,a
@@ -238,10 +231,8 @@ fs_sboth:
 fs_smod:
 ; ---- DPTH (slot 8 KNOB of r6+$d): depth = (DPTH - 64)/64, bipolar ---------
         move    a,x1                    ; mod
-        move    x:(r6+$d),a
+        move    x:(r6+$d),a             ; a knob word: bit 23 clear, a2 = 0
         and     #>$7f0000,a
-        move    a1,x0
-        move    x0,a
         move    #$40,x0
         sub     x0,a                    ; (DPTH-64)/128
         asl     #$1,a,a                 ; (DPTH-64)/64, -1 .. +1
@@ -416,10 +407,8 @@ fs_mvowl:
         move    x:(r7+$4f),a            ; FREQm
         asr     #$10,a,a
         and     #>$1f,a
-        asl     #$12,a,a
-        move    a1,x0
-        move    x0,a
-        move    a,x:(r7+$49)            ; frac (the lfo park is dead by now)
+        asl     #$12,a,a                ; (FREQm >= 0, so a2 = 0 throughout)
+        move    a1,x:(r7+$49)           ; frac (the lfo park is dead by now)
         move    x:(r7+$4f),a
         asr     #$15,a,a                ; idx 0..3 (FREQm >= 0: a2 clean)
         move    a1,x0
@@ -597,14 +586,9 @@ fs_mdone:
         bne     fs_live
         move    x:(r6+$c),a             ; the MODE select (slot 6's knob field is
         and     #>$ff00,a               ; blank since DRV went, 13 Sep 2026)
-        move    a1,x0
-        move    x0,a
-        tst     a
-        bne     fs_live
+        bne     fs_live                 ; AND sets Z from A1 (a2 = a0 = 0 here)
         move    x:(r6+$d),a             ; DPTH knob field AND the ROUT select
-        and     #>$7fff00,a
-        move    a1,x0
-        move    x0,a
+        and     #>$7fff00,a             ; (a knob word: a2 = 0, no clean reload)
         move    #$40,x0
         cmp     x0,a
         bne     fs_live
