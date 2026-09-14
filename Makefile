@@ -185,7 +185,7 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 
 .PHONY: verify-roll
 verify-roll: ## Prove an alternate REVERB engine is bit-identical: make verify-roll CAND=cand.asm [REF=modules/busverb/reverb_server.asm]
-	@test -n "$(CAND)" || { echo "usage: make verify-roll CAND=modules/busverb/reverb_lforoll.asm [REF=modules/busverb/reverb_server.asm]"; exit 1; }
+	@test -n "$(CAND)" || { echo "usage: make verify-roll CAND=<candidate.asm> [REF=modules/busverb/reverb_server.asm]"; exit 1; }
 	python3 tools/verify/verify_roll.py $(CAND) $(if $(REF),--ref $(REF))
 
 .PHONY: verify-delay

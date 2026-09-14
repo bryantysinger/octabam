@@ -1,22 +1,9 @@
-| BusDelay TIME display formatter -- ColdFire code cave #2 (24 Aug 2026)
-|
-| Registered as TIME's P+0x0ca ("A") formatter with B = 0: stock DELAY
-| TIME's own configuration (a plain dial that prints whatever A writes).
-| Signature, shared by every stock formatter (docs/firmware/PARAM_PAGES.md section 7):
-|     void fmt(char *buf, int value)      4(sp) = buf, 8(sp) = value
-| Prints the division name ("1/8", "1/16T") while the DSP holds one, else
-| the free time in ms. It replicates the DSP's STICKY SNAP rule with the
-| same integers, so the two agree except at a tolerance edge:
-|     free   = value*128 + 64                       (samples)
-|     ticks  = 42,336,000 / tempo24                  (samples per MIDI clock, Q12.4)
-|     d(M)   = ticks*M >> 4       for M in 2,3,4,6,8,9,12,16,18,24 clocks
-|     held   = the LAST M with |d - free| < free/16; re-evaluated only when
-|              value differs from the last draw -- a tempo change never
-|              un-snaps, a knob move always re-evaluates. tempo 0 = free.
-| State lives in this cave (the OS image runs from RAM). It is per PANEL,
-| not per track: viewing another track's TIME re-evaluates, which is right.
-| Clobbers d0/d1/a0/a1 like every stock formatter; saves the rest.
-| Position-independent (pc-relative) apart from the two OS absolutes.
+| BusDelay TIME's display formatter (fmt(buf, value) -> sprintf). Prints the
+| tempo division name while the DSP's sticky snap holds one (the same
+| integers as the DSP rule: free = value*128 + 64 samples, ticks = 42,336,000
+| / tempo24, snap when |free - ticks*M/16| <= free/16 for M in mtab), else
+| milliseconds. Position-independent; `state` (last value, held division)
+| lives inside the cave.
 
         .text
 fmt:    lea     -20(%sp),%sp

@@ -1,4 +1,4 @@
-| BusDelay tempo / fader / note publish -- ColdFire code cave (24 Aug 2026)
+| BusDelay tempo / fader / note publish -- ColdFire code cave
 |
 | Hooked from 0x40004d40 in the per-frame voice-record writer (0x40004bd2),
 | which is the routine that publishes the FX ids into the record the DSP
@@ -13,11 +13,11 @@
 | writer, and the frame builder already divides by it unguarded.
 | a0 = 0x80000110 + track (id array base), a2 = this track's record,
 | d4 = the track index (0..7) -- read from the writer's disassembly at
-| 0x40004d38 (`moveal %d4,%a0 ; addal #0x80000110,%a0`), 24 Aug 2026.
+| 0x40004d38 (`moveal %d4,%a0 ; addal #0x80000110,%a0`).
 | a0 is reloaded from d5 right after the hook (0x40004d4a), so the cave
 | may clobber it; it is saved anyway.
 |
-| v2 (24 Aug 2026, branch midi) adds two more halfwords, same terms as the
+| Two more halfwords, same terms as the
 | tempo pair (never READ by stock; REWRITTEN by the frame builder every
 | frame, so the cave re-stores every pass -- docs/firmware/midi_re_note.md):
 |     +0x28  r6+$8   crossfader + 1     0x460d16c8 (long, 0..127; the panel
@@ -54,10 +54,6 @@ cave:
 nkeep:  move.w  %d0,0x2a(%a2)           | r6+$9 = note or 0
         move.l  0x8000181c,%d0          | tempo24
         beq.s   nodiv                   | 0 before the first frame-builder
-                                        | pass latches it: divu.l by zero
-                                        | TRAPS -> the R48 boot hang (B/C/D
-                                        | lights on, silent). Publish nothing;
-                                        | the DSP side treats 0 as "no sync".
         move.w  %d0,0x24(%a2)           | r6+$6
         move.l  #42336000,%d1
         divu.l  %d0,%d1                 | ticks Q12.4

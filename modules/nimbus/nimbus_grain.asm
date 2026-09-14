@@ -298,8 +298,6 @@ nb_g0:
         add     x0,a
         add     #>$1,a
         add     x1,a                    ; + phase: unity is a FIXED tap behind
-                                        ; the moving head (3 Sep 2026; was
-                                        ; `- phase`, an octave up -- README)
         move    a,x0
         move    x:(r7+$28),a
         sub     x0,a                    ; W - dist
@@ -341,8 +339,6 @@ nb_g1:
         add     x0,a
         add     #>$1,a
         add     x1,a                    ; + phase: unity is a FIXED tap behind
-                                        ; the moving head (3 Sep 2026; was
-                                        ; `- phase`, an octave up -- README)
         move    a,x0
         move    x:(r7+$28),a
         sub     x0,a
@@ -385,8 +381,6 @@ nb_g2:
         add     x0,a
         add     #>$1,a
         add     x1,a                    ; + phase: unity is a FIXED tap behind
-                                        ; the moving head (3 Sep 2026; was
-                                        ; `- phase`, an octave up -- README)
         move    a,x0
         move    x:(r7+$28),a
         sub     x0,a
@@ -430,8 +424,6 @@ nb_g3:
         add     x0,a
         add     #>$1,a
         add     x1,a                    ; + phase: unity is a FIXED tap behind
-                                        ; the moving head (3 Sep 2026; was
-                                        ; `- phase`, an octave up -- README)
         move    a,x0
         move    x:(r7+$28),a
         sub     x0,a

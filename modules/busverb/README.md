@@ -7,9 +7,6 @@ serves tracks 5–8 (measured; test it on track 5). Stage 2 of the one aux bus.
 Structure, parameters and memory layout: [`docs/effects/REVERB.md`](../../docs/effects/REVERB.md).
 Voicing: [`docs/effects/VOICING.md`](../../docs/effects/VOICING.md).
 
-`reverb_lforoll.asm` is a parked alternate engine that frees 51 words and
-fails `verify_roll` on the one case that drives the allpass hard.
-
 ## Measured
 
 - Wet levels at defaults, AUX 100: ROOM −16.9, PLATE −19.1, BIG −19.0 dBFS.

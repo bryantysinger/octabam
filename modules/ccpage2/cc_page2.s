@@ -1,47 +1,12 @@
-| CC -> FX2 PAGE-2 cave (OS 1.40C, ColdFire) -- and, since 13 Sep 2026, FX1 too.
+| CC PAGE 2 -- the MIDI CC dispatch entry (0x400d64a0) is repointed here.
+| CC 62-67 write the track's FX2 page-2 slot (cc-62) the way the page-2
+| editor 0x4003a474 does (Part, live byte, mirror; no TRACKB); CC 68-73
+| write the FX1 page-2 slot the way the FX1 page-2 editor 0x4003abe4 does
+| (Part +0x8f07e, shadow 0x100a51cc, lane +0x32, the four dirty flags),
+| clamped by the FX1 descriptor's min/count. Selects are clamped to their
+| count. Every other CC tail-calls CC_NEXT with the argument intact.
 |
-| Stock CC only reaches FX2 page 1 (CC 40-45; the handler admits cc-16 < 30).
-| This cave adds CC 62-67 -> the host's bus-engine page-2 slots 6-11, and
-| CC 68-73 -> the track's FX1 station's page-2 slots 6-11 (13 Sep 2026), so
-| the voicing round can drive every control over MIDI, not just page 1.
-|
-| FX1 (CC 68-73): mirrors the FX1 PAGE-2 EDITOR 0x4003abe4 store for store
-| (disassembled 13 Sep 2026): Part DB+part*6322+track*30+slot+0x8f07e
-| (0x4003acb2), shadow 0x100a51cc+part*6322+track*30+slot (0x4003acba), the
-| four dirty flags (0x4003acbe..0x4003acec, the same four the FX2 editor
-| writes), and the live lane 0x80000842+track*72+slot (0x4003ad08 -- lane
-| +0x32, the FX1 page-2 block the per-frame copier delivers to the DSP). The
-| clamp is the editor's own: min at desc+0x6a+4*(slot+6), count at
-| desc+0x9a+4*(slot+6), desc = 0x400d5f58[the Part's FX1 id at +0x8ed80+track]
-| (0x4003ac68..0x4003ac8c). An FX1 id of 0 (NONE) writes nothing: the editor
-| never runs for NONE because that page draws no knob, and on this image id 0
-| runs SEND with whatever bytes are there. The editor's
-| jsr 0x40027e00 (the refresher) and its per-slot redraw marker are not
-| mirrored, as for FX2: off-page there is no knob to redraw.
-|
-| HOOK: the MIDI dispatch table 0x400d6474[0xB] (CC) is repointed from the
-| stock handler 0x4000e79c to CAVE. CAVE reads the CC number; anything but
-| 62-73 tail-calls stock (jmp 0x4000e79c) with the argument intact, so no
-| stock CC is disturbed. Only 62-73 are handled here.
-|
-| WRITE: mirrors the busscreen's measured page-2 write, generalised over
-| track -- Part, live byte and mirror, count-clamped. It does NOT call the
-| page-2 editor 0x4003a474 and does NOT touch the TRACKB global: that editor
-| writes the same live byte + mirror directly and nothing in 0x40171xxx
-| (traced 5 Sep 2026, docs/firmware/midi_re_cc.md), so a direct write reproduces its
-| stores without the cross-task TRACKB race. Off-page there is no knob to
-| redraw, so the redraw marker is skipped too.
-|
-| Track resolution mirrors the stock CC 16-45 handler (0x4000e91c): rebuild
-| the channel->track map, gate on AUDIO CC IN, and write every audio track
-| (0-7) whose trig channel is this message's channel. Auto-channel / MIDI_MODE
-| retargeting is not handled (it maps to MIDI tracks, which host no FX2).
-|
-| Clamp uses per-engine page-2 count tables (VCOUNT/DCOUNT, 6 bytes each,
-| slot2 order) patched by the build; a select's over-count value would be the
-| stored index that stalls the sequencer, so the clamp is mandatory.
-
-| CC_NEXT is where anything but 62-67 goes: the stock CC handler
+| CC_NEXT is where anything but 62-73 goes: the stock CC handler
 | (0x4000e79c), or -- when Octakit is in the image and the scenes-kits
 | bridge chains this cave in front of her CC dispatch -- her handler. The
 | build defines it (CavePatch.defsyms; schema.Override); it is not set here.
@@ -59,12 +24,6 @@
                                        | builds 96-98 followed that and wrote the
                                        | wrong part's page-2 store when they differ.
         .set    P2OFF,    0x8f084      | FX2 page-2 Part store: DB+part*6322+track*30+slot2
-                                       | + 0x8f084 -- the FX2 PAGE-2 EDITOR's own store
-                                       | (0x4003aaaa, disassembled 13 Sep 2026). 0x8ef5a,
-                                       | used until then, is the PLAYBACK page-2 array of
-                                       | the machine-index editor 0x4003a474 (its
-                                       | "staged index" 0x460d5c30 is the MACHINE type):
-                                       | a CC there corrupted the track's playback page 2.
         .set    DISPOFF,  0x8f084      | the same byte (kept: the FX2 dial READS it)
         .set    LIVEB,    0x80000810    | live block base
         .set    MIRRB,    0x100a50c0   | (old, part-0 view of SHADOW+24; unused)
@@ -81,9 +40,6 @@
         .set    P1P2OFF,  0x8f07e      | FX1 page-2 Part store: DB+part*6322+track*30+slot (0x4003acac)
         .set    SHADOW1,  0x100a51cc   | FX1 page-2 shadow: +part*6322+track*30+slot (0x4003acb4)
         .set    LANE1,    0x32         | FX1 page-2 live lane offset in the 72-byte block (0x80000842)
-| VCOUNT / DCOUNT are the two count tables at the END of this file: the
-| linker resolves `lea VCOUNT,%a1` to wherever the build places the cave
-| (until 9 Sep 2026 they were 0x40bad000/4 placeholders patched by hand).
 
         .text
 | ---- CAVE(msg): dispatch entry (jsr'd), msg* at %sp@(4) ------------------
@@ -103,10 +59,6 @@ mine:   lea     %sp@(-28),%sp
         moveal  %a0,%a2                | a2 = msg (preserved across MAPBUILD)
         movel   MAPGLOB,%d3            | mimic stock register environment
         jsr     MAPBUILD               | rebuild CHANMASK[16]. ⚠️ CLOBBERS d5-d7: it
-                                       | saves only d2-d4/a2 (0x40001858). The value
-                                       | used to be loaded into d5 BEFORE this call;
-                                       | the emu's channel loop never ran so it
-                                       | survived, hardware trashed it (build 94/95).
         moveq   #0,%d5
         moveb   %a2@(2),%d5            | d5 = value, loaded AFTER the call
         andil   #0x7f,%d5
@@ -180,26 +132,6 @@ wpos:   | d2 = clamped value (>=0 by construction)
         movel   #6322,%d3
         mulu.l  %d3,%d1
         addl    %d1,%d0                | d0 = DB + part*6322
-        | + page*6: P2EDIT forms DB+part*6322+0x8ef5a+track*30+page*6+slot2 with
-        | page = the staged index 0x460d5c30. The FX2 page stages index 3
-        | (button 4 -> 3 remap at 0x4005a5cc), so the FX2 page-2 store is +18 --
-        | the busscreen's original value, hardware-confirmed 5 Sep 2026: build
-        | 100 read the index live with the page up and page 2 moved over CC;
-        | builds 97-99 hardcoded 4 (+24) and never took. Pinned so it works
-        | with the FX2 page NOT on screen (the voicing case).
-        | + page*6 where page = the staged index 0x460d5c30 (P2EDIT 0x4003a4b4).
-        | ⚠️ 13 Sep 2026: the block below is the HISTORY of a wrong model. The
-        | "staged index" belongs to the PLAYBACK page-2 editor (it is the machine
-        | type); the FX2 page-2 editor at 0x4003a9dc..0x4003ab1a has no page term.
-        | SHMR "moved over CC" on 5 Sep because the DISPOFF write below hit the real
-        | FX2 Part byte (0x8f084) by accident; the P2OFF/live/shadow writes went to
-        | PLAYBACK's arrays. Now all three target the FX2 editor's own stores.
-        | MEASURED 5 Sep 2026: with the FX2 page up the staged index is 0 --
-        | tag 12 wrote index*16 into GATE and the dial sat at zero, while MODE
-        | and SHMR moved over CC. So the FX2 page-2 store is +0 + slot2. The
-        | busscreen's +18 and my +24 (page kind 3/4 * 6) were both wrong; tags
-        | 11 (+18) and 97-99 (+24) never took, tags 10/12 (live index) did.
-        | Pinned so it works with the FX2 page NOT on screen (the voicing case).
         moveq   #FX2P2,%d1
         addl    %d1,%d0                | d0 = DB + part*6322 + 0
         moveal  %d0,%a0
@@ -218,10 +150,6 @@ wpos:   | d2 = clamped value (>=0 by construction)
         addal   %d1,%a0                | (page*6 already in the base)
         addal   %d4,%a0
         moveb   %d2,%a0@               | displayed value <- value
-        | live = LIVEB + track*72 + 0x38 + slot2 -- the FX2 page-2 lane the per-frame
-        | copier 0x4000cae8 delivers to the DSP record (measured under the port 13 Sep
-        | 2026: +0x2c AMP, +0x32 FX1, +0x38 FX2; +0x20 is PLAYBACK's and never reaches
-        | the DSP -- the FX2 editor writes 0x80000848+track*72+slot2 at 0x4003ab00)
         movel   %d6,%d1
         moveq   #72,%d3
         mulu.l  %d3,%d1
@@ -262,15 +190,8 @@ wpos:   | d2 = clamped value (>=0 by construction)
         moveq   #1,%d1
         movel   %d1,%a0@               | DB+0x9b332 = 1
         movel   %d1,GCHG               | 0x100f8598 = 1 -- the GLOBAL changed flag
-                                       | (P2EDIT 0x4003a5f4). Emu write-diff of
-                                       | P2EDIT vs this cave (5 Sep): this was the
-                                       | only functional store still missing.
         rts
 
-| ---- wtrk1: FX1 page-2 slot (d4-6) = value d5 for track d6 (13 Sep 2026) --
-| The FX1 PAGE-2 EDITOR 0x4003abe4, store for store, minus the refresher
-| call and the redraw marker (see the header). Reads d4/d5/d6, preserves
-| d4/d5/d6/d7/a2; scratches d0-d3/a0/a1.
 wtrk1:  movel   DBPTR,%d0
         moveq   #0,%d1
         moveb   PARTB,%d1
