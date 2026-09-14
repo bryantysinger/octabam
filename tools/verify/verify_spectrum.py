@@ -325,6 +325,20 @@ _lr = rms_db(_y); _rail = sum(1 for v in _y[N // 2:] if abs(v) >= 0x7ffff0) / (N
 check("LADR FREQ 64 RES 100 under LDP 127 LSP 127: bounded (no rail, < RES 0 + 6 dB)",
       _rail == 0 and _lr < _l0 + 6, f"{_lr:.1f} dBFS, rail {_rail*100:.1f}%")
 
+# ---- 6i. TAME: the output soft clip (14 Sep 2026) ------------------------------
+# BP at FREQ 70 RES 110 on a tone at fc (~1.2 kHz, Q ~ 12) is the "shrill
+# peak"; TAME 127 rounds it off by > 6 dB, leaves a -34 dBFS signal at unity.
+_fc70 = 60 * 250 ** (70 / 128)
+_pk0 = rms_db(render(tone(_fc70, 0.05), FREQ=70, RES=110, MODE=2)[0])
+_pk1 = rms_db(render(tone(_fc70, 0.05), FREQ=70, RES=110, MODE=2, TAME=127)[0])
+check("TAME 127 takes the BP peak at fc (FREQ 70, RES 110) down by > 6 dB", _pk0 - _pk1 > 6, f"{_pk0:.1f} -> {_pk1:.1f} dBFS")
+_q0 = rms_db(render(tone(1000, 0.02), FREQ=127, RES=0, TAME=0)[0])
+_q1 = rms_db(render(tone(1000, 0.02), FREQ=127, RES=0, TAME=127)[0])
+check("TAME 127 leaves a -34 dBFS tone within 0.5 dB (small signals at unity)", abs(_q0 - _q1) < 0.5, f"{_q0:.2f} vs {_q1:.2f} dBFS")
+_t0 = render(tone(1000, 0.4), FREQ=100, RES=64, TAME=0)[0]
+_t1 = render(tone(1000, 0.4), FREQ=100, RES=64)[0]
+check("TAME 0 is bit-exact (the default renders identically)", _t0 == _t1)
+
 # ---- 7. every knob at its extremes renders -----------------------------------
 for name in K:
     for v in (0, 127 if MOD.params[K[name]].count in (None, 128) else MOD.params[K[name]].count - 1):

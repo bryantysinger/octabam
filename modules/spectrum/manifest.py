@@ -111,7 +111,8 @@ MODULE = Module(
         Param(b"WDTH", 64, 128, active=True, formatter=_BIPOL,
               doc="stereo width of the output, drawn -64..+63: 0 untouched, -64 mono, +63 double sides"),
         # ---- page 2: knob / select / knob / select / knob / select ----------
-        _BLANK,
+        Param(b"TAME", 0, active=True, formatter=_PLAIN,
+              doc="a soft clip on the output, every mode: 0 off; up rounds off the resonance peaks"),
         Param(b"MODE", 0, 5, active=True, formatter=_STEP,
               labels=("LADR", "LP", "BP", "ISO", "VOWL"),
               doc="LADR the Moog (first: the best one); LP/BP the SEM; ISO an isolator (Capacitor2); VOWL"),

@@ -2577,3 +2577,21 @@ Otherwise it sounds awesome." Built (image 18):
   allows 12 dB). Open: whether to add a bass makeup with RES.
 - verify_spectrum gates: LADR at FREQ 127 RES 64/100/127 on noise bounded
   and off the rail; LADR under LDP 127 LSP 127 bounded.
+
+**14 Sep 2026, Sam's round on image 18:** "they sound fantastic, with the
+res up the bp peaks out a bit around the 70s on freq. can we tame the
+shrill peaks a lil? env peaks iso out a bit the same way. maybe some kind
+of global control." Built (image 19):
+
+- TAME, page 2 slot 6 (position A, beside MODE), default 0: a cubic soft
+  clip on the station's output in every mode, m = TAME/128, g = 1 + 7m,
+  out = x + m (sc(clamp(x g))/g − x), sc(x) = x − x³/3. TAME 0 renders
+  bit-exact; small signals stay at unity (−34 dBFS tone within 0.06 dB at
+  TAME 127); the BP peak at FREQ 70 RES 110 on a tone at fc goes −4.6 →
+  −21.4 dBFS at TAME 127. The bypass detector includes TAME's knob field.
+  Spectrum prices 346 (was 290). Slots $39/$3a/$3b.
+- ⚠️ the first build put TAME's words on $33/$19/$1a after a shell scan
+  with `"\$$s"` reported them free (the CLAUDE.md trap: the shell expanded
+  the dollar); $33 is the SVF's d and every LP/BP render came back silent.
+  The true free slots below $40 are $3c..$3f; scan with a script, never a
+  shell pattern.

@@ -38,7 +38,8 @@
 ;   CAP states: hp A..F / lp A..F at $00..$0b (L), $0c..$17 (R) -- VOWL's and LADR's slots, one mode per block
 ;   ($1c/$1f/$23/$24 are CAP's per-sample amounts; the SVF's own uses of them never run in the same block)
 ;   $30 FX2-slot flag (set at init: 1 = this instance is on FX2, dry)
-;   $31 LFO phase (PERSISTENT, masked)     $32 env (PERSISTENT, clamped)
+;   $31 LFO phase (PERSISTENT, masked)     $32 env (PERSISTENT, clamped)   $33 SVF d
+;   $39 TAME m  $3a TAME g/8  $3b TAME 1/g (per block; $3c..$3f free)
 ;   $34/$35 SVF lp/bp L   $36/$37 SVF lp/bp R                 (PERSISTENT)
 ;   $38..$3b B poles L: hp1 hp2 lp1 lp2    $3c..$3f R         (PERSISTENT)
 ;   $19/$1a B_out previous sample L/R (the FM source)         (PERSISTENT)
@@ -572,6 +573,28 @@ fs_mladr:
         asr     #$4,a,a
         move    a,x:(r7+$15)            ; dG
 fs_mdone:
+; ---- TAME (slot 6, the knob field of r6+$c; 14 Sep 2026, Sam: "can we tame
+; the shrill peaks a lil? maybe some kind of global control"): a cubic soft
+; clip on the station's output, every mode. m = TAME/128; g = 1 + 7m (up to
+; +18 dB into the clip); out = x + m (sc(clamp(x g)) / g - x) with sc(x) =
+; x - x^3/3: TAME 0 is bit-exact x, small signals stay at unity, a peak is
+; rounded off from -18 dB up at TAME 127. $39 m, $3a g/8, $3b 1/g (the one
+; division).
+        move    x:(r6+$c),a
+        and     #>$7f0000,a
+        move    a,x:(r7+$39)            ; m
+        move    a,x0
+        move    #>$700000,y1            ; 7/8
+        mpy     x0,y1,a                 ; 7m/8
+        add     #>$100000,a             ; g/8 = 1/8 + 7m/8
+        move    a,x:(r7+$3a)
+        move    a,x0
+        move    #$10,a                  ; num = 1/8 (a clean load), den = g/8 >= 1/8
+        andi    #$fe,ccr
+        rep     #$18
+        div     x0,a
+        move    a0,x0
+        move    x0,x:(r7+$3b)           ; 1/g
 ; ---- WDTH (slot 5; slot 4 until LSP took it, 14 Sep 2026): stereo width of
 ; the output, Character's mid/side, drawn -64..+63; the knob word IS WDTH/128
 ; = the side gain HALVED (64 -> 0.5, doubled back per sample: 0 = mono, 127 =
@@ -581,7 +604,7 @@ fs_mdone:
         move    a,x:(r7+$2c)            ; ($25 is the SVF's HP tap -- 14 Sep 2026's first build put this there and every LP leaked half its HP)
 
 ; ---- BYPASS: the defaults are a bit-exact passthrough ---------------------
-; FREQ 127, RES 0, ENV 64, LDP 0, WDTH 64, MODE 0 (LSP is inert at LDP 0 / ENV 64).
+; FREQ 127, RES 0, ENV 64, LDP 0, WDTH 64, TAME 0, MODE 0 (LSP is inert at LDP 0 / ENV 64).
 ; Every part that ever chose stock FILTER runs this on FX1 after the flash,
 ; so the neutral block copies nothing at all.
         clr     b
@@ -602,8 +625,8 @@ fs_mdone:
         move    x:(r6+$5),a
         cmp     x0,a
         bne     fs_live
-        move    x:(r6+$c),a             ; the MODE select (slot 6's knob field is
-        and     #>$ff00,a               ; blank since DRV went, 13 Sep 2026)
+        move    x:(r6+$c),a             ; the MODE select and TAME's knob field
+        and     #>$7fff00,a             ; (TAME 0, MODE 0)
         bne     fs_live                 ; AND sets Z from A1 (a2 = a0 = 0 here)
         bra     fs_bypass
 fs_live:
@@ -1030,9 +1053,67 @@ fs_join:
         move    a,y0                    ; scaled side
         move    x1,a
         add     y0,a
+; TAME: out = x + m (sc(clamp(x g)) / g - x), sc(x) = x - x^3/3 (block: $33 m,
+; $3a g/8, $3b 1/g); x parked at $1d, x' = clamp(x g) at $1b (both free here)
+        move    a,x:(r7+$1d)            ; x (limited)
+        move    a,x0
+        move    x:(r7+$3a),y1           ; g/8
+        mpy     x0,y1,a
+        asl     #$3,a,a                 ; x g
+        move    a,x:(r7+$1b)            ; x' = clamp(x g): the store limits
+        move    x:(r7+$1b),x0
+        move    x:(r7+$1b),y1
+        mpy     x0,y1,a                 ; x'^2
+        move    a,y1
+        mpy     x0,y1,a                 ; x'^3
+        move    a,x0
+        move    #>$2aaaab,y1            ; 1/3
+        mpy     x0,y1,a                 ; x'^3/3
+        move    x:(r7+$1b),x0
+        neg     a
+        add     x0,a                    ; sc = x' - x'^3/3, |sc| <= 2/3
+        move    a,x0
+        move    x:(r7+$3b),y1           ; 1/g
+        mpy     x0,y1,a                 ; sc/g
+        move    x:(r7+$1d),x0
+        sub     x0,a                    ; sc/g - x
+        move    a,x0
+        move    x:(r7+$39),y1           ; m
+        mpy     x0,y1,a                 ; m (sc/g - x): exactly 0 at TAME 0
+        move    x:(r7+$1d),x0
+        add     x0,a                    ; out
         move    a,x:(r0)
         move    x1,a
         sub     y0,a
+; TAME: out = x + m (sc(clamp(x g)) / g - x), sc(x) = x - x^3/3 (block: $33 m,
+; $3a g/8, $3b 1/g); x parked at $1d, x' = clamp(x g) at $1b (both free here)
+        move    a,x:(r7+$1d)            ; x (limited)
+        move    a,x0
+        move    x:(r7+$3a),y1           ; g/8
+        mpy     x0,y1,a
+        asl     #$3,a,a                 ; x g
+        move    a,x:(r7+$1b)            ; x' = clamp(x g): the store limits
+        move    x:(r7+$1b),x0
+        move    x:(r7+$1b),y1
+        mpy     x0,y1,a                 ; x'^2
+        move    a,y1
+        mpy     x0,y1,a                 ; x'^3
+        move    a,x0
+        move    #>$2aaaab,y1            ; 1/3
+        mpy     x0,y1,a                 ; x'^3/3
+        move    x:(r7+$1b),x0
+        neg     a
+        add     x0,a                    ; sc = x' - x'^3/3, |sc| <= 2/3
+        move    a,x0
+        move    x:(r7+$3b),y1           ; 1/g
+        mpy     x0,y1,a                 ; sc/g
+        move    x:(r7+$1d),x0
+        sub     x0,a                    ; sc/g - x
+        move    a,x0
+        move    x:(r7+$39),y1           ; m
+        mpy     x0,y1,a                 ; m (sc/g - x): exactly 0 at TAME 0
+        move    x:(r7+$1d),x0
+        add     x0,a                    ; out
         move    a,x:(r0+n0)
         move    (r0)+n0                 ; the frame advance: n0 is 1 for the
         move    (r0)+n0                 ; whole loop, so two steps, no reload
