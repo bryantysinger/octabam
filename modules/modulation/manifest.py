@@ -122,7 +122,7 @@ MODULE = Module(
         Param(b"DLY", 18, 128, active=True, formatter=_PLAIN,
               doc="the sweep's centre, 0.2 .. 23 ms; COMB's pitch; PHSR's stage count (2/4/6/8 by quarters)"),
         Param(b"MODE", 0, 6, active=True, formatter=_STEP,
-              labels=("JUNO", "DIM", "ENS", "FLNG", "PHSR", "COMB"),
+              labels=("JUNO", "DIM", "ENS", "FLNG", "COMB", "PHSR"),
               doc="which pedal"),
         _BLANK,   # was TONE (page 1 since 14 Sep 2026)
         _BLANK,   # was SHPE (the LFO is each source's own shape since 14 Sep 2026)
@@ -146,12 +146,12 @@ MODULE = Module(
         ModeView(mode=3,                        # FLNG
                  names={6: b"MANL"},
                  defaults={0: 14, 1: 59, 2: 19, 3: 127, 4: 127, 5: 0, 6: 27}),
-        ModeView(mode=4,                        # PHSR
-                 names={6: b"STGS"},
-                 defaults={0: 28, 1: 121, 2: 64, 3: 64, 4: 127, 5: 64, 6: 127}),
-        ModeView(mode=5,                        # COMB
+        ModeView(mode=4,                        # COMB
                  names={2: b"DCAY", 6: b"PTCH"},
                  defaults={0: 0, 1: 0, 2: 110, 3: 64, 4: 100, 5: 0, 6: 64}),
+        ModeView(mode=5,                        # PHSR (last: dropping it
+                 names={6: b"STGS"},            # would move no other mode)
+                 defaults={0: 28, 1: 121, 2: 64, 3: 64, 4: 127, 5: 64, 6: 127}),
     ),
     dsp=DspSection(
         asm="modules/modulation/modulation.asm",

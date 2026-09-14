@@ -41,7 +41,7 @@ FS = 44100.0
 BLOCK = 15
 LINE = 1024
 
-MODES = {"JUNO": 0, "DIM": 1, "ENS": 2, "FLNG": 3, "PHSR": 4, "COMB": 5}
+MODES = {"JUNO": 0, "DIM": 1, "ENS": 2, "FLNG": 3, "COMB": 4, "PHSR": 5}
 
 
 # ---- the knob laws (shared with the DSP's per-block decode) -------------------

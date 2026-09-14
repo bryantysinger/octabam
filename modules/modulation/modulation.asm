@@ -77,7 +77,7 @@
 ;   $00 m (MIX)          $01 LFO increment     $02 centre Q11.12   $03 depth Q11.12
 ;   $04 feedback         $05 tone coefficient  $06 WID phase offset
 ;   $07 bl  $08 bd  $09 ff  $0a kc  $0b kb    (the LINE loop's mix weights)
-;   $0c mode (0..5)      $0d dry flag: 1 = FX2 slot or MIX 0
+;   $0c mode (0..5: JUNO DIM ENS FLNG COMB PHSR)   $0d dry flag: 1 = FX2 slot or MIX 0
 ;   $0e line base (per instance)              $0f the P table base
 ;   $10 scratch (block)  $1a COMB gain  $1b h0  $1c h1  $1d sign  $1e period Q11.12
 ;   $19 lfo L this sample   $1f lfo R this sample
@@ -252,9 +252,9 @@ mo_msame:
         cmp     #>$3,a
         beq     mo_bflng
         cmp     #>$4,a
-        beq     mo_bphsr
-        cmp     #>$5,a
         beq     mo_bcomb
+        cmp     #>$5,a
+        beq     mo_bphsr
 ; JUNO (and any stored value past 5): bl 0, bd 0, ff 1, kc 0, kb 0
         clr     a
         move    #>$7fffff,x0

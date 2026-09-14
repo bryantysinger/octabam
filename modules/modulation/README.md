@@ -7,7 +7,7 @@ in `docs/effects/PORTS.md`.
 
 | page 1 | RATE · DPTH · FDBK · MIX · TONE · WDTH |
 |---|---|
-| page 2 | DLY · MODE (JUNO DIM ENS FLNG PHSR COMB) |
+| page 2 | DLY · MODE (JUNO DIM ENS FLNG COMB PHSR) |
 
 | mode | source | licence | what it is |
 |---|---|---|---|
@@ -48,14 +48,18 @@ stage), `mo_para` (the parabola sine), `mo_lfo`, `mo_tab` (the table
 read), `momixs`. The PHSR chain runs at half scale for headroom (an
 allpass cascade peaks above its input).
 
+PHSR is the last MODE position on purpose: dropping it would move no other
+mode's stored byte (Sam retired the phaser on 13 Sep at 464 cycles; the
+ChowPhaser port prices 476 and is in pending his call).
+
 Two lines of 1,024 words from the FX1 slot's allocator buffer; an FX2
 instance reads its base at init and runs as a dry pass (`Claims(fx1_only)`,
 proven by the gates). A change of MODE clears every state slot.
 
 ## Measured (14 Sep 2026, local)
 
-- **1,199 words** (453 in v1), core A FREE 536 in the rig; **472
-  cycles/sample** worst (PHSR; LINE 402, ENS 440, COMB 306) — under
+- **1,199 words** (453 in v1), core A FREE 536 in the rig; **476
+  cycles/sample** worst (PHSR 476; LINE 401, ENS 440, COMB 306) — under
   Character's 639, so the worst core is unchanged at 3,831.
 - `tools/verify/verify_modulation.py`, **24 gates, all PASS**: MIX 0
   bit-exact in every mode; an FX2 instance a bit-exact dry pass with the

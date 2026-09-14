@@ -194,9 +194,9 @@ reference tables in X.
 
 | | measured |
 |---|---|
-| modes | JUNO · DIM · ENS · FLNG · PHSR · COMB, as proposed; PHSR in pending Sam's call (retired 13 Sep at 464 cycles; ChowPhaser's law prices 472 with the LFO, the ramps and the mix, under Character's 639 so the worst core is unchanged) |
+| modes | JUNO · DIM · ENS · FLNG · COMB · PHSR (PHSR last so dropping it moves no stored byte); PHSR in pending Sam's call (retired 13 Sep at 464 cycles; ChowPhaser's law prices 476 with the LFO, the ramps and the mix, under Character's 639 so the worst core is unchanged) |
 | words | 1,199 (v1 453); core A FREE 536, B 998; 132 words of tables in X |
-| cycles/sample | LINE (JUNO/DIM/FLNG) 402, ENS 440, PHSR 472, COMB 306 |
+| cycles/sample | LINE (JUNO/DIM/FLNG) 401, ENS 440, PHSR 476, COMB 306 |
 | proof | `modules/modulation/modulation_ref.py` — one float class per mode, the source's per-sample law with the station's knob decode; `tools/verify/verify_modulation.py` 24 gates green: every mode ≤ 1e-4 max error on a stereo signal (COMB 5.5e-4: its ring recirculates the Q23 rounding), the Juno's sweep 1.56..5.10 ms at 0.5 Hz, the through-zero null −138 dB, the phaser unity, the comb's period at three pitches |
 | estimate vs built | the words estimate (700..900) was low by 300: the phaser's unrolled tap weighting is ~180 words per channel pair, the Hermite read 90; the cycle estimate (≈ 200) was low by 270: the LFO shaping (the parabola sine is 17 instructions a call, six calls in ENS) and the one-poles are the difference |
 | departures from the sources | DIM's amounts (ours); PHSR's feedback through one sample, no tanh, the coefficient per block + ramp; COMB without the IIR damping and dispersion, with a polarity sign; the Juno's L/R asymmetry and its I+II "sine-like" shape not modelled; the tap read linear (the sources' allpass / 3-point + air reads are open) |
