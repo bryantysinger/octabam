@@ -109,12 +109,12 @@ MODULE = Module(
         Param(b"WDTH", 64, 128, active=True, formatter=_BIPOL,
               doc="stereo width of the output, drawn -64..+63: 0 untouched, -64 mono, +63 double sides"),
         Param(b"NLIN", 0, active=True, formatter=_PLAIN,
-              doc="CAP only: the dielectric's nonlinearity, the signal bending the cutoff; 0 mild, 127 intense"),
+              doc="CAP only: how hard the signal bends the cutoff (the dielectric); 0 mild, 127 intense"),
         # ---- page 2: knob / select / knob / select / knob / select ----------
         _BLANK,
         Param(b"MODE", 0, 6, active=True, formatter=_STEP,
               labels=("LP", "BP", "HP", "CAP", "VOWL", "LADR"),
-              doc="LP/BP/HP the SEM; CAP Airwindows Capacitor2 (LOW/HIGH/NLIN); VOWL formants by FREQ; LADR the Moog"),
+              doc="LP/BP/HP the SEM; CAP Airwindows Capacitor2; VOWL formants by FREQ; LADR the Moog ladder"),
         _BLANK,   # was DPTH (14 Sep 2026: ENV and LFO on page 1)
         _BLANK,   # was ROUT (SER/PAR/RING/FM: filter B retired 14 Sep 2026)
         Param(b"RATE", 64, 128, active=True, formatter=_PLAIN,
