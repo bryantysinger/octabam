@@ -26,7 +26,7 @@ Measured: the runtime, packed runtime and append rebuild byte-identical to
 her pinned identities with Homebrew m68k-elf-gcc 16.2.0 (recipe pins
 16.1.0); tools/verify/verify_octakit.py reproduces her combined OS image from
 stock + her writes + her append; under the ColdFire port her window reads
-back byte-identical after boot. On hardware 14 Sep 2026 as OKMS1 (remix
+back byte-identical after boot. On hardware as OKMS1 (remix
 ok-ms, her 92cf70b / ot-26914 + midisc 1.40MIDISC8), confirmed by midisc's
 author.
 

@@ -1,18 +1,14 @@
 """Discovery of remix modules: the index.
 
 Every directory under `modules/` holding a `manifest.py` that exports a
-`MODULE` is a contribution. Nothing else registers a module -- there is no
-central list to edit, so adding one is adding a directory, and two modules
-cannot silently disagree about which of them is "the" delay because the
-registry refuses duplicate keys and ids.
+`MODULE` is a contribution; there is no central list. The registry refuses
+duplicate keys and ids. Directories whose name starts with `_` or `.` are
+skipped (`modules/_template/`).
 
-Directories whose name starts with `_` or `.` are skipped, which is what
-keeps `modules/_template/` out of every build.
-
-The STOCK FX2 effects (tools/remix/stock.py) are registered alongside, under
-their own keys ("FILTER", "CHORUS", ...), so a remix keeps one in the chooser
-by listing it exactly as it lists a module. They are Kind.STOCK: no code, no
-clone, no words -- the build writes only their chooser row.
+The stock FX2 effects (tools/remix/stock.py) are registered alongside under
+their own keys ("FILTER", "CHORUS", ...), so a remix keeps one in the
+chooser by listing it as it lists a module. They are Kind.STOCK: no code,
+no clone, no words; the build writes only their chooser row.
 """
 
 from __future__ import annotations

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """One Flash-7 bus claim measured LIVE on pattern A01, with the variant set BY
 HAND on the unit (the FX2 chooser hides the hosts, and a pattern/part change
-drops the THRU source after ~5 s -- 9 Sep 2026 -- so program-change variants
+drops the THRU source after ~5 s -- -- so program-change variants
 could not be measured; a by-hand effect select on the stable A01 source can).
 
     python3 tools/hw/hw_flash7_liveclaim.py v      # T8 FX2 = SEND set by hand: the send is refused on the master

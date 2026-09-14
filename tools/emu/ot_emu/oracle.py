@@ -6,31 +6,13 @@ state route A (tools/emu/emu_rtos.py) reaches?
     ./out/emu/ot_emu --image out/raw/section_3_MAIN_OS.bin --golden out/oracle/port.json
     python3 tools/emu/ot_emu/oracle.py out/oracle/m6a.json out/oracle/port.json
 
-Both files carry the same fields; this compares them field by field and
-prints every disagreement. It is deliberately dumb -- no tolerance, no
-"close enough" -- because a disagreement between the two emulators is a
-FINDING, not a nuisance (docs/firmware/COLDFIRE_PORT.md). The one to trust is whichever
-can point at a firmware constant that only makes sense one way; until someone
-has, neither is.
-
-What it checks, in the order a port reaches them:
-  handoff_pc     the boot's trap #0 (milestone O1)
-  auto_pokes     the completion flags no model answers, loop pc + addr + value
-  created        every task the kernel creates: tcb, entry, prio, stack, creator
-  ran            every TCB that was dispatched at least once
-  first_switch   boot -> main
-  dispatches     the first N (sample, tcb) -- ORDER is the whole point of
-                 running the scheduler; the sample times are compared with a
-                 tolerance of one PIT period, since the instruction budget per
-                 sample is a knob in both emulators.
-
                  ⚠️ The resumed PC is REPORTED, NOT COMPARED, and that is a
                  measurement rather than a concession. A task preempted by a
                  timer resumes wherever the interrupt happened to land, and
                  that address is a function of the `ips` knob -- which both
                  emulators document as a guess (RTOS_FORK section 6: "the
                  instruction budget per sample is a knob with a default, not a
-                 truth"). Swept 8 Sep 2026 on the same image, same everything
+                 truth"). Swept on the same image, same everything
                  else:
 
                      ips 3990  pc[1] 0x4001fab6  pc[2] 0x400209ac
@@ -48,10 +30,6 @@ What it checks, in the order a port reaches them:
                  is reported, never compared -- it tracks the ips knob
                  because the transmit ring drains in bursts (milestone O5)
   gate_ms        when the gate passed
-
-And, from the M6c goldens (milestone O6 -- a different configuration, so a
-SEPARATE pair of files, written by `emu_rtos.py --sequencer --golden` and
-`ot_emu --sequencer --m6c-golden`):
 
     .venv/bin/python3 tools/emu/emu_rtos.py --project out/_testproj --set OCTABAM --name RIG \
         --sequencer --internal-clock --poke-trig 2 --frames 400 --ms 20000 \

@@ -1,9 +1,5 @@
 """BusVerb -- an eight-line FDN reverb with shimmer, gating and mode select.
 
-Hosted on payload A (core 0), which serves tracks 5-8 (measured; test it on
-track 5). Stage 2 of the one aux bus: it takes the delay's output while the
-delay is live, else the aux.
-
 Clones DARK REV's descriptor. Every slot states its name, including the ones
 the donor already carries, because the harness reads these names.
 """

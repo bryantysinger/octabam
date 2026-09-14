@@ -1,23 +1,13 @@
 """What a remix module declares about itself.
 
-A *module* is one contribution to the firmware: an FX2 engine, a bus client,
-a ColdFire behaviour patch, or a combination. A *remix* is a named selection
-of modules composed into one image. This file is the vocabulary both sides
-speak.
+A module is one contribution to the firmware: an FX2 engine, a bus client, a
+ColdFire behaviour patch, or a combination. A remix is a named selection of
+modules composed into one image. This file is the vocabulary both sides
+speak: a manifest is the one place a module's facts are written, and the
+build, the checks and the harness all read the same statement.
 
-The point of a typed manifest here is not tidiness. Almost every expensive
-failure this project has had was two mechanisms disagreeing about one effect
--- a descriptor that drew a knob publishing nothing, a formatter inherited
-from a donor overriding the value count it was given, a knob-to-slot map
-copied into six files and stale in four. A manifest is the one place those
-facts are written down, so a contributor states them once and the build,
-the checks and the harness all read the same statement.
-
-WHAT IS CONSUMED TODAY. This schema is deliberately narrower than the full
-architecture: it declares what the build actually reads right now. Resource
-claims (Y regions, r7 slots, cave ranges) and the ColdFire patch type get
-their fields when the ledger that checks them exists -- a declared-but-
-unchecked claim is worse than no claim, because it reads like a guarantee.
+The schema declares what the build reads. A declared-but-unchecked claim is
+worse than none, so a field exists only where a check consumes it.
 """
 
 from __future__ import annotations
@@ -80,7 +70,7 @@ class Formatter(Enum):
 
     A cloned descriptor inherits the donor's formatter for every slot, and
     the formatter decides how the value is rendered regardless of the count
-    written beside it. That is not a subtlety: it shipped on the 17 Aug 2026
+    written beside it. That is not a subtlety: it shipped on the
     flash, where BusDelay cloned SPRING REV and three of six page-2 slots
     drew wrong -- WOW drew no knob at all (an enumerated renderer with three
     labels asked to draw 0..127), MODE drew as a bipolar balance dial reading
@@ -108,8 +98,7 @@ class Param:
     COMPANION field (bits 8-15) of the same word. Any slot may carry any
     count -- stock puts 5-way selects on slot 6 and 128-value knobs on 9 --
     and a MODE goes on an EVEN slot -- the proven place for the panel's own
-    page-2 knob editor to reach it (4 Sep 2026; it used to be forced onto
-    7/9/11). Whether that editor also reaches the odd slots is unresolved
+    page-2 knob editor to reach it. Whether that editor also reaches the odd slots is unresolved
     (docs/firmware/MAINMENU.md 9e); an even slot does not depend on the answer.
     """
 
@@ -436,7 +425,7 @@ class ModeView:
     A multi-mode effect reuses knobs: BusDelay's MDEP is the tape modulation
     depth in CLEAN and the grain scatter in GRAIN, and a panel that prints
     MDEP in both is telling the operator the wrong thing half the time (Sam,
-    3 Sep 2026: "it's only got four settings ... just feels a lil confusing").
+   : "it's only got four settings ... just feels a lil confusing").
 
     `names` renames slots for this mode -- 4 characters, the field's width,
     exactly as MenuEntry.abbr is. `defaults` is what the OTHER knobs should
@@ -572,7 +561,7 @@ class Runtime:
     out of the USER'S stock image at build time (copied or PC-relative-
     relocated per the recipe), so the repo carries none of it.
 
-    This is Em's design (emuyia/ems-octakit) adopted whole, 9 Sep 2026:
+    This is Em's design (emuyia/ems-octakit) adopted whole:
     `recipe` is her `firmware.json` (interface_version 1) and `sources` her
     `runtime/` -- both live in a git SUBMODULE so she keeps developing in
     her own repo and octabam builds from it. The build re-derives every
@@ -791,7 +780,7 @@ class Module:
     def bipolar_slots(self) -> tuple[int, ...]:
         """Knobs drawn as a balance dial, -64..+63 around 64 (the DSP still
         reads 0..127): SPRING BAL's renderer triple, verified only as
-        build-time bytes until the first flash shows it (14 Sep 2026)."""
+        build-time bytes until the first flash shows it."""
         return tuple(i for i, p in enumerate(self.params)
                      if p.formatter is Formatter.BIPOLAR)
 
@@ -880,7 +869,7 @@ class Remix:
     tools/remix/stock.py. A stock effect NOT listed is not removed from the
     image -- its code, descriptor and dispatch stay stock, so an old project
     that selects it still runs it -- it just has no chooser row, which is
-    what every remix did to all fourteen of them before 2 Sep 2026. Only
+    what every remix did to all fourteen of them before. Only
     the three reverbs are actually consumed (their code is the donor region
     every module packs into) and they cannot be listed.
 

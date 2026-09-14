@@ -12,41 +12,17 @@ run and heard locally:
     DEV=1 XBUS=1 python3 tools/build/build_bus.py   # -> out/dsp/mem_dev_A.mem
     python3 tools/harness/send_probe.py --mem out/dsp/mem_dev_A.mem --layout DS
 
-(NOSHIM=1 was load-bearing for a few hours on 12 Aug 2026 -- R16-R18 grew
-BusVerb past what the donor region could hold with all three servers packed
-in. The same evening's DEV placement change moved the delay OUT of the region
-to P:0x04000, appended to the .mem dump -- see build_bus.py's DEV_DELAY_P --
-so the full-shimmer reverb fits again and NOSHIM is back to optional.)
+This needs a DEV=1 image: XBUS=1 stubs the DELAY SERVER out, and the
+specialized build puts BusDelay in payload B only. Against either,
+`--layout DS` renders digital silence from a 10-word stub, or on a SPEC dump
+a dry passthrough from the DELAY->SEND id alias, which entry() refuses to
+run; the silence check reports silence as a failed measurement.
 
-This needs a DEV=1 image and there is no way around it: XBUS=1 stubs the DELAY
-SERVER out, and the specialized build that follows puts BusDelay in payload B
-only -- which dsp_host cannot boot (REVERB.md). Against either, `--layout DS`
-renders digital silence from a 10-word stub -- or, on a SPEC dump, a dry
-passthrough from the DELAY->SEND id alias, which entry() now refuses to run.
-The silence check below reports silence as a FAILED measurement rather than a
-clean one.
-
-The two buses have SEPARATE send knobs -- x:(r6+0) is ->DELAY, x:(r6+1) is
-->REVERB -- so --level follows whichever server is being measured and --dlevel
-overrides it. Driving the reverb's knob while measuring the delay renders
-silence, which cost a confusing first run.
-
-WHY THIS EXISTS. The obvious local repro -- `dsp_host -inst 2` with two reverbs
--- does not exercise the send path at all, for three independent reasons:
-
-  * BusVerb never WRITES the REVERB accumulator. It reads it (r7+$63) and
-    writes the DELAY accumulator (r7+$68). Only modules/send/send_client.asm writes the
-    REVERB one, so with no SEND instance the reverb reads an all-zero buffer.
-  * The server-role lock (modules/busverb/reverb_server.asm, y:>$982) makes a second
-    REVERB SERVER instance rts immediately as a dry passthrough.
-  * dsp_host took ONE -init/-proc pair, so every instance ran the same effect.
-
-The third is now fixed: -init/-proc take a list, one entry point per instance.
-This script uses that to run instance 0 = REVERB SERVER (r7 0x6200, position 0,
-the housekeeper) and instance 1 = SEND (r7 0x6400) -- the hardware layout from
-XBUS.md. (Instance numbering only -- on hardware BusVerb serves
-TRACKS 5-8, payload B's BusDelay serves 1-4; the old 'track 1 BusVerb'
-label predates the 10 Aug track<->core inversion measurement.)
+Two reverb instances alone do not exercise the send path: BusVerb never
+writes the REVERB accumulator (only SEND does), and the server-role lock
+makes a second REVERB SERVER instance rts as a dry passthrough. So -init/
+-proc take a list, one entry point per instance: instance 0 = REVERB SERVER
+(r7 0x6200, position 0, the housekeeper), instance 1 = SEND (r7 0x6400).
 
 -inmask 2 feeds the tone to the SEND only. The reverb's own dry input is
 silent, so everything in its output arrived over the bus. That is what makes
@@ -57,13 +33,7 @@ away from the fundamental is nonlinearity or a glitch -- exactly the
 "robotic/metallic/formanty" artifact. So: drive a bin-centred sine through the
 send, take a steady-state window of the reverb's output, and report the total
 non-fundamental energy relative to the fundamental. MOD and SPEED are forced to
-0 because delay-line modulation makes legitimate sidebands.
-
-TRAPS THIS SCRIPT IS BUILT AROUND (both cost a wrong conclusion before):
-  * the engine stays DRY for 256 CALLS -- the source starts after the warm-up
-  * a silent render scores perfectly, so silence is checked FIRST and reported
-    as a failure, never as a clean result
-"""
+0 because delay-line modulation makes legitimate sidebands."""
 import argparse, array, cmath, math, os, pathlib, struct, subprocess, sys, wave
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -138,7 +108,7 @@ def die(msg):
 # ---- payload dump --------------------------------------------------------
 def dump_mem(image, mem, payload="A"):
     """Dump one payload of a built image for dsp_host. "A" is core 0 (tracks
-    5-8), "B" core 1 (tracks 1-4); dsp_host boots either since 7 Sep 2026."""
+    5-8), "B" core 1 (tracks 1-4); dsp_host boots either."""
     sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
     import dsp_modmap
     mem = pathlib.Path(mem)
@@ -379,7 +349,7 @@ def analyse(sig, label, tone_end=None):
     decaying one, so the window is full of signal. A MEMORYLESS module has
     nothing there, so the window is digital silence and the tool announced
     `SILENT -- the bus carried nothing` about a perfectly good render. That is
-    what made every insert look broken (found 30 Aug 2026).
+    what made every insert look broken (found).
 
     The fix is deliberately ADDITIVE, not a correction of the window: every
     THD in `docs/effects/VOICING.md` was measured against the tail, and moving the

@@ -3,22 +3,16 @@
 
     make remix          (or: .venv/bin/python3 tools/remix/app.py)
 
-ONE page, three panes -- AVAILABLE (what could be in the image), LOADED
-(what is), UNIT (the selected effect's knobs and the firmware's own draw of
-its page). The loop it exists for is one move long: point at a stock effect,
-`enter` to swap one of ours in, `r` to hear it.
+One page, three panes: AVAILABLE (what could be in the image), LOADED (what
+is), UNIT (the selected effect's knobs and the firmware's own draw of its
+page). Point at a stock effect, `enter` to swap one of ours in, `r` to
+hear it.
 
-THE IMAGE FOLLOWS THE SELECTION. Every selection change rebuilds and
-re-boots in the background -- a build is ~0.3 s and a ColdFire boot ~5 s --
-so the panel on the right always draws what the middle pane says. There is
-no build key and no stale state to reason about; that apparatus existed to
-spare the operator a quarter-second and cost more than it saved.
-
-The model layers are headless and live next door: state.py (the composer),
-rig.py (categories, knobs), audition.py (rendering). This file is only the
-shell. Textual rather than curses: the remixer is already venv-hosted for
-the emulator, and the frontend rewrite is where hand-rolled layout stopped
-paying its way.
+The image follows the selection: every selection change rebuilds (~0.3 s)
+and re-boots the ColdFire emulator (~5 s) in the background, so the panel
+always draws what the middle pane says. The model layers are headless:
+state.py (the composer), rig.py (categories, knobs), audition.py
+(rendering). This file is the Textual shell.
 """
 
 from __future__ import annotations
@@ -697,7 +691,7 @@ class RemixerScreen(Screen):
         (tools/remix/stock.py), an unmodified unit really does start them
         fully dry, and seeding a different value here would make the remixer
         lie about the page it is drawing beside. But it reads as "this effect
-        does nothing", which is what it cost on 2 Sep 2026. So say it.
+        does nothing", which is what it cost. So say it.
         """
         if mod is None:
             return None
@@ -749,7 +743,7 @@ class RemixerScreen(Screen):
     def rerender(self):
         """One pass over the three panes.
 
-        problems() runs the ledger and costs ~2.4 ms (measured 2 Sep 2026);
+        problems() runs the ledger and costs ~2.4 ms (measured);
         three panes asking it independently made every keystroke pay ~7 ms
         for one answer. Compute it here and hand it down.
         """
@@ -1648,7 +1642,7 @@ class RemixerScreen(Screen):
         """The firmware's own draw of one page, CACHED.
 
         ⚠️ This is what made a HELD arrow key lag. render_fx2 costs 15-96 ms
-        (mean 32; render_fx1 16, render_menu 8 -- measured 2 Sep 2026), and
+        (mean 32; render_fx1 16, render_menu 8 --), and
         rerender() ran it on every keystroke, so under key repeat the work
         per key exceeded the repeat interval and the UI fell behind the key,
         then kept stepping after release. Single presses always felt fine,

@@ -2,19 +2,14 @@
 """
 Static dead-store check for the r7 state block in modules/busverb/reverb_server.asm.
 
-WHY. Three shipped bugs share one family: a state slot meaning two things at
-once. $83 (bit-23 garbage saturating the AGU -> the two-track freeze), $84+
-(host-owned, hangs the unit), and on 8 Aug 2026 the $0c collision: the bus
-housekeeper wrote the auto-gain 1/N into r7+$0c, the md_* block unconditionally
-overwrote it with the lines-4-7 tap scale, and every per-sample auto-gain
-multiply read ~0.75 instead of 1/N -- silently, for a day, blessed by every
-green check. The signature of that whole class is mechanical:
+A state slot meaning two things at once (the bus housekeeper's auto-gain in
+r7+$0c overwritten by a mode block's tap scale, so every per-sample
+auto-gain multiply read ~0.75) has one mechanical signature:
 
     a WRITE whose value is unconditionally overwritten before any READ.
 
-So that is what this checks. It is deliberately a dead-store check rather than
-a slot-ownership ledger: a ledger blesses whatever baseline it was generated
-from, while a dead store is wrong on its face.
+A dead-store check rather than a slot-ownership ledger: a ledger blesses
+whatever baseline it was generated from; a dead store is wrong on its face.
 
 HOW.
 - Every `x:(r7+$xx)` access is classified read or write by its side of the
@@ -27,9 +22,8 @@ HOW.
     arm, but a slot written by EVERY arm still kills a pre-branch write, which
     is exactly the $0c shape and must still be caught. Merging the arms into
     one combined write-set at md_done: does both.
-  * Liveness WRAPS: the r7 block persists across calls ($83 has proven it for
-    seventy builds), so a write near the end of proc is read by next call's
-    top. The scan runs the file twice and only trusts kills seen in the first
+  * Liveness WRAPS: the r7 block persists across calls, so a write near the
+    end of proc is read by next call's top. The scan runs the file twice and only trusts kills seen in the first
     pass that a first-pass-or-second-pass read did not interrupt.
 - Slots accessed through COMPUTED pointers (the fbA/fbB walks derive r4/r5
   from `move r7,a / add`) can be read invisibly to this parser, so they are

@@ -29,13 +29,7 @@ and writes nothing. `Claims(fx1_only=True)` declares that and the render
 gate proves it. Two lines of 1,024 words out of the 3,072 an FX1 slot
 gives; the read offset is masked, not the address.
 
-Not a bus client: does not housekeep, does not write the bus.
-
-Defaults are a passthrough (MIX 0), because a part that stored CHORUS runs
-this. A part's stored bytes are stock CHORUS's until the stamper writes
-ours; v2 moved TONE (slot 8 -> 4) and WID (10 -> 5), so stamp-defaults on
-the card before play.
-"""
+Not a bus client: does not housekeep, does not write the bus."""
 
 from remix.schema import (BusRole, Claims, DspSection, Formatter, Harness,
                           Kind, MenuEntry, ModeView, Module, Param, YBase)

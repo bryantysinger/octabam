@@ -1,32 +1,15 @@
-"""What a module IS, in the terms the remixer and the harness need.
+"""What a module is, in the terms the remixer and the harness need: what kind
+of thing it is, which tracks can host it, which chooser it appears on, what
+the image on disk offers. Categories and track ranges are derived from the
+manifests, never declared here:
 
-Everything below this speaks modules and payloads. This layer answers the
-questions a person asks instead: what kind of thing is this, which tracks can
-host it, which chooser does it appear on, what does the image on disk
-actually offer.
-
-⚠️ The per-TRACK rig this file was named for is GONE (2 Sep 2026). Eight
-tracks with an effect on each was a second place to say what a remix already
-says, and knob values belong to the EFFECT rather than to a track -- so the
-remixer is one page about an image, and `State.knobs_for(mod)` holds the
-values. The helpers below survived because they were never about tracks:
-they are about modules.
-
-Categories and track ranges are DERIVED from the manifests, never declared
-here -- the manifest is the single place a module states what it is
-(schema.py's whole reason to exist):
-
-  BUS     harness.is_server -- pays the bus costs, lives in ONE payload, and
-          the payload decides its tracks: A serves TRACKS 5-8, B serves
-          TRACKS 1-4 (measured 10 Aug 2026 via the MrkVerb32 marker flash,
-          INVERTED from every earlier assumption -- test the reverb on
-          track 5, not track 1).
-  INSERT  a DSP_EFFECT with a menu entry and no server role -- sits in both
+  BUS     harness.is_server -- pays the bus costs, lives in one payload, and
+          the payload decides its tracks: A serves tracks 5-8, B serves
+          tracks 1-4 (measured).
+  INSERT  a DSP_EFFECT with a menu entry and no server role -- in both
           payloads, runs on any track.
   STOCK   a stock FX2 effect the remix keeps in the chooser (Kind.STOCK,
-          tools/remix/stock.py) -- code already in both payloads, any
-          track. No knobs here: the remixer has no manifest for stock
-          params, and no local render yet either.
+          tools/remix/stock.py) -- code already in both payloads, any track.
   SYSTEM  everything else: the SEND client, ColdFire patches. Plumbing the
           image needs, never something you put on a track.
 """
@@ -112,7 +95,7 @@ def menus(mod, fx1_rows=()) -> tuple[str, ...]:
     emulated firmware to draw the page. Everything below is about a module
     wanting a NEW row rather than an existing one.
 
-    And since 3 Sep 2026 a REMIX can ask for the row outright: `Remix.fx1`
+    And a REMIX can ask for the row outright: `Remix.fx1`
     lists the modules that also get one, `fx1_rows` here is that set, and the
     build relocates FX1's chooser into the cave and writes FX1's own id and
     cursor tables. It costs no words -- the DSP dispatch is one table indexed

@@ -7,11 +7,6 @@ cave. With the bridge, the cave keeps the entry and its fall-through
 ours, then hers, then stock's. Declared as an Override: the build skips her
 recipe write at the site and defines CC_NEXT as the target it carried.
 
-The apply_part entry (0x40009094) needed no bridge since midisc 1.40MSCN6
-leaves it stock (his earlier wrapper hung project load on hardware), so
-MIDI SCENES and OCTAKIT no longer collide anywhere; the chain stub that
-ordered his pack/after around her engine load is in history (chains.s).
-
 Measured under the port (docs/remixer/PLACEMENT.md). Not measured: MIDI
 CCs through the chained dispatch on hardware.
 """

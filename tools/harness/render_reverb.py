@@ -9,23 +9,20 @@ ear without a flash.
     python3 tools/harness/render_reverb.py loop.wav --mode all       # all three characters
     python3 tools/harness/render_reverb.py loop.wav --build          # rebuild first
 
-Why this is trustworthy: tools/harness/dsp_host runs the REAL assembled instruction
-stream, not a model of the reverb, and the DSP56300 arithmetic is emulated
-exactly -- which REVERB.md already leans on ("for a pure optimization the
-output should be bit-identical"). About 6x faster than real time.
+tools/harness/dsp_host runs the assembled instruction stream with the
+DSP56300 arithmetic emulated exactly, about 6x faster than real time.
 
-What it CANNOT tell you, and still needs a flash (REVERB.md, BUS.md):
-  * whether four instances fit the cycle budget -- 432 cycles/sample once
-    froze the chip, and this harness will happily render something that
-    cannot run
+What it cannot tell you, and still needs a flash:
+  * whether the layout fits the cycle budget -- the harness renders code
+    that cannot run on the chip
   * anything ColdFire-side: menu, descriptors, knob labels, parameter
     ranges. -params pokes r6 directly and bypasses all of it
   * the ColdFire's timing between the two cores (dsp_host boots both since
-    7 Sep 2026, lock-step; tools/harness/rig_render.py renders the whole rig)
+   , lock-step; tools/harness/rig_render.py renders the whole rig)
   * multi-instance behaviour under a nonzero split, where there is a known
     unexplained one-vs-two-instance divergence
 
-So: voice here, then spend flashes on the cycle budget and the UI surface.
+Voice here; spend flashes on the cycle budget and the UI surface.
 """
 import argparse, array, hashlib, math, os, pathlib, re, shutil, struct, subprocess, sys, wave
 
@@ -110,7 +107,7 @@ def read_wav(path):
 
 def read_wav_channels(path):
     """-> ([channel float lists in -1..1], samplerate), channels kept apart
-    (rig_render's mixer model applies AMP BAL per side, 12 Sep 2026)."""
+    (rig_render's mixer model applies AMP BAL per side)."""
     with wave.open(str(path), "rb") as w:
         ch, sw, sr, n = w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes()
         raw = w.readframes(n)

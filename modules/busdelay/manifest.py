@@ -1,8 +1,5 @@
 """BusDelay -- a multi-mode delay: CLEAN, GRAIN (pitched), REVERSE.
 
-Hosted on payload B (core 1), which serves tracks 1-4. Stage 1 of the one
-aux bus: every track's AUX reaches it, and its output goes on to BusVerb.
-
 Clones SPRING REV's descriptor. A cloned descriptor inherits the donor's
 display formatter, which overrides the value count, so every slot below
 states its renderer. TIME's formatter is the tempo-sync cave, registered

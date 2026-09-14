@@ -4,27 +4,6 @@
     python3 tools/verify/verify_roll.py dsp/reverb_rolled.asm
     python3 tools/verify/verify_roll.py cand.asm --ref modules/busverb/reverb_server.asm
 
-PLAN.md step 1 rolled the tank into a loop and moved per-line state out of
-the full `r7` block into absolute Y (landed; the shipping engine is the
-8-line rolled tank). The gate remains for any future engine refactor: the
-candidate build must render byte-for-byte identically to the reference, or
-something moved that was not supposed to. Coverage: every MODE character
-(ROOM/PLATE/BIG since the HALL cut) plus a TIME=127 SIZE=127 DIFF=127 wet
-case, because MODE varies six levers and the extreme case is where an
-off-by-one in a tap or a mask actually shows.
-
-THE CONTROL IS THE POINT. `octamax-assembler-traps` records two instructions
-this assembler silently mis-encodes, and the lesson from that session was that
-a bit-identical claim is worthless without a companion check proving the
-comparison can see a difference at all. So every run also renders the
-REFERENCE engine twice -- once at TONE=64, once at TONE=127 -- and those
-must DIFFER. If they do not, the harness is blind and every PASS below it
-means nothing. `tools/verify/verify_burn.py` uses the same pairing for the
-same reason. (The pair was HP=0 vs HP=64 until v8 folded HP and LP into
-TONE, 5 Sep 2026; TONE 64 is documented in reverb_server.asm as the old
-HP 0 / LP 127 exactly, and 127 is the low cut fully open. The gate died on
-`unknown knob 'HP'` from then until 14 Sep 2026.)
-
 Source material is synthesised deterministically: a broadband burst then
 silence. Equality does not care about spectrum, but the control does -- TONE
 above 64 is a low cut inside the feedback path, so the source needs low
@@ -86,7 +65,7 @@ def build(src, mode, tag):
     one 2,724-word region and NO LONGER FITS at all (DELAY SERVER overruns,
     2,794 > 2,724 -- the same overrun that makes verify_burn skip). Under
     specialization payload A carries the reverb by itself (FREE 32 as of
-    11 Aug 2026; the build report is the live number), which is the space
+   ; the build report is the live number), which is the space
     this refactor is measured against anyway.
     """
     env = dict(os.environ, RVSRC=str(src), XBUS="1", SPEC="1")

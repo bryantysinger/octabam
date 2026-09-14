@@ -1,47 +1,43 @@
 """Cross-module resource collisions, caught before a byte is written.
 
-Nearly every expensive failure in this project's history was two things
-quietly sharing one resource: a delay based where the reverb's buffers lived,
-a scratch slot used twice, a literal rewritten by a substitution meant for
-something else. With one author and two effects that is survivable, because
-one person holds the whole map. With contributed modules it is not, and the
-symptom is never "your module is wrong" -- it is somebody else's effect
-sounding broken.
-
-So the build refuses to start when two selected modules claim the same
+The build refuses to start when two selected modules claim the same
 resource, and says which two.
 
-WHAT IS CHECKED, and how it knows:
+Checked, and how it knows:
 
-  fx2 ids            declared. Two modules answering to one id would
-                     overwrite each other's descriptor and dispatch.
+  fx2 ids            declared. Two modules on one id would overwrite each
+                     other's descriptor and dispatch.
   ColdFire caves     declared. Overlapping machine code is silent and fatal.
   hook sites         declared. Two modules hooking one instruction: the
-                     second overwrites the first's jsr, and the first module
-                     simply never runs.
-  core-private Y     DERIVED by scanning the module's own source for
-                     `y:>$09xx`. Low Y is per CORE, not per instance, so
-                     every effect sharing a core shares these words.
-  stock buffers      declared (Claims.stock_instance_buffer, from a scan
-                     of the payload disassembly). A stock effect that takes
-                     an instance buffer from the host's bump allocator gets
-                     a PER-TRACK base -- the very addresses BusVerb,
-                     Nimbus and BusDelay hardcode -- and the chooser is
-                     one list for all eight tracks, so the build cannot
-                     know which track it lands on. Refused beside any
-                     module with fixed Y buffers.
+                     second overwrites the first's jsr and the first never
+                     runs.
+  detours, pokes,    declared. Fixed-address rewrites, checked against every
+  table refs,        cave, hook site and emit poke; a runtime's recipe
+  runtime writes     writes are claims of the same kind.
+  overrides          a bridge's claim stands in for the overridden module's
+                     at that site; a bridge naming a module the remix does
+                     not carry is refused.
+  core-private Y     derived by scanning the module's source for `y:>$09xx`.
+                     Low Y is per core, not per instance, so every effect
+                     sharing a core shares these words.
+  stock buffers      declared (Claims.stock_instance_buffer). A stock effect
+                     that takes an instance buffer from the host's bump
+                     allocator gets a per-track base -- the addresses
+                     BusVerb, Nimbus and BusDelay hardcode -- and the chooser
+                     is one list for all eight tracks, so the build cannot
+                     know which track it lands on. Refused beside any module
+                     with fixed Y buffers.
+  appended runtimes  one per image (the end of the OS and the loader's
+                     window).
+  arena reserves     the total must leave the unit sample memory.
 
-Derived beats declared wherever it is possible: a scan cannot go stale. Its
-limit is that it only sees what the code actually references, so a word a
-module means to RESERVE but does not yet touch has to be declared -- that is
-what Claims.reserved_private_y is for.
+Derived beats declared where possible: a scan cannot go stale. Its limit is
+that it sees only what the code references, so a word a module means to
+reserve but does not yet touch is declared (Claims.reserved_private_y).
 
-WHAT IS NOT CHECKED YET, and why not. The shared 64K window (Y:0x30000-
-0x3FFFF) is the biggest genuine hazard and is absent here on purpose: the
-exact extents of the two servers' buffers are not established well enough to
-write down, and a claim that is merely plausible is worse than none, because
-it reads like a guarantee. The P donor region is not here either -- placement
-already refuses to overrun it, and that check is exact.
+Not checked: the shared 64K window (Y:0x30000-0x3FFFF); the two servers'
+buffer extents there are not established well enough to write down. The P
+donor region is not here either: placement refuses to overrun it, exactly.
 """
 
 from __future__ import annotations

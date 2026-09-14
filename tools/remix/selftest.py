@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-"""Prove the ledger catches what it claims to catch.
+"""Prove the ledger catches what it claims to catch, and every shipped remix
+is clean.
 
-A guard nobody has watched fail is a guard nobody knows works. Each case
-below builds two modules that collide in one specific way and asserts the
-ledger names both of them; the last case asserts a clean pair stays clean,
-because a checker that fires on everything is no better than one that fires
-on nothing.
+Each case builds two modules that collide in one specific way and asserts
+the ledger names both; a clean pair must stay clean.
 
     python3 tools/remix/selftest.py
 """
@@ -130,7 +128,7 @@ def _submodule_preflight() -> int:
     somebody else's module even when the remix under test has nothing to do
     with it -- and it failed as a bare FileNotFoundError traceback out of
     ledger.runtime_write_spans (octakit's firmware.json) or as an assembler
-    "can't open" from midi-scenes' sources. Measured 12 Sep 2026 on a fresh
+    "can't open" from midi-scenes' sources. Measured on a fresh
     clone: `make bus REMIX=recfix` succeeds, `make check REMIX=recfix` dies.
     That is a wall in front of the first thing an outside contributor is
     asked to run, so it gets a message instead of a traceback.
@@ -162,7 +160,7 @@ def _harness_preflight() -> int:
     DISASSEMBLER alone, so a machine whose first setup got that far and no
     further passed every later `make setup` and then died in verify_twocore
     as a FileNotFoundError traceback on dsp_host -- the second wall Bryan T
-    hit on a fresh clone, 12 Sep 2026. And a missing dsp_host is not only a
+    hit on a fresh clone. And a missing dsp_host is not only a
     crash later: the FLANGER passthrough probe below silently SKIPS without
     it, which is a gate reporting nothing rather than green.
     """

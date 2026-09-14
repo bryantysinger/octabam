@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-BUS.md task 11: verify tools/build/build_menu.py's ColdFire edits against the REAL
-chooser mechanism, decompiled straight out of the firmware (Ghidra 12.1.2,
-tools/GhidraMenuFuncs.java against out/ghidra_fx's project):
+Verify the built image's FX2/FX1 chooser tables against the chooser
+mechanism as decompiled from the firmware:
 
   FUN_40052474 (id-store, fires when the cursor is confirmed on a new
   position):
@@ -24,14 +23,12 @@ tools/GhidraMenuFuncs.java against out/ghidra_fx's project):
       FUN_4007edb0(..., *(int*)(ID2POS + fx2_id*4))               ; cursor seed
       FUN_400326d4(FX2_IDS[fx2_id], ...)                          ; stage page
 
-Both are DATA computations over the five tables; this script replicates that
-exact logic in Python against the built image rather than driving Unicorn
-through the real function, because the init branch also calls several
-indirect widget-setup function pointers (PTR_FUN_400bb7f0 etc.) that draw the
-real menu UI -- stubbing those convincingly is its own project and orthogonal
-to what task 11 needs to prove (the five tables agree with each other and
-with what the two real functions read). This is "measure, don't guess" in the
-form the ColdFire side allows without a full UI emulation harness.
+Both are data computations over the five tables; this script replicates
+that logic in Python against the built image rather than driving the
+emulator through the real function (the init branch also calls the widget
+setup pointers that draw the menu UI). It also checks every cloned
+descriptor's formatter against its value count and the strings the build
+writes against their fields.
 """
 import hashlib
 import os, pathlib, sys

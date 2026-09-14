@@ -23,7 +23,7 @@ def record_audio(rec, right=False):
     """One 84-word track record -> its 16 audio samples (L, or R).
     The record is a sequence of segments, each a 4-word header (count, 0,
     0x40000, tag) followed by `count` stereo pairs, 16 pairs in all (measured
-    8 Sep 2026: a THRU voice ships two empty headers then 16 pairs; a FLEX
+   : a THRU voice ships two empty headers then 16 pairs; a FLEX
     voice splits them, the split moving one sample per frame)."""
     o = 1 if right else 0
     pairs = []; i = 0

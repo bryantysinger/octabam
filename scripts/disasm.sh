@@ -5,29 +5,13 @@
 # DSP56300 and are a different toolchain entirely: see tools/build/dsp_disasm_all.py
 # and docs/firmware/DSP.md.
 #
-# ⚠️ r2's m68k CANNOT DECODE THIS CPU'S EMAC INSTRUCTIONS, and it fails in the
-# worst possible way. Verified 30 Aug 2026 against the delay's EMAC loop at
-# 0x40003664: every `macl`/`msacl`/`movclrl` comes back `invalid`, and because
-# r2 then treats the opcode as 2 bytes, each 2-byte EXTENSION WORD is decoded
-# as a separate instruction that looks perfectly ordinary --
-#
-#     r2:            invalid / btst.l d4,(a0) / invalid / btst.l d4,(a0)
-#     m68k:547x:     msacl %d0,%a1,%acc2  /  msacl %d0,%a2,%acc3
-#
-# So the stream DESYNCHRONISES and invents plausible code that is not there.
-#
-# ⚠️ AND IT IS NOT ONLY THE EMAC. Measured across the code region below
-# 0x40098000: **6,757 instructions r2 cannot decode, 4,543 of them longer than
-# two bytes** (so each desynchronises what follows), spread over 149 pages.
-# The EMAC ops are a small minority -- the bulk is `mvz` (4,539) and `mvs`
-# (1,834), which are ordinary ColdFire ISA_B moves used everywhere. r2's
-# m68k backend is missing the ColdFire V4e extensions generally, so its
-# reading of THIS firmware is unreliable almost anywhere, not just in audio
-# code.
-#
-# docs/firmware/midi_re_note.md and docs/firmware/MIDI.md already recorded this in August; the
-# warning simply never reached this script. Use the `emac` subcommand (or
-# objdump -m m68k:cfv4e directly) whenever the answer matters.
+# r2's m68k backend cannot decode this CPU's ColdFire V4e extensions: every
+# `macl`/`msacl`/`movclrl`, `mvz` and `mvs` comes back `invalid`, and since r2
+# then treats the opcode as 2 bytes, each extension word is decoded as a
+# separate plausible instruction and the stream desynchronises (6,757
+# undecodable instructions below 0x40098000, 4,543 of them longer than two
+# bytes). Use the `emac` subcommand (objdump -m m68k:cfv4e) whenever the
+# answer matters.
 #
 # Usage:
 #   scripts/disasm.sh                 open r2 interactively on the raw image

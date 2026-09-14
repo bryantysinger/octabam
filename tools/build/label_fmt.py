@@ -1,31 +1,20 @@
 #!/usr/bin/env python3
-"""A ColdFire display formatter that prints a select's WORDS, not its number.
+"""A ColdFire display formatter that prints a select's words, not its number.
 
-PLAN §6. Every stepped select on the unit reads as a bare number today --
-WarpFold's MODE draws `1 2 3` where the manifest has said `FOLD RING BOTH`
-all along -- because `Param.labels` was authored, schema-checked against
-`count`, and then never read by the build. This is what makes it load-bearing.
-
-THE MECHANISM, from docs/firmware/PARAM_PAGES.md section 7. Every per-slot formatter
-(`P+0x0ca`, the "A" array) has one signature:
+Every per-slot formatter (`P+0x0ca`, the "A" array;
+docs/firmware/PARAM_PAGES.md section 7) has one signature:
 
     void fmt(char *buf, int value);      4(sp) = buf, 8(sp) = value
 
-and every stock one is a thin wrapper over `sprintf` (0x40013a08). The
-0x4003c14c formatter (ON/OFF) proves the shape that matters here: **the label
-IS the format string**. So a labelled select is a small cave -- index a
-pointer table by value, overwrite the value slot with the pointer, and tail
-`jmp` into sprintf, which then sees sprintf(buf, label).
+and every stock one is a thin wrapper over `sprintf` (0x40013a08): the
+label is the format string. A labelled select is a small cave that indexes
+a pointer table by value, overwrites the value slot with the pointer, and
+tail-jumps into sprintf.
 
-WHY THE BYTES ARE EMITTED HERE rather than assembled. The build deliberately
-needs no m68k toolchain: a CavePatch carries PINNED bytes and the source is
-re-assembled and compared only when `m68k-elf-as` is on PATH. Twelve caves
-whose contents vary with the labels cannot be hand-pinned, so they are
-emitted -- and `verify()` below re-derives them through the real assembler
-whenever it is available, which is the same discipline one level up.
-
-The code is a FIXED 40 bytes; only the bounds immediate varies. Verified
-against m68k-elf-as -mcpu=5407 (2 Sep 2026).
+The bytes are emitted here rather than assembled so the build needs no
+m68k toolchain; `verify()` re-derives them through `m68k-elf-as -mcpu=5407`
+whenever it is on PATH. The code is a fixed 40 bytes; only the bounds
+immediate varies.
 """
 from __future__ import annotations
 

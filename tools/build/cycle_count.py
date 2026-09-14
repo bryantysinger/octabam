@@ -1,29 +1,20 @@
 #!/usr/bin/env python3
-"""Static cycle count of each server's per-sample loop.
+"""Static cycle count of each module's per-sample loop.
 
-Why this exists: `tools/harness/dsp_host` CANNOT measure this. Its instructions/sample
-is g_lastCycles/procCalls/frames and g_lastCycles does not scale with the frame
-count, so the figure it prints is a constant divided by whatever you asked for.
-The count has to come from the code. It used to be done by hand, which is how
-REVERB.md ended up quoting 529 and BUS.md quoting ~700 for the same bank.
+Each sample loop is `do n7,>END` (n7 is the frame count; the init-time loops
+are `do y0,...` / `do #128,...`). A label is injected immediately after that
+`do` (labels emit no words, so codegen cannot change; --verify proves it),
+the source is assembled, and the word span from there to END is the count:
+on the 56300 a one-word instruction is one cycle and a two-word instruction
+(a `#>` long immediate, an absolute address) two, so for straight-line code
+the word span is the cycle count. That holds only with no branches and no
+nested `do`/`rep` in the body; both are checked and the count refused
+otherwise, except forward branches a module declares admissible with
+`; CYCLES_FORWARD_BRANCHES` in its header (a skip cannot cost more than the
+span). A mode fork (`; MODEFORK_*`) is priced as the worst of its arms.
 
-Method. Each server's sample loop is `do n7,>END` -- n7 is the frame count, and
-that is what distinguishes it from the init-time loops (`do y0,...`, `do #128,...`).
-We inject a label immediately after that `do` (labels emit no words, so this
-cannot change codegen -- --verify proves it), assemble, and take the word span
-from there to END.
-
-Words, not decoded instructions, is the cycle number here. On the 56300 a
-one-word instruction is one cycle and a two-word instruction (a `#>` long
-immediate, an absolute address) is two, so for straight-line code the word span
-IS the cycle count. That holds only because these loop bodies contain no
-branches and no nested `do`/`rep` -- both are checked below, and the count is
-refused if either appears, because then this arithmetic would be wrong.
-
-What it still does not model: memory-contention stalls (two accesses to the
-same bank in one cycle), which inflate the real figure, and the `do` hardware
-loop's own zero-overhead behaviour, which is already free. So treat the result
-as a floor. It is exact for the code and optimistic about the bus.
+Not modelled: memory-contention stalls, which inflate the real figure. The
+result is a floor: exact for the code, optimistic about the bus.
 
 Usage:  python3 tools/build/cycle_count.py [--verify] [--json]
 """

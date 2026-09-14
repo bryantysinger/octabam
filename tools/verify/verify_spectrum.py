@@ -13,7 +13,7 @@ Gates:
   RING at DC  -> A*B*2 with A = B = DC: 2*DC^2, to 1 LSB after settling
   VOWEL       -> renders, and differs across FREQ (A vs I)
   every knob  -> renders without dsp_host dying
-  SEM core (13 Sep 2026, the zero-delay SVF):
+  SEM core:
   four modes  -> LP/BP/HP/NTCH are four different responses at one FREQ/RES
   BP tracks   -> the BP peak sits on the FREQ taper (108 / 600 / 2983 Hz at
                  FREQ 32 / 64 / 96), tones a third of an octave either side lower
@@ -94,7 +94,7 @@ def render(samples, slot="fx1", guard=False, **kw):
 
     slot="fx1" (alloc 0, r7 1) is the station's own slot; "fx2" (alloc 1,
     r7 2) is an FX2 instance, which the station runs as a DRY PASS since
-    12 Sep 2026 (Claims.fx1_only) -- the gate below proves it. Until then
+    (Claims.fx1_only) -- the gate below proves it. Until then
     every gate here rendered on alloc 1 and would now read dry."""
     kw.setdefault("MODE", LP)
     kw.setdefault("TAME", 0)   # the linear filters are what the gates predict; TAME's own gates set it

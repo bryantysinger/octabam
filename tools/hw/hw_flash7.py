@@ -9,10 +9,10 @@ and the project load -- and nothing else.
     python3 tools/hw/hw_flash7.py run [--only ii,iv]    # the test (~6 min), verdict per claim
     python3 tools/hw/hw_flash7.py analyse               # re-read out/hw/flash7/*.wav, re-print
 
-WHAT THE MANUAL ALLOWS (OT MKII 1.40C, Appendix C, read 9 Sep 2026): every
+WHAT THE MANUAL ALLOWS (OT MKII 1.40C, Appendix C, read): every
 MAIN-page knob has a CC on the track's trig channel (FX1 slots 0-5 = CC 34-39,
 FX2 = CC 40-45, level 46, mute 49, solo 50), program change selects the
-pattern (PROG CH RECEIVE on; PC n = bank A pattern n+1, measured 24 Aug 2026),
+pattern (PROG CH RECEIVE on; PC n = bank A pattern n+1),
 and notes 24-31 play tracks 1-8. NOT reachable: an effect TYPE, a PART, any
 page-2 knob. So the claims that need a different effect on a track live in
 PARTS 2-4 of the test project's bank A, reached by program change -- and each
@@ -101,7 +101,7 @@ BASE = ROOT / "out/projects/F7CLEAN_BASE"   # a project the UNIT created on THIS
 def stage(src=BASE, dest=TEST):
     """Build the bus test onto a UNIT-CREATED project (F7CLEAN), not a
     synthesized one. The synthesized project would not take a program change
-    on the unit (9 Sep 2026): it was saved under an earlier build
+    on the unit: it was saved under an earlier build
     (OS_VERSION OCTABAM18) and carried the RIG backup's arrangement, MIDI
     mute mask and MIDI_MODE; a project the unit wrote on THIS build takes PC
     at once. So: copy F7CLEAN, stamp the RIG bus layout into every part
@@ -317,7 +317,7 @@ class Rig:
     def toggle(self, ch, cc, va, vb, tag, home=None):
         """A/B/A/B on `cc`; afterwards the knob goes back to `home` (default
         the A value) -- a toggle that left its last value ran the next test
-        with the return at 0 (9 Sep 2026)."""
+        with the return at 0."""
         total = PERIOD * CYCLES * 2 + 1.0
         schedule = []
 
@@ -441,7 +441,7 @@ def run(args):
 
 
 def run_claims(args, rig):
-    """T8 is the MASTER track in the rig (measured 9 Sep 2026): soloing it
+    """T8 is the MASTER track in the rig (measured): soloing it
     mutes nothing, and every other solo still leaves through it -- so the
     return is in every capture and no track can be isolated by solo. Each
     claim is therefore a DIFFERENCE under MUTE and knob toggles in the full

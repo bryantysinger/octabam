@@ -1,41 +1,24 @@
 #!/usr/bin/env python3
-"""A MODE select's formatter that also RENAMES the knobs around it.
+"""A MODE select's formatter that also renames the knobs around it.
 
-A multi-mode effect reuses its knobs. BusDelay's MDEP is the tape modulation
-depth in CLEAN and the grain scatter in GRAIN; its MRAT is the modulation rate
-and the grain density. The panel printed one name for both meanings until
-this existed, and Sam said so plainly (3 Sep 2026): *"can we label the depth
-and rate to make it clear it's mod depth and mod rate not effect depth"*, and
-then *"it's only got four settings ... just feels a lil confusing"*.
+A descriptor carries its twelve parameter names as 12 x 6 bytes at E+0x4e,
+NUL-padded (docs/firmware/PARAM_PAGES.md); the clones sit in the ColdFire
+cave region and are writable RAM, so a rename is six bytes copied into the
+clone. The panel calls every stepped select's formatter as `fmt(buf,
+value)` with the value in hand whenever the page draws that slot, so the
+rename needs no new hook site: the names are written before the mode's
+word is printed.
 
-WHERE THE NAMES LIVE. `docs/firmware/PARAM_PAGES.md`: a descriptor carries its twelve
-parameter names as **12 x 6 bytes at E+0x4e**, NUL-padded. Our clones sit in
-the ColdFire cave region and are ordinary writable RAM, so a rename is six
-bytes copied into the clone.
+One draw late by construction: if the panel draws the other slots' names
+before it formats the MODE value, a rename lands on the next redraw
+(inferred; turning the encoder redraws immediately). And it renames the
+descriptor, which every track shares: two tracks running the same effect in
+different modes have one set of names between them, and the panel draws
+one track at a time.
 
-WHY THE MODE FORMATTER IS THE HOOK, and this is the whole trick: PLAN §6
-already gives every stepped select a cave of its own, called by the panel as
-`fmt(buf, value)` **with the value in hand** whenever the page draws that
-slot. So the rename needs no new hook site, no per-frame writer, no decode of
-which track is selected and no read of the part -- the panel hands us the
-mode, and we write the names before printing its word.
-
-⚠️ ONE DRAW LATE, BY CONSTRUCTION. If the panel draws the other slots' names
-BEFORE it formats the MODE value, a rename lands on the next redraw rather
-than this one. Turning the encoder redraws immediately, so it is invisible in
-use -- but it is inferred, not measured, and the falsifier is a panel that
-shows the old names until you touch something else.
-
-⚠️ AND IT RENAMES THE DESCRIPTOR, WHICH IS SHARED BY EVERY TRACK. Two tracks
-running the same effect in different modes have one set of names between
-them: whichever drew last wins. The panel draws one track at a time, so what
-you are looking at is right; what a photograph of another track's page would
-have shown is not.
-
-The bytes are EMITTED here rather than assembled, the same discipline as
-tools/build/label_fmt.py and for the same reason: the build must not need an m68k
-toolchain. `verify()` re-derives them through `m68k-elf-as -mcpu=5407`
-whenever one is on PATH, and `make check` runs it.
+The bytes are emitted here rather than assembled (tools/build/label_fmt.py);
+`verify()` re-derives them through `m68k-elf-as -mcpu=5407` whenever one is
+on PATH, and `make check` runs it.
 """
 from __future__ import annotations
 
@@ -210,7 +193,7 @@ def verify(labels: tuple[str, ...], desc: int,
 
 def with_selfname(renames: dict[int, dict[int, bytes]], slot: int,
                   labels: tuple[str, ...]) -> dict[int, dict[int, bytes]]:
-    """EVERY SELECT NAMES ITSELF (14 Sep 2026, the standard). Sam, on the
+    """EVERY SELECT NAMES ITSELF. Sam, on the
     master's SAT: "rather than sat label being static with the mode flashing
     for a sec, can we get rid of sat and just have it showing tape | tube |
     infl ... make that the standard for all switches". So a labelled

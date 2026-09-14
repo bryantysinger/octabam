@@ -1,24 +1,18 @@
 """Build a loader-appended DRAM runtime from its recipe (schema.Runtime).
 
 The recipe is emuyia/ems-octakit's `firmware.json` (interface_version 1),
-read from a git submodule so the author keeps developing in her own repo.
-This module re-implements the OS-image half of her `build.py` in the shape
-octabam already speaks -- fixed-address writes asserted against stock
+read from a git submodule. This module implements the OS-image half of her
+`build.py` in octabam's shape -- fixed-address writes asserted against stock
 before they land, plus an append -- and re-derives every identity her
-recipe pins. Nothing here needs her Rust patcher: it existed to apply this
-same recipe in a browser, and octabam's own image pipeline
-(`elektron-firmware-tool`) already packs and wraps a grown OS section.
+recipe pins. Toolchain: m68k-elf-gcc/as/ld/objcopy (`make setup`). Her
+recipe pins gcc 16.1.0; the rebuilt runtime's sha256 is the check, and
+16.2.0 reproduces her bytes (measured). A compiler that does not fails with
+both digests in the message.
 
-Toolchain: m68k-elf-gcc/as/ld/objcopy (`make setup`, Homebrew bottle).
-Her recipe pins gcc 16.1.0; the pin is not enforced here because the
-rebuilt runtime's sha256 is the stronger check and 16.2.0 reproduces her
-bytes exactly (measured 9 Sep 2026). A compiler that does NOT reproduce
-them fails that check with both digests in the message.
-
-What the build does, in order, each step verified against the recipe:
-  1. slice Elektron's own routines out of the USER'S stock image (copied or
-     PC-relative-relocated per `stock_operations`) into work/stock/NNNN.bin
-     -- the `.S` sources `.incbin` them, so the repo carries none of them;
+In order, each step verified against the recipe:
+  1. slice Elektron's own routines out of the user's stock image (copied or
+     PC-relative-relocated per `stock_operations`) into work/stock/NNNN.bin;
+     the `.S` sources `.incbin` them, so the repo carries none of them;
   2. assemble/compile every listed source, link with her linker script,
      extract `.runtime`  -> must match `append.runtime.raw`;
   3. pack it with the firmware's own aPLib variant (her encoder, ported
@@ -26,7 +20,7 @@ What the build does, in order, each step verified against the recipe:
   4. link again with the packed blob and its rolling hash, extract
      `.early`+`.stage`  -> must match `append` (loader + stage + runtime);
   5. hand the caller the sparse writes (each guard's sha256 checked against
-     stock, each write's expect bytes taken FROM stock) and the append.
+     stock, each write's expect bytes taken from stock) and the append.
 """
 
 from __future__ import annotations

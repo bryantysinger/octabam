@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Gain-match a whole project bank by bank, driven over MIDI.
 
-Built 24 Aug 2026 for the 8-song level cleanup. Rig: OT on Midihub port "A",
-Rytm on its own USB port (clock master; PC chained to the OT). Capture is
-tools/hw/rec.swift compiled on demand -> out/hw/gain/rec (the ffmpeg/avfoundation
-path drops samples in chunks -- do not go back to it; measured 24 Aug).
+Rig: OT on Midihub port "A", Rytm on its own USB port (clock master; PC
+chained to the OT). Capture is tools/hw/rec.swift compiled on demand ->
+out/hw/gain/rec (the ffmpeg/avfoundation path drops samples in chunks).
 
     python3 tools/hw/gain_pass.py pc N                  # pattern N (0-127); bank A=0-15, B=16-31...
     python3 tools/hw/gain_pass.py mix NAME [--secs 16]  # full-mix capture + report

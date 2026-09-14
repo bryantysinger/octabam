@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Detecta la base address de carga de un firmware raw por correlacion puntero->string.
+"""Find a raw firmware's load base by pointer->string correlation.
 
-Idea: si la imagen se carga en la base B, un string en el offset de archivo F vive en
-la direccion virtual B+F. Los punteros absolutos de 32 bits en el codigo (immediates,
-tablas de punteros) que referencian ese string valdran B+F. Buscando el B que maximiza
-el numero de punteros que caen exactamente sobre el inicio de un string, recuperamos B.
+If the image loads at base B, a string at file offset F lives at virtual
+address B+F, and absolute 32-bit pointers in the code that reference it hold
+B+F. The B that maximises the number of pointers landing exactly on a
+string's first byte is the load base.
 
-Uso: python3 find_base.py <raw.bin> [--top-byte 0x40] [--min-str 5]
+Usage: python3 find_base.py <raw.bin> [--top-byte 0x40] [--min-str 5]
 """
 import argparse
 import struct
@@ -53,26 +53,26 @@ def main():
     strings = find_strings(data, args.min_str)
     str_offsets = set(strings)
     print(f"[find_base] {args.file}: {len(data)} bytes, {len(strings)} strings (>= {args.min_str} chars)")
-    print(f"[find_base] buscando punteros con byte alto {hex(top)} ...")
+    print(f"[find_base] scanning pointers with top byte {hex(top)} ...")
 
-    # Voto: por cada puntero P en la region, base implicada = P - F si apunta a un string.
+    # vote: for each pointer P in the region, the implied base is P - F when it points at a string
     # Como F < tamano de imagen, para cada P probamos B = P - F solo si (P - B) es un
     # offset de string valido. Equivalente: para cada string F, ¿existe P == B + F?
-    # Contamos votos para cada base candidata B = P - F acotando F al rango de la imagen.
+    # count votes for each candidate base B = P - F, F bounded to the image
     votes = Counter()
     ptrs = list(words_be(data, top))
     n = len(data)
     for _, P in ptrs:
-        # base candidata debe dejar todos los offsets dentro de [0, n)
+        # a candidate base must keep every offset inside [0, n)
         # Solo consideramos que P apunta a ALGUN string: B = P - F, F en str_offsets
-        # Optimizacion: probamos la base "redonda" implicada (P con los bits bajos a 0
-        # no sirve). Iteramos strings solo si el conteo de punteros es manejable.
+        # try the implied "round" base; iterate strings only if the pointer
+        # count is manageable
         pass
 
-    # Estrategia eficiente: para un conjunto de bases candidatas (barrido grueso +
-    # la hipotesis 0x40000000), contar cuantos punteros caen sobre inicios de string.
+    # for a set of candidate bases (a coarse sweep + the 0x40000000
+    # hypothesis), count the pointers that land on a string start
     candidates = sorted({top << 24} | {(top << 24) + off for off in (0, 0x1000, 0x2000)})
-    # Barrido fino alrededor de top<<24 por si hay un header/offset de carga.
+    # a fine sweep around top<<24, in case of a header/load offset
     base_lo = top << 24
     for delta in range(0, 0x20001, 4):
         candidates.append(base_lo + delta)
@@ -82,15 +82,15 @@ def main():
     ptr_set = set(ptr_vals)
     best = []
     for B in candidates:
-        # cuantos strings F tienen un puntero exacto B+F presente
+        # how many strings F have an exact pointer B+F present
         hits = sum(1 for F in str_offsets if (B + F) in ptr_set)
         if hits:
             best.append((hits, B))
     best.sort(reverse=True)
 
-    print("\n[find_base] top bases por numero de strings referenciados por puntero exacto:")
+    print("\n[find_base] top bases by strings referenced by an exact pointer:")
     for hits, B in best[:8]:
-        print(f"   base 0x{B:08x}  ->  {hits} strings con puntero directo")
+        print(f"   base 0x{B:08x}  ->  {hits} strings with a direct pointer")
 
     if not best:
         print("   (sin coincidencias; prueba otro --top-byte o revisa endianness)")
@@ -100,7 +100,7 @@ def main():
     print(f"\n[find_base] BASE ELEGIDA: 0x{B:08x}")
 
     matches = [(pos, P, P - B) for pos, P in ptrs if (P - B) in strings]
-    print(f"[find_base] {len(matches)} punteros resuelven a inicio de string. Ejemplos:")
+    print(f"[find_base] {len(matches)} pointers resolve to a string start. Examples:")
     for pos, P, F in matches[:12]:
         s = strings[F][:48].replace("\n", " ")
         print(f"   @0x{pos:06x}: ptr 0x{P:08x} -> file+0x{F:06x} '{s}'")

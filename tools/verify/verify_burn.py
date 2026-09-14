@@ -1,13 +1,6 @@
 #!/usr/bin/env python3
 """Prove the RIG BURN image is the shipping image plus an inert, exact knob.
 
-The burn sweep returns ONE number per core from one flash: the cycle
-ceiling, found by turning SEND's BURN knob until the audio breaks, times
-24 cycles a step (docs/firmware/CHIP.md s2). That number is worth the
-flash only if (a) the image under it is the real rig and (b) the knob is
-exactly what it claims. So, on the remix under test (REMIX, default
-bamsep26), both cores, the same stems:
-
   1. INERT WHEN OFF.   BURN=1 SPEC=1 at BURN 0 renders BIT-IDENTICALLY to
      the shipping build. Not "sounds the same" -- byte for byte, the mix
      and every track.
@@ -23,7 +16,7 @@ bamsep26), both cores, the same stems:
      meter. Id 0 is aliased to SEND, so on the unit this proc runs on every
      FX1 slot set to NONE with that page's stale bytes as its knobs -- the
      first rig-burn image hung the sequencer on step 1 with every effect
-     turned off (13 Sep 2026).
+     turned off.
 
 The old probe shape (BURN=1 without SPEC: the reverb's own burn blocks,
 the alias probe in the delay's slot) is not tested here; it is a

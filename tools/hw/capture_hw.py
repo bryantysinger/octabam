@@ -7,36 +7,9 @@ hardware artifact can be characterised numerically instead of described.
     python3 tools/hw/capture_hw.py -d 2 -t 8 -o out/hw/send_bad.wav
     python3 tools/hw/capture_hw.py --analyse out/hw/send_bad.wav
 
-WHY THIS EXISTS. `tools/harness/send_probe.py` renders the SEND -> bus -> REVERB path in
-the emulator and it comes out CLEAN under every configuration that can be built:
-one send or four, matched or mismatched per-track splits, any housekeeping
-layout, quiet or clipping, all 25 engine commits. Sam hears the whole signal
-turn into a metallic staticky tone on the device. So the cause is something the
-emulator does not model, and the only way forward is evidence from the hardware
-itself.
-
 WHAT THE ANALYSIS LOOKS FOR. The reported symptom -- the signal REPLACED by a
 metallic tone rather than merely distorted -- has a small number of signatures
 that are easy to tell apart in a spectrum:
-
-  * BLOCK-RATE BUZZ. The bus accumulators are 16 words, one per frame, and a
-    block is 15-16 frames at 44.1 kHz. If the server reads the accumulator at a
-    wrong or frozen index, the output picks up a periodic discontinuity at the
-    BLOCK rate and the spectrum grows a comb at multiples of ~2756 Hz. This is
-    the signature of a per-block indexing fault -- the leading hypothesis, and
-    the one the emulator cannot rule out because it does not model the real
-    dispatcher.
-  * BROADBAND HASH with no relation to the input: the server is reading memory
-    that is not audio at all.
-  * HARMONIC DISTORTION at 2f/3f/5f of a test tone with the fundamental still
-    dominant: ordinary overload, which is a known and separate weakness and is
-    NOT this bug.
-    ⚠️ The threshold quoted here was "~0.35 FS input" until 30 Aug 2026, and
-    that figure is RETRACTED (docs/effects/VOICING.md): it came from an unconfirmed
-    FWHT-store hypothesis. The engine is linear to the measurement floor below
-    -6 dBFS, the knee sits between input gain 0.6 and 0.7, and the 24 Aug 2026
-    hardware pass found it unreachable from a sane mix. Do not dismiss a real
-    distortion report by comparing against 0.35.
 
 HOW TO USE IT. Play a steady tone or a simple loop into the send with BusVerb
 on the receiving track, capture ~8 s, then run --analyse. Capture the WORKING

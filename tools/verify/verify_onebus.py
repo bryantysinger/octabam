@@ -1,15 +1,5 @@
 #!/usr/bin/env python3
-"""THE ONE AUX BUS, measured on both cores (the hardwired rig, 7 Sep 2026).
-
-Sam's direction of 6 Sep 2026: emulate a live mixer -- ONE aux send per
-track (AUX, slot 0, hosts included), a chain hardwired delay -> reverb, the
-wet returned on TRACK 8 by a Character station with RET up (by position since 13 Sep 2026), the send
-REFUSED on track 8 so the master loop that silenced the unit is impossible by
-construction, stations without sends, and a MIX knob on each engine so a
-stage passes its input through at 0. Each stage stamps itself live and the
-next stage (and the return) takes the LAST LIVE stage's output, so delay
-only, reverb only, both, or neither all work and no project setting can
-silence the aux.
+"""THE ONE AUX BUS, measured on both cores (the hardwired rig).
 
 Every case below renders through tools/harness/dsp_host with BOTH payloads booted
 (docs/remixer/HARNESS.md "Two cores"): the senders and the delay on payload B where

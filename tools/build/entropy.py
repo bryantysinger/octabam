@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
 """Sliding-window Shannon entropy scanner for firmware blobs.
 
-Alta entropía (~8.0 bits/byte) => zona comprimida o cifrada.
-Baja/media entropía => código, tablas, strings, relleno.
+~8.0 bits/byte = compressed or encrypted; lower = code, tables, strings,
+padding.
 
-El objetivo en Fase 0 es distinguir "comprimido" (factible con
-elektron-firmware-tool) de "cifrado fuerte" (mucho más difícil).
+Usage:
+    python3 entropy.py <file> [--window 1024] [--step 512] [--csv out.csv]
 
-Uso:
-    python3 entropy.py <archivo> [--window 1024] [--step 512] [--csv out.csv]
-
-Solo depende de numpy (opcionalmente matplotlib para el PNG).
+Needs numpy (matplotlib for the PNG).
 """
 import argparse
 import math
@@ -48,12 +45,12 @@ def classify(e: float) -> str:
 
 def summarize(offsets, values):
     if len(values) == 0:
-        print("  (archivo demasiado pequeño para la ventana)")
+        print("  (file smaller than the window)")
         return
     print(f"  media={values.mean():.3f}  min={values.min():.3f}  max={values.max():.3f}")
     hi = (values >= 7.5).mean() * 100
     print(f"  {hi:.1f}% de ventanas con entropia >= 7.5 (candidato a comprimido/cifrado)")
-    # Segmentacion por bandas contiguas
+    # contiguous bands
     prev, start = None, 0
     for i, e in enumerate(values):
         band = classify(e)
@@ -76,7 +73,7 @@ def main():
     data = Path(args.file).read_bytes()
     print(f"[entropy] {args.file}  ({len(data)} bytes, ventana={args.window}, paso={args.step})")
     offsets, values = scan(data, args.window, args.step)
-    print(f"  entropia global del archivo completo: {shannon_entropy(data):.3f} bits/byte")
+    print(f"  whole-file entropy: {shannon_entropy(data):.3f} bits/byte")
     summarize(offsets, values)
 
     if args.csv:

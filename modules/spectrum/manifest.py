@@ -17,11 +17,6 @@ ENV (a block-peak follower, instant attack, LSP = release) and LDP (an LFO,
 LSP = speed) both move the cutoff; TAME is the filter's own saturation;
 WDTH is mid/side width on the output.
 
-Defaults are a bit-exact passthrough (FREQ 127, RES 0, ENV 64, LDP 0, TAME
-50 on a signal that never saturates): the engine detects that block and
-copies nothing, because every part that chose FILTER runs this on FX1. A
-part's stored bytes are stock FILTER's until the stamper writes ours.
-
 Every mpy is `mpy x0,y1`, the audited-signed form; every clip is the store
 limiter.
 """

@@ -3,7 +3,7 @@
 
 The unit's X RAM holds whatever the effect before ours left in the block;
 the port and dsp_host boot zeroed RAM, so a persistent slot that init does
-not clear is a defect no local render can see. Found 14 Sep 2026 on the
+not clear is a defect no local render can see. Found on the
 master: Spectrum's filter B keeps its two HP poles at cHP = 0 FROZEN, so a
 stale h2 was subtracted from every sample forever -- a DC offset of up to
 full scale on a station's output, invisible in an AC-coupled capture, that

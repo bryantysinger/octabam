@@ -3,8 +3,7 @@
 
     python3 tools/remix/index.py
 
-This is the authoritative list. Anything written in a README is a copy, and
-copies go stale -- so when the two disagree, this is right.
+The authoritative list; a README's table is a copy.
 """
 
 import pathlib

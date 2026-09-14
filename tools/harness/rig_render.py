@@ -11,7 +11,7 @@ Each track is what the unit makes of it: its FX1 and FX2 effects, chained on
 the track's own audio, on the CORE that track lives on -- tracks 5-8 on
 payload A (core 0), 1-4 on payload B (core 1), in dispatch order, with the
 shared window Y:0x30000-0x3FFFF really shared between the two emulated cores
-(tools/harness/dsp_host, 7 Sep 2026). So a SEND on T2 reaches BusVerb on T5 the way
+(tools/harness/dsp_host). So a SEND on T2 reaches BusVerb on T5 the way
 it does on hardware: across the core boundary, through the bus scratch.
 
 What comes out: T1.wav .. T8.wav (each track's stereo output, dry + wet as
@@ -20,7 +20,7 @@ every track through its LEVEL, summed, saturated the way a 24-bit sum is),
 and meter.txt (per-block instruction counts per core: the cycle floor of
 THIS layout).
 
-THE MIXER MODEL (12 Sep 2026, tools/harness/mixer.py). The unit's gain
+THE MIXER MODEL. The unit's gain
 chain around the DSP, measured under the ColdFire port: AMP VOL (v/127)^2
 and AMP BAL (a balance: the far side falls to zero, the near side stays)
 are applied to the stem BEFORE the FX chain, exactly as the DSP's own AMP
@@ -43,7 +43,7 @@ IMAGE. --image is a BUILT image (default out/mainos_bus.bin, i.e. `make bus`
 for the remix you want); both payloads are dumped from it into out/dsp/. An
 effect the image does not carry on a track's core dispatches to the SEND
 alias there, exactly as the unit would -- reported, never silently rendered
-as a passthrough (the 12 Aug 2026 trap).
+as a passthrough (the trap).
 """
 import argparse
 import array
@@ -207,7 +207,7 @@ def apply_sets(tracks, sets):
     ModeView.defaults to every knob NOT set explicitly -- what the TUI bench
     does, and what per-mode defaults on the unit will do (Stage B). Without
     it a phaser kit rendered at the manifest's passthrough MIX 0 and was
-    judged dry (12 Sep 2026)."""
+    judged dry."""
     explicit = {}                       # (track, fx) -> {slot index}
     for spec in sets:
         try:

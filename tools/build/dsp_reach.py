@@ -1,23 +1,11 @@
 #!/usr/bin/env python3
 """Reachability sweep of a DSP payload's P space.
 
-Disassemble every P module at its load address, then walk control flow from the
-real entry points (both dispatch tables, the interrupt vectors, the bootstraps).
-Whatever is never reached is either code whose caller we have not found, or
-genuinely dead space.
-
-Written to answer two questions at once: where the stock DELAY lives, and
-whether there is a pool of unused program memory to reclaim. Answer to the
-second: no. Payload A is 95.8% reached, B is 98.5%, and every unreached run is
-small and inside a module that is otherwise reached.
-
-READ THE LIMITS BEFORE TRUSTING A RESULT (DSP.md §5):
-  * The DSP SELF-MODIFIES -- frame setup writes `move x0,p:>$58c`. Static
-    reachability cannot follow a path the program writes for itself, so this
-    bounds how much UNREFERENCED code exists; it does not prove that all
-    behaviour is accounted for.
-  * Computed jumps are not followed either. Unreached does not mean dead --
-    it means "no caller found by this method".
+Disassemble every P module at its load address, then walk control flow from
+the real entry points (both dispatch tables, the interrupt vectors, the
+bootstraps). Whatever is never reached is code whose caller was not found,
+or dead space. Measured: payload A is 95.8 % reached, B 98.5 %, and every
+unreached run is small and inside a module that is otherwise reached.
 
 Usage:  python3 tools/build/dsp_reach.py
 """

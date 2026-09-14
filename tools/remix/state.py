@@ -1,13 +1,10 @@
 """The composer's model: a module selection and what it costs to build.
 
-Extracted verbatim from the curses remixer (tools/remix/tui.py, retired by
-the track-centric app) so the Textual frontend and any headless caller share
-one model. Everything here is pure: no UI import, no terminal assumption.
-
-The word counts are the one thing the model cannot know without assembling,
-so `measure()` assembles: it writes a scratch remix and runs the real build,
-because the placement order, the payload gating and the per-module
-substitutions all affect the count and only the build knows them.
+Pure: no UI import, no terminal assumption; the Textual frontend and any
+headless caller share it. The word counts need an assembly, so `measure()`
+writes a scratch remix and runs the real build: placement order, payload
+gating and per-module substitutions all affect the count and only the build
+knows them.
 """
 
 from __future__ import annotations
@@ -127,7 +124,7 @@ class State:
         modules of ours. The honest starting point -- you add to what the box
         already does rather than to somebody else's selection.
 
-        ⚠️ IT BUILDS, since 2 Sep 2026 -- to A 0/2724 · B 0/2724, not one
+        ⚠️ IT BUILDS -- to A 0/2724 · B 0/2724, not one
         word placed, all three reverbs alive: the unit's own chooser rebuilt
         from our tables. It could not, until the fallback stopped having to
         be a module of ours; ids this selection does not implement now

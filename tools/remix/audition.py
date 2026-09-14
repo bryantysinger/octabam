@@ -1,28 +1,22 @@
-"""Render ANY effect on a source wav, knobs addressed by their MANIFEST names.
+"""Render any effect on a source wav, knobs addressed by their manifest names.
 
 The one audition entry point for the remixer: busverb goes through
-tools/harness/render_reverb.py (wet extraction, per-mode image cache, ring-out tail),
-everything else through tools/harness/send_probe.py --wav. The caller never learns
-which -- it says "render warpfold with MIX=127 on this wav" and gets a path.
+tools/harness/render_reverb.py (wet extraction, per-mode image cache,
+ring-out tail), everything else through tools/harness/send_probe.py --wav.
 
-WHICH IMAGE A RENDER RUNS AGAINST is the part that has burned sessions
-(12 + 31 Aug 2026: an id absent from the image aliases to SEND and renders a
-plausible dry passthrough). So:
+Which image a render runs against (an id absent from the image aliases to
+SEND and renders a plausible dry passthrough):
 
   busverb   render_reverb's own fingerprinted engine cache.
-  busdelay  the DEV hatch dump (out/dsp/mem_dev_A.mem) -- rebuilt here when
-             stale, exactly `make render-delay`'s build line.
-  inserts    a per-insert scratch dump (out/dsp/_audition_<name>_A.mem) built
-             from a two-module remix (the insert + SEND), because the user's
-             shipping remix need not contain the insert being trialled. The
-             scratch build necessarily writes out/mainos_bus.bin, so the
-             user's image is saved and restored around it -- the emulator
-             view boots that file and must not silently boot a scratch.
+  busdelay  the DEV hatch dump (out/dsp/mem_dev_A.mem), rebuilt here when
+             stale with `make render-delay`'s build line.
+  inserts    a per-insert scratch dump (out/dsp/_audition_<name>_A.mem)
+             built from a two-module remix (the insert + SEND). The scratch
+             build writes out/mainos_bus.bin, so the user's image is saved
+             and restored around it: the emulator view boots that file.
 
 send_probe's SEND-alias guard backstops all of this: a wrong dump dies
 instead of rendering silence-shaped success.
-
-Headless smoke (also the CI-of-one):
 
     python3 tools/remix/audition.py <module-name> <wav> [NAME=VAL ...]
 """

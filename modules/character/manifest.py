@@ -21,12 +21,7 @@ fold -> saturate -> tilt -> compress -> width.
   * RET -- the bus return level, live on the master only (T8, dispatch
     position 3 on payload A): the last live stage's wet (the reverb's if it
     runs, else the delay's) enters at the front of the chain, and while RET
-    is up the station stamps both hosts quiet. Inert on every other track.
-
-Defaults are a bit-exact passthrough (DRV 0, FOLD 0, TONE 64, COMP 0, MIX
-127, WDTH 64, RET 0), because a part that stored LO-FI runs this. A part's
-stored bytes are stock LO-FI's until the stamper writes ours.
-"""
+    is up the station stamps both hosts quiet. Inert on every other track."""
 
 from remix.schema import (BusRole, Claims, DspSection, Formatter, Harness, Kind,
                           MenuEntry, ModeView, Module, Param, YBase)

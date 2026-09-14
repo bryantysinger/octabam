@@ -2,17 +2,7 @@
 """Build the card image the C++ port reads, with ROUTE A'S OWN STAGING.
 
     .venv/bin/python3 tools/emu/ot_emu/stage_card.py out/_testproj OCTABAM RIG \
-        --tree out/_o6_tree_port --out out/o6_card.img
-
-⚠️ THE POINT IS THAT BOTH EMULATORS LOOK AT IDENTICAL MEDIA. `emu_rtos.
-stage_project` is the function route A calls, so the tree it copies and the
-FAT16 image it builds are the same bytes either way -- the FAT16 builder is
-deliberately NOT ported to C++ for exactly this reason (COLDFIRE_PORT.md O7).
-Building the image any other way (`emu_card.py --image-only` has its own skip
-list) would make a difference between the two emulators that is the harness's
-and not the firmware's, which is the class of defect standing rule 7 exists
-for.
-"""
+        --tree out/_o6_tree_port --out out/o6_card.img"""
 import argparse
 import os
 import pathlib

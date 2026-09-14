@@ -8,7 +8,7 @@ effect id and SHARED BY BOTH MENUS, so a module carrying a stock effect's id
 replaces that effect wherever it is selected -- FX1 included -- and a remix
 that omits the module then aliases the id to the fallback, taking the stock
 effect away from FX1 too. Rungs sat on EQUALIZER's 0x0c and Nimbus on DJ EQ's
-0x0d from 29 Aug to 2 Sep 2026, in every local image. Every existing check
+0x0d from 29 Aug to, in every local image. Every existing check
 passed: the modules built, dispatched, rendered and sounded correct. What was
 wrong was invisible from any one module's point of view.
 

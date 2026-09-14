@@ -1,32 +1,6 @@
 #!/usr/bin/env python3
 """Read (and carefully write) Octatrack project/bank files on the CF card.
 
-Format knowledge (reverse-engineered 25 Aug 2026 on ChongBongolo 26, OS 1.40B
-image R58; anchors verified against values we wrote over MIDI and Sam's own
-"A03 is part 3" statement):
-
-  project.work    plain text, CRLF, [SECTION] KEY=VALUE.
-                  [SAMPLE] sections: TYPE/SLOT/PATH/GAIN/... GAIN is 0..96,
-                  48 = 0 dB, 0.5 dB per step (so 72 = +12 dB).
-  bank##.work     FORM/DPS1BANK chunks: 16x PTRN (each 8 TRAC + 8 MTRA),
-                  then 8x PART (parts 1-4 current, then parts 1-4 saved),
-                  PART stride 0x18bb from 0x8eed6.
-                  PART+0x008: the record's OWN index 0-3 (mirrors 5-8 repeat
-                             0-3) -- a record copied whole must be re-indexed
-                             or the unit throws PARSE ERROR (13 Sep 2026)
-                  PART+0x009: FX1 effect id per track (8 bytes)
-                  PART+0x011: FX2 effect id per track (8 bytes)
-                             (BusDelay=0x06, BusVerb=0x07, SEND=0x09)
-                  PART+0x01b: 8 pairs (track LEVEL, cue level)
-                  PART+0x2d3 + 5*track: static slot, 0-based (5-byte/track blocks)
-                  PTRN tail byte at (next_chunk - 5): part assignment 0-3
-                             (NOT -6 -- that mistake cost a measurement pass)
-                  trailer: 4 part names, 7-byte NUL-terminated fields, at
-                             (end - 2 - 4*7); **last u16 BE = additive checksum
-                             sum(bytes[0x10:-2]) & 0xFFFF -- MUST recompute on
-                             any bank edit** (verified on 4 files, 28 Aug).
-                  AMP VOL: not located -- do not guess.
-
     python3 tools/hw/ot_project.py report PROJECT_DIR
     python3 tools/hw/ot_project.py set-gain PROJECT_DIR SLOT DB      # e.g. 12 -3.5
     python3 tools/hw/ot_project.py apply PROJECT_DIR PLAN.json       # {"12": -3.5, ...}
@@ -119,7 +93,7 @@ def _bank_write(pdir, banknum, mutate, guard=True):
 
     ⚠️ THE CHECKSUM IS NOT OPTIONAL. The last u16 BE is an additive sum over
     bytes[0x10:-2]; the unit rejects a bank whose sum does not match. Verified
-    again 3 Sep 2026 across all 80 bank files in the backup set -- every one
+    again across all 80 bank files in the backup set -- every one
     agrees, so a disagreement is this tool's bug and not a format surprise.
     """
     if guard:
@@ -201,7 +175,7 @@ def set_pattern_scale(pdir, banknum, pattern, length, scale, guard=True):
     """Set a pattern's LEN (1-64) and SCALE (index into SCALE_NAMES, or a
     name) in the SECOND of the two length/scale pairs at the PTRN chunk's
     tail (bytes -9/-8 of the chunk; the tail is len1 sc1 len2 sc2 flag 0 0
-    0 0 tempo24). Measured 7 Sep 2026 (RTOS_FORK section 10.16.5): the
+    0 0 tempo24). Measured (RTOS_FORK section 10.16.5): the
     RIG's A01 carried (0x40, 5) there and stepped at quarter rate; (0x10, 2)
     steps at 1x. The first pair and the flag byte are not understood."""
     if isinstance(scale, str):
@@ -220,7 +194,7 @@ REC_SETUP_OFF = 0x60b   # part-relative file offset of track 0's 12 recorder-set
 def set_recorder_setup(pdir, banknum, part, track, field, value, guard=True):
     """Write one RECORDING SETUP byte for a track, in part `part` (1-4) AND
     its saved mirror (part+4). RLEN is stored raw: display 1..64 -> 0..63,
-    MAX -> 64. Measured 6 Sep 2026: the live page at 0x80000cf4 reads back
+    MAX -> 64. Measured: the live page at 0x80000cf4 reads back
     these bytes verbatim ([1,1,64,0,0,1 | 0,0,0,255,255,0] for the RIG)."""
     fi = REC_FIELDS.index(field.upper())
     def mut(data):
@@ -361,7 +335,7 @@ def module_defaults(m, knobs=None):
     then the ModeView defaults of the MODE those bytes (or `knobs`) select,
     then `knobs` again so an explicit value beats the view. This is what the
     remixer bench applies when MODE changes (schema.ModeView), so a stamped
-    part and the bench agree by construction (12 Sep 2026)."""
+    part and the bench agree by construction."""
     vals = [(p.default or 0) & 0x7f for p in m.params] + [0] * 12
     vals = vals[:12]
     kmap = m.knob_map_all() if not getattr(m, "is_stock", False) else {}
@@ -532,7 +506,7 @@ def thru_track(pdir, track, page_hex="017f0000400000", guard=True):
     pattern 1 of every bank.
 
     ⚠ The THRU page written here is NOT sufficient to make the track pass
-    input at load (9 Sep 2026, on the unit): the operative INAB byte the
+    input at load: the operative INAB byte the
     firmware reads is in the PART record at +0x3f (=1 for A+B), which this
     page-region write does not reach, and the amp gate must be held open too.
     The working recipe (tools/hw/hw_flash7.py) arms the THRU over CC, has the
@@ -566,7 +540,7 @@ def set_fx(pdir, which_slot, track, which, page=None, page2=None, guard=True):
     EVERY bank, optionally with its page-1 / page-2 bytes. Every part because
     the part that PLAYS is not the part the load applies: `ot_emu`'s load
     applies bank 1 part 1 and its transport start re-applies the saved bank's
-    pattern part (measured 8 Sep 2026, COLDFIRE_PORT.md O9d) -- O9c's whole
+    pattern part (measured, COLDFIRE_PORT.md O9d) -- O9c's whole
     fixture round edited part 1 and measured a track whose FX2 was still SEND."""
     pdir = pathlib.Path(pdir)
     fx_id, mod = _resolve_module(which)
@@ -783,7 +757,7 @@ def lfo_report(pdir, banks=None):
 def lfo_clear(pdir, track, lfo, guard=True):
     """Zero LFO `lfo` (1-3) DEPTH on `track` (1-8) in every part record
     (current + saved) of every bank -- the bytes are the part's, so a free-
-    running LFO nobody meant (T6 LFO2 on AMP BAL, 13 Sep 2026: a DC thump
+    running LFO nobody meant (T6 LFO2 on AMP BAL: a DC thump
     every cycle at idle) goes everywhere it was copied."""
     pdir = pathlib.Path(pdir)
     every = str(track) == "all"

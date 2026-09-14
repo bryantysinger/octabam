@@ -20,10 +20,7 @@ Source is the truth: the build assembles and links cc_page2.s where the
 cave floats; `legacy_bytes()` is the hand-assembled oracle the linked
 source is compared against (CavePatch.reference, and
 tools/verify/verify_ccpage2.py, which also proves the write for all eight
-tracks in the emulator against the firmware editor).
-
-CC 62-67 confirmed on hardware 13 Sep 2026 (image 96); CC 68-73 unflashed.
-"""
+tracks in the emulator against the firmware editor)."""
 
 import pathlib
 

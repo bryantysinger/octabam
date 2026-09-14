@@ -1,21 +1,17 @@
 """BusDelay's GRAIN reader: four grains per line, or two.
 
-ONE COPY OF THE SUBSTITUTION, imported by both the builder and the pricer.
-They disagreed the first time this lever was written -- the image was rolled
-to two grains and `make cycles` still priced four, so the saving the lever
-exists for was invisible in the tool that measures it.
-
-Three edits and nothing else (the markers live in the engine source):
+One copy of the substitution, imported by both the builder and the pricer,
+so the image and `make cycles` agree. Three edits, at markers in the engine
+source:
 
   ; GRAINCNT   the two rolled loops count 2 instead of 4
   ; GRAINOFF   the grain-to-grain phase offset doubles, G/4 -> G/2, so two
               grains still tile the cycle
-  ; GRAINMK    the makeup doubles: FOUR triangle windows at quarter offsets
-              sum to exactly 2, TWO at half offsets sum to exactly 1
+  ; GRAINMK    the makeup doubles: four triangle windows at quarter offsets
+              sum to exactly 2, two at half offsets sum to exactly 1
 
-The doubling is `asl #$1`, the engine's own arithmetic form -- it keeps the
-extension byte consistent with A1, which a logical shift would not
-(CLAUDE.md's A2-staleness trap, paid on the next store).
+The doubling is `asl #$1`, which keeps the extension byte consistent with
+A1 (a logical shift would leave A2 stale and the next store would saturate).
 """
 
 MARKERS = (("; GRAINCNT\n", 2), ("; GRAINOFF\n", 1), ("; GRAINMK\n", 2))

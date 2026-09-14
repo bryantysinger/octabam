@@ -13,9 +13,8 @@ DSP_ASM := vendor/dsp56300/build/source/dsp_host/dsp_asm
 # build it is running. Bump BUILD every time you flash: a unit whose version
 # string you cannot map back to a commit is a unit you are guessing about.
 # BUILD is the image's version AND the build tag the panel shows in every
-# effect name (tools/build/build_bus.py). No trailing comment on the line: make
-# keeps the spaces before a `#`, and `make image` then splits its recipe
-# (found 9 Sep 2026: the default BUILD produced ".bin: command not found").
+# effect name (tools/build/build_bus.py). No trailing comment on the line:
+# make keeps the spaces before a `#` and `make image` then splits its recipe.
 BUILD   ?= 79
 VERSION ?= OCTABAM$(BUILD)
 
@@ -85,15 +84,10 @@ render: ## Build the DEV image and render the bus locally (no hardware)
 
 .PHONY: render-delay
 render-delay: ## Build the DELAY hatch (all 3 servers real) and render BusDelay locally
-	@# NO SPEC: a SPEC dump has no delay in payload A (id 0x06 -> SEND alias).
-	@# Overwrites mem_dev_A.mem -- send_probe refuses to run a D layout
-	@# against a SPEC dump, so a stale mix-up dies loudly instead of
-	@# rendering a plausible dry passthrough (12 Aug 2026).
-	@# NOSHIM=1 is NOT needed since the DEV placement change (12 Aug
-	@# evening): the delay lives at P:0x04000 outside the donor region
-	@# (appended to the .mem dump; dsp_host has no 8K wall), so the full
-	@# shimmer reverb fits as the downstream sink and the delay's growth
-	@# budget is payload B's, not the hatch's.
+	@# No SPEC: a SPEC dump has no delay in payload A (id 0x06 -> SEND alias);
+	@# send_probe refuses to run a D layout against one. The delay lives at
+	@# P:0x04000 outside the donor region (appended to the .mem dump), so the
+	@# full shimmer reverb fits as the downstream sink.
 	REMIX=$(REMIX) DEV=1 XBUS=1 python3 tools/build/build_bus.py
 	python3 tools/harness/send_probe.py --mem out/dsp/mem_dev_A.mem --layout DS
 
@@ -111,8 +105,8 @@ verify-twocore: ## Two-core gate: servers on their REAL cores == the DEV hatch, 
 
 .PHONY: emu-cf
 emu-cf: ## Build and run the headless ColdFire machine (tools/emu/ot_emu) -- boots to the RTOS handoff
-	@# --fresh: a cache configured from another source path (the port moved
-	@# to tools/emu/ on 10 Sep 2026) makes cmake refuse rather than rebuild.
+	@# --fresh: a cache configured from another source path makes cmake
+	@# refuse rather than rebuild.
 	cmake --fresh -B out/emu -S tools/emu/ot_emu >/dev/null
 	cmake --build out/emu -j8 >/dev/null
 	./out/emu/ot_emu --image $(if $(IMAGE),$(IMAGE),out/raw/section_3_MAIN_OS.bin)

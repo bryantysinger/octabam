@@ -1,92 +1,30 @@
 #!/usr/bin/env python3
-"""
-BUS.md tasks 11 + 13: the full three-entry FX2 menu, both payloads, with the
-three servers' own DSP code actually placed and dispatched.
+"""THE build: a remix and the user's stock OS image -> out/mainos_bus.bin.
 
-    python3 tools/build/build_bus.py
+    REMIX=<name> [BUILD=nn] [XBUS=1 SPEC=1 DEV=1 ...] python3 tools/build/build_bus.py
 
-Builds on tools/build/build_menu.py's already-verified ColdFire menu tables (same
-constants, reproduced here rather than imported so this stays a single
-self-contained build script like every other tools/build_*.py in this
-project) and adds what task 11 explicitly deferred: placing
-the selected modules' assembled DSP code (modules/<name>/*.asm)
-in real P memory, for BOTH payloads, and repointing X:0x215/X:0x235 so the
-three new ids (0x01 DELAY SERVER, 0x02 REVERB SERVER, 0x03 SEND) actually run
-them instead of whatever the byte-donor used to be.
+Assembles every selected DSP module, places it in the donor region (the
+three stock reverbs' P code, and any other stock effect on neither chooser)
+of each payload, writes the FX2/FX1 choosers and the descriptor clones,
+installs every ColdFire cave, detour, poke and table, links the DRAM units
+into the platform runtime and appends it behind the loader with any other
+payload, and prints a report every gate parses. `make bus` is XBUS=1
+SPEC=1; `make check` runs the gates over it.
 
-DSP-side donor choice (P-code space only -- unrelated to the ColdFire
-descriptor-clone donors task 11 already picked).
+Module order in a payload is `DspSection.priority`; the report shows the
+live word count per module and the region's FREE. The records are
+contiguous in loaded P memory but separated by headers in the file, so a
+stream spanning them is split per record on the way in; contiguity is
+asserted, not assumed.
 
-**v98: CHORUS IS NO LONGER A DONOR AND IS FULLY RESTORED.** All three servers
-now pack into the PLATE + SPRING + DARK region alone -- 2724 contiguous words
-against the code (2,692 words as of 11 Aug 2026 -- the build report is the live number), so everything fits in space that was already spent on
-replacing the three stock reverbs. SEND used to sit in CHORUS's 329-word
-module, which cost FX1 its chorus to house 166 words; that was collateral,
-not a considered trade. The three reverbs are the trade: we replaced them
-with a better one.
-
-Layout, in address order from PLATE's base:
-
-  SEND           166 words
-  REVERB SERVER 1999
-  DELAY SERVER   507   <- last DELIBERATELY: BusDelay is the algorithm still
-                          to be designed, so it gets the trailing free words
-                          (see the build report for the live count) and is
-                          adjacent to COMPRESSOR's module if
-                          the region is ever extended rightward. Growing it
-                          then moves nothing else.
-
-The three records are contiguous in LOADED P memory but separated by headers
-in the file, so a stream spanning them is split per record on the way in --
-the technique tools/build/build_reverb.py proved on hardware for SPRING+DARK, just
-generalised to three. Contiguity is asserted at build time rather than
-assumed.
-
-**Donor ids get repointed to the SAME null stub tools/build/build_dspprobe.py
-already used and proved silent on hardware (P:0x007c8/0x007c9 payload A,
-P:0x00588/0x00589 payload B -- stock DELAY's own dispatch, already a no-op
-by design), not to the new server code.** This is a deliberate departure
-from tools/build/build_reverb.py, which repoints SPRING/DARK's own ids at the new
-reverb engine -- fine there because nothing else in this project offers
-those ids any more once this build's three-entry menu replaces the whole FX2
-chooser. The FX1 menu never listed the reverbs or DELAY -- they are FX2-only
-(Sam, corrected repeatedly; do not write "FX1 selecting PLATE..." again) --
-so no selector should ever reach the donor ids. The null stub is defensive
-insurance for exactly that assumption: if ANY dispatch path did resolve a
-donor id (a saved part, an id poked by something we haven't mapped), pointing
-it at our servers would run the SAME hardcoded-Y-base engine a second,
-uncontrolled time on whatever track holds it -- the multi-instance collision
-the hardcoded-base design assumes can't happen (BUS.md's Memory section).
-Silencing them makes any such path harmless silence, the same
-already-hardware-proven behaviour stock DELAY has always had.
-
-CHORUS (id 0x12) is deliberately NOT in that list any more. Its code is
-untouched and its dispatch entries keep the values the stock image ships, so
-FX1 selecting CHORUS gets the real chorus back. Nothing has to be restored
-to make that work -- every build starts from a pristine
-out/raw/section_3_MAIN_OS.bin, so the stock code was never destroyed, only
-overwritten on the way out.
-
-The shared-window Y base is the one place this script differs per payload in
-the ASSEMBLED CODE itself (not just where it's placed). Payload A's half of
-the 64K shared window is 0x30000-0x37FFF and payload B's is 0x38000-0x3FFFF,
-so `_sub` (below) rewrites the literal `$30000` to PP[tag]["ybase"] in the
-source text before assembling.
-
-⚠️ It is a BLANKET string replace over the whole source, not a single
-targeted occurrence, and under XBUS it is applied to SEND and REVERB SERVER
-as well as DELAY SERVER. Two consequences:
-
-  - Any of those files that wants a shared-window address which must NOT
-    move to the other half on payload B cannot spell it `$30000`. Use an
-    offset from a register-held base, or a literal that is not `$30000`.
-  - It rewrites comment text too. Harmless, but do not read a disassembly
-    comment as evidence of what was substituted.
-
-✅ Verified in the emitted image 9 Aug 2026 rather than by reading this
-code: payload B's placed P words carry 0x38000 five times and 0x30000 zero
-times. The old docstring here claimed "exactly one occurrence", which was
-never true for the XBUS path.
+Payload A's half of the 64K shared window is 0x30000-0x37FFF and payload
+B's 0x38000-0x3FFFF, so `_sub` rewrites the literal `$30000` to
+PP[tag]["ybase"] in a module's source text before assembling. It is a
+blanket string replace over the whole source, comments included, applied
+under XBUS to SEND and REVERB SERVER as well as DELAY SERVER: a
+shared-window address that must not move on payload B is spelled as an
+offset from a register-held base, never as `$30000`, and the count of that
+literal is censused.
 """
 import dataclasses, hashlib, json, os, pathlib, re, subprocess, sys
 

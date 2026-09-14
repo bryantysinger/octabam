@@ -24,7 +24,7 @@ fails project load under the port because his CAVE2 (0x400d2ee6) overruns
 a live descriptor's enable words at 0x400d3014/18; this build links every
 unit into DRAM and is immune (measured).
 
-On hardware 14 Sep 2026 as OKMS1 (remix ok-ms), confirmed by him.
+On hardware as OKMS1 (remix ok-ms), confirmed by him.
 """
 
 from remix.schema import Detour, Kind, Linked, Module, Poke

@@ -3,11 +3,6 @@
 
     python3 tools/hw/ot_clock.py <bpm> <seconds> [port]
 
-A bare START (0xFA) does NOTHING on a unit slaved to external sync -- it
-needs clock alongside it (Sam, 13 Sep 2026: "start requires tempo, maybe you
-missed that?"). This sends 0xFA, then 0xF8 at 24 ppqn on an absolute
-schedule, then 0xFC. Measured 121.00 BPM against a 6 s window, error -0.00.
-
 The unit still shows its own project tempo unless it is slaved; following the
 transport does not imply following the tempo.
 """

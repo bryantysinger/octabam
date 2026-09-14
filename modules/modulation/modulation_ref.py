@@ -108,7 +108,7 @@ class Line:
     """a 1,024-word line on an INCREMENTING write phase, ADVANCED at the top
     of every sample (the DSP's order: advance, read the taps at (phase -
     delay) & 1023, then write this sample at the phase); the fraction blends
-    toward the OLDER neighbour (the 12 Sep 2026 crackle fix)."""
+    toward the OLDER neighbour (the crackle fix)."""
     def __init__(self):
         self.buf = [0.0] * LINE
         self.w = 0

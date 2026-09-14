@@ -9,14 +9,14 @@ Gates:
   defaults    -> output bit-exact vs a full-scale bipolar ramp (the bypass)
   MIX=0       -> bit-exact passthrough with the whole chain live
   DRV/SAT     -> DRV 0 skips the stage (bit-exact); TAPE/TUBE/INFL bounded
-                 and near unity small-signal (trimmed, 14 Sep 2026)
+                 and near unity small-signal (trimmed)
   TONE        -> a tilt in every mode: 0 dark < 64 flat (bit-exact) < 127 bright
   FOLD        -> a full-scale ramp folds back; unity on a small signal
   TXTR        -> tracks the Pockey transcription (mean error, level); 0 bit-exact
   COMP/GLUE   -> AC1's dip: deeper with COMP, unity at COMP 0 (skipped), the
                  makeup; GLUE on the master BY POSITION (r7 = $6a00): its
                  release is slower than the insert's COMP
-  (CRSH, SRR and RING retired 14 Sep 2026)
+  (CRSH, SRR and RING retired)
   WDTH        -> 0 = mono (L == R), 64 = untouched, 127 = doubled sides
   every knob  -> renders without dsp_host dying
 
@@ -85,7 +85,7 @@ def render(samples, slot="fx1", guard=False, **kw):
 
     slot="fx1" (alloc 0, r7 1) is the station's own slot; "fx2" (alloc 1,
     r7 2) is an FX2 instance, which the station runs as a DRY PASS since
-    12 Sep 2026 (Claims.fx1_only) -- the gate below proves it. Until then
+    (Claims.fx1_only) -- the gate below proves it. Until then
     every gate here rendered on alloc 1 and would now read dry."""
     src = TMP / "ch_in.raw"
     src.write_bytes(b"".join(struct.pack("<i", m) for m in samples))
