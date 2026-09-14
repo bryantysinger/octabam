@@ -156,7 +156,7 @@ modmap: ## DSP module load map — which bytes land at which P address
 	python3 tools/build/dsp_modmap.py
 
 .PHONY: verify
-verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it fits; it currently SKIPS)
+verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it fits; it fits since the one-word displaced move, 14 Sep 2026)
 	python3 tools/remix/selftest.py
 	python3 tools/verify/verify_slots.py
 	python3 tools/verify/verify_initregs.py $(REMIX)

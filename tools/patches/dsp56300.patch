@@ -51,6 +51,47 @@ index ac3853c..5acf878 100644
  				/*
  				if constexpr(add)
  				{
+diff --git a/source/dsp56kEmu/assembler.cpp b/source/dsp56kEmu/assembler.cpp
+index a6d9b92..ca705f8 100644
+--- a/source/dsp56kEmu/assembler.cpp
++++ b/source/dsp56kEmu/assembler.cpp
+@@ -2284,6 +2284,36 @@ namespace dsp56k
+ 				TWord dd;
+ 				if (!parseRegister_dddddd(regOp, dd)) continue;
+ 
++				// One-word form, Movex_Rnxxx / Movey_Rnxxx ("0000001aaaaaaRRR1a0WDDDD"):
++				// a 7-bit signed displacement (-64..63, aaaaaa the high six bits and
++				// a the low bit) and a data-ALU register (DDDD: X0 X1 Y0 Y1 A0 B0 A2
++				// B2 A1 B1 A B -- an R/N/M register has no DDDD code and keeps the
++				// long form). The displacement is read as 24-bit two's complement,
++				// the same value the long form's extension word carries, so a
++				// wrapped spelling (rN+$ffffc0) is -64 in both. Until 14 Sep 2026
++				// this assembler emitted only the two-word form.
++				{
++					const int32_t disp = (offset & 0x800000)
++						? static_cast<int32_t>(offset) - 0x1000000
++						: static_cast<int32_t>(offset);
++					TWord dddd;
++					if (disp >= -64 && disp <= 63 && parseRegister_DDDD(regOp, dddd))
++					{
++						const auto shortInst = isY ? Movey_Rnxxx : Movex_Rnxxx;
++						TWord w = g_opcodes[shortInst].m_mask1;
++						const TWord a7 = static_cast<TWord>(disp) & 0x7f;
++						setFieldValue(w, shortInst, Field_aaaaaa, a7 >> 1);
++						setFieldValue(w, shortInst, Field_a, a7 & 1);
++						setFieldValue(w, shortInst, Field_RRR, r);
++						setFieldValue(w, shortInst, Field_W, write ? 1 : 0);
++						setFieldValue(w, shortInst, Field_DDDD, dddd);
++						result.word[0] = w;
++						result.wordCount = 1;
++						result.error = AssembleError::OK;
++						return result;
++					}
++				}
++
+ 				setFieldValue(word, inst, Field_RRR, r);
+ 				setFieldValue(word, inst, Field_DDDDDD, dd);
+ 				setFieldValue(word, inst, Field_W, write ? 1 : 0);
 diff --git a/source/dsp56kEmu/dma.cpp b/source/dsp56kEmu/dma.cpp
 index bd3e603..fea36b4 100644
 --- a/source/dsp56kEmu/dma.cpp

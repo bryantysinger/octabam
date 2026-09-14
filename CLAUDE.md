@@ -86,7 +86,15 @@ a negative multiplier there is silently corrupted. `mpy x0,y1` and
 **Disassemble what you assemble** when a result surprises you — and always
 for a new `mpy` whose second operand can go negative. A related family bit
 us in shipping code: `cmp a,b` had encoded as `max a,b`, which updates only
-the C bit while `blt` tests N^V.
+the C bit while `blt` tests N^V. **And until 14 Sep 2026 it emitted only
+the TWO-WORD displaced move**: `move x:(r7+$15),a` assembled to
+`0a77ce 000015` where the chip (and every Elektron payload, 533 sites in A)
+has the one-word `0257de` for displacements −64..63 with a data-ALU
+register. `tools/patches/dsp56300.patch` adds the one-word form; every
+word or cycle number recorded for a displaced move before that date is 2
+where the assembler now emits 1 (the emulator's own cycle table prices the
+forms 3 and 2; hardware timing of the one-word form under OUR code is
+unmeasured — stock runs it every frame).
 
 **READING `a0` EXPOSES THE FRACTIONAL LEFT SHIFT THAT READING `a1` HIDES.**
 `mpy` aligns the Q46 product into Q47, so `a1` is the plain fractional

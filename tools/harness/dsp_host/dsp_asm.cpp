@@ -127,6 +127,7 @@ int main(int argc, char** argv) {
     // ---- pass 1: size instructions, fix label addresses -----------------------
     TWord pc = org;
     std::vector<std::pair<int, std::string>> code;
+    std::vector<TWord> sized;   // pass-1 address of each code line
     for (auto& [n, text] : lines) {
         auto t = text;
         const auto colon = t.find(':');
@@ -137,6 +138,7 @@ int main(int argc, char** argv) {
         }
         const auto r = asmb.assemble(substitute(t, false, pc).c_str());
         code.emplace_back(n, t);
+        sized.push_back(pc);
         pc += r.success() ? r.wordCount : 1;
     }
 
@@ -144,7 +146,20 @@ int main(int argc, char** argv) {
     std::vector<TWord> outWords;
     pc = org;
     int errors = 0;
-    for (auto& [n, text] : code) {
+    for (size_t i = 0; i < code.size(); ++i) {
+        const auto& [n, text] = code[i];
+        // The pass-1 dummy sizes every label operand as the LONG form. Since
+        // 14 Sep 2026 the assembler picks the one-word displaced move when the
+        // displacement fits -64..63, so a label used as a displacement would
+        // size differently in the two passes and every label after it would
+        // be off. Refuse rather than emit code whose labels are wrong.
+        if (sized[i] != pc) {
+            std::fprintf(stderr, "%s:%d: pass-1 sizing drift -- pass 1 placed this line at "
+                         "P:0x%05x, pass 2 at P:0x%05x (a label resolved to a size "
+                         "the dummy did not; spell the operand as a number)\n",
+                         in.c_str(), n, sized[i], pc);
+            return 1;
+        }
         const auto resolved = substitute(text, true, pc);
         const auto r = asmb.assemble(resolved.c_str());
         if (!r.success()) {

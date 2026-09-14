@@ -55,7 +55,7 @@ ones — the DSP toolchain itself is plain CMake). It builds:
 
 | tool | from | what it is |
 |---|---|---|
-| `dsp_asm` | `vendor/dsp56300` | the DSP56300 assembler. ⚠️ It **mis-encodes some instructions silently** — `CLAUDE.md`'s trap list is required reading before trusting it |
+| `dsp_asm` | `vendor/dsp56300` | the DSP56300 assembler. ⚠️ It **mis-encodes some instructions silently** — `CLAUDE.md`'s trap list is required reading before trusting it. Until 14 Sep 2026 it emitted only the two-word `move x:(rN+xxxx),D` for a displaced move; `tools/patches/dsp56300.patch` now adds the chip's one-word form (displacement −64..63, data-ALU register), so any word or cycle figure recorded before that date counts such a move as 2 where the assembler now emits 1 |
 | `dsp_host` | `tools/harness/dsp_host/` (staged into `vendor/dsp56300` and built there) | this project's emulator harness: runs assembled effects on the dsp56300 emulator core. `docs/remixer/HARNESS.md` |
 | `emu_bringup.py` | `tools/` | Tier-0 ColdFire bring-up: boots the real MAIN OS image on Unicorn's CFV4E core to the RTOS handoff (the remixer emu, `PLAN.md` §5). Needs `unicorn` — `make emu-setup` (uv, the `emu` extra). `docs/remixer/EMU.md` |
 | `elektron-firmware-tool` | `vendor/elektron-firmware-tool` (patched) | packs/unpacks Elektron's OS container formats |
