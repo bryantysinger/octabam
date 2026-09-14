@@ -2812,12 +2812,10 @@ lfrol:
         mpy     x0,y0,a
         move    x1,x0
         add     x0,a                    ; v = x + g*d
-        move    a,x:(r7+$14)
-        move    a,x0
+        move    a,x0                    ; x0 = v, limited as the store was
         mpy     x0,y0,a
         sub     a,b                     ; out = d - g*v
-        move    x:(r7+$14),a
-        move    a,y:(r5)                ; write v (AP a)
+        move    x0,y:(r5)               ; write v (AP a)
         move    b,x1                    ; AP a out -> AP b in
         move    r5,a                    ; base_a + phase, still intact ...
         add     #>$800,a                  ; ... + 0x800 = base_b + phase
@@ -2828,13 +2826,11 @@ lfrol:
         mpy     x0,y0,a
         move    x1,x0
         add     x0,a                    ; v = x + g*d
-        move    a,x:(r7+$14)
-        move    a,x0
+        move    a,x0                    ; x0 = v, limited as the store was
         mpy     x0,y0,a
         sub     a,b                     ; out = d - g*v
         move    b,x:(r7+$08)            ; -> the bloom component, for the sums
-        move    x:(r7+$14),a
-        move    a,y:(r5)                ; write v (AP b)
+        move    x0,y:(r5)               ; write v (AP b)
 
         move    x:(r7+$1b),a
 ; ---- TANK INPUT ATTENUATION: -12 dB of headroom -------------------------
@@ -3279,17 +3275,16 @@ tankend:
 ; free until the LP below reloads them; x1 (the write phase) is untouched.
         move    y:>$0906,x0             ; HP state s
         sub     x0,a                    ; x - s
-        move    a,x:(r7+$14)            ; the HP output, parked
-        move    a,x0
+        move    a,x0                    ; the HP output, held in x0 across
+                                        ; the state update (no $14 park)
         move    #$05,y1                 ; c ~0.039 -> corner ~280 Hz (Sam,
-                                        ; 23 Aug, on the 4-corner ladder:
-                                        ; 570 Hz was "a bit thin", 280 is
-                                        ; "good" -- body kept, mud gone)
+                                        ; 22 Aug: the sub was a woolly bass
+                                        ; bloom; this thins it to a shimmer)
         mpy     x0,y1,a                 ; c*(x - s)   [audited-signed x0,y1]
         move    y:>$0906,b
         add     b,a                     ; s' = s + c*(x - s)
         move    a,y:>$0906
-        move    x:(r7+$14),a            ; HP output feeds the LP below
+        move    x0,a                    ; HP output feeds the LP below
         move    x:(r7+$4e),b            ; previous filter output
         sub     b,a
         move    a,x0
@@ -3671,12 +3666,10 @@ fbB:
         mpy     x0,y1,a
         move    x1,x0
         add     x0,a                    ; v = x + g*d
-        move    a,x:(r7+$14)
-        move    a,x0
+        move    a,x0                    ; x0 = v, limited as the store was
         mpy     x0,y1,a
         sub     a,b                     ; out = d - g*v
-        move    x:(r7+$14),a
-        move    a,y:(r5)                ; store v
+        move    x0,y:(r5)               ; store v
         move    b,a                     ; out -> the line
         move    a,y:(r1)             ; write at the line's own modulo pointer
 
@@ -3708,12 +3701,10 @@ fbB:
         mpy     x0,y1,a
         move    x1,x0
         add     x0,a                    ; v = x + g*d
-        move    a,x:(r7+$14)
-        move    a,x0
+        move    a,x0                    ; x0 = v, limited as the store was
         mpy     x0,y1,a
         sub     a,b                     ; out = d - g*v
-        move    x:(r7+$14),a
-        move    a,y:(r5)                ; store v
+        move    x0,y:(r5)               ; store v
         move    #>$7ff,m5               ; back to the input diffusers' 2048
         move    b,a                     ; out -> the line
         move    a,y:(r2)             ; write at the line's own modulo pointer
@@ -3964,13 +3955,15 @@ apbody:
         mpy     x0,y0,a
         move    x1,x0
         add     x0,a                    ; v = x + g*d
-        move    a,x:(r7+$1c)
-        move    a,x1
+        move    a,x1                    ; x1 = v. A register move limits
+                                        ; exactly as a store does, so this
+                                        ; IS the value the $1c park held
         mpy     x1,y0,a
         sub     a,b                     ; out = d - g*v
         move    b,x:(r7+$1b)
-        move    x:(r7+$1c),a
-        move    a,y:(r5)                ; write v at base + phase
+        move    x1,y:(r5)               ; write v at base + phase -- no
+                                        ; reload: $1c is fbA's scratch and
+                                        ; fbA rewrites it before its read
         rts
 
 ; ---- stampgr: a clear-on-read liveness stamp with 3 blocks of grace -------
