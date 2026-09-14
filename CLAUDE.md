@@ -440,6 +440,29 @@ locally and measure instead of guessing. This is why the emulator path exists.
 register of hardware failure modes (symptom -> cause -> fix). Add any new one
 the moment it is seen; do not let it live only in a commit message.
 
+**A PERSISTENT SLOT THAT INIT DOES NOT CLEAR HOLDS WHATEVER THE EFFECT
+BEFORE OURS LEFT IN THE BLOCK — AND NO LOCAL RENDER CAN SEE IT, BECAUSE THE
+PORT AND `dsp_host` BOOT ZEROED RAM.** Spectrum's init cleared `$00..$17`;
+filter B's two HP poles at `$38/$39` (`$3c/$3d` R) sat at cHP = 0 on the
+passthrough stamp, FROZEN, and `hp2 = yB − h2` subtracted a stale h2 from
+every sample forever: up to a full-scale DC on a station's output. An
+AC-coupled capture cannot see DC, so it surfaced as something else entirely
+— "the master compressor collapses the RIGHT channel above COMP 40" (the
+makeup clipped DC + audio to a constant on the channel whose offset was
+larger) — and cost 13–14 Sep 2026: three diagnostic images and 40 hardware
+taps rewriting a compressor block that was correct. Found by a LEVEL bisect
+across the tracks (post-FX mute cleared it, pre-FX mute did not: the station
+made it from state), then reproduced in one run once the instance block was
+pre-filled with garbage. Rules: (1) init zeroes EVERY slot the sample loop
+reads before it writes — `tools/verify/verify_dirtystate.py` (in `make
+verify`) renders each module from a garbage block on silence and refuses any
+output; (2) a channel-asymmetric failure in channel-symmetric code is a DATA
+asymmetry — go looking for what the instrument cannot see (DC, ultrasonics)
+before rewriting the code; a limiter ladder (×2/×4/×8 with the limiting
+store) makes DC visible through an AC-coupled capture; (3) when "which knob"
+does not localise a fault, "which TRACK" (LEVEL 0 per track, then AMP VOL vs
+MUTE) does.
+
 ## Traps on the ColdFire / DRAM side (the platform work, 9–10 Sep 2026)
 
 **A WRITE-WATCH ON CACHED ADDRESSES IS BLIND TO A CLEAR THROUGH THE UNCACHED

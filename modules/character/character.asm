@@ -122,6 +122,12 @@ init:
         move    a,x:(r7+$17)
         move    a,x:(r7+$18)
         move    a,x:(r7+$1e)            ; the compressor's state: AC1 level_s
+        move    a,x:(r7+$19)            ; the SRR held pair, its counter, the
+        move    a,x:(r7+$1a)            ; carrier phase, the liveness grace:
+        move    a,x:(r7+$1b)            ; every slot read before written
+        move    a,x:(r7+$1c)            ; (14 Sep 2026, verify_dirtystate)
+        move    a,x:(r7+$3c)
+        move    a,x:(r7+$3d)
         move    #>$7fffff,x0
         move    x0,x:(r7+$1f)           ; gr = unity
         rts
