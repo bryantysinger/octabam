@@ -1,9 +1,8 @@
 # MODULATION
 
-The third BamSep26 station, a modulation pedal: **FX1 only**, replacing
-stock CHORUS (id 0x12). v2 (14 Sep 2026) rebuilt every mode from a
-published, permissively licensed source; the survey, licences and laws are
-in `docs/effects/PORTS.md`.
+A modulation pedal on stock CHORUS's id 0x12, FX1 only. Every mode is a
+transcription of a published, permissively licensed source; the survey,
+licences and laws are in `docs/effects/PORTS.md`.
 
 | page 1 | RATE · DPTH · FDBK · MIX · TONE · WDTH |
 |---|---|
@@ -48,19 +47,18 @@ stage), `mo_para` (the parabola sine), `mo_lfo`, `mo_tab` (the table
 read), `momixs`. The PHSR chain runs at half scale for headroom (an
 allpass cascade peaks above its input).
 
-PHSR is the last MODE position on purpose: dropping it would move no other
-mode's stored byte (Sam retired the phaser on 13 Sep at 464 cycles; the
-ChowPhaser port prices 476 and is in pending his call).
+PHSR is the last MODE position so that dropping it would move no other
+mode's stored byte; whether it stays is undecided (476 cycles).
 
 Two lines of 1,024 words from the FX1 slot's allocator buffer; an FX2
 instance reads its base at init and runs as a dry pass (`Claims(fx1_only)`,
 proven by the gates). A change of MODE clears every state slot.
 
-## Measured (14 Sep 2026, local)
+## Measured
 
-- **1,199 words** (453 in v1), core A FREE 536 in the rig; **476
-  cycles/sample** worst (PHSR 476; LINE 401, ENS 440, COMB 306) — under
-  Character's 639, so the worst core is unchanged at 3,831.
+- **1,199 words**, core A FREE 536 in the rig; **476 cycles/sample** worst
+  (PHSR 476; LINE 401, ENS 440, COMB 306) — under Character's 639, so the
+  worst core is unchanged at 3,831.
 - `tools/verify/verify_modulation.py`, **24 gates, all PASS**: MIX 0
   bit-exact in every mode; an FX2 instance a bit-exact dry pass with the
   guard clean; every mode against `modulation_ref.py` on a stereo signal
@@ -69,31 +67,20 @@ proven by the gates). A change of MODE clears every state slot.
   0.5 Hz; the through-zero null −138 dB; the phaser unity at FDBK 64; the
   comb's period at three pitches.
 
-## What the reference taught (bugs found by it, 14 Sep 2026)
-
-- The per-block "did MODE change" memory shared a slot with the loops'
-  scratch, so any non-zero right channel cleared every state slot at every
-  block boundary: a 0.6 % dip at the first sample of each block, seen as a
-  periodic error and localised by the impulse and DC probes.
-- The flanger's fixed tap was parked in the tap reader's own scratch and
-  read back after the right channel's sweep had overwritten it (the JUNO
-  weight of 0 hid it).
 - The LFO's increment is an integer count of 2^-23 cycles (the mpy keeps
-  the integer part); a float reference drifted 2.5 % at RATE 14 and made
-  every swept mode look 1e-2 wrong.
+  the integer part); the reference models that (a float increment drifts
+  2.5 % at RATE 14).
 - MIX 127 and TONE 127 are pinned to 1.0 so the through-zero null and the
   flanger's blend are exact (the knob word alone is 127/128).
 
 ## Open
 
-- Never heard: every mode is unheard on the unit (v1's ear pass, 12 Sep,
-  covered CHOR/FLNG/COMB in their old laws). Kits for the ear in
-  `out/ab/mod2_pad` and `out/ab/mod2_loop` (`tools/harness/abkit.py`, the
-  six modes at their defaults, level-matched). Active-RMS level against
-  JUNO's (MIX 70) before matching: DIM +6 / +10 dB (pad / loop), ENS +5 /
-  +7, FLNG +5 / +10 (the −0.7071 feedback), COMB +23 / +6 (a 1 s ring
-  resonates a sustained pad's harmonics by up to 1/(1 − g) ≈ +37 dB), PHSR
-  −0.5 / +5 — a live-round item.
+- Unheard on the unit; unflashed. Kits for the ear in `out/ab/mod2_pad`
+  and `out/ab/mod2_loop` (`tools/harness/abkit.py`, the six modes at their
+  defaults, level-matched). Active-RMS level against JUNO's (MIX 70) before
+  matching: DIM +6 / +10 dB (pad / loop), ENS +5 / +7, FLNG +5 / +10, COMB
+  +23 / +6 (a 1 s ring resonates a sustained pad's harmonics by up to
+  1/(1 − g) ≈ +37 dB), PHSR −0.5 / +5.
 - DIM's amounts are ours; the Juno's own asymmetry (R 1.51..5.40 ms vs L
   1.54..5.15) and the I+II shape ("sine-like") are not modelled.
 - The tap read is linear (Dattorro's allpass or Airwindows' 3-point + air

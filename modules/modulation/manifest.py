@@ -1,10 +1,8 @@
-"""MODULATION -- a modulation pedal, six modes, FX1 only (v2, 14 Sep 2026).
+"""MODULATION -- a modulation pedal, six modes, on stock CHORUS's id 0x12.
 
-The third BamSep26 station. It REPLACES stock CHORUS (id 0x12) and covers
-what stock spreads over CHORUS, FLANGER, PHASER and COMB, each mode a
-transcription of a published, permissively licensed source (the survey and
-the licences: docs/effects/PORTS.md; the float reference the DSP is proven
-against: modules/modulation/modulation_ref.py):
+A per-track insert (FX1 only). Each mode transcribes a published,
+permissively licensed source (survey and licences: docs/effects/PORTS.md;
+the float reference the DSP is proven against: modulation_ref.py):
 
     JUNO  the Juno-60 chorus (jpcima HeraChorus.dsp, ISC + the Juno-60
           measurements): two BBD lines on one triangle LFO, R inverted;
@@ -16,29 +14,27 @@ against: modules/modulation/modulation_ref.py):
           three taps on one line, two three-phase LFOs (0.6 + 6 Hz)
     FLNG  Dattorro's flanger (JAES 1997, Table 6): through-zero, the dry
           read from the sweep's centre, feedforward and feedback -0.7071
-    PHSR  ChowPhaser (BSD-3), the Schulte Compact Phasing A: a feedback
-          section of two RC allpasses, then 2/4/6/8 allpasses on the LDR's
-          law. Retired 13 Sep 2026 at 464 cycles; ChowPhaser's prices ~130
     COMB  Rings' string loop (Mutable Instruments, MIT): Hermite-read,
           FIR damping, the per-pass gain from a decay TIME so every pitch
           rings for the same time; FDBK's sign = the polarity (ours)
+    PHSR  ChowPhaser (BSD-3), the Schulte Compact Phasing A: a feedback
+          section of two RC allpasses, then 2/4/6/8 allpasses on the LDR's
+          law. Last in the select so dropping it moves no stored byte
 
-FX1 ONLY, and it enforces that itself: it needs a per-track delay line, and
+FX1 only, enforced by the module: it needs a per-track delay line, and
 beside the servers the only free per-track buffer is the FX1 slot. It reads
-its base from the host's bump allocator at INIT (docs/firmware/DSP.md
-section 10) and if that base is an FX2 slot (>= 0x4000) it runs as a dry
-pass and writes NOTHING. `Claims(fx1_only=True)` declares that and the
-render gate proves it. Two lines of 1,024 words out of the 3,072 an FX1
-slot gives; the read offset is masked, not the address.
+its base from the host's bump allocator at init (docs/firmware/DSP.md
+section 10); if that base is an FX2 slot (>= 0x4000) it runs as a dry pass
+and writes nothing. `Claims(fx1_only=True)` declares that and the render
+gate proves it. Two lines of 1,024 words out of the 3,072 an FX1 slot
+gives; the read offset is masked, not the address.
 
-NOT a bus client since 14 Sep 2026 (the stations lost their sends in the
-one-aux rig, 7 Sep).
+Not a bus client: does not housekeep, does not write the bus.
 
-DEFAULTS ARE A PASSTHROUGH (MIX 0), because a part that stored CHORUS runs
-this after the flash. ⚠️ A part's STORED bytes are stock CHORUS's -- the
-stamper writes ours. ⚠️ v2 moved TONE (slot 8 -> 4) and WID (10 -> 5) and
-dropped SHPE/STGS: stamp-defaults on the card BEFORE play (CLAUDE.md, the
-stored-layout trap).
+Defaults are a passthrough (MIX 0), because a part that stored CHORUS runs
+this. A part's stored bytes are stock CHORUS's until the stamper writes
+ours; v2 moved TONE (slot 8 -> 4) and WID (10 -> 5), so stamp-defaults on
+the card before play.
 """
 
 from remix.schema import (BusRole, Claims, DspSection, Formatter, Harness,
@@ -124,10 +120,7 @@ MODULE = Module(
         Param(b"MODE", 0, 6, active=True, formatter=_STEP,
               labels=("JUNO", "DIM", "ENS", "FLNG", "COMB", "PHSR"),
               doc="which pedal"),
-        _BLANK,   # was TONE (page 1 since 14 Sep 2026)
-        _BLANK,   # was SHPE (the LFO is each source's own shape since 14 Sep 2026)
-        _BLANK,   # was WID (page 1 since 14 Sep 2026)
-        _BLANK,   # was STGS (PHSR's stage count is on DLY since 14 Sep 2026)
+        _BLANK, _BLANK, _BLANK, _BLANK,
     ),
     # ---- what each MODE renames and re-defaults ---------------------------
     # The defaults are each source's own numbers: the Juno's I (0.513 Hz,
@@ -162,10 +155,9 @@ MODULE = Module(
         r7_latch_slot=None,           # no ROTLATCH/ROTINIT: not a bus client
         gate_label=None,              # no housekeeping: a station never elects
     ),
-    # The FX1-only allocator buffer: two 1,024-word lines out of the 3,072 an
-    # FX1 slot gives. `fx1_only` is the promise that an FX2 instance writes
-    # nothing -- the ledger admits it beside a server on that basis, and
-    # tools/verify/verify_modulation.py is what proves it.
+    # Two 1,024-word lines out of the 3,072 an FX1 slot gives. `fx1_only`
+    # is the promise that an FX2 instance writes nothing; the ledger admits
+    # it beside a server on that basis and verify_modulation proves it.
     claims=Claims(stock_instance_buffer=True, buffer_words=2048, fx1_only=True),
     harness=Harness(layout_char="3", is_server=False, bus_client=False),
 )
