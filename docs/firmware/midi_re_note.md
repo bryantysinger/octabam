@@ -1,4 +1,4 @@
-# MIDI input path in OS 1.40C (ColdFire) — RE note, 24 Aug 2026
+# MIDI input path in OS 1.40C (ColdFire)
 
 Tooling: `m68k-elf-objdump -D -b binary -m m68k:cfv4e --adjust-vma=0x40000400
 out/raw/section_3_MAIN_OS.bin` (radare2's m68k plugin does not decode the
