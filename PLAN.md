@@ -11,8 +11,13 @@ programme this grew out of, with its open items.
 - **On hardware:** `ok-ms` (Octakit ot-26914 + MIDI SCENES 1.40MIDISC8 on
   the stock effects), built as `OKMS1`, confirmed working by midisc's
   author on his unit: the appended loader, the arena reserve, her runtime
-  relocated through our loader, his thirteen units in DRAM. The rig
-  (`bamsep26`) is on Sam's unit. octalab (nordseele) is a DRAM module of
+  relocated through our loader, his thirteen units in DRAM. Its first
+  Part Reload trapped (VEC:04 in Octakit's caller check, D0 = midisc's
+  `rel_after`; not a byte collision, a return-address ABI): `modules/
+  kits-reload` bridges it, the ledger sees the class
+  (`Runtime.pinned_returns` vs `Detour.subst_return`), reproduced and
+  fixed under the port (`ot_emu --call`); `OKMS2` = `ok-ms` with the
+  bridge, unflashed. The rig (`bamsep26`) is on Sam's unit. octalab (nordseele) is a DRAM module of
   this remixer and has run on an MKI since 11 Sep 2026.
 - **Built and gated, unflashed:** every other remix (`docs/remixes/`).
 - **The platform** (`tools/remix/`): `schema.Linked` (GNU-as units the build

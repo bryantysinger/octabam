@@ -28,15 +28,32 @@ her pinned identities with Homebrew m68k-elf-gcc 16.2.0 (recipe pins
 stock + her writes + her append; under the ColdFire port her window reads
 back byte-identical after boot. On hardware as OKMS1 (remix
 ok-ms, her 92cf70b / ot-26914 + midisc 1.40MIDISC8), confirmed by midisc's
-author.
+author -- and a Part Reload then trapped in her caller check
+(modules/kits-reload; `pinned_returns` below is how the ledger sees that
+class).
 
 Her recipe rewrites the apply_part entry 0x40009094 and the scene-parameter
 writer 0x40052ae8; the ledger refuses any other module on those sites. CC
 PAGE 2 shares her MIDI CC dispatch entry through the SCENES KITS bridge.
 """
 
+import pathlib
+import re
+
 from remix import arena
 from remix.schema import ArenaReserve, Kind, Module, Runtime
+
+_ABI = pathlib.Path(__file__).parent / "upstream/runtime/abi.inc"
+
+
+def _pinned_returns() -> tuple[int, ...]:
+    """The stock return addresses her replacement routines compare the
+    caller's against (`move.l (%sp),%d0; cmpi.l #GK_STOCK_..._RETURN`) and
+    trap on any other -- read from her abi.inc, one `.equ` per site."""
+    return tuple(sorted(int(m.group(1), 16) for m in
+                        re.finditer(r"^\.equ\s+GK_STOCK_\w+_RETURN,(0x[0-9a-f]+)",
+                                    _ABI.read_text(), re.M)))
+
 
 MODULE = Module(
     name="octakit",
@@ -49,6 +66,7 @@ MODULE = Module(
         sources="modules/octakit/upstream/runtime",
         report_note=" -- Em's Octakit (emuyia/ems-octakit), submodule "
                     "modules/octakit/upstream",
+        pinned_returns=_pinned_returns(),
     ),
     # Her runtime, Kit store and backup: the top 528 pages of the audio page
     # arena (0x45d0dde0..0x46025de0). Her four recipe writes shrink the arena

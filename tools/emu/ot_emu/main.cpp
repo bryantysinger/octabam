@@ -98,6 +98,7 @@ int main(int _argc, char** _argv)
 	std::string coverage;		// O9b: every ColdFire PC executed from the transport start on, with its count -> FILE (diff two runs)
 	bool frameTimer = false;	// O9b: keep the free-running 16-sample frame timer with --dsp (default: the DSP's bank word is the frame edge)
 	std::string pokeAfterLoad;	// O9c: "addr=byte;addr=byte" written after the load, before the frames (drive an apply the load skips)
+	std::string callSpec;		// "addr[,arg,...]": a firmware routine called AS MAIN after the load (a menu action the port has no panel for -- Part Reload, 14 Sep 2026)
 	int mainLevel = -1;			// O9b: post sys command 4 (SET MAIN LEVEL) with this level after the load; -1 = don't (the emulated load never does, and every voice then renders at gain zero)
 	std::string memDump;		// O10.21: "addr,len=path[;...]" -- ColdFire memory ranges, raw bytes, to FILE at the very end (peeks only support one word, pre-sequencer; this is a range, post-run)
 
@@ -162,6 +163,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--main-level" && i + 1 < _argc)	mainLevel = std::atoi(_argv[++i]);
 		else if(a == "--mem-dump" && i + 1 < _argc)	memDump = _argv[++i];
 		else if(a == "--poke" && i + 1 < _argc)		pokeAfterLoad = _argv[++i];
+		else if(a == "--call" && i + 1 < _argc)		callSpec = _argv[++i];
 		else if(a == "--frame-timer")				frameTimer = true;
 		else
 		{
@@ -536,6 +538,36 @@ int main(int _argc, char** _argv)
 			for(size_t i = 0; i < card->log().size() && i < 12; ++i)
 				std::printf("             %-16s lba %-8u count %u\n", card->log()[i].what.c_str(),
 					card->log()[i].lba, card->log()[i].count);
+
+			// -- a routine called as main, after the load ------------------
+			// The port has no panel: a menu action (Part Reload, a kit
+			// reload) is reached by calling its handler from main's spin
+			// with the stack a `pea arg; jsr` would leave, on the loaded
+			// project. An `illegal` on the way is reported with the
+			// registers the unit's exception screen shows (ADDR = PPC, D0).
+			if(!callSpec.empty())
+			{
+				std::vector<uint32_t> args;
+				size_t q = 0;
+				uint32_t target = 0;
+				while(q <= callSpec.size())
+				{
+					auto e = callSpec.find(',', q); if(e == std::string::npos) e = callSpec.size();
+					const auto v = static_cast<uint32_t>(std::strtoul(callSpec.substr(q, e - q).c_str(), nullptr, 0));
+					if(q == 0) target = v; else args.push_back(v);
+					q = e + 1;
+				}
+				uint32_t d0 = 0;
+				const auto sp0 = m.getA7();
+				const bool ok = rtos.callAsMain(target, args, d0, 200000000);
+				if(ok)
+					std::printf("call       : %#x(%zu arg%s) returned, d0 = %#x\n",
+						target, args.size(), args.size() == 1 ? "" : "s", d0);
+				else
+					std::printf("call       : %#x(%zu arg%s) DID NOT RETURN -- %s; D0 %#x SP %#x (was %#x)\n",
+						target, args.size(), args.size() == 1 ? "" : "s", rtos.why().c_str(),
+						m.getD0(), m.getA7(), sp0);	// the address is in why() (PPC has moved on to the exception vector)
+			}
 
 			// -- M6c: the sequencer, for real (milestone O6) -----------------
 			// Route A's `--sequencer` branch, step for step. The order is

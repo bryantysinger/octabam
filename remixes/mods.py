@@ -16,7 +16,7 @@ REMIX = Remix(
     name="mods",
     doc="Every community firmware mod in one image: MIDI SCENES + Octakit + "
         "the LO-FI AMF fix + CC to page 2, bridged.",
-    modules=("MIDI SCENES", "OCTAKIT", "LOFI AMF FIX", "CC PAGE 2", "SCENES KITS",
+    modules=("MIDI SCENES", "OCTAKIT", "LOFI AMF FIX", "CC PAGE 2", "SCENES KITS", "KITS RELOAD",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
              "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
              "PLATE REV", "SPRING REV", "DARK REV"),
