@@ -2491,3 +2491,136 @@ TONE into each mode: Sam "all sound great!" **CHARACTER IS VOICED**: TAPE
 subtle by the plugin's law), INFL (its own lift kept), FOLD at a held
 level, TXTR = Pockey, TONE the tilt, COMP/GLUE by position, WDTH bipolar,
 MIX, RET. Next: Spectrum's live round, then Modulation, per the roadmap.
+
+**14 Sep 2026, SPECTRUM v2 BUILT (image 14), from Sam's round on image 13:**
+"how does lp / bp / hp work on sem? ... what does wdth do again? ... maybe
+we go for it and can make calls for each mode as we go" and "I'd be happy
+to ditch wah and re-eval the filter choices". The station is a filter
+pedal now: MODE = LP / BP / HP (the SEM, as voiced), CAP (Airwindows
+Capacitor2, MIT: the isolator whose one-pole amounts the signal itself
+bends -- LOW / HIGH / NLIN, the cutoff pair renamed by the mode), VOWL,
+LADR; NOTCH, filter B (BASE), the SER/PAR/RING/FM routing and the SRC
+select are gone. Page 1: FREQ, RES, ENV, LFO, WDTH (all three bipolar,
+drawn -64..+63), NLIN; page 2: MODE, RATE. FREQ's floor is 60 Hz ("freq
+goes all the way to silent"). CAP tracks its transcription
+(modules/spectrum/capacitor2_ref.py) to a mean error of 6e-4 at NLIN 127,
+exact below; its open setting sits at the plugin's own trim, -2.1 dB.
+Two v2 build faults caught by the gate before any flash: the width gain
+landed on the SVF's HP-tap slot (every LP leaked half its HP), and LADR
+fell through into the new CAP alternative (silent). Spectrum prices 290
+(was 369: filter B and FM gone), CAP the dearest mode at ~280 live.
+Unheard: every mode, for Sam's hand.
+**Same round, image 14 on the unit (Sam):** "all sound good ... if you mess
+around with the high and low on cap enough it goes silent and they stop
+working ... env not making much diff on this one ... nlin can't hear any
+effect ... cap pops when you select it ... blank mode is still there".
+Fixes (image 15): the blank is the panel's five-position tick widget, so
+HP went (CAP's HIGH is the high-pass): MODE = LP, BP, CAP, VOWL, LADR;
+LOW never closes (0.004 + 0.996 F^2) and follows FREQm so ENV and LFO work
+in CAP; HIGH never freezes nor kills (0.9 B^2 + 2^-12 -- the frozen-pole DC
+lives in Capacitor2 at B = 0 too); NLIN gains its term 1 + 15C (the plugin
+reads full-scale signals, ours sit a tenth of that); a mode change clears
+the shared state block (the pop); CAP's defaults declared (LOW 127, HIGH 0,
+NLIN 64) for the stamp. The reference carries the station's knob laws as
+an option; CAP tracks it to 6e-4 at NLIN 127.
+**Option B (image 16), Sam's pick after "feels a bit confused and jumbled":**
+one rule -- FREQ is always where, RES always the flavour, ENV and LFO always
+move FREQ, nothing on page 1 belongs to one mode. MODE = LP / BP / ISO /
+VOWL / LADR (ISO = the isolator, was CAP: "is there a better name for
+people that won't know what cap is"); ISO's HIGH cut and the NLIN knob went,
+its colour is RES (drawn COLR), VOWL draws RES as SHRP. Page 1 FREQ RES ENV
+LFO WDTH; page 2 MODE RATE.
+
+**14 Sep 2026, Sam's round on image 16 (option B), first verdicts:**
+"Move speed to front page beside LFO and rename to LDP LSP, vowel is
+quiet." Built (image 17):
+
+- Page 1 is FREQ RES ENV LDP LSP WDTH; page 2 MODE only. LSP = the LFO
+  speed and the envelope release, read from slot 4 (was RATE, slot 10);
+  WDTH moved to slot 5; the passthrough detector checks slot 5, LSP is
+  inert at LDP 64 / ENV 64.
+- VOWL measured against LP open on the image 14 rig capture (drums, dsp_host):
+  −10.5..−15.3 dB at RES 0, −13.8..−18.8 at RES 64, −19.1..−28.6 at RES
+  127; white noise −20 / −22 / −26..−33. Makeup out = wetA · 4 · (1 +
+  RES/128), +12 dB at RES 0 to +18 dB at RES 127, per block at $48, the
+  store limits. After: drums −3.3..+1.7 dB at RES 0..64, −11..−1 at RES
+  127. Spectrum still prices 290 (VOWL is not the fork's worst path).
+- Image 16 bank levels: E/F/G captured at −47/−48/−46 dBFS L (image 14's
+  G reference −34.7) and bank A silent; audio present (peaks −25), cause
+  not bisected (main volume / loaded project on Sam's side unconfirmed).
+
+**14 Sep 2026, Sam's round on image 17:** "moog is best, first in list
+please. lfo depth and speed at some settings makes it spike high pitched
+though. And why does depth go negative? Have we got the knobs mixed up?
+Otherwise it sounds awesome." Built (image 18):
+
+- MODE = LADR LP BP ISO VOWL; MODE 0 (the stamp) is LADR. ISO's and
+  VOWL's ModeViews moved to 3 and 4.
+- LDP is 0..127, default 0 (the knobs were not mixed up: a negative depth
+  on the triangle LFO only flips its phase; ENV keeps its sign because a
+  closing envelope is a different filter). The passthrough detector tests
+  LDP 0.
+- THE SPIKE = A LADDER DEFECT, MEASURED. The feedback sum S used G^3 s0 +
+  G^2 s1 + G s2 + s3; each TPT stage feeds its state through as (1-G) s,
+  so the sum was 1/(1-G) too big: 6% at 1 kHz (G 0.06), 2.9x at 14 kHz
+  (G 0.65). A float model of the code's sum diverges at 15 kHz from RES 64
+  (scratch ladder_model.py); the DSP render of drums under LDP 127 hit the
+  rail with > 6 kHz energy at -1 dB of the total (LADR FREQ 64 RES 100:
+  rms -12 vs -29 static). Fixed: $18 = 1-G, $11/$12/$17 = G^n (1-G), one
+  mac more per channel. After: the same render peaks at -17 dBFS, no rail,
+  HF -21 dB; DSP vs float at FREQ 64 mean |err| < 3e-4 at every RES, at
+  FREQ 127 RES 64/100 < 0.014 (RES 127 differs by 0.16: the limiting stores
+  bound the edge of oscillation, float does not). What Sam heard as "best"
+  at low cutoffs is unchanged (the error was under 1% there).
+- The linear ladder's passband sits at 1/(1+k): RES 64 = -9 dB, RES 127 =
+  -14 dB on bass-heavy material (the Moog law, no compensation; the gate
+  allows 12 dB). Open: whether to add a bass makeup with RES.
+- verify_spectrum gates: LADR at FREQ 127 RES 64/100/127 on noise bounded
+  and off the rail; LADR under LDP 127 LSP 127 bounded.
+
+**14 Sep 2026, Sam's round on image 18:** "they sound fantastic, with the
+res up the bp peaks out a bit around the 70s on freq. can we tame the
+shrill peaks a lil? env peaks iso out a bit the same way. maybe some kind
+of global control." Built (image 19):
+
+- TAME, page 2 slot 6 (position A, beside MODE), default 0: a cubic soft
+  clip on the station's output in every mode, m = TAME/128, g = 1 + 7m,
+  out = x + m (sc(clamp(x g))/g − x), sc(x) = x − x³/3. TAME 0 renders
+  bit-exact; small signals stay at unity (−34 dBFS tone within 0.06 dB at
+  TAME 127); the BP peak at FREQ 70 RES 110 on a tone at fc goes −4.6 →
+  −21.4 dBFS at TAME 127. The bypass detector includes TAME's knob field.
+  Spectrum prices 346 (was 290). Slots $39/$3a/$3b.
+- ⚠️ the first build put TAME's words on $33/$19/$1a after a shell scan
+  with `"\$$s"` reported them free (the CLAUDE.md trap: the shell expanded
+  the dollar); $33 is the SVF's d and every LP/BP render came back silent.
+  The true free slots below $40 are $3c..$3f; scan with a script, never a
+  shell pattern.
+
+**14 Sep 2026, Sam's round on image 19:** "tame doesn't really take the
+right thing out. But at around half it seems to catch some of the harsh.
+Is there a tapered lp or limiter you would normally run on something like
+this? does the original effect have anything?" The SEM plugin has a state
+tanh, the Moog plugin a feedback tanh; both were left out of the linear
+ports. Sam: "yeah lets do it." Built (image 20):
+
+- TAME now drives the filters' own saturation and the output clip is gone:
+  v' = v + m (sc(clamp(v g))/g − v) on the SVF's two states (both
+  channels), the ladder's feedback u, ISO's output (its peak under ENV is
+  the lowpass chase) and VOWL's output. One callee fs_sat (28 words, last in
+  the file: dsp_asm has no backward short bsr), inlined inside fs_lcore and
+  fs_ccore (the pricer refuses a callee that calls one). TAME 0 stays
+  bit-exact; the BP peak at FREQ 70 RES 110 on a tone at fc goes −4.6 →
+  −26.9 dBFS at 127 (the clip gave −21.4); a −34 dBFS tone within 0.02 dB.
+  Spectrum prices 346, unchanged. Slots $3c/$3d.
+- Tables: no. The cubic needs none; Character's tables are tape/tube laws,
+  not tanh; a module's tables go to the stock curve bank X:0x4840 by the
+  build and are not shared between modules.
+- ⚠️ CC 49 (mute) and CC 50 (solo) on a track's channel do not act on the
+  unit: sent twice on image 19, the capture stayed within 2 dB. Cause open;
+  the panel's [MUTE] + [TRACK] is the route.
+
+**14 Sep 2026, Sam's round on image 20:** "tame at 50" -- TAME's default
+is 50 (image 21). The passthrough detector masks TAME out of the page-2
+word (at the stamp there is no state for it to saturate), so every FILTER
+part still runs the bit-exact bypass; the verifier renders its linear
+gates at TAME 0 and tests TAME on its own.

@@ -36,7 +36,9 @@ T8 (MASTER TRACK on)  ◀──────────────────�
   reaches T8, the hosts go dry while RET is up; the engines print their
   own wet on their host again within 3 blocks of RET going to 0).
 - **The stations on T1–T7** (Character on T1, Spectrum on 2/3/4/6/7,
-  Modulation on 5) are ordinary inserts; their defaults are a bit-exact
+  Modulation on 5) are ordinary inserts; Spectrum is the filter pedal since
+  14 Sep 2026 (SEM LP/BP/HP, Capacitor2, formants, the Moog ladder; ENV and
+  LFO onto the cutoff; width); their defaults are a bit-exact
   passthrough under the harness (🟡 — on the unit they appear to run LIVE
   at the stamp, ❓ the page-2 publish; harmless for the sound since 14 Sep,
   see below).

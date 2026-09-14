@@ -85,7 +85,7 @@ BANKS = "ABCDEFGH"
 # ---------------------------------------------------------------------------
 _RIG_AUX = {1: 30, 2: 40, 3: 30, 4: 40, 5: 40, 6: 50, 7: 40}   # the RIG table's sends
 _RET = ("CHARACTER", {"RET": 127})            # RET = slot 4 by position (13 Sep 2026)
-_RET_GLUE = ("CHARACTER", {"RET": 127, "CMOD": 1, "COMP": 40})
+_RET_GLUE = ("CHARACTER", {"RET": 127, "COMP": 40})   # GLUE is by position since 14 Sep 2026 (no CMOD knob)
 
 
 def _sends(aux, verb=False, delay=False):
