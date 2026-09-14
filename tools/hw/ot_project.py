@@ -878,7 +878,7 @@ RIG = (
     # a third here (was CHARACTER) priced ~3106 of 3120 as a FLOOR and hung
     # the sequencer on frame 1 (tag 91, step 1 solid). Character on T7 for a
     # vocal set is a manual part swap that drops T5 to Spectrum -- design page.
-    (8, ("CHARACTER", {"RET": 127, "CMOD": 1, "COMP": 40}), (None, {})),   # the return by position (RET = slot 4, 13 Sep 2026); no FX2 (no send from T8)
+    (8, ("CHARACTER", {"RET": 127, "COMP": 40}), (None, {})),   # the return by position (RET = slot 4, 13 Sep 2026); GLUE by position (14 Sep); no FX2 (no send from T8)
 )
 
 
