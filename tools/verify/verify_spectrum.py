@@ -181,12 +181,12 @@ for _f, _c in ((127, 0), (60, 64), (90, 127)):
 _quiet = rms_db(render(tone(3000, 0.02), FREQ=80, ENV=0)[0]) - rms_db(tone(3000, 0.02))
 _loud = rms_db(render(tone(3000, 0.4), FREQ=80, ENV=0)[0]) - rms_db(tone(3000, 0.4))
 check("ENV -64 closes the LP on a loud tone more than a quiet one (3 kHz at FREQ 80)", _loud < _quiet - 6, f"loud {_loud:.1f}, quiet {_quiet:.1f} dB")
-_y, _ = render(tone(2000, 0.2), FREQ=64, LFO=127, RATE=110)
+_y, _ = render(tone(2000, 0.2), FREQ=64, LDP=127, LSP=110)
 _w = [rms_db(_y[i:i + 400], 0) for i in range(N // 2, N - 400, 200)]
-check("LFO +63 at RATE 110 sweeps the LP across a 2 kHz tone (> 6 dB swing)", max(_w) - min(_w) > 6, f"{max(_w) - min(_w):.1f} dB swing")
+check("LDP +63 at LSP 110 sweeps the LP across a 2 kHz tone (> 6 dB swing)", max(_w) - min(_w) > 6, f"{max(_w) - min(_w):.1f} dB swing")
 _y0, _ = render(tone(2000, 0.2), FREQ=64, RES=1)
 _w0 = [rms_db(_y0[i:i + 400], 0) for i in range(N // 2, N - 400, 200)]
-check("LFO 0 (64) leaves the level still (< 1 dB swing)", max(_w0) - min(_w0) < 1, f"{max(_w0) - min(_w0):.1f} dB swing")
+check("LDP 0 (64) leaves the level still (< 1 dB swing)", max(_w0) - min(_w0) < 1, f"{max(_w0) - min(_w0):.1f} dB swing")
 
 # ---- 6. VOWEL renders and morphs ---------------------------------------------
 va = rms_db(render(tone(1100), MODE=3, FREQ=0, RES=90)[0])     # A: F2 1090
@@ -236,8 +236,8 @@ bounded("RES 127 LP at fc (949 Hz), 0.02 FS in: below full scale, never on the r
         render(tone(949, 0.02), FREQ=64, RES=127)[0])
 bounded("RES 127 BP at fc (949 Hz), 0.02 FS in: below full scale, never on the rails",
         render(tone(949, 0.02), FREQ=64, RES=127, MODE=1)[0])
-bounded("RES 127 VOWL a at F1, 0.5 FS in: below full scale, never on the rails",
-        render(tone(730, 0.5), FREQ=0, RES=127, MODE=4)[0])
+bounded("RES 127 VOWL a at F1, 0.1 FS in (x8 makeup): below full scale, never on the rails",
+        render(tone(730, 0.1), FREQ=0, RES=127, MODE=3)[0])
 burst = tone(949, 0.5, N // 2) + [0] * (N // 2)
 for m, mn in ((0, "LP"), (1, "BP")):
     out = render(burst, FREQ=64, RES=127, MODE=m)[0]
@@ -312,11 +312,11 @@ check("every knob at both extremes renders", True)
 # envelope (tools/harness/pressure.py) and the FX2 chooser both take it at
 # its word, so it is proven here at every extreme, and the guard sees no
 # write outside the frame.
-L, R = render(ramp, slot="fx2", FREQ=30, RES=110, MODE=1, ENV=127, LFO=127)
+L, R = render(ramp, slot="fx2", FREQ=30, RES=110, MODE=1, ENV=127, LDP=127)
 check("FX2 instance is a bit-exact DRY PASS at every extreme (fx1_only)",
       L == ramp and R == ramp,
       "" if L == ramp else f"first diff at {next(i for i,(a,b) in enumerate(zip(L,ramp)) if a!=b)}")
-render(ramp, slot="fx2", guard=True, FREQ=30, RES=110, MODE=1, ENV=127, LFO=127)
+render(ramp, slot="fx2", guard=True, FREQ=30, RES=110, MODE=1, ENV=127, LDP=127)
 g = getattr(render, "guard_out", "")
 check("FX2 instance trips no write guard",
       "guard clean" in g,

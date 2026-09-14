@@ -2530,3 +2530,21 @@ VOWL / LADR (ISO = the isolator, was CAP: "is there a better name for
 people that won't know what cap is"); ISO's HIGH cut and the NLIN knob went,
 its colour is RES (drawn COLR), VOWL draws RES as SHRP. Page 1 FREQ RES ENV
 LFO WDTH; page 2 MODE RATE.
+
+**14 Sep 2026, Sam's round on image 16 (option B), first verdicts:**
+"Move speed to front page beside LFO and rename to LDP LSP, vowel is
+quiet." Built (image 17):
+
+- Page 1 is FREQ RES ENV LDP LSP WDTH; page 2 MODE only. LSP = the LFO
+  speed and the envelope release, read from slot 4 (was RATE, slot 10);
+  WDTH moved to slot 5; the passthrough detector checks slot 5, LSP is
+  inert at LDP 64 / ENV 64.
+- VOWL measured against LP open on the image 14 rig capture (drums, dsp_host):
+  −10.5..−15.3 dB at RES 0, −13.8..−18.8 at RES 64, −19.1..−28.6 at RES
+  127; white noise −20 / −22 / −26..−33. Makeup out = wetA · 4 · (1 +
+  RES/128), +12 dB at RES 0 to +18 dB at RES 127, per block at $48, the
+  store limits. After: drums −3.3..+1.7 dB at RES 0..64, −11..−1 at RES
+  127. Spectrum still prices 290 (VOWL is not the fork's worst path).
+- Image 16 bank levels: E/F/G captured at −47/−48/−46 dBFS L (image 14's
+  G reference −34.7) and bank A silent; audio present (peaks −25), cause
+  not bisected (main volume / loaded project on Sam's side unconfirmed).

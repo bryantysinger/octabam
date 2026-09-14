@@ -44,7 +44,7 @@
 ;   $19/$1a B_out previous sample L/R (the FM source)         (PERSISTENT)
 ;   $1b wetA  $1c f this sample  $1d x / yB park  $1e peak (this block, so
 ;   at decode time LAST block's)  $1f f ceiling (per block)
-;   $46 fall  $47 lfo inc  $49 lfo / frac park  $4a..$4d VOWEL picks
+;   $46 fall  $47 lfo inc  $48 VOWL makeup/8 (per block)  $49 lfo / frac park  $4a..$4d VOWEL picks
 ;   ⚠️ EVERY SLOT THE SAMPLE LOOP TOUCHES IS BELOW $40: an r7-indexed move
 ;   with a displacement past 63 takes the two-word long form, and the loop
 ;   priced 30 words dearer with these at $40..$4f (3 Sep 2026). Per-block
@@ -163,22 +163,23 @@ proc:
         move    a,x:(r7+$21)            ; (13 Sep 2026: the same dial, the ZDF form)
 ; (DRV retired 13 Sep 2026: page-2 slot 6 is blank; Character owns drive. The
 ; per-sample stage was x * (0.25 + DRV*0.75) * 4 -- exactly x at DRV 0.)
-; RATE (slot 10 KNOB of r6+$e): lfo inc = RATE^2 * $7000 + $100 per block
-; (~0.08..9 Hz); fall = $7fe000 - RATE * $1e00 (~370 ms .. ~3 ms release)
-        move    x:(r6+$e),a             ; a knob word: bit 23 clear, a2 = 0
+; LSP (slot 4 KNOB of r6+$4; RATE on page 2 until 14 Sep 2026): lfo inc = LSP^2
+; * $7000 + $100 per block
+; (~0.08..9 Hz); fall = $7fe000 - LSP * $1e00 (~370 ms .. ~3 ms release)
+        move    x:(r6+$4),a             ; a knob word: bit 23 clear, a2 = 0
         and     #>$7f0000,a
         move    a1,x0                   ; (no clean reload: the input was positive)
         move    a1,y1
-        move    a1,x1                   ; RATE, kept for the fall below
+        move    a1,x1                   ; LSP, kept for the fall below
         mpy     x0,y1,a
         move    a,x0
         move    #>$7000,y1
         mpy     x0,y1,a
         add     #>$100,a
         move    a,x:(r7+$47)            ; lfo inc
-        move    x1,x0                   ; RATE again (decoded once, above)
+        move    x1,x0                   ; LSP again (decoded once, above)
         move    #$0f,y1
-        mpy     x0,y1,a                 ; RATE * $1e00 in Q23
+        mpy     x0,y1,a                 ; LSP * $1e00 in Q23
         neg     a
         add     #>$7fe000,a
         move    a,x:(r7+$46)            ; fall
@@ -413,6 +414,14 @@ fs_mcap:
         move    a,x:(r7+$29)
         bra     fs_mdone
 fs_mvowl:
+; VOWL makeup (14 Sep 2026, Sam: "vowel is quiet" -- measured 10..19 dB under
+; LP open on drums at RES 0..64, 25..29 dB at RES 127): out = wetA * 4 *
+; (1 + RES/128), so +12 dB at RES 0 rising to +18 dB as the bands narrow.
+; Stored as vg/8 = 0.5 + RES/256; the sample loop shifts by 3 and limits.
+        move    x:(r6+$1),a             ; RES/128
+        asr     #$1,a,a
+        add     #>$400000,a
+        move    a,x:(r7+$48)            ; vg/8
 ; ---- VOWL (13 Sep 2026): three parallel constant-peak-gain resonators
 ; (audiojs formant / resonator, JOS's two-zero form, MIT) replace the
 ; two-peak trick. Per formant y = b0*(x - x2) + 2*m1*y1 - a2*y2 with
@@ -549,15 +558,16 @@ fs_mladr:
         asr     #$4,a,a
         move    a,x:(r7+$15)            ; dG
 fs_mdone:
-; ---- WDTH (slot 4): stereo width of the output, Character's mid/side ------
-; drawn -64..+63; the knob word IS WDTH/128 = the side gain HALVED (64 -> 0.5,
-; doubled back in the guard bits per sample: 0 = mono, 127 = double sides).
-        move    x:(r6+$4),a
+; ---- WDTH (slot 5; slot 4 until LSP took it, 14 Sep 2026): stereo width of
+; the output, Character's mid/side, drawn -64..+63; the knob word IS WDTH/128
+; = the side gain HALVED (64 -> 0.5, doubled back per sample: 0 = mono, 127 =
+; double sides).
+        move    x:(r6+$5),a
         and     #>$7f0000,a
         move    a,x:(r7+$2c)            ; ($25 is the SVF's HP tap -- 14 Sep 2026's first build put this there and every LP leaked half its HP)
 
 ; ---- BYPASS: the defaults are a bit-exact passthrough ---------------------
-; FREQ 127, RES 0, ENV 64, LFO 64, WDTH 64, MODE LP.
+; FREQ 127, RES 0, ENV 64, LDP 64, WDTH 64, MODE LP (LSP is inert at LDP 64 / ENV 64).
 ; Every part that ever chose stock FILTER runs this on FX1 after the flash,
 ; so the neutral block copies nothing at all.
         clr     b
@@ -575,7 +585,7 @@ fs_mdone:
         move    x:(r6+$3),a
         cmp     x0,a
         bne     fs_live
-        move    x:(r6+$4),a
+        move    x:(r6+$5),a
         cmp     x0,a
         bne     fs_live
         move    x:(r6+$c),a             ; the MODE select (slot 6's knob field is
@@ -827,7 +837,10 @@ fs_vowl:
 ; reloaded sum did
         add     y0,a
         move    a,x:(r7+$1b)            ; wetA
-        move    x:(r7+$1b),a            ; wetA is the output (filter B and the mix went 14 Sep 2026)
+        move    x:(r7+$1b),x0           ; wetA (limited)
+        move    x:(r7+$48),y1           ; vg/8
+        mpy     x0,y1,a
+        asl     #$3,a,a                 ; wetA * vg, the store limits
         move    a,x:(r0)                ; out L (limited)
 ; ===================== channel R =====================
         move    x:(r0+n0),x0
@@ -916,8 +929,11 @@ fs_vowl:
 ; reloaded sum did
         add     y0,a
         move    a,x:(r7+$1b)            ; wetA
-        move    x:(r7+$1b),a            ; wetA is the output (filter B and the mix went 14 Sep 2026)
-        move    a,x:(r0+n0)                ; out R (limited)
+        move    x:(r7+$1b),x0           ; wetA (limited)
+        move    x:(r7+$48),y1           ; vg/8
+        mpy     x0,y1,a
+        asl     #$3,a,a                 ; wetA * vg, the store limits
+        move    a,x:(r0+n0)             ; out R (limited)
         bra     fs_join
 ; MODEFORK_MID -- alternative 3: LADR, the linear zero-delay Moog ladder
 fs_ladr:

@@ -104,11 +104,12 @@ MODULE = Module(
               doc="the flavour: resonance in LP/BP/LADR, sharpness in VOWL, the dielectric colour in ISO"),
         Param(b"ENV", 64, 128, active=True, formatter=_BIPOL,
               doc="the envelope follower onto the cutoff, drawn -64..+63; 0 = none"),
-        Param(b"LFO", 64, 128, active=True, formatter=_BIPOL,
-              doc="the LFO onto the cutoff, drawn -64..+63; 0 = none (RATE on page 2)"),
+        Param(b"LDP", 64, 128, active=True, formatter=_BIPOL,
+              doc="LFO depth onto the cutoff, drawn -64..+63; 0 = none"),
+        Param(b"LSP", 64, 128, active=True, formatter=_PLAIN,
+              doc="LFO speed ~0.08..9 Hz, and the envelope release (0 slow .. 127 fast)"),
         Param(b"WDTH", 64, 128, active=True, formatter=_BIPOL,
               doc="stereo width of the output, drawn -64..+63: 0 untouched, -64 mono, +63 double sides"),
-        _BLANK,   # (NLIN went with option B, 14 Sep 2026: ISO's colour is RES)
         # ---- page 2: knob / select / knob / select / knob / select ----------
         _BLANK,
         Param(b"MODE", 0, 5, active=True, formatter=_STEP,
@@ -116,8 +117,7 @@ MODULE = Module(
               doc="LP/BP the SEM; ISO an isolator with colour (Capacitor2); VOWL formants; LADR the Moog"),
         _BLANK,   # was DPTH (14 Sep 2026: ENV and LFO on page 1)
         _BLANK,   # was ROUT (SER/PAR/RING/FM: filter B retired 14 Sep 2026)
-        Param(b"RATE", 64, 128, active=True, formatter=_PLAIN,
-              doc="LFO speed ~0.08..9 Hz, and the envelope release (0 slow .. 127 fast)"),
+        _BLANK,   # was RATE (14 Sep 2026: LSP beside LDP on page 1)
         _BLANK,   # was SRC (14 Sep 2026: both depths have their own knob)
     ),
     # Option B (14 Sep 2026): FREQ is always where, RES always the flavour;
