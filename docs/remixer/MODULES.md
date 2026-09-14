@@ -26,7 +26,7 @@ Decide first which kind you are writing.
 ## The worked example: HELLO WORLD
 
 `modules/hello/` is a linear volume knob: one page-1 knob, 27 words of DSP,
-no state, no bus role, no shared window.
+stateless.
 
 ```
 modules/hello/manifest.py    the declaration -- one knob, one donor, one id
@@ -244,13 +244,13 @@ module, in the position it should draw at:
 modules=("REVERB SERVER", "DELAY SERVER", "SEND", "FILTER", "LO-FI", "TEMPO SYNC")
 ```
 
-A stock row costs nothing: no clone, no placement, no words; `make cycles`
+A stock row is a list row and a cursor position; `make cycles`
 does not count it (only FILTER's cost is measured, 192 cycles per
 instance). The build writes its list row and cursor position;
 `verify_menu` checks that its descriptor and id entry are byte-identical to
 stock. A stock effect a remix leaves out is left alone entirely: an old
 project that selects it still runs it, it just has no row.
-`remixes/restock.py` is all fourteen and nothing else.
+`remixes/restock.py` is the fourteen.
 
 Two rules, both enforced:
 
@@ -725,7 +725,7 @@ words needs the linear-plus-mask idiom (`modules/modulation/`).
 
 #### What is different about FX1
 
-For an eligible module: the slot size, the state block, and nothing else.
+For an eligible module: the slot size and the state block.
 
 | | FX1 | FX2 |
 |---|---|---|

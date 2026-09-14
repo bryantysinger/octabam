@@ -26,7 +26,7 @@ whatever its knob says (`tools/verify/verify_onebus.py`).
 back while the transport keeps running.
 
 **Measured (13 Sep 2026, image 94, `tools/hw/ot_soak.py`)**, T5 FX2 =
-BusVerb, T8 FX1 = Character as the return, nothing else of ours:
+BusVerb, T8 FX1 = Character as the return, every other slot stock:
 
 | configuration | return level | 3 min soak |
 |---|---|---|
