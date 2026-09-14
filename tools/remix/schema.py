@@ -111,6 +111,7 @@ class Formatter(Enum):
     INHERIT = "inherit"   # leave the donor's formatter untouched
     PLAIN = "plain"       # stock numeric knob: both formatter words zero
     STEPPED = "stepped"   # enumerated selector (the CHORUS.TAPS renderer)
+    BIPOLAR = "bipolar"   # a 0..127 knob DRAWN -64..+63 (SPRING BAL's dial: A = 0x4003c7a0, 0x12a = the signed number; 14 Sep 2026)
 
 
 @dataclass(frozen=True)
@@ -911,6 +912,14 @@ class Module:
     def stepped_slots(self) -> tuple[int, ...]:
         return tuple(i for i, p in enumerate(self.params)
                      if p.formatter is Formatter.STEPPED)
+
+    @property
+    def bipolar_slots(self) -> tuple[int, ...]:
+        """Knobs drawn as a balance dial, -64..+63 around 64 (the DSP still
+        reads 0..127): SPRING BAL's renderer triple, verified only as
+        build-time bytes until the first flash shows it (14 Sep 2026)."""
+        return tuple(i for i, p in enumerate(self.params)
+                     if p.formatter is Formatter.BIPOLAR)
 
     @property
     def is_cf_patch(self) -> bool:

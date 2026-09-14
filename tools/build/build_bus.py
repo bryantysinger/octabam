@@ -493,6 +493,7 @@ PAGE2_COUNTS = {m.key: {i: p.count for i, p in enumerate(m.params)
 # no stepped slot keeps its donor's formatters untouched, which is what SEND
 # wants (FILTER's plain-numeric zeros, hardware-confirmed).
 STEPPED_SLOTS = {m.key: m.stepped_slots for m in _CLONED if m.stepped_slots}
+BIPOLAR_SLOTS = {m.key: m.bipolar_slots for m in _CLONED if m.bipolar_slots}
 _DEF_ASM = {m.key: m.dsp.asm for m in _CLONED}
 
 
@@ -1052,6 +1053,16 @@ def main():
             # slot 7 too, and carries the same 0x400328e4.
             for step_slot in STEPPED_SLOTS[name]:
                 wr32(clone_P + 0x12a + step_slot * 4, 0)
+        # A BIPOLAR knob (14 Sep 2026: Character's WDTH and TONE, "0 at
+        # neutral, negative for mono"): SPRING BAL's exact triple, read from
+        # the stock descriptor at donor_desc + 0x38 -- A = 0x4003c7a0 (the
+        # balance dial), B = 0, and 0x12a = 0x400328e4 (the signed number
+        # renderer, which DARK's slot 5 already carried). The value the DSP
+        # reads is still 0..127; only the drawing changes.
+        for bi_slot in BIPOLAR_SLOTS.get(name, ()):
+            wr32(clone_P + 0x0ca + bi_slot * 4, 0x4003c7a0)
+            wr32(clone_P + 0x0fa + bi_slot * 4, 0)
+            wr32(clone_P + 0x12a + bi_slot * 4, 0x400328e4)
         for idx, cnt in PAGE2_COUNTS.get(name, {}).items():
             wr32(clone_P + 0x9a + idx * 4, cnt)     # P+0x9a = value-count array
             wr32(clone_P + 0x6a + idx * 4, 0)       # min 0
