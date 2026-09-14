@@ -87,9 +87,13 @@ proven by the gates). A change of MODE clears every state slot.
 ## Open
 
 - Never heard: every mode is unheard on the unit (v1's ear pass, 12 Sep,
-  covered CHOR/FLNG/COMB in their old laws). The levels at the defaults:
-  JUNO −2 dB against the dry (MIX 70), DIM +1.5, ENS −0..−4, FLNG +7 (the
-  −0.7071 feedback), PHSR −1.5, COMB +2..+7 (the ring) — a live-round item.
+  covered CHOR/FLNG/COMB in their old laws). Kits for the ear in
+  `out/ab/mod2_pad` and `out/ab/mod2_loop` (`tools/harness/abkit.py`, the
+  six modes at their defaults, level-matched). Active-RMS level against
+  JUNO's (MIX 70) before matching: DIM +6 / +10 dB (pad / loop), ENS +5 /
+  +7, FLNG +5 / +10 (the −0.7071 feedback), COMB +23 / +6 (a 1 s ring
+  resonates a sustained pad's harmonics by up to 1/(1 − g) ≈ +37 dB), PHSR
+  −0.5 / +5 — a live-round item.
 - DIM's amounts are ours; the Juno's own asymmetry (R 1.51..5.40 ms vs L
   1.54..5.15) and the I+II shape ("sine-like") are not modelled.
 - The tap read is linear (Dattorro's allpass or Airwindows' 3-point + air
