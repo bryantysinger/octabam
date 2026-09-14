@@ -207,16 +207,14 @@ proc:
         move    a,x:(r7+$1e)            ; this block's peak starts at 0
 
 ; ---- SRC (slot 11 select of r6+$e): mod = env | lfo | (env+lfo)/2 ---------
+; The select is bits 8-15 of the knob word (bit 23 clear, so a2 = 0 and
+; the and leaves it 0): compare the masked field where it sits, no shift
+; and no clean reload (14 Sep 2026; long immediates, never the 6-bit form).
         move    x:(r6+$e),a
         and     #>$ff00,a
-        move    a1,x0
-        move    x0,a
-        asl     #$8,a,a
-        move    #>$10000,x0
-        cmp     x0,a
+        cmp     #>$100,a
         beq     fs_slfo
-        move    #>$20000,x0
-        cmp     x0,a
+        cmp     #>$200,a
         beq     fs_sboth
         move    x:(r7+$32),a            ; ENV (and anything unexpected)
         bra     fs_smod
@@ -318,19 +316,13 @@ fs_smod:
         move    a,x:(r7+$27)            ; kB
         move    a,x:(r7+$28)            ; kR
         move    a,x:(r7+$2c)            ; kFM
-        move    x:(r6+$d),a
+        move    x:(r6+$d),a             ; the select field where it sits (as SRC)
         and     #>$ff00,a
-        move    a1,x0
-        move    x0,a
-        asl     #$8,a,a
-        move    #>$10000,x0
-        cmp     x0,a
+        cmp     #>$100,a
         beq     fs_rpar
-        move    #>$20000,x0
-        cmp     x0,a
+        cmp     #>$200,a
         beq     fs_rring
-        move    #>$30000,x0
-        cmp     x0,a
+        cmp     #>$300,a
         beq     fs_rfm
         move    #>$1,x0                 ; SER (and anything unexpected):
         move    x0,x:(r7+$29)           ; B is fed A, out = B
@@ -360,25 +352,17 @@ fs_rdone:
         move    a,x:(r7+$24)
         move    a,x:(r7+$25)
         move    #>$7fffff,x0
-        move    x:(r6+$c),a
+        move    x:(r6+$c),a             ; the select field where it sits (as SRC)
         and     #>$ff00,a
-        move    a1,x1
-        move    x1,a
-        asl     #$8,a,a                 ; mode << 16
-        move    #>$10000,x1
-        cmp     x1,a
+        cmp     #>$100,a
         beq     fs_mbp
-        move    #>$20000,x1
-        cmp     x1,a
+        cmp     #>$200,a
         beq     fs_mhp
-        move    #>$30000,x1
-        cmp     x1,a
+        cmp     #>$300,a
         beq     fs_mntch
-        move    #>$40000,x1
-        cmp     x1,a
+        cmp     #>$400,a
         beq     fs_mvowl
-        move    #>$50000,x1
-        cmp     x1,a
+        cmp     #>$500,a
         beq     fs_mladr
         move    x0,x:(r7+$23)           ; LP, and anything unexpected
         bra     fs_mdone
