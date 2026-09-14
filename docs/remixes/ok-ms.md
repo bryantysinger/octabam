@@ -11,15 +11,28 @@ The two community mods on the stock effects, plus the one bridge they need. No o
 
 ## Status
 
-On hardware, 14 Sep 2026: OKMS2 (this remix). Its predecessor OKMS1 (no KITS RELOAD) trapped on Part Reload (VEC:04); OKMS2 does not.
+Tested on hardware (14 Sep 2026).
 
 ## Build
 
+macOS with [Homebrew](https://brew.sh) (Linux/WSL2: [docs/WSL.md](../WSL.md)); `git`, `python3` (3.10+), `cmake`.
+
 ```bash
-make image REMIX=ok-ms BUILD=1     # -> out/OCTATRACK_OCTABAM1.bin
+git clone --recurse-submodules https://github.com/sambanks/octabam
+cd octabam
+make setup                          # toolchain: vendored tools cloned at their pins, patched, built
+make os                             # downloads OS 1.40C from Elektron into downloads/ (sha256 370c55a3…)
+make recon                          # unpacks it -> out/raw/section_3_MAIN_OS.bin
+make image REMIX=ok-ms BUILD=1      # -> out/OCTATRACK_OCTABAM1.bin (card) + out/OCTATRACK_OS1.40C_OCTABAM1.syx (MIDI)
 ```
 
-[BUILDING.md](BUILDING.md) is the walk-through from a fresh machine to a flashed unit. `make check REMIX=ok-ms` runs every gate first.
+`BUILD` is a one- or two-digit number of your choosing; it becomes the OS version string (`OCTABAM1`). Optional gates: `make emu-cf` then `make check REMIX=ok-ms` (builds the local ColdFire emulator and boots the image in it).
+
+Flash: on the unit PROJECT → SYSTEM → USB DISK MODE → YES; copy `out/OCTATRACK_OCTABAM1.bin` to the root of the card; eject; PROJECT → SYSTEM → OS UPGRADE → YES; after the restart, power-cycle once more. SYSTEM STATUS → OS VERSION reads `OCTABAM1`.
+
+Back to stock: power on holding FUNC → STARTUP MENU → TRIG 3 (MIDI UPGRADE) → send `downloads/extracted/OCTATRACK_OS1.40C.syx` over DIN MIDI.
+
+[BUILDING.md](BUILDING.md) has each step in full.
 
 ## Before you flash
 
