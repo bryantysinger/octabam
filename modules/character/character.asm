@@ -42,9 +42,10 @@
 ;   $20 m (MIX)   $21 fold gain/64  $22 (free, was the tanh drive)  $23 crush mask
 ;   $24 carrier step  $25 srr mask  $26 comp amount    $27 makeup/4
 ;   $28 the dip's a   $29 sat mode   $2b width side gain
-;   $2c width mid gain  $2d attack coeff   $2e release coeff  $2f bypass
+;   $2c width mid gain  $2d attack coeff   $2e release coeff
 ;   $30 ->DEL level     $31 ->VRB level
-;   $3e RET return level   $3f 0 (was DLY; one return since 7 Sep 2026)
+;   $3e RET return level   ($3f, the retired DLY return level, went 14 Sep 2026:
+;   it was written 0 every block and multiplied into every return sample)
 ;   $40 FX2-slot flag (set at init: 1 = this instance is on FX2, dry; per block)
 ;   $41/$42 DC block L x1/y1, $43/$44 R x1/y1 (TUBE; PERSISTENT, zeroed at init; long-form slots)
 ;   $37 d/2  $38 d  $4c (0.5+d)/2  $39 comp/4 (TUBE, per block)   $3a e/2  $3b 1-e (INFL, per block)
@@ -80,9 +81,9 @@
 ; saturation character and the compressor mode are per-block COEFFICIENTS
 ; for exactly this reason: a dispatch inside the loop cannot be priced.
 ;
-; Every mpy is `mpy x0,y1` (the audited-signed encoding) except the send
-; taps, which are SEND's `mpy x1,y1` / `mpy x1,y0` with a non-negative level
-; second. Every Tcc reads the ONE compare above it with nothing but moves
+; Every mpy is `mpy x0,y1` (the audited-signed encoding) except the three
+; in the callees whose second operand is a non-negative coefficient, each
+; commented at its site. Every Tcc reads the ONE compare above it with nothing but moves
 ; between (the flag-clobber trap).
 ; ---------------------------------------------------------------------------
 
@@ -117,12 +118,9 @@ init:
         move    a,x:(r7+$16)
         move    a,x:(r7+$17)
         move    a,x:(r7+$18)
-        move    a,x:(r7+$1d)            ; the compressors' states: LMC1 s1, s2 / AC1 level_s
-        move    a,x:(r7+$1e)
-        move    a,x:(r7+$2a)
+        move    a,x:(r7+$1e)            ; the compressor's state: AC1 level_s
         move    #>$7fffff,x0
         move    x0,x:(r7+$1f)           ; gr = unity
-        move    x0,x:(r7+$45)
         rts
 
 proc:
@@ -340,8 +338,7 @@ ch_cdone:
         clr     a
         move    a,x:(r7+$46)            ; the DC blocker off (k = R = 0) unless TUBE
         move    a,x:(r7+$47)
-        move    a,x:(r7+$3e)            ; return levels: 0 until RET is read below
-        move    a,x:(r7+$3f)
+        move    a,x:(r7+$3e)            ; return level: 0 until RET is read below
         move    a,x:(r7+$29)            ; sat mode: 0 = TAPE
         move    x:(r6+$c),a
         and     #>$ff00,a
@@ -414,10 +411,11 @@ ch_sdone:
 ; never returned (FAILURE_MODES "the one-aux return never reaches T8":
 ; the station ran with r7 = $6a00, took ch_nopos, cleared RET, stamped
 ; nothing, and both hosts kept printing -- reproduced under the port).
+; Only $6a00 (position 3's FX1) can get here: position 3's FX2 is $6b00,
+; and an FX2 instance's allocator base is 0x4000/0x8000/0x30000/0x34000
+; (the X:0x255 table, DSP.md s10), so its $40 flag returns proc at its
+; first instruction. The $6b00 compare that sat here went 14 Sep 2026.
         move    #>$6a00,x0
-        cmp     x0,a
-        beq     ch_pos3
-        move    #>$6b00,x0
         cmp     x0,a
         beq     ch_pos3
 ch_nopos:
@@ -597,9 +595,7 @@ ch_ndl:
 ; ---- BYPASS: the defaults are a bit-exact passthrough ---------------------
 ; DRV 0, FOLD 0, CRSH 0, COMP 0, MIX 127, RING 0, WDTH 64, SRR OFF. Every
 ; part that ever chose LO-FI runs this after the flash, so the neutral block
-; copies nothing and only does the sends.
-        clr     b
-        move    b,x:(r7+$2f)
+; does nothing at all.
         move    x:(r6+$0),a             ; DRV
         tst     a
         bne     ch_live
@@ -611,8 +607,7 @@ ch_ndl:
         cmp     x0,a                    ; is identity)
         bne     ch_live
         move    x:(r7+$3e),a            ; a return level up needs the loop
-        move    x:(r7+$3f),b
-        add     b,a
+        tst     a
         bne     ch_live
         move    x:(r6+$3),a             ; COMP
         tst     a
@@ -626,8 +621,7 @@ ch_ndl:
         move    x:(r7+$2b),a            ; side gain/2: 64 -> exactly 0.5
         move    #>$400000,x0
         cmp     x0,a
-        bne     ch_live
-        bra     ch_bypass
+        beq     ch_bypass
 ch_live:
 
 ; ===========================================================================
@@ -636,30 +630,24 @@ ch_live:
         move    #>$1,n0
         do      n7,>ch_end
 ; ---- the return FIRST (13 Sep 2026): the bus wet enters before the chain --
-; Skipped per sample when both levels are 0 -- a forward skip, the class
+; Skipped per sample when the level is 0 -- a forward skip, the class
 ; CYCLES_FORWARD_BRANCHES admits. The wet in x0 goes negative, so the mpy is
 ; the audited-signed x0,y1 order; the level is the knob word (val/128, >= 0).
+; (r5, the delay's own read pointer, is still set per block: the delay-only
+; case above returns it through r4. The second tap that read y:(r5)+ at the
+; retired DLY level -- a hard 0 -- went 14 Sep 2026.)
         move    x:(r7+$3e),a
-        move    x:(r7+$3f),b
-        add     b,a
+        tst     a
         beq     ch_noret
         move    x:(r0),a
         move    y:(r4)+,x0              ; wet L (the last live stage's)
         move    x:(r7+$3e),y1           ; RET
         mpy     x0,y1,b
         add     b,a
-        move    y:(r5)+,x0
-        move    x:(r7+$3f),y1           ; 0 since the one-aux rig
-        mpy     x0,y1,b
-        add     b,a
         move    a,x:(r0)
         move    x:(r0+n0),a
         move    y:(r4)+,x0              ; wet R
         move    x:(r7+$3e),y1
-        mpy     x0,y1,b
-        add     b,a
-        move    y:(r5)+,x0
-        move    x:(r7+$3f),y1
         mpy     x0,y1,b
         add     b,a
         move    a,x:(r0+n0)
@@ -925,45 +913,12 @@ ch_end:
         rts
 
 ; ===========================================================================
-; BYPASS LOOP: frames untouched, sends only
+; BYPASS: frames untouched -- nothing to do at all (Spectrum's shape)
+; The loop that sat here (14 Sep 2026) added the returns at a level it had
+; just tested to be 0: ch_bypass is reached only through the RET test
+; above, so its per-sample gate was always taken and it only walked r0.
 ; ===========================================================================
 ch_bypass:
-        move    #>$1,n0
-        do      n7,>ch_byz
-; ---- the returns (BUS mode): added LAST, after the send taps -------------
-; Skipped per sample when both levels are 0 -- a forward skip, the class
-; CYCLES_FORWARD_BRANCHES admits. The wet in x0 goes negative, so the mpy is
-; the audited-signed x0,y1 order; the level is the knob word (val/128, >= 0).
-        move    x:(r7+$3e),a
-        move    x:(r7+$3f),b
-        add     b,a
-        beq     ch_bynor
-        move    x:(r0),a
-        move    y:(r4)+,x0              ; reverb wet L
-        move    x:(r7+$3e),y1           ; RVRB
-        mpy     x0,y1,b
-        add     b,a
-        move    y:(r5)+,x0              ; delay wet L
-        move    x:(r7+$3f),y1           ; DLY
-        mpy     x0,y1,b
-        add     b,a
-        move    a,x:(r0)
-        move    x:(r0+n0),a
-        move    y:(r4)+,x0              ; reverb wet R
-        move    x:(r7+$3e),y1
-        mpy     x0,y1,b
-        add     b,a
-        move    y:(r5)+,x0              ; delay wet R
-        move    x:(r7+$3f),y1
-        mpy     x0,y1,b
-        add     b,a
-        move    a,x:(r0+n0)
-ch_bynor:
-        move    #>$2,n0
-        move    (r0)+n0
-        move    #>$1,n0
-ch_byz:
-        nop
         rts
 
 ; ---------------------------------------------------------------------------
