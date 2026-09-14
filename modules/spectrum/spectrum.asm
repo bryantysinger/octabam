@@ -32,9 +32,11 @@
 ; and nothing lost: that buffer was cleared two blocks ago and is read next.
 ;
 ; ---- r7 slots -------------------------------------------------------------
-;   $20 fA (per block, post-modulation)   $21 damp          $22 (free; was DRV's g4)
-;   $23 kLP  $24 kBP  $25 kHP              $26 kA  $27 kB  $28 kR  $29 sel
-;   $2a cHP  $2b cLP  $2c kFM              $2d bypass flag
+;   $20 fA (per block, post-modulation)   $21 damp          $22 CAP rotation count (PERSISTENT)
+;   $23 kLP  $24 kBP  $25 kHP  $2c side gain/2 (WDTH)   $26/$27 CAP lpBase/hpBase (PERSISTENT chases)
+;   $28 CAP 1/nl  $29 CAP trim/2  $2a/$2b CAP o2/o1 (per sample)  $2d mode flag (0 SVF, 1 VOWL, 2 LADR, 3 CAP)
+;   CAP states: hp A..F / lp A..F at $00..$0b (L), $0c..$17 (R) -- VOWL's and LADR's slots, one mode per block
+;   ($1c/$1f/$23/$24 are CAP's per-sample amounts; the SVF's own uses of them never run in the same block)
 ;   $30 FX2-slot flag (set at init: 1 = this instance is on FX2, dry)
 ;   $31 LFO phase (PERSISTENT, masked)     $32 env (PERSISTENT, clamped)
 ;   $34/$35 SVF lp/bp L   $36/$37 SVF lp/bp R                 (PERSISTENT)
@@ -117,6 +119,15 @@ fs_iz:
         move    b,x:(r7+$30)            ; the FX2 flag (1 = dry pass), after the clear
         move    a,x:(r7+$2e)            ; g2run and dg: the ramp starts from 0
         move    a,x:(r7+$2f)
+        move    #>$3,x0                 ; CAP's rotation: the third pole of each
+        move    x0,x:(r7+$40)           ; sample by count (3 4 5 3 4 5), read
+        move    x0,x:(r7+$43)           ; per sample at $40 + count
+        move    #>$4,x0
+        move    x0,x:(r7+$41)
+        move    x0,x:(r7+$44)
+        move    #>$5,x0
+        move    x0,x:(r7+$42)
+        move    x0,x:(r7+$45)
         rts
 
 proc:
@@ -152,27 +163,6 @@ proc:
         move    a,x:(r7+$21)            ; (13 Sep 2026: the same dial, the ZDF form)
 ; (DRV retired 13 Sep 2026: page-2 slot 6 is blank; Character owns drive. The
 ; per-sample stage was x * (0.25 + DRV*0.75) * 4 -- exactly x at DRV 0.)
-; cHP = BASE^2 * 0.5 ;  cLP = WDTH^2 * 1.0 + 0.002  (one-pole coefficients)
-; cLP's scale was 0.75 until 12 Sep 2026: WDTH 127 then sat at 0.74 (about
-; 7 kHz per pole, 12 dB/oct above it), so "open" lost 5 dB at 10 kHz and 8 dB
-; at 15 kHz in EVERY live setting -- measured on noise, station_laws.py --
-; and only the all-defaults bypass was flat. At 1.0 WDTH 127 is 0.986: a
-; corner near 30 kHz per pole, flat within 0.15 dB at 10 kHz.
-        move    x:(r6+$2),x0
-        move    x:(r6+$2),y1
-        mpy     x0,y1,a
-        move    a,x0
-        move    #$40,y1                 ; (short immediate: bits 23-16)
-        mpy     x0,y1,a
-        move    a,x:(r7+$2a)
-        move    x:(r6+$3),x0
-        move    x:(r6+$3),y1
-        mpy     x0,y1,a
-        move    a,x0
-        move    #>$7fffff,y1            ; x 1.0
-        mpy     x0,y1,a
-        add     #>$4189,a
-        move    a,x:(r7+$2b)
 ; RATE (slot 10 KNOB of r6+$e): lfo inc = RATE^2 * $7000 + $100 per block
 ; (~0.08..9 Hz); fall = $7fe000 - RATE * $1e00 (~370 ms .. ~3 ms release)
         move    x:(r6+$e),a             ; a knob word: bit 23 clear, a2 = 0
@@ -218,37 +208,28 @@ proc:
         clr     a
         move    a,x:(r7+$1e)            ; this block's peak starts at 0
 
-; ---- SRC (slot 11 select of r6+$e): mod = env | lfo | (env+lfo)/2 ---------
-; The select is bits 8-15 of the knob word (bit 23 clear, so a2 = 0 and
-; the and leaves it 0): compare the masked field where it sits, no shift
-; and no clean reload (14 Sep 2026; long immediates, never the 6-bit form).
-        move    x:(r6+$e),a
-        and     #>$ff00,a
-        cmp     #>$100,a
-        beq     fs_slfo
-        cmp     #>$200,a
-        beq     fs_sboth
-        move    x:(r7+$32),a            ; ENV (and anything unexpected)
-        bra     fs_smod
-fs_slfo:
-        move    x:(r7+$49),a
-        bra     fs_smod
-fs_sboth:
-        move    x:(r7+$32),a
-        move    x:(r7+$49),x0
-        add     x0,a
-        asr     #$1,a,a
-fs_smod:
-; ---- DPTH (slot 8 KNOB of r6+$d): depth = (DPTH - 64)/64, bipolar ---------
-        move    a,x1                    ; mod
-        move    x:(r6+$d),a             ; a knob word: bit 23 clear, a2 = 0
+; ---- ENV (slot 2) and LFO (slot 3): two bipolar depths onto the cutoff ------
+; (14 Sep 2026, Spectrum v2: the SRC select and the one DPTH knob became two
+; page-1 knobs, 64 = none, so the touch-sensitive filter and the moving one
+; are both under the hand.) FREQm = FREQ + (ENV-64)/64 * env + (LFO-64)/64 * lfo.
+        move    x:(r6+$2),a             ; ENV, a knob word (bit 23 clear, a2 = 0)
         and     #>$7f0000,a
         move    #$40,x0
-        sub     x0,a                    ; (DPTH-64)/128
-        asl     #$1,a,a                 ; (DPTH-64)/64, -1 .. +1
+        sub     x0,a
+        asl     #$1,a,a                 ; (ENV-64)/64, -1 .. +1
         move    a,x0
-        move    x1,y1
-        mpy     x0,y1,a                 ; depth * mod  (x0 signed, y1 signed)
+        move    x:(r7+$32),y1           ; env (>= 0)
+        mpy     x0,y1,a
+        move    a,x1                    ; the envelope's term
+        move    x:(r6+$3),a             ; LFO
+        and     #>$7f0000,a
+        move    #$40,x0
+        sub     x0,a
+        asl     #$1,a,a
+        move    a,x0
+        move    x:(r7+$49),y1           ; lfo, bipolar
+        mpy     x0,y1,a                 ; (x0 signed, y1 signed: the audited order)
+        add     x1,a
         move    x:(r6+$0),x0            ; FREQ
         add     x0,a                    ; FREQm
         move    #$0,x0
@@ -321,42 +302,6 @@ fs_smod:
         move    a0,x0
         move    x0,x:(r7+$33)           ; d
 
-; ---- ROUT (slot 9 select of r6+$d): sel, kA, kB, kR, kFM -------------------
-        clr     a
-        move    a,x:(r7+$29)            ; sel = 0
-        move    a,x:(r7+$26)            ; kA
-        move    a,x:(r7+$27)            ; kB
-        move    a,x:(r7+$28)            ; kR
-        move    a,x:(r7+$2c)            ; kFM
-        move    x:(r6+$d),a             ; the select field where it sits (as SRC)
-        and     #>$ff00,a
-        cmp     #>$100,a
-        beq     fs_rpar
-        cmp     #>$200,a
-        beq     fs_rring
-        cmp     #>$300,a
-        beq     fs_rfm
-        move    #>$1,x0                 ; SER (and anything unexpected):
-        move    x0,x:(r7+$29)           ; B is fed A, out = B
-        move    #>$7fffff,x0
-        move    x0,x:(r7+$27)
-        bra     fs_rdone
-fs_rpar:
-        move    #$40,x0                 ; PAR: out = (A + B) / 2
-        move    x0,x:(r7+$26)
-        move    x0,x:(r7+$27)
-        bra     fs_rdone
-fs_rring:
-        move    #>$7fffff,x0            ; RING: out = 2 * A * B
-        move    x0,x:(r7+$28)
-        bra     fs_rdone
-fs_rfm:
-        move    #>$7fffff,x0            ; FM: out = A, f modulated by B
-        move    x0,x:(r7+$26)
-        move    #$40,x0                 ; kFM = 0.5 (0.25 was "a bit little" by ear, 12 Sep 2026)
-        move    x0,x:(r7+$2c)
-fs_rdone:
-
 ; ---- MODE (slot 7 select of r6+$c): tap coefficients; VOWL runs the bank ---
         clr     a
         move    a,x:(r7+$2d)            ; the SVF alternative unless VOWL says so
@@ -371,7 +316,7 @@ fs_rdone:
         cmp     #>$200,a
         beq     fs_mhp
         cmp     #>$300,a
-        beq     fs_mntch
+        beq     fs_mcap
         cmp     #>$400,a
         beq     fs_mvowl
         cmp     #>$500,a
@@ -384,9 +329,56 @@ fs_mbp:
 fs_mhp:
         move    x0,x:(r7+$25)
         bra     fs_mdone
-fs_mntch:
-        move    x0,x:(r7+$23)
-        move    x0,x:(r7+$25)
+fs_mcap:
+; ---- CAP (14 Sep 2026): Airwindows Capacitor2 (Chris Johnson, MIT), the
+; isolator with a dielectric: a lowpass and a highpass (LOW = FREQ, HIGH =
+; RES here, the knobs renamed by the mode) whose one-pole amounts are the
+; knob squared, chased 1/16 per block, and per sample scaled by the signal
+; itself -- |1 - x/nl|, nl = 1 + 6 (1 - NLIN/128) -- six poles per channel
+; rotated three-at-a-time (modules/spectrum/capacitor2_ref.py). Per block:
+; $26 lpBase, $27 hpBase (persistent chases), $28 1/nl, $29 trim/2 =
+; 0.75/cbrt(nl) fitted in NLIN.
+        move    #>$3,x0
+        move    x0,x:(r7+$2d)           ; the loop runs the capacitor
+        move    x:(r6+$0),x0
+        move    x:(r6+$0),y1
+        mpy     x0,y1,a                 ; (LOW/128)^2
+        move    x:(r7+$26),x0
+        sub     x0,a
+        asr     #$4,a,a
+        add     x0,a
+        move    a,x:(r7+$26)            ; lpBase += (target - lpBase)/16
+        move    x:(r6+$1),x0
+        move    x:(r6+$1),y1
+        mpy     x0,y1,a                 ; (HIGH/128)^2
+        move    x:(r7+$27),x0
+        sub     x0,a
+        asr     #$4,a,a
+        add     x0,a
+        move    a,x:(r7+$27)            ; hpBase
+        move    x:(r6+$5),x0            ; C = NLIN/128
+        move    #$60,y1                 ; 6/8
+        mpy     x0,y1,a
+        neg     a
+        add     #>$700000,a             ; nl/8 = 7/8 - 6C/8, 1/8 .. 7/8
+        move    a,x0
+        move    #$10,a                  ; 1/8 (a clean load: a0 = 0)
+        andi    #$fe,ccr
+        rep     #$18
+        div     x0,a
+        move    a0,x0
+        move    x0,x:(r7+$28)           ; 1/nl, 1/7 .. 1
+        move    x:(r6+$5),x0
+        move    x:(r6+$5),y1
+        mpy     x0,y1,a                 ; C^2
+        move    a,x0
+        move    #>$326e98,y1            ; 0.394
+        mpy     x0,y1,a
+        move    x:(r6+$5),x0
+        move    #>$fb6db7,y1            ; -0.036
+        mac     x0,y1,a
+        add     #>$322d0e,a             ; + 0.392: trim/2 = 0.75/cbrt(nl), fitted
+        move    a,x:(r7+$29)
         bra     fs_mdone
 fs_mvowl:
 ; ---- VOWL (13 Sep 2026): three parallel constant-peak-gain resonators
@@ -525,11 +517,17 @@ fs_mladr:
         asr     #$4,a,a
         move    a,x:(r7+$15)            ; dG
 fs_mdone:
+; ---- WDTH (slot 4): stereo width of the output, Character's mid/side ------
+; drawn -64..+63; the knob word IS WDTH/128 = the side gain HALVED (64 -> 0.5,
+; doubled back in the guard bits per sample: 0 = mono, 127 = double sides).
+        move    x:(r6+$4),a
+        and     #>$7f0000,a
+        move    a,x:(r7+$2c)            ; ($25 is the SVF's HP tap -- 14 Sep 2026's first build put this there and every LP leaked half its HP)
 
 ; ---- BYPASS: the defaults are a bit-exact passthrough ---------------------
-; FREQ 127, RES 0, BASE 0, WDTH 127, DPTH 64, MODE LP, ROUT SER. Every
-; part that ever chose stock FILTER runs this on FX1 after the flash, so the
-; neutral block copies nothing and only does the sends.
+; FREQ 127, RES 0, ENV 64, LFO 64, WDTH 64, MODE LP (NLIN is CAP's alone).
+; Every part that ever chose stock FILTER runs this on FX1 after the flash,
+; so the neutral block copies nothing at all.
         clr     b
         move    x:(r6+$0),a
         move    #$7f,x0
@@ -538,20 +536,19 @@ fs_mdone:
         move    x:(r6+$1),a
         tst     a
         bne     fs_live
+        move    #$40,x0
         move    x:(r6+$2),a
-        tst     a
+        cmp     x0,a
         bne     fs_live
         move    x:(r6+$3),a
+        cmp     x0,a
+        bne     fs_live
+        move    x:(r6+$4),a
         cmp     x0,a
         bne     fs_live
         move    x:(r6+$c),a             ; the MODE select (slot 6's knob field is
         and     #>$ff00,a               ; blank since DRV went, 13 Sep 2026)
         bne     fs_live                 ; AND sets Z from A1 (a2 = a0 = 0 here)
-        move    x:(r6+$d),a             ; DPTH knob field AND the ROUT select
-        and     #>$7fff00,a             ; (a knob word: a2 = 0, no clean reload)
-        move    #$40,x0
-        cmp     x0,a
-        bne     fs_live
         bra     fs_bypass
 fs_live:
 
@@ -587,18 +584,7 @@ fs_live:
 ; ===================== channel L =====================
         move    x:(r0),x0
         move    x0,x:(r7+$1d)           ; park x
-; FM: g = clamp(g2run * (1 + kFM * B_prev)), d frozen for the block
-        move    x:(r7+$19),x0           ; B_prev L
-        move    x:(r7+$2c),y1           ; kFM (0 unless ROUT = FM)
-        mpy     x0,y1,a                 ; kFM * B, +-0.5
-        move    a,x0
-        move    x:(r7+$2e),y1           ; g2run
-        mpy     x0,y1,a                 ; g2run * kFM * B: MULTIPLICATIVE FM,
-        move    x:(r7+$2e),x0           ; so g stays positive by construction
-        add     x0,a                    ; g = g2run * (1 + kFM * B)
-        move    #$7f,x0                 ; g2 < 1 (the halved g's own rail)
-        cmp     x0,a
-        tgt     x0,a
+        move    x:(r7+$2e),a            ; g = g2run (FM went with filter B, 14 Sep 2026)
         move    a,x:(r7+$1c)            ; g2 this sample
         move    x:(r7+$1d),x1           ; x (DRV retired: x_d == x)
 ; t8 = (x_d - (2R+g)*s0 - s1)/8, pre-scaled so nothing clamps before hp
@@ -651,28 +637,13 @@ fs_live:
         move    a,x:(r7+$1b)            ; wetA
 ; filter B and the mix (the shared callee); r3 -> this channel's B poles,
 ; n3 -> its B_prev from there
-        move    r7,r3
-        move    #$38,n3
-        move    (r3)+n3
-        move    #>$ffffe1,n3
-        bsr     fs_bmix
+        move    x:(r7+$1b),a            ; wetA is the output (filter B and the mix went 14 Sep 2026)
         move    a,x:(r0)                ; out L (limited)
 ; ===================== channel R =====================
         move    x:(r0+n0),x0
         move    x0,x:(r7+$1d)           ; park x
-; FM: g = clamp(g2run * (1 + kFM * B_prev)), d frozen for the block
-        move    x:(r7+$1a),x0           ; B_prev R
-        move    x:(r7+$2c),y1           ; kFM (0 unless ROUT = FM)
-        mpy     x0,y1,a                 ; kFM * B, +-0.5
-        move    a,x0
-        move    x:(r7+$2e),y1           ; g2run
-        mpy     x0,y1,a                 ; g2run * kFM * B: MULTIPLICATIVE FM,
-        move    x:(r7+$2e),x0           ; so g stays positive by construction
-        add     x0,a                    ; g = g2run * (1 + kFM * B)
-        move    #$7f,x0                 ; g2 < 1 (the halved g's own rail)
-        cmp     x0,a
-        tgt     x0,a
-        move    a,x:(r7+$1c)            ; g2 this sample
+        move    x:(r7+$2e),a            ; g = g2run
+        move    a,x:(r7+$1c)
         move    x:(r7+$1d),x1           ; x (DRV retired: x_d == x)
 ; t8 = (x_d - (2R+g)*s0 - s1)/8, pre-scaled so nothing clamps before hp
         move    x:(r7+$36),x0           ; s0
@@ -724,18 +695,18 @@ fs_live:
         move    a,x:(r7+$1b)            ; wetA
 ; filter B and the mix (the shared callee); r3 -> this channel's B poles,
 ; n3 -> its B_prev from there
-        move    r7,r3
-        move    #$3c,n3
-        move    (r3)+n3
-        move    #>$ffffde,n3
-        bsr     fs_bmix
+        move    x:(r7+$1b),a            ; wetA is the output (filter B and the mix went 14 Sep 2026)
         move    a,x:(r0+n0)                ; out R (limited)
         bra     fs_join
 ; MODEFORK_MID -- alternative 2: VOWL, the three-formant bank
 fs_v_or_l:
         move    #>$1,x0
         cmp     x0,a
-        bne     fs_ladr                 ; 2: the ladder (the third alternative)
+        beq     fs_vowl
+        move    #>$2,x0
+        cmp     x0,a
+        bne     fs_cap                  ; 3: the capacitor (the fourth alternative)
+        bra     fs_ladr
 fs_vowl:
 ; ===================== channel L =====================
         move    x:(r0),x0
@@ -824,11 +795,7 @@ fs_vowl:
 ; reloaded sum did
         add     y0,a
         move    a,x:(r7+$1b)            ; wetA
-        move    r7,r3
-        move    #$38,n3
-        move    (r3)+n3
-        move    #>$ffffe1,n3
-        bsr     fs_bmix
+        move    x:(r7+$1b),a            ; wetA is the output (filter B and the mix went 14 Sep 2026)
         move    a,x:(r0)                ; out L (limited)
 ; ===================== channel R =====================
         move    x:(r0+n0),x0
@@ -917,11 +884,7 @@ fs_vowl:
 ; reloaded sum did
         add     y0,a
         move    a,x:(r7+$1b)            ; wetA
-        move    r7,r3
-        move    #$3c,n3
-        move    (r3)+n3
-        move    #>$ffffde,n3
-        bsr     fs_bmix
+        move    x:(r7+$1b),a            ; wetA is the output (filter B and the mix went 14 Sep 2026)
         move    a,x:(r0+n0)                ; out R (limited)
         bra     fs_join
 ; MODEFORK_MID -- alternative 3: LADR, the linear zero-delay Moog ladder
@@ -938,31 +901,77 @@ fs_ladr:
 ; the ladder core (fs_lcore, one straight-line callee per channel, 13 Sep
 ; 2026: inline it overran payload A by 20 words): x0 = B_prev, r3 -> the
 ; four states; wetA lands in $1b
-        move    x:(r7+$19),x0           ; B_prev
+        move    #>$0,x0                 ; B_prev (FM went with filter B, 14 Sep 2026)
         move    r7,r3                   ; states s0..s3 at $00
         bsr     fs_lcore
-        move    r7,r3
-        move    #$38,n3
-        move    (r3)+n3
-        move    #>$ffffe1,n3
-        bsr     fs_bmix
+        move    x:(r7+$1b),a            ; wetA is the output (filter B and the mix went 14 Sep 2026)
         move    a,x:(r0)                ; out (limited)
 ; ===================== channel R =====================
         move    x:(r0+n0),x0
         move    x0,x:(r7+$1d)           ; park x
-        move    x:(r7+$1a),x0           ; B_prev
+        move    #>$0,x0                 ; B_prev (0)
         move    r7,r3
         move    #$8,n3
         move    (r3)+n3                 ; states s0..s3 at $08
         bsr     fs_lcore
-        move    r7,r3
-        move    #$3c,n3
-        move    (r3)+n3
-        move    #>$ffffde,n3
-        bsr     fs_bmix
+        move    x:(r7+$1b),a            ; wetA is the output (filter B and the mix went 14 Sep 2026)
         move    a,x:(r0+n0)                ; out (limited)
+        bra     fs_join                 ; (LADR fell into CAP on the first v2 build: silent)
+; MODEFORK_MID -- alternative 4: CAP, Airwindows Capacitor2 (MIT; 14 Sep 2026)
+fs_cap:
+; the rotation: count = (count + 1) mod 6 picks which two of the five moving
+; pole pairs join pole A this sample (B or C, then D, E or F); the offsets
+; come from a six-word table at $40 written at init.
+        move    x:(r7+$22),a
+        add     #>$1,a
+        move    #>$6,x0
+        cmp     x0,a
+        move    #>$0,x1
+        tge     x1,a
+        move    a,x:(r7+$22)
+        move    r7,r3
+        move    #>$40,n3
+        move    (r3)+n3
+        move    a1,n3
+        move    x:(r3+n3),x0            ; o2 = 3, 4 or 5
+        move    x0,x:(r7+$2a)
+        and     #>$1,a
+        add     #>$1,a                  ; o1 = 1 or 2
+        move    a1,x:(r7+$2b)
+; ===================== channel L =====================
+        move    x:(r0),a
+        move    r7,r3                   ; L states at $00 (hp A..F) / $06 (lp A..F)
+        bsr     fs_ccore
+        move    a,x:(r0)                ; out (limited)
+; ===================== channel R =====================
+        move    x:(r0+n0),a
+        move    r7,r3
+        move    #$0c,n3
+        move    (r3)+n3                 ; R states at $0c / $12
+        bsr     fs_ccore
+        move    a,x:(r0+n0)
 ; MODEFORK_END
 fs_join:
+; ---- WDTH: mid stays, side scales (Character's width, 14 Sep 2026) --------
+        move    x:(r0),a                ; L
+        move    x:(r0+n0),x0            ; R
+        add     x0,a
+        asr     #$1,a,a
+        move    a,x1                    ; mid
+        move    x:(r0),a
+        sub     x0,a
+        asr     #$1,a,a
+        move    a,x0                    ; side
+        move    x:(r7+$2c),y1           ; side gain / 2
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        move    a,y0                    ; scaled side
+        move    x1,a
+        add     y0,a
+        move    a,x:(r0)
+        move    x1,a
+        sub     y0,a
+        move    a,x:(r0+n0)
         move    (r0)+n0                 ; the frame advance: n0 is 1 for the
         move    (r0)+n0                 ; whole loop, so two steps, no reload
                                         ; (the `#>$2,n0 / +n0 / #>$1,n0` here
@@ -975,76 +984,115 @@ fs_end:
         rts
 
 ; ---------------------------------------------------------------------------
-; fs_bmix -- filter B (two HP poles at cHP, two LP poles at cLP) and the
-; mix, for one channel. In: x:(r7+$1b) = wetA, x:(r7+$1d) = the parked x,
-; r3 -> the channel's four B poles, (r3+n3) its B_prev (the FM source).
-; Out: a = kA*wetA + kB*B + kR*(2*wetA*B), for the caller's limiting store.
-; Straight-line (one Tcc, nothing between it and its tst): a loop callee.
+; fs_ccore -- Capacitor2 for one channel (Airwindows, MIT; 14 Sep 2026).
+; In: a = x, r3 -> the channel's twelve states (hp A..F at +0..5, lp A..F at
+; +6..11), x:(r7+$2a) = o2 (3/4/5), x:(r7+$2b) = o1 (1/2) this sample.
+; Out: a = x through pole A, the o1 pair and the o2 pair, times trim.
+; scale/2 = |1/2 - x/(2 nl)|; amt/2 = base * scale/2; each pole is
+; s' = s (1 - amt) + x amt (the second mac doubles the halved amount), a
+; highpass takes x - s', a lowpass takes s'. STRAIGHT-LINE. Clobbers x0,
+; x1, y0, y1, b, n3; $1d = the running x, $1f/$23/$24 = this sample's amounts.
 ; ---------------------------------------------------------------------------
-fs_bmix:
-; yB = sel ? wetA : x
-        move    x:(r7+$1b),x1           ; wetA
-        move    x:(r7+$29),b
-        tst     b
-        move    x:(r7+$1d),a
-        tne     x1,a
-        move    a,x:(r7+$1d)            ; yB
-; two HP poles (HP = in - LP2(in)) at cHP
-        move    x:(r3),b                ; h1
-        sub     b,a                     ; yB - h1
+fs_ccore:
+        move    a,x:(r7+$1d)            ; x (the dry drives the dielectric)
+        move    a,x0
+        move    x:(r7+$28),y1           ; 1/nl
+        mpy     x0,y1,a                 ; x/nl
         asr     #$1,a,a
-        move    a,x0
-        move    x:(r7+$2a),y1           ; cHP
+        neg     a
+        add     #>$400000,a             ; 1/2 - x/(2 nl)
+        abs     a
+        move    a,x0                    ; scale/2, 0 .. 1
+        move    x:(r7+$26),y1           ; lpBase
         mpy     x0,y1,a
+        move    a,x:(r7+$1f)            ; lpAmt/2
         asl     #$1,a,a
-        add     b,a                     ; h1'
-        move    a,x:(r3)
-        move    x:(r3+$1),b             ; h2
-        sub     b,a                     ; h1' - h2
-        asr     #$1,a,a
-        move    a,x0
+        neg     a
+        add     #>$7fffff,a
+        move    a,x:(r7+$23)            ; 1 - lpAmt  (-1 .. 1)
+        move    x:(r7+$27),y1           ; hpBase
         mpy     x0,y1,a
+        move    a,x:(r7+$24)            ; hpAmt/2
         asl     #$1,a,a
-        add     b,a                     ; h2'
-        move    a,x:(r3+$1)
-        move    a,x0
-        move    x:(r7+$1d),a
-        sub     x0,a                    ; hp2 = yB - h2'
-        move    a,x:(r7+$1d)            ; park hp2
-; two LP poles at cLP
-        move    x:(r3+$2),b             ; l1
-        sub     b,a
-        asr     #$1,a,a
-        move    a,x0
-        move    x:(r7+$2b),y1           ; cLP
+        neg     a
+        add     #>$7fffff,a
+        move    a,x:(r7+$1c)            ; 1 - hpAmt
+; pole A (offset 0 / 6)
+        move    #>$0,n3
+        move    x:(r3+n3),x0            ; hp state
+        move    x:(r7+$1c),y1
         mpy     x0,y1,a
-        asl     #$1,a,a
-        add     b,a
-        move    a,x:(r3+$2)
-        move    x:(r3+$3),b             ; l2
-        sub     b,a
-        asr     #$1,a,a
-        move    a,x0
+        move    x:(r7+$1d),x0
+        move    x:(r7+$24),y1
+        mac     x0,y1,a
+        mac     x0,y1,a                 ; s' = s (1 - amt) + x amt
+        move    a,x:(r3+n3)
+        move    x:(r7+$1d),b
+        sub     a,b                     ; x - s'
+        move    b,x:(r7+$1d)
+        move    #>$6,n3
+        move    x:(r3+n3),x0            ; lp state
+        move    x:(r7+$23),y1
         mpy     x0,y1,a
-        asl     #$1,a,a
-        add     b,a
-        move    a,x:(r3+$3)             ; B_out = l2'
-        move    a,x:(r3+n3)             ; B_prev for next sample's FM
-; out = kA*wetA + kB*B + kR*(2*wetA*B)
-        move    a,x0                    ; B_out
-        move    x:(r7+$27),y1           ; kB
+        move    x:(r7+$1d),x0
+        move    x:(r7+$1f),y1
+        mac     x0,y1,a
+        mac     x0,y1,a
+        move    a,x:(r3+n3)
+        move    a,x:(r7+$1d)            ; x = s'
+; the o1 pair (B or C)
+        move    x:(r7+$2b),n3
+        move    x:(r3+n3),x0
+        move    x:(r7+$1c),y1
         mpy     x0,y1,a
-        move    x:(r7+$1b),y1           ; wetA (signed x signed: the known-
-        mpy     x0,y1,b                 ; signed order)
-        asl     #$1,b,b
-        move    b,x0
-        move    x:(r7+$28),y1           ; kR
-        mpy     x0,y1,b
-        add     b,a
-        move    x:(r7+$1b),x0           ; wetA
-        move    x:(r7+$26),y1           ; kA
-        mpy     x0,y1,b
-        add     b,a
+        move    x:(r7+$1d),x0
+        move    x:(r7+$24),y1
+        mac     x0,y1,a
+        mac     x0,y1,a
+        move    a,x:(r3+n3)
+        move    x:(r7+$1d),b
+        sub     a,b
+        move    b,x:(r7+$1d)
+        move    x:(r7+$2b),a
+        add     #>$6,a
+        move    a1,n3
+        move    x:(r3+n3),x0
+        move    x:(r7+$23),y1
+        mpy     x0,y1,a
+        move    x:(r7+$1d),x0
+        move    x:(r7+$1f),y1
+        mac     x0,y1,a
+        mac     x0,y1,a
+        move    a,x:(r3+n3)
+        move    a,x:(r7+$1d)
+; the o2 pair (D, E or F)
+        move    x:(r7+$2a),n3
+        move    x:(r3+n3),x0
+        move    x:(r7+$1c),y1
+        mpy     x0,y1,a
+        move    x:(r7+$1d),x0
+        move    x:(r7+$24),y1
+        mac     x0,y1,a
+        mac     x0,y1,a
+        move    a,x:(r3+n3)
+        move    x:(r7+$1d),b
+        sub     a,b
+        move    b,x:(r7+$1d)
+        move    x:(r7+$2a),a
+        add     #>$6,a
+        move    a1,n3
+        move    x:(r3+n3),x0
+        move    x:(r7+$23),y1
+        mpy     x0,y1,a
+        move    x:(r7+$1d),x0
+        move    x:(r7+$1f),y1
+        mac     x0,y1,a
+        mac     x0,y1,a
+        move    a,x:(r3+n3)
+        move    a,x0                    ; x = s'
+        move    x:(r7+$29),y1           ; trim/2
+        mpy     x0,y1,a
+        asl     #$1,a,a                 ; out = x trim
         rts
 
 ; ---- fs_lcore: the ladder's per-channel core (LADR, 13 Sep 2026) ----------

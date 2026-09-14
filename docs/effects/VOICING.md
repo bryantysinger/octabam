@@ -2491,3 +2491,22 @@ TONE into each mode: Sam "all sound great!" **CHARACTER IS VOICED**: TAPE
 subtle by the plugin's law), INFL (its own lift kept), FOLD at a held
 level, TXTR = Pockey, TONE the tilt, COMP/GLUE by position, WDTH bipolar,
 MIX, RET. Next: Spectrum's live round, then Modulation, per the roadmap.
+
+**14 Sep 2026, SPECTRUM v2 BUILT (image 14), from Sam's round on image 13:**
+"how does lp / bp / hp work on sem? ... what does wdth do again? ... maybe
+we go for it and can make calls for each mode as we go" and "I'd be happy
+to ditch wah and re-eval the filter choices". The station is a filter
+pedal now: MODE = LP / BP / HP (the SEM, as voiced), CAP (Airwindows
+Capacitor2, MIT: the isolator whose one-pole amounts the signal itself
+bends -- LOW / HIGH / NLIN, the cutoff pair renamed by the mode), VOWL,
+LADR; NOTCH, filter B (BASE), the SER/PAR/RING/FM routing and the SRC
+select are gone. Page 1: FREQ, RES, ENV, LFO, WDTH (all three bipolar,
+drawn -64..+63), NLIN; page 2: MODE, RATE. FREQ's floor is 60 Hz ("freq
+goes all the way to silent"). CAP tracks its transcription
+(modules/spectrum/capacitor2_ref.py) to a mean error of 6e-4 at NLIN 127,
+exact below; its open setting sits at the plugin's own trim, -2.1 dB.
+Two v2 build faults caught by the gate before any flash: the width gain
+landed on the SVF's HP-tap slot (every LP leaked half its HP), and LADR
+fell through into the new CAP alternative (silent). Spectrum prices 290
+(was 369: filter B and FM gone), CAP the dearest mode at ~280 live.
+Unheard: every mode, for Sam's hand.

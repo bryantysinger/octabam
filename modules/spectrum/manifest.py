@@ -38,27 +38,29 @@ Every mpy is `mpy x0,y1`, the audited-signed form; every clip is the store
 limiter. Cycles: the whole loop is straight-line and priced by `make cycles`.
 """
 
-from remix.schema import (BusRole, Claims, DspSection, Formatter, Harness, Kind,
+from remix.schema import (ModeView, BusRole, Claims, DspSection, Formatter, Harness, Kind,
                           MenuEntry, Module, Param, YBase)
 
 _PLAIN = Formatter.PLAIN
 _STEP = Formatter.STEPPED
+_BIPOL = Formatter.BIPOLAR   # drawn -64..+63 around 64 (14 Sep 2026)
 
 _BLANK = Param(b"", 0)
 
-# The SEM core's g/2 = tan(pi*fc/fs)/2 at FREQ 0, 4, .., 128 for fc = 24 Hz *
-# 625^(FREQ/128): exponential, 9.3 octaves to 15 kHz, an equal step per
-# detent (13 Sep 2026; the Chamberlin table it replaced held 2*sin(pi*fc/fs)
+# The SEM core's g/2 = tan(pi*fc/fs)/2 at FREQ 0, 4, .., 128 for fc = 60 Hz *
+# 250^(FREQ/128): exponential, 8 octaves to 15 kHz, an equal step per detent
+# (the floor was 24 Hz until 14 Sep 2026 -- Sam: "freq goes all the way to
+# silent"; 13 Sep 2026; the Chamberlin table it replaced held 2*sin(pi*fc/fs)
 # to 7.2 kHz, that topology's stable ceiling). Halved so g stays a
 # fraction: tan at 15 kHz is 1.82.
 G2_TABLE = (
-    0x001c03, 0x002241, 0x0029e3, 0x003339, 0x003ea3, 0x004c98,
-    0x005daa, 0x00728a, 0x008c10, 0x00ab47, 0x00d173, 0x010021,
-    0x013938, 0x017f0b, 0x01d472, 0x023cea, 0x02bcb9, 0x035923,
-    0x04189e, 0x05032a, 0x0622b3, 0x0783a2, 0x0935a9, 0x0b4ce9,
-    0x0de3ca, 0x111dfe, 0x152dca, 0x1a5de8, 0x21258f, 0x2a54ef,
-    0x3785f2, 0x4c7450, 0x748895,
-)
+    0x004608, 0x005338, 0x0062e4, 0x007584, 0x008ba6, 0x00a5f3,
+    0x00c534, 0x00ea59, 0x01167d, 0x014af3, 0x01894c, 0x01d367,
+    0x022b7d, 0x029435, 0x0310b7, 0x03a4cb, 0x0454f5, 0x0526a1,
+    0x06205b, 0x074a11, 0x08ad72, 0x0a5676, 0x0c541f, 0x0eb998,
+    0x11a007, 0x15297c, 0x198619, 0x1efd7f, 0x260151, 0x2f5508,
+    0x3c6e04, 0x508579, 0x748894,
+    )
 
 # VOWL: cos(2*pi*F/fs) for five vowels x three formants, Peterson & Barney
 # (1952) male means as the classic formant tables carry them --
@@ -85,7 +87,7 @@ MODULE = Module(
     name="spectrum",
     key="SPECTRUM",
     kind=Kind.DSP_EFFECT,
-    doc="BamSep26 station: dual filter (SVF + base/width), LFO/env, SER/PAR/RING/FM, sends.",
+    doc="BamSep26 station: a filter pedal -- SEM LP/BP/HP, Airwindows Capacitor2, formants, the Moog ladder; ENV and LFO onto the cutoff; width.",
     menu=MenuEntry(
         fx2_id=0x04,
         replaces="FILTER",            # stock FILTER's id: both menus, every part
@@ -97,31 +99,31 @@ MODULE = Module(
     params=(
         # ---- page 1: the performance surface, scene/CC-reachable -----------
         Param(b"FREQ", 127, active=True, formatter=_PLAIN,
-              doc="filter A cutoff, 24 Hz..15 kHz exponential taper; in VOWL the vowel A-E-I-O-U"),
+              doc="cutoff, 60 Hz..15 kHz exponential; in VOWL the vowel A-E-I-O-U; in CAP the LOW cut"),
         Param(b"RES", 0, active=True, formatter=_PLAIN,
-              doc="filter A resonance, up to Q~33 (self-oscillates, bounded); in VOWL the formants' bandwidth"),
-        Param(b"BASE", 0, active=True, formatter=_PLAIN,
-              doc="filter B high-pass corner (12 dB/oct); 0 = open"),
-        Param(b"WDTH", 127, active=True, formatter=_PLAIN,
-              doc="filter B low-pass corner above BASE (12 dB/oct); 127 = open"),
-        _BLANK,   # -DEL: the stations lost their sends in the one-aux rig (7 Sep 2026)
-        _BLANK,   # -VRB: the stations lost their sends in the one-aux rig (7 Sep 2026)
+              doc="resonance, up to Q~33 (bounded); in VOWL the formants' bandwidth; in CAP the HIGH cut"),
+        Param(b"ENV", 64, 128, active=True, formatter=_BIPOL,
+              doc="the envelope follower onto the cutoff, drawn -64..+63; 0 = none"),
+        Param(b"LFO", 64, 128, active=True, formatter=_BIPOL,
+              doc="the LFO onto the cutoff, drawn -64..+63; 0 = none (RATE on page 2)"),
+        Param(b"WDTH", 64, 128, active=True, formatter=_BIPOL,
+              doc="stereo width of the output, drawn -64..+63: 0 untouched, -64 mono, +63 double sides"),
+        Param(b"NLIN", 0, active=True, formatter=_PLAIN,
+              doc="CAP only: the dielectric's nonlinearity, the signal bending the cutoff; 0 mild, 127 intense"),
         # ---- page 2: knob / select / knob / select / knob / select ----------
-        _BLANK,   # DRV retired 13 Sep 2026 (Sam: "we have DRVs everywhere" -- Character owns drive)
+        _BLANK,
         Param(b"MODE", 0, 6, active=True, formatter=_STEP,
-              labels=("LP", "BP", "HP", "NTCH", "VOWL", "LADR"),
-              doc="filter A response; VOWL = formant bank morphed by FREQ; LADR = the Moog ladder, 24 dB/oct"),
-        Param(b"DPTH", 64, 128, active=True, formatter=_PLAIN,
-              doc="modulation depth onto A's cutoff, bipolar around 64 = none"),
-        Param(b"ROUT", 0, 4, active=True, formatter=_STEP,
-              labels=("SER", "PAR", "RING", "FM"),
-              doc="SER A into B; PAR A+B; RING A*B; FM B's output modulates A's cutoff"),
+              labels=("LP", "BP", "HP", "CAP", "VOWL", "LADR"),
+              doc="LP/BP/HP the SEM; CAP Airwindows Capacitor2 (LOW/HIGH/NLIN); VOWL formants by FREQ; LADR the Moog"),
+        _BLANK,   # was DPTH (14 Sep 2026: ENV and LFO on page 1)
+        _BLANK,   # was ROUT (SER/PAR/RING/FM: filter B retired 14 Sep 2026)
         Param(b"RATE", 64, 128, active=True, formatter=_PLAIN,
               doc="LFO speed ~0.08..9 Hz, and the envelope release (0 slow .. 127 fast)"),
-        Param(b"SRC", 0, 3, active=True, formatter=_STEP,
-              labels=("ENV", "LFO", "BOTH"),
-              doc="what DPTH applies: the envelope follower, the LFO, or half of each"),
+        _BLANK,   # was SRC (14 Sep 2026: both depths have their own knob)
     ),
+    # CAP renames the cutoff pair to what they are there (14 Sep 2026)
+    mode_slot=7,
+    mode_views=(ModeView(mode=3, names={0: b"LOW", 1: b"HIGH"}),),
     dsp=DspSection(
         asm="modules/spectrum/spectrum.asm",
         # FREQ's taper: 33 SVF f coefficients (Q23, 2*sin(pi*fc/fs)) at FREQ
