@@ -907,9 +907,8 @@ ch_capd:
 ; (the send taps left with the sends, 12 Sep 2026: the stations have had no
 ; send since the one-aux rig; the returns below still need the bus)
 ; (the return moved to the top of the loop, 13 Sep 2026)
-        move    #>$2,n0
-        move    (r0)+n0
-        move    #>$1,n0
+        move    (r0)+n0                 ; the frame advance: n0 is 1 for the
+        move    (r0)+n0                 ; whole loop, so two steps, no reload
 ch_end:
         nop
         rts
