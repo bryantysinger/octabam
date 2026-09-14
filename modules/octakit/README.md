@@ -2,8 +2,8 @@
 
 Em's Octakit — 256 Kits per Project in place of 64 bank-tied Parts — built
 from [emuyia/ems-octakit](https://github.com/emuyia/ems-octakit) (submodule
-`upstream/`, pinned at `92cf70b`, ot-26914). `Kind.CF_PATCH` with a
-`Runtime`: 730 guarded sparse writes into the OS image plus a 154,718-byte
+`upstream/`, pinned at `7ba0ad6`, ot-26914-152100). `Kind.CF_PATCH` with a
+`Runtime`: 735 guarded sparse writes into the OS image plus a 154,766-byte
 runtime in DRAM. No DSP code, no menu row.
 
 Her README (`upstream/README.md`) is the user-facing description: LOAD/SAVE
