@@ -99,8 +99,8 @@ MEASURED (10 Sep 2026, 1.40MIDISC): five regions byte-identical to his
 encoder at his addresses; the linked units, 34 detours and 4 pokes
 install with every assertion passing; `make check REMIX=midi-scenes` and
 `REMIX=mods` green, the reserve reading back equal to the linked runtime
-(8,622 B solo) under the port. NOT measured: nothing flashed from this
-pipeline (his own builds are what has run on hardware). His `apply_part`
+(8,622 B solo) under the port. ON HARDWARE 14 Sep 2026: `OKMS1` (remix
+ok-ms, 1.40MIDISC8 + Octakit) confirmed working by him on his own unit. His `apply_part`
 hook (0x40009094) is shared with Octakit; SCENES KITS bridges it, and
 the ledger still refuses the pair without that module. None of the four
 new 1.40MIDISC sites collides with anything Octakit writes.

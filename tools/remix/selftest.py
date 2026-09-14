@@ -525,6 +525,7 @@ def main():
              # it goes to the mods' own authors, who carry on with their
              # own projects.
              "mods": (),
+             "ok-ms": (),          # Octakit + MIDI SCENES alone, same reason
              "nimbuslite": ("PLATE REV", "SPRING REV"),   # keeps DARK REV
              # deliberately gives up two more, to put a non-reverb donor on
              # the unit for the first time (docs/effects/FLASHPLAN.md)
