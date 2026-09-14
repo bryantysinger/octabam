@@ -58,8 +58,7 @@ and displaces nothing.
 order; `left`/`right` is a real edit. FX2 starts empty (every row is one
 the remix listed); FX1 starts as stock's ten, with the firmware's own NONE
 as row 0, never shown and never losable. Leaving an effect off a chooser
-takes that row and nothing else: its code, descriptor and dispatch stay
-stock. `◀fb` marks the fallback; `·` in the number column is a ColdFire
+removes the row; its code, descriptor and dispatch stay stock. `◀fb` marks the fallback; `·` in the number column is a ColdFire
 patch with no row. Each module's word cost comes from the real assembly
 the background rebuild runs. The pane closes with one line: the per-payload
 budget (`A 74 free · B 5 free`), a ⚠ naming what to remove, or `building…`;

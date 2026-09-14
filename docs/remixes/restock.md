@@ -1,6 +1,6 @@
 # `restock` — Restock
 
-All fourteen stock FX2 effects and nothing else: an octabam-built image that behaves like stock. For undoing a remix without reflashing the stock OS.
+The fourteen stock FX2 effects: an octabam-built image that behaves like stock. For undoing a remix without reflashing the stock OS.
 
 ## What is in it
 

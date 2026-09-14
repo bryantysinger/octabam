@@ -1,6 +1,6 @@
 # `ok-ms` — Octakit + MIDI SCENES
 
-The two community mods on the stock effects, plus the one bridge they need. No octabam effects, no CC PAGE 2, no LO-FI fix.
+Octakit, MIDI SCENES, the KITS RELOAD bridge, the stock effects.
 
 ## What is in it
 
