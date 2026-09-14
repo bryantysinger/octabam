@@ -920,11 +920,23 @@ dwarmz:
 ; PITCH jitter retired; $24/$25 are only ever LOADED into a Tcc source that
 ; does not fire outside GRAIN/REVERSE, which write them first; $6c is skipR,
 ; decoded every block before the loop; $6d had no reader at all.)
-        move    b,x:(r7-$22)            ; TAPE LFO phases: persistent, and
-        move    b,x:(r7-$21)            ; masked on load, but determinism is
-                                        ; what verify-delay bit-compares
-        move    b,x:(r7-$17)            ; GRAIN base age
-        move    b,x:(r7+$15)            ; REVERSE segment phase
+; ---- ONE LOOP CLEARS RAW $27..$5e (14 Sep 2026): the TAPE LFO phases, GRAIN's
+; base age and its 24 record words, REVERSE's segment phase -- everything
+; persistent that a fresh instance must start from 0 for determinism (a
+; boot-garbage scatter subtracts straight into a read address; verify-delay
+; compares bit-exactly) -- and, between them, only per-block and per-sample
+; slots that are written before they are read once the delay runs ($31, the
+; line base, is rewritten every block before this test). 28 single stores
+; became 7 words. The bus bookkeeping ($63-$67, the split-call flags a
+; warm-up call still has to hand to its a=1 half) is ABOVE the span; the
+; write-pointer phases and TONE states ($70/$71/$77/$78) below it keep their
+; own stores.
+        move    r7,a
+        sub     #>$22,a                 ; raw $27 (r7 is rebased by $49)
+        move    a,r5
+        do      #56,>dwarmc
+        move    b,x:(r5)+
+dwarmc:
 ; ---- THE GRAIN COUNT IS A BUILD-TIME LEVER (4 Sep 2026) -------------------
 ; Four grains per line is what this source assembles to. A remix that
 ; declares `grains=2` (schema.Remix) has build_bus.py substitute three
@@ -952,30 +964,6 @@ dwarmz:
 ; and eight read advances, each re-latched at its own grain's wrap. A garbage scatter subtracts
 ; straight into a read address and a garbage multiplier is a garbage window
 ; for one grain-life, so both start at 0 like the PITCH offsets do.
-        move    b,x:(r7-$9)            ; GRAIN v5 records: s, w, acc x 4 grains x 2 lines
-        move    b,x:(r7-$8)            ; 
-        move    b,x:(r7-$7)            ; 
-        move    b,x:(r7-$6)            ; 
-        move    b,x:(r7-$5)            ; 
-        move    b,x:(r7-$4)            ; 
-        move    b,x:(r7-$3)            ; 
-        move    b,x:(r7-$2)            ; 
-        move    b,x:(r7-$1)            ; 
-        move    b,x:(r7+$0)            ; 
-        move    b,x:(r7+$1)            ; 
-        move    b,x:(r7+$2)            ; 
-        move    b,x:(r7+$3)            ; 
-        move    b,x:(r7+$4)            ; 
-        move    b,x:(r7+$5)            ; 
-        move    b,x:(r7+$6)            ; 
-        move    b,x:(r7+$7)            ; 
-        move    b,x:(r7+$8)            ; 
-        move    b,x:(r7+$9)            ; 
-        move    b,x:(r7+$a)            ; 
-        move    b,x:(r7+$b)            ; 
-        move    b,x:(r7+$c)            ; 
-        move    b,x:(r7+$d)            ; 
-        move    b,x:(r7+$e)            ; 
         move    b,y:>$090a              ; the latched MIDI note starts at NONE.
                                         ; ⚠️ Core-private Y is boot garbage in
                                         ; dsp_host (measured 3 Sep 2026: every
