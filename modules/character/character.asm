@@ -39,7 +39,7 @@
 ;   $15/$16 L y1/y2, $17/$18 R y1/y2: TapeHead's SVF states (PERSISTENT, /4)
 ;   $29 sat mode (0 TAPE = TapeHead, 1 TUBE = DaTube, 2 INFL = OInflator)  $30 k2  $31 k3mag  $48 d/8 (per block)
 ;   per block:
-;   $20 m (MIX)   $21 fold gain/64  $22 (free, was the tanh drive)  $23 crush mask
+;   $20 m (MIX)   $21 fold gain/64  $22 TAPE unity trim (1/11)/d8  $23 crush mask
 ;   $24 carrier step  $25 srr mask  $26 comp amount    $27 makeup/4
 ;   $28 the dip's a   $29 sat mode   $2b width side gain
 ;   $2c width mid gain  $2d attack coeff   $2e release coeff
@@ -470,6 +470,20 @@ ch_pos3:
         mpy     x0,y1,a
         add     y0,a
         move    a,x:(r7+$48)            ; d8 = d/8, 0.1 .. 0.98
+; TAPE's UNITY TRIM (14 Sep 2026, Sam's live round on the master: "can we do
+; the unity first, can't really judge otherwise"). The stage's small-signal
+; gain is ~1.375 d = 11 d8 (dsp_host, 1 kHz at -30 dBFS: +0.6 dB at DRV 1,
+; +11.1 at 64, +21.0 at 127, TONE moves it 0.5 dB), so comp = (1/11) / d8,
+; in [0.09, 0.91]: one real division per block like TUBE's, applied to the
+; clipped sum at the end of chtape. Drive now squashes and colours at a
+; held level; the JSFX's rising output is what its own output slider undid.
+        move    a,x0                    ; d8 = the denominator
+        move    #>$0ba2e9,a             ; 1/11 (a clean load: a0 = 0)
+        andi    #$fe,ccr                ; carry clear
+        rep     #$18
+        div     x0,a                    ; 24 quotient bits land in a0
+        move    a0,x0
+        move    x0,x:(r7+$22)           ; TAPE unity trim
         move    x:(r6+$5),a             ; TONE/128
         and     #>$7f0000,a
         move    a1,x0
@@ -1019,8 +1033,8 @@ chinfl:
 ; chtape -- TapeHead per channel (JClones_TapeHead.jsfx, MIT; 13 Sep 2026).
 ; In: a = x, r3 -> y1 (x:(r3)) and y2 (x:(r3+$1)), both kept at /4 (the
 ; port's headroom: |y1| <= 1.46, |y2| <= 1.95 true). Out: b = (g3*clip(y3)
-; + ss(d*y1) + ss(d*y2)) * trim, up to 2.2 -- the caller's store clips it,
-; which is the JSFX's own output clip. STRAIGHT-LINE: no branch of any kind
+; + ss(d*y1) + ss(d*y2)) * trim, up to 2.2, CLIPPED (the JSFX's own output
+; clip) and then scaled by the block's unity trim x:(r7+$22) = (1/11)/d8. STRAIGHT-LINE: no branch of any kind
 ; (cycle_count.py charges the span at each call). Every mpy is x0,y1 (the
 ; audited-signed order); every clip is a LIMITING move into x0. Clobbers
 ; x0, x1, y1, a, b.
@@ -1088,4 +1102,7 @@ chtape:
         move    #>$59999a,y1
         mpy     x0,y1,a
         add     a,b
+        move    b,x0                    ; LIMITING move: the JSFX's output clip
+        move    x:(r7+$22),y1           ; then the unity trim (1/11)/d8
+        mpy     x0,y1,b
         rts
