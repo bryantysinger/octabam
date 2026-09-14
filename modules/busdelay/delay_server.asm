@@ -1668,28 +1668,29 @@ gvrdone:
 ; Same A2-clean discipline as dsp/reverb89.asm's phase reload: garbage with
 ; bit 23 set would sign-extend and saturate the following move a,rN to
 ; $800000, which hangs the bus forever (the two-track-freeze mechanism).
+; THE LINE BASES LIVE IN n1 / n2 FOR THE BLOCK (14 Sep 2026): a base add is
+; `move a1,rN / move (rN)+nN` (a1 straight into the pointer: no limiter, so
+; no A2 to clean), a line read is `move a1,r5 / move y:(r5+n5),a` with n5
+; staged from n1 or n2 at the site. The $68 stash and modtap's $30 staging
+; slot went with their readers. n1/n2 were unused; the reverb writes n1 too.
         move    x:(r7+$27),a            ; LineL phase
         move    x:(r7+$22),x0           ; the L ring's mask ($7fff in REVERSE)
         and     x0,a
-        move    a1,x0
-        move    x0,a
         move    x:(r7-$18),x0           ; LineL base
-        add     x0,a
-        move    a,r1                    ; LineL write pointer
+        move    x0,n1                   ; ... for the block
+        move    a1,r1
+        move    (r1)+n1                 ; LineL write pointer = base + phase
 
-        move    x:(r7-$18),a            ; LineR base = LineL base + 0x4000,
-        move    #>$4000,x0              ; stashed for the per-sample manual
-        add     x0,a                    ; wraps (v2 spine)
-        move    a,x:(r7+$1f)
+        move    x:(r7-$18),a            ; LineR base = LineL base + 0x4000
+        move    #>$4000,x0
+        add     x0,a
+        move    a,n2                    ; ... for the block
 
         move    x:(r7+$28),a            ; LineR phase
         move    #>$3fff,x0
         and     x0,a
-        move    a1,x0
-        move    x0,a
-        move    x:(r7+$1f),x0           ; LineR base
-        add     x0,a
-        move    a,r2                    ; LineR write pointer
+        move    a1,r2
+        move    (r2)+n2                 ; LineR write pointer
 
 ; v2 SPINE: NO AGU MODULO. m1/m2 stay at the linear invariant ($ffffff);
 ; the TIME-behind read address is computed per sample and the write
@@ -1850,10 +1851,9 @@ gvrdone:
 
 ; ---- TAPE Line L: lerped read at lag TIME + mod ---------------------------
         move    r1,a
-; lerp read rolled into modtap (18 Aug 2026): line base staged in $30, the
+; lerp read rolled into modtap (18 Aug 2026): line base staged in n5, the
 ; pointer arrives in a, the tap returns in a. Same word-saving move as satdrv.
-        move    x:(r7-$18),x0
-        move    x0,x:(r7-$19)
+        move    n1,n5
         bsr     modtap
         move    a,x:(r7+$30)          ; dL, wobbled -- the LOOP's own tap
 
@@ -1862,8 +1862,7 @@ gvrdone:
         tst     a                       ; land in the mono ring's upper half
         bne     rskipr
         move    r2,a
-        move    x:(r7+$1f),x0
-        move    x0,x:(r7-$19)
+        move    n2,n5
         bsr     modtap
         move    a,x:(r7+$31)          ; dR, wobbled
 rskipr:
@@ -1991,6 +1990,7 @@ gmode:
         move    a,r4                    ; (m4 is linear from the block preamble)
         move    x:(r7-$17),x0
         move    x0,x:(r7+$14)           ; cursor = age (grain 0's phase)
+        move    n1,n5                   ; this line's base for the reads
         clr     a
         move    a,x:(r7-$2b)
 ; GRAINCNT
@@ -2056,20 +2056,14 @@ gmode:
         move    a1,x0
         move    x0,a
         move    a,x:(r7-$2d)            ; park the read phase
-        move    x:(r7-$18),x0     ; line L base
-        add     x0,a
         move    a,r5
-        move    y:(r5),a                ; t0
+        move    y:(r5+n5),a             ; t0 (line L base in n5)
         move    a,x:(r7-$2e)
         move    x:(r7-$2d),a
         add     #>$1,a                  ; one sample NEWER
         and     #>$3fff,a
-        move    a1,x0
-        move    x0,a
-        move    x:(r7-$18),x0
-        add     x0,a
-        move    a,r5
-        move    y:(r5),a                ; t1
+        move    a1,r5
+        move    y:(r5+n5),a             ; t1
         move    x:(r7-$2e),x0
         sub     x0,a                    ; t1 - t0, signed
         move    a1,x0                   ; -> FIRST mpy operand
@@ -2118,6 +2112,7 @@ gvlz:
         move    a,r4
         move    x:(r7-$17),x0
         move    x0,x:(r7+$14)           ; cursor = age (grain 0's phase)
+        move    n2,n5                   ; this line's base for the reads
         clr     a
         move    a,x:(r7-$2a)
 ; GRAINCNT
@@ -2183,20 +2178,14 @@ gvlz:
         move    a1,x0
         move    x0,a
         move    a,x:(r7-$2d)            ; park the read phase
-        move    x:(r7+$1f),x0     ; line R base
-        add     x0,a
         move    a,r5
-        move    y:(r5),a                ; t0
+        move    y:(r5+n5),a             ; t0 (line R base in n5)
         move    a,x:(r7-$2e)
         move    x:(r7-$2d),a
         add     #>$1,a                  ; one sample NEWER
         and     #>$3fff,a
-        move    a1,x0
-        move    x0,a
-        move    x:(r7+$1f),x0
-        add     x0,a
-        move    a,r5
-        move    y:(r5),a                ; t1
+        move    a1,r5
+        move    y:(r5+n5),a             ; t1
         move    x:(r7-$2e),x0
         sub     x0,a                    ; t1 - t0, signed
         move    a1,x0                   ; -> FIRST mpy operand
@@ -2313,16 +2302,13 @@ rmode:
         move    x0,a
         move    a,x:(r7+$10)            ; g1, and g0+g1 == 1 exactly
 ; ---- Line L: both heads, windowed and summed -----------------------------
+        move    n1,n5                   ; the L base (the ring's, in REVERSE)
         move    r1,a                    ; LineL write pointer
         move    x:(r7+$d),x0           ; lag0
         sub     x0,a
         and     #>$7fff,a               ; read phase in the 32K MONO ring
-        move    a1,x0                   ; (REVERSE-32K, 13 Sep 2026; the base
-        move    x0,a                    ; is 0x8000-aligned too)
-        move    x:(r7-$18),x0           ; LineL base
-        add     x0,a
-        move    a,r5
-        move    y:(r5),a                ; tap, head 0
+        move    a1,r5                   ; (REVERSE-32K, 13 Sep 2026; the base
+        move    y:(r5+n5),a             ; is 0x8000-aligned too) tap, head 0
         move    a,x0                    ; possibly negative -> FIRST operand
         move    x:(r7+$e),y1           ; g0
         mpy     x0,y1,a
@@ -2331,12 +2317,8 @@ rmode:
         move    x:(r7+$f),x0           ; lag1
         sub     x0,a
         and     #>$7fff,a
-        move    a1,x0
-        move    x0,a
-        move    x:(r7-$18),x0
-        add     x0,a
-        move    a,r5
-        move    y:(r5),a                ; tap, head 1
+        move    a1,r5
+        move    y:(r5+n5),a             ; tap, head 1
         move    a,x0
         move    x:(r7+$10),y1           ; g1
         mpy     x0,y1,a
@@ -2501,18 +2483,12 @@ rskipw:
         move    r1,a
         move    x:(r7+$22),x0
         and     x0,a
-        move    a1,x0
-        move    x0,a                    ; A2-clean
-        move    x:(r7-$18),x0           ; LineL base
-        add     x0,a
-        move    a,r1
+        move    a1,r1                   ; the masked phase (a1 needs no A2-clean)
+        move    (r1)+n1                 ; + LineL base
         move    r2,a
         and     #>$3fff,a
-        move    a1,x0
-        move    x0,a
-        move    x:(r7+$1f),x0           ; LineR base
-        add     x0,a
-        move    a,r2
+        move    a1,r2
+        move    (r2)+n2                 ; + LineR base
 
 ; ---- PITCH / GRAIN: the wet becomes the SHIFTED tap (v2 stage 2c) --------
 ; Placed HERE deliberately: both lines have already been written above from
@@ -2698,7 +2674,7 @@ dry:
         rts
 
 ; ---- modtap: the modulated lerped line read, shared by both lines ---------
-; (18 Aug 2026, rolled with the x8 relaw.) In: a = line write pointer, $30 =
+; (18 Aug 2026, rolled with the x8 relaw.) In: a = line write pointer, n5 =
 ; the line's base. Out: a = the lerped tap at lag TIME + mod. Clobbers
 ; x0/y1/r5 and $2a/$2b (scratch); $2c (frac) is read-only here.
 modtap:
@@ -2711,22 +2687,16 @@ modtap:
         move    a1,x0
         move    x0,a                    ; A2-clean
         move    a,x:(r7-$1f)            ; park phase
-        move    x:(r7-$19),x0           ; line base, staged by the caller
-        add     x0,a
         move    a,r5
-        move    y:(r5),a
+        move    y:(r5+n5),a             ; t0 (n5 = the line base, from the caller)
         move    a,x:(r7-$1e)            ; t0
         move    x:(r7-$1f),a
         move    #>$1,x0
         sub     x0,a
         move    x:(r7+$22),x0
         and     x0,a                    ; one sample OLDER
-        move    a1,x0
-        move    x0,a
-        move    x:(r7-$19),x0
-        add     x0,a
-        move    a,r5
-        move    y:(r5),a                ; t1
+        move    a1,r5                   ; the masked phase, no limiter in the way
+        move    y:(r5+n5),a             ; t1
         move    x:(r7-$1e),x0
         sub     x0,a                    ; t1 - t0, signed
         move    a1,x0                   ; -> FIRST mpy operand
