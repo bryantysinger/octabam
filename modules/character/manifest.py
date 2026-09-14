@@ -143,17 +143,9 @@ MODULE = Module(
               doc="mid/side width, drawn -64..+63: 0 = untouched, -64 = mono, +63 = double the sides"),
         _BLANK,   # was SRR (retired 14 Sep 2026)
     ),
-    # The SAT select NAMES ITSELF (14 Sep 2026, Sam: "rather than sat label
-    # being static with the mode flashing for a sec, get rid of sat and just
-    # have it showing tape | tube | infl"): the mode formatter's rename cave
-    # writes the select's own name field with its value, so the knob reads
-    # TAPE / TUBE / INFL. No other knob changes meaning by mode.
-    mode_slot=7,
-    mode_views=(
-        ModeView(mode=0, names={7: b"TAPE"}),
-        ModeView(mode=1, names={7: b"TUBE"}),
-        ModeView(mode=2, names={7: b"INFL"}),
-    ),
+    # Every select names itself by its value (the standard since 14 Sep
+    # 2026, tools/build/mode_names.with_selfname): SAT reads TAPE / TUBE /
+    # INFL. No knob changes meaning by mode here.
     dsp=DspSection(
         asm="modules/character/character.asm",
         ptable=TUBE_UP + TAPE_D8 + POCKEY_ENC + POCKEY_DEC,

@@ -1704,6 +1704,9 @@ def main():
             _mod = _MODS[name]
             _ren = (mode_names.complete(_mod)
                     if _i == _mod.mode_slot and _mod.mode_views else {})
+            # ... and since 14 Sep 2026 EVERY select names itself with its
+            # value's word (the standard; tools/build/mode_names.py).
+            _ren = mode_names.with_selfname(_ren, _i, _p.labels)
             if _ren:
                 _desc = clone_addr[name] + mode_names.NAMES_AT
                 _bytes = mode_names.emit(_p.labels, _desc, _ren)
