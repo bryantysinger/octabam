@@ -171,11 +171,9 @@ ch_offok:
 ; PER-BLOCK KNOB DECODE
 ; ===========================================================================
 ; MIX: page-2 slot 6, the KNOB field of r6+$c (the word SAT's select shares)
-        move    x:(r6+$c),a
+        move    x:(r6+$c),a             ; a knob word: bit 23 clear, a2 = 0
         and     #>$7f0000,a
-        move    a1,x0
-        move    x0,a
-        move    a,x:(r7+$20)            ; m
+        move    a1,x:(r7+$20)           ; m (a1 straight to memory)
 ; fold gain/64 = (1 + 47*FOLD/128)/64 -- 1x .. 48x into the fold, pre-divided
 ; by 64 so the fold's (v+1)/2 arithmetic keeps its guard bits (the loop
 ; shifts by 5). WarpFold's 1x..8x law (until 12 Sep 2026) was sized for the
@@ -234,12 +232,10 @@ ch_mskz:
         move    a,x:(r7+$23)            ; the mask: AND clears the low bits
 ; RING: carrier step, WarpFold's squared taper; 0 = OFF (a step of 0 leaves
 ; the phase still, and the per-sample gate below skips the multiply)
-        move    x:(r6+$d),a
+        move    x:(r6+$d),a             ; a knob word: bit 23 clear, a2 = 0
         and     #>$7f0000,a
-        move    a1,x0
-        move    x0,a
-        move    a,x0
-        move    a,y1
+        move    a1,x0                   ; (no clean reload: the input was positive)
+        move    a1,y1
         mpy     x0,y1,a                 ; RING^2
         move    a,x0
         move    #>$116000,y1            ; 2.95 kHz at full knob: step = 2f/fs
@@ -499,15 +495,13 @@ ch_pos3:
 ; WDTH -> mid and side gains. 64 = (1, 1); 0 = (1, 0) mono; 127 = (1, ~2).
 ; side gain = WDTH/64, mid stays 1 -- widening only touches the difference,
 ; so a mono source is untouched at every setting.
-        move    x:(r6+$e),a
+        move    x:(r6+$e),a             ; a knob word: bit 23 clear, a2 = 0
         and     #>$7f0000,a
-        move    a1,x0
-        move    x0,a
 ; ⚠️ STORED HALVED. A y1 operand is a FRACTION, and a side gain of WDTH/64
 ; tops out near 2.0, which would wrap the word. The knob's own value IS
 ; WDTH/128, so it is stored as-is and the product is doubled back in the
 ; accumulator's guard bits. 64 -> 0.5 -> x2 = exactly 1.0, i.e. untouched.
-        move    a,x:(r7+$2b)            ; side gain / 2
+        move    a1,x:(r7+$2b)           ; side gain / 2 (a1 straight to memory)
 ; ---- the return read pointers, and the liveness stamps -------------------
 ; Two buffers back, like every bus read (an idle block each side of the
 ; reader on both cores); x2 throughout because the wet buffers are stereo,
@@ -671,11 +665,10 @@ ch_noret:
         move    b1,x0
         move    x0,b
         move    b,x:(r7+$1b)
-        and     x0,a                    ; counter & mask
-        move    a1,x0
-        move    x0,a
-        tst     a
-        bne     ch_hold                 ; not a fresh sample: reuse the held
+        and     x0,a                    ; counter & mask -- AND sets Z from A1,
+        bne     ch_hold                 ; which is what the tst on a clean
+                                        ; reload saw (a2 = a0 = 0 here); not a
+                                        ; fresh sample: reuse the held
         move    x:(r0),x0               ; fresh: latch this pair
         move    x0,x:(r7+$19)
         move    x:(r0+n0),x0
@@ -687,17 +680,15 @@ ch_hold:
         move    x0,x:(r7+$34)
 ch_nosrr:
 ; ---- CRSH: one AND per channel with the per-block mask -------------------
-; ⚠️ AND leaves A2 STALE and the next store would saturate (CLAUDE.md), so
-; each value leaves through a1 into a clean register first.
+; ⚠️ AND leaves A2 STALE and a `move a,x:` would saturate (CLAUDE.md), so
+; each value leaves through a1 -- straight to memory, which no limiter sees.
         move    x:(r7+$23),x0           ; mask
         move    x:(r7+$33),a
         and     x0,a
-        move    a1,x1
-        move    x1,x:(r7+$33)
+        move    a1,x:(r7+$33)
         move    x:(r7+$34),a
         and     x0,a
-        move    a1,x1
-        move    x1,x:(r7+$34)
+        move    a1,x:(r7+$34)
 ; ---- FOLD: WarpFold's wrap-and-reflect, both channels --------------------
         move    x:(r7+$33),x0
         move    x:(r7+$21),y1           ; gq = gain/64
