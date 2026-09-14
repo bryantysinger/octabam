@@ -2482,3 +2482,12 @@ DaTube drive is subtle by the plugin's own law). Panel: "rather than sat
 label being static with the mode flashing for a sec, get rid of sat and
 just have it showing tape | tube | infl" → the SAT select renames itself
 by ModeView (image 13).
+
+**14 Sep 2026, ROUND 2 CLOSED on image 13 (the one-word build, the SAT knob
+naming itself).** Banks E/F/G play (no repeat of image 5's placement
+silence on a much shorter placement). INFL under DRV, then FOLD, TXTR and
+TONE into each mode: Sam "all sound great!" **CHARACTER IS VOICED**: TAPE
+(unity + a gentle lift), TUBE (the default output slider modelled, drive
+subtle by the plugin's law), INFL (its own lift kept), FOLD at a held
+level, TXTR = Pockey, TONE the tilt, COMP/GLUE by position, WDTH bipolar,
+MIX, RET. Next: Spectrum's live round, then Modulation, per the roadmap.
