@@ -3113,17 +3113,6 @@ hostquit:
                 print(f"  {name}: declares a {len(_ptab)}-word ptable the "
                       f"source does not read -- not placed")
                 _ptab = []
-                sys.exit(f"payload {tag}: {name}: a DspSection.ptable and exactly one "
-                         f"{PTABLE_MARK} literal in the source go together "
-                         f"(table {len(_ptab)} words, literal x{src.count(PTABLE_MARK)})")
-            if _ptab and PTABLE_MARK not in src:
-                # The manifest declares a table this SOURCE never reads: an
-                # alternate engine (RVSRC=, verify_roll's reference) from
-                # before the module owned one. Keyed on the source, like the
-                # LFO table, so the two engines build through one manifest.
-                print(f"  {name}: declares a {len(_ptab)}-word ptable the "
-                      f"source does not read -- not placed")
-                _ptab = []
             if DEV and name == "DELAY SERVER":
                 # DEV: the delay does NOT go in the donor region. It is
                 # assembled at DEV_DELAY_P (see that constant) and its module
