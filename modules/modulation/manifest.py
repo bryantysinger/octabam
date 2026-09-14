@@ -1,39 +1,44 @@
-"""MODULATION -- one modulated line, three modes, FX1 only.
+"""MODULATION -- a modulation pedal, six modes, FX1 only (v2, 14 Sep 2026).
 
 The third BamSep26 station. It REPLACES stock CHORUS (id 0x12) and covers
-what stock spreads over CHORUS, FLANGER and COMB:
+what stock spreads over CHORUS, FLANGER, PHASER and COMB, each mode a
+transcription of a published, permissively licensed source (the survey and
+the licences: docs/effects/PORTS.md; the float reference the DSP is proven
+against: modules/modulation/modulation_ref.py):
 
-    CHOR  a 10 ms line swept slowly, no feedback: the classic (MIX 127 is
-          vibrato: the wet alone)
-    FLNG  a 0.3 ms line swept wide, with feedback: the jet
-    COMB  a short line tuned by DLY with heavy feedback: a resonator
+    JUNO  the Juno-60 chorus (jpcima HeraChorus.dsp, ISC + the Juno-60
+          measurements): two BBD lines on one triangle LFO, R inverted;
+          I 0.513 Hz / II 0.863 Hz over 1.5..5.4 ms
+    DIM   the Roland Dimension D (SDD-320): antiphase lines, cross-mixed
+          through a highpass, a bass lift on the dry; 0.25 / 0.5 Hz, 5..12
+          ms. The amounts are unpublished: ours
+    ENS   the Solina string ensemble (jpcima string-machine, BSL-1.0):
+          three taps on one line, two three-phase LFOs (0.6 + 6 Hz)
+    FLNG  Dattorro's flanger (JAES 1997, Table 6): through-zero, the dry
+          read from the sweep's centre, feedforward and feedback -0.7071
+    PHSR  ChowPhaser (BSD-3), the Schulte Compact Phasing A: a feedback
+          section of two RC allpasses, then 2/4/6/8 allpasses on the LDR's
+          law. Retired 13 Sep 2026 at 464 cycles; ChowPhaser's prices ~130
+    COMB  Rings' string loop (Mutable Instruments, MIT): Hermite-read,
+          FIR damping, the per-pass gain from a decay TIME so every pitch
+          rings for the same time; FDBK's sign = the polarity (ours)
 
-13 Sep 2026: PHSR, TREM, VIB and PAN retired (Sam). The phaser was the
-pricer's dearest station loop (464 cycles/sample, two allpass chains);
-tremolo and auto-pan are the OT's own LFO on AMP VOL / BAL; vibrato is CHOR
-at MIX 127. A part that stored 3..6 in MODE runs CHOR (the decode matches
-1 and 2 only). The freed words and cycles fund Spectrum.
+FX1 ONLY, and it enforces that itself: it needs a per-track delay line, and
+beside the servers the only free per-track buffer is the FX1 slot. It reads
+its base from the host's bump allocator at INIT (docs/firmware/DSP.md
+section 10) and if that base is an FX2 slot (>= 0x4000) it runs as a dry
+pass and writes NOTHING. `Claims(fx1_only=True)` declares that and the
+render gate proves it. Two lines of 1,024 words out of the 3,072 an FX1
+slot gives; the read offset is masked, not the address.
 
-⚠️ **FX1 ONLY, and it enforces that itself.** It needs a per-track delay line,
-and beside the servers the only free per-track buffer is the FX1 slot: every
-FX2 instance buffer is BusVerb's tank on core 0 or BusDelay's line on
-tracks 3-4. It reads its base from the host's bump allocator at INIT (never
-in proc -- docs/firmware/DSP.md section 10), and if that base is an FX2 slot
-(>= 0x4000) it runs as a dry pass and writes NOTHING. That promise is what
-`Claims(fx1_only=True)` declares and what its render gate proves.
-
-Two lines of 1,024 words, L and R, out of the 3,072 an FX1 slot gives: 23 ms
-each, enough for chorus, flanger, vibrato and a comb down to 43 Hz. The FX1
-bases (0x1000 0x1c00 0x2800 0x3400) are all multiples of 1,024, but nothing
-here depends on that -- the read offset is masked, not the address.
-
-NOT a bus client since 14 Sep 2026: the stations lost their sends in the
-one-aux rig (7 Sep) and the bus bookkeeping went with them (Spectrum shed
-its copy on 12 Sep). It never housekeeps and never writes the bus.
+NOT a bus client since 14 Sep 2026 (the stations lost their sends in the
+one-aux rig, 7 Sep).
 
 DEFAULTS ARE A PASSTHROUGH (MIX 0), because a part that stored CHORUS runs
 this after the flash. ⚠️ A part's STORED bytes are stock CHORUS's -- the
-stamper (plan A6) writes ours.
+stamper writes ours. ⚠️ v2 moved TONE (slot 8 -> 4) and WID (10 -> 5) and
+dropped SHPE/STGS: stamp-defaults on the card BEFORE play (CLAUDE.md, the
+stored-layout trap).
 """
 
 from remix.schema import (BusRole, Claims, DspSection, Formatter, Harness,
@@ -41,14 +46,56 @@ from remix.schema import (BusRole, Claims, DspSection, Formatter, Harness,
 
 _PLAIN = Formatter.PLAIN
 _STEP = Formatter.STEPPED
+_BIPOL = Formatter.BIPOLAR   # drawn -64..+63 around 64
 
 _BLANK = Param(b"", 0)
+
+# The P tables (modulation_ref.py generates them; 33 words each, read at
+# idx = u >> 18 and interpolated on the 18 bits under it):
+#   PHSR_MOD  ChowPhaser's mod-stage allpass coefficient b0 = (RCK-1)/(RCK+1)
+#             over lfo = -1..1, R = 100k (light/0.1)^-0.75, light = 20.1 -
+#             20 lfo, C = 25 nF, K = 2 fs
+#   PHSR_FB   the same for the feedback stages, C = 15 nF
+#   PERIOD    COMB's period in Q11.12 samples: 1,000 .. 8, exponential
+#   POW2      T(u) = 2^(-8u): COMB's decay (rt60 and the per-pass gain)
+PHSR_MOD = (
+    0x360688, 0x3744bd, 0x3889f1, 0x39d676, 0x3b2aa0, 0x3c86cc,
+    0x3deb5e, 0x3f58c2, 0x40cf6e, 0x424fe1, 0x43daa7, 0x457059,
+    0x4711a0, 0x48bf36, 0x4a79ea, 0x4c42a4, 0x4e1a68, 0x50025e,
+    0x51fbd5, 0x540850, 0x562990, 0x5861a6, 0x5ab307, 0x5d20ad,
+    0x5fae47, 0x62607b, 0x653d5b, 0x684d26, 0x6b9ba8, 0x6f3b29,
+    0x734baa, 0x78138a, 0x7ed820,
+    )
+PHSR_FB = (
+    0x189fb0, 0x1a158e, 0x1b95c1, 0x1d20d0, 0x1eb74e, 0x2059d8,
+    0x220919, 0x23c5cd, 0x2590be, 0x276acc, 0x2954eb, 0x2b5028,
+    0x2d5dad, 0x2f7ec6, 0x31b4e5, 0x3401a8, 0x3666e3, 0x38e6ac,
+    0x3b8364, 0x3e3fca, 0x411f11, 0x442501, 0x47561b, 0x4ab7d6,
+    0x4e50f4, 0x522a00, 0x564e1b, 0x5acc56, 0x5fba2a, 0x6538a3,
+    0x6b8108, 0x730f94, 0x7e145b,
+    )
+PERIOD = (
+    0x3e8000, 0x35bf26, 0x2e3822, 0x27bf02, 0x222df7, 0x1d6481,
+    0x1946ac, 0x15bc6f, 0x12b11e, 0x1012f2, 0x0dd2a2, 0x0be309,
+    0x0a38d9, 0x08ca5a, 0x078f2f, 0x068027, 0x059715, 0x04cea8,
+    0x04224c, 0x038e15, 0x030e9f, 0x02a103, 0x0242c1, 0x01f1b3,
+    0x01abfe, 0x01700d, 0x013c81, 0x01102d, 0x00ea0f, 0x00c947,
+    0x00ad17, 0x0094d9, 0x008000,
+    )
+POW2 = (
+    0x7fffff, 0x6ba27e, 0x5a827a, 0x4c1bf8, 0x400000, 0x35d13f,
+    0x2d413d, 0x260dfc, 0x200000, 0x1ae8a0, 0x16a09e, 0x1306fe,
+    0x100000, 0x0d7450, 0x0b504f, 0x09837f, 0x080000, 0x06ba28,
+    0x05a828, 0x04c1c0, 0x040000, 0x035d14, 0x02d414, 0x0260e0,
+    0x020000, 0x01ae8a, 0x016a0a, 0x013070, 0x010000, 0x00d745,
+    0x00b505, 0x009838, 0x008000,
+    )
 
 MODULE = Module(
     name="modulation",
     key="MODULATION",
     kind=Kind.DSP_EFFECT,
-    doc="BamSep26 station: chorus / flanger / comb, FX1 only.",
+    doc="BamSep26 station: a modulation pedal -- Juno, Dimension, Solina, flanger, phaser, comb; FX1 only.",
     menu=MenuEntry(
         fx2_id=0x12,
         replaces="CHORUS",
@@ -59,49 +106,56 @@ MODULE = Module(
     ),
     params=(
         # ---- page 1: the performance surface, scene/CC-reachable -----------
-        Param(b"RATE", 40, active=True, formatter=_PLAIN,
-              doc="LFO speed, ~0.05 Hz to ~8 Hz on a squared taper"),
-        Param(b"DPTH", 48, active=True, formatter=_PLAIN,
-              doc="how far the LFO sweeps the line"),
-        Param(b"FDBK", 0, active=True, formatter=_PLAIN,
-              doc="feedback around the line: the flanger's jet, the comb's ring; 0 = none"),
+        Param(b"RATE", 26, active=True, formatter=_PLAIN,
+              doc="LFO speed, 0.08 .. 10 Hz on a squared taper (26 = the Juno's 0.5 Hz)"),
+        Param(b"DPTH", 21, active=True, formatter=_PLAIN,
+              doc="the sweep, 0 .. 480 samples either side of DLY; in PHSR the LFO's reach"),
+        Param(b"FDBK", 64, 128, active=True, formatter=_BIPOL,
+              doc="bipolar, 64 = none: feedback from the swept tap; the phaser's regen; COMB's decay time (its size) and polarity (its sign)"),
         Param(b"MIX", 0, active=True, formatter=_PLAIN,
-              doc="dry/wet; 0 = exact passthrough, 64 = classic chorus, 127 = the wet alone (vibrato in CHOR)"),
-        _BLANK,   # -DEL: the stations lost their sends in the one-aux rig (7 Sep 2026)
-        _BLANK,   # -VRB: the stations lost their sends in the one-aux rig (7 Sep 2026)
+              doc="dry/wet; 0 = exact passthrough, 127 = the wet alone"),
+        Param(b"TONE", 80, active=True, formatter=_PLAIN,
+              doc="the BBD's filters, in and out of every line: 0 dark (2 kHz), 127 open; the FIR's brightness in COMB; inert in PHSR"),
+        Param(b"WDTH", 127, active=True, formatter=_PLAIN,
+              doc="the right channel's LFO lag: 0 mono, 64 quadrature, 127 antiphase (the Juno's, the Dimension's); inert in ENS and COMB"),
         # ---- page 2: knob / select / knob / select / knob / select ----------
-        Param(b"DLY", 30, 128, active=True, formatter=_PLAIN,
-              doc="the line's centre time, 0.2..23 ms -- in COMB it is the pitch"),
-        Param(b"MODE", 0, 3, active=True, formatter=_STEP,
-              labels=("CHOR", "FLNG", "COMB"),
-              doc="which line: chorus, flanger or comb (PHSR/TREM/VIB/PAN retired 13 Sep 2026)"),
-        Param(b"TONE", 100, 128, active=True, formatter=_PLAIN,
-              doc="one-pole damping inside the feedback path; lower = darker each pass"),
-        Param(b"SHPE", 0, 4, active=True, formatter=_STEP,
-              labels=("TRI", "SIN", "SQR", "SAW"),
-              doc="LFO shape: TRI, SIN, SQR (steps the line: a chorus that jumps), SAW (a ramp)"),
-        Param(b"WID", 64, 128, active=True, formatter=_PLAIN,
-              doc="how far the right channel's LFO lags the left, 0 = mono, 64 = quarter"),
-        _BLANK,   # was STGS, the phaser's tap select; the phaser retired 13 Sep 2026
+        Param(b"DLY", 18, 128, active=True, formatter=_PLAIN,
+              doc="the sweep's centre, 0.2 .. 23 ms; the pitch in COMB; the stage count in PHSR (2/4/6/8 by quarters)"),
+        Param(b"MODE", 0, 6, active=True, formatter=_STEP,
+              labels=("JUNO", "DIM", "ENS", "FLNG", "PHSR", "COMB"),
+              doc="which pedal"),
+        _BLANK,   # was TONE (page 1 since 14 Sep 2026)
+        _BLANK,   # was SHPE (the LFO is each source's own shape since 14 Sep 2026)
+        _BLANK,   # was WID (page 1 since 14 Sep 2026)
+        _BLANK,   # was STGS (PHSR's stage count is on DLY since 14 Sep 2026)
     ),
     # ---- what each MODE renames and re-defaults ---------------------------
-    # DLY is the line's centre time and the comb's PITCH; FDBK is the
-    # flanger's jet and the comb's ring.
+    # The defaults are each source's own numbers: the Juno's I (0.513 Hz,
+    # +-1.8 ms about 3.35 ms, antiphase, dry 0.83 + wet 1.0 ~ MIX 70), the
+    # Dimension's mode 1 (0.25 Hz, 5..12 ms), the Solina (0.6 Hz, 5 +- 1 ms),
+    # Dattorro's flanger (0.15 Hz, 0..10 ms), ChowPhaser's defaults (4 Hz,
+    # depth 0.95 -> 121, 8 stages), Rings at a mid pitch with a 2 s ring.
     mode_slot=7,
     mode_views=(
-        ModeView(mode=0,                        # CHOR
-                 defaults={0: 30, 1: 48, 2: 0, 3: 64, 6: 30, 10: 64}),
-        ModeView(mode=1,                        # FLNG
-                 defaults={0: 24, 1: 90, 2: 90, 3: 64, 6: 10, 10: 64}),
-        # ⚠️ ONLY SLOTS WHOSE MEANING CHANGES ARE RENAMED. Marking a knob
-        # dead with "----" in the modes that ignore it read well and cost a
-        # cave with 4 bytes to spare -- the doc line says it instead.
-        ModeView(mode=2,                        # COMB (was 3 until 13 Sep 2026)
-                 names={2: b"RING", 6: b"PTCH"},
-                 defaults={0: 8, 1: 20, 2: 110, 3: 64, 6: 20}),
+        ModeView(mode=0,                        # JUNO
+                 defaults={0: 26, 1: 21, 2: 64, 3: 70, 4: 80, 5: 127, 6: 18}),
+        ModeView(mode=1,                        # DIM
+                 defaults={0: 18, 1: 41, 2: 64, 3: 127, 4: 80, 5: 127, 6: 47}),
+        ModeView(mode=2,                        # ENS
+                 defaults={0: 28, 1: 12, 2: 64, 3: 100, 4: 90, 5: 0, 6: 27}),
+        ModeView(mode=3,                        # FLNG
+                 names={6: b"MANL"},
+                 defaults={0: 14, 1: 59, 2: 19, 3: 127, 4: 127, 5: 0, 6: 27}),
+        ModeView(mode=4,                        # PHSR
+                 names={6: b"STGS"},
+                 defaults={0: 28, 1: 121, 2: 64, 3: 64, 4: 127, 5: 64, 6: 127}),
+        ModeView(mode=5,                        # COMB
+                 names={2: b"DCAY", 6: b"PTCH"},
+                 defaults={0: 0, 1: 0, 2: 110, 3: 64, 4: 100, 5: 0, 6: 64}),
     ),
     dsp=DspSection(
         asm="modules/modulation/modulation.asm",
+        ptable=PHSR_MOD + PHSR_FB + PERIOD + POW2,
         priority=14,                  # after the Character station
         bus_role=BusRole.NONE,        # an insert; it writes nothing to the bus
         ybase=YBase.NEVER,
