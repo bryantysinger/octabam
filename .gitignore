@@ -22,3 +22,6 @@ __pycache__/
 *.pyc
 tools/hw/rec
 tools/hw/tone
+
+# the stock OS download (a symlink to it in a worktree was once committed)
+downloads
