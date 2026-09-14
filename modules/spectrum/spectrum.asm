@@ -1013,9 +1013,13 @@ fs_ladr:
         move    a,x:(r0+n0)                ; out (limited)
 ; MODEFORK_END
 fs_join:
-        move    #>$2,n0                 ; LONG immediates, deliberately: the
-        move    (r0)+n0                 ; short form `move #2,n0` assembled and
-        move    #>$1,n0                 ; stepped ONE word per frame (3 Sep 2026)
+        move    (r0)+n0                 ; the frame advance: n0 is 1 for the
+        move    (r0)+n0                 ; whole loop, so two steps, no reload
+                                        ; (the `#>$2,n0 / +n0 / #>$1,n0` here
+                                        ; until 14 Sep 2026 dodged a `move
+                                        ; #2,n0` that "stepped ONE word per
+                                        ; frame" on 3 Sep -- the OLD assembler;
+                                        ; today it encodes 380200, stock's own)
 fs_end:
         nop
         rts
