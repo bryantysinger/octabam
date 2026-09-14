@@ -424,12 +424,32 @@ def _measure_loop(name, src, lines, i):
         inserts.append((k1 + 1, f"{mend}:"))     # after the rts
         inserts.append((j - 1, f"{msite}:"))     # BEFORE the bsr: the call site's address
         bsr_marks.append((lbl, mstart, mend, msite))
-    inner_at = []
+    # ⚠️ A NESTED COUNTED LOOP RUNS ONCE PER ENCLOSING TRIP (14 Sep 2026).
+    # Pricing each `do` as `(trips - 1) x its words` is right only when the
+    # loops are sequential: `do #2 { do #4 {...} }` would charge the inner
+    # loop's other three trips ONCE, not twice, and report a saving that
+    # is the arithmetic's, not the code's (~330 cycles on GRAIN's reader).
+    # Each loop's surcharge -- the extra trips AND its setup, which is paid
+    # every time the `do` is entered -- is scaled by the product of the
+    # trip counts of every loop whose span contains it. Reduces to the old
+    # figure exactly when nothing is nested (every module as of this date).
+    spans = []
     for j, m in inner:
+        e = next((k for k in range(j + 1, end_line)
+                  if lines[k].strip().startswith(m.group(2) + ":")), None)
+        if e is None:
+            sys.exit(f"{name}: no `{m.group(2)}:` for the inner loop at line {j + 1}")
+        spans.append((j, e))
+    inner_at = []
+    for (j, m), (js, je) in zip(inner, spans):
         trips = int(m.group(1), 16 if lines[j].count("$") else 10)
         label = f"{INNER_MARKER}{len(inner_at)}"
         inserts.append((j, f"{label}:"))
-        inner_at.append((trips, m.group(2), label))
+        mult = 1
+        for (k, mk), (ks, ke) in zip(inner, spans):
+            if ks < js and je <= ke:
+                mult *= int(mk.group(1), 16 if lines[k].count("$") else 10)
+        inner_at.append((trips, m.group(2), label, mult))
     fork_labels = {}
     fork_mid_labels = []
     if fork:
@@ -463,15 +483,16 @@ def _measure_loop(name, src, lines, i):
         cycles += callee + 4
         calls.append((syms[msite], callee + 4))
         notes.append(f"bsr {lbl} {callee}w/call")
-    for trips, inner_end, label in inner_at:
+    for trips, inner_end, label, mult in inner_at:
         if label not in syms or inner_end not in syms:
             sys.exit(f"{name}: assembler dropped the inner-loop label {label}")
         inner_words = syms[inner_end] - syms[label]
-        # The span already counts the body ONCE, so add the other trips.
-        surcharge = (trips - 1) * inner_words + DO_SETUP
+        # The span already counts the body ONCE, so add the other trips --
+        # once per trip of every enclosing loop (mult = 1 when not nested).
+        surcharge = ((trips - 1) * inner_words + DO_SETUP) * mult
         cycles += surcharge
         rolls.append((syms[label], surcharge))
-        notes.append(f"{inner_words}w x{trips}")
+        notes.append(f"{inner_words}w x{trips}" + (f" x{mult} nested" if mult > 1 else ""))
     if fork_labels:
         if any(l not in syms for l in fork_labels.values()):
             sys.exit(f"{name}: assembler dropped a MODEFORK label")
