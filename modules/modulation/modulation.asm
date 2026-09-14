@@ -431,9 +431,8 @@ mo_mdone:
         move    x:(r7+$3e),a
         move    a,y:(r5)
         bsr     momixs                  ; MIX from $3c/$3d
-        move    #>$2,n0
-        move    (r0)+n0
-        move    #>$1,n0
+        move    (r0)+n0                 ; the frame advance: n0 is 1 for the
+        move    (r0)+n0                 ; whole loop, so two steps, no reload
 molinz:
         nop
         rts
