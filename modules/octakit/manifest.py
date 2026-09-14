@@ -54,6 +54,14 @@ midi-scenes (STOCK_APPLY) and octamax (scene_stub) also detour, and the
 scene-parameter writer 0x40052ae8 (octamax too). The ledger refuses those
 combinations until detour chaining exists; nothing else of hers overlaps
 anything. `lofi-amf-fix` composes with it freely (`remixes/octakit-fix.py`).
+
+14 Sep 2026: bumped to her 92cf70b (ot-26914): duplicate Patterns and Kits
+(PTN+FUNC+RIGHT), held-key inactive Pattern editing, save queued clone Kits
+without relinking source Patterns, fixes for spill-backed kit state during
+pattern changes / STOP handoff / held Recording Edit and LOAD KIT
+assignment, fuller crash reports, a license. 730 writes (was 645), runtime
+154,718 B; verify_octakit reproduces her combined OS byte-exact; mods
+composes with midisc 1.40MIDISC8 and boots under the port. Unflashed.
 """
 
 from remix import arena
