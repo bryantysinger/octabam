@@ -571,8 +571,8 @@ bus_mine:
         move    #>$9d8,r5               ; the stamp word
         bsr     stampgr                 ; b = grace after this block's stamp
         move    b,x:(r7+$68)
-        move    #>$400000,a             ; print gain 1/2 (x2 on use = exactly 1)
-        move    #>$0,x0
+        move    #$40,a                  ; print gain 1/2 (x2 on use = exactly 1)
+        move    #0,x0
         tst     b
         tne     x0,a                    ; a return is live: print nothing
         move    a,x:(r7+$69)            ; this block's host print gain
@@ -645,7 +645,7 @@ bus_mine:
         move    a,y:(r5)+       ; [2] = 1/sqrt(2)
         move    #>$49e69d,a
         move    a,y:(r5)+       ; [3] = 1/sqrt(3)
-        move    #>$400000,a
+        move    #$40,a
         move    a,y:(r5)+       ; [4] = 1/sqrt(4)
         move    #>$393e4b,a
         move    a,y:(r5)+       ; [5] = 1/sqrt(5)
@@ -692,7 +692,7 @@ bus_mine:
 ; on a1). y:$09f1 is the delay-liveness grace counter (chain_live below).
         move    y:>$09f1,b
         tst     b                       ; delay live? (grace > 0)
-        move    #>$100000,x0
+        move    #$10,x0
         tne     x0,a                    ; live -> gain 1/8
         move    a,x:(r7+$0c)            ; this block's bus gain, used per sample.
                                         ; $0c, NOT $6d: $6d is the DIFFUSION
@@ -768,7 +768,7 @@ bus_mine:
         and     #>$fffe00,a                  ; tag field -- AND cleans A1 only
         move    a1,x0
         move    x0,a                    ; A2-clean before the compare
-        move    #>$2c0000,x0
+        move    #$2c,x0
         cmp     x0,a
         beq     warmtag
         clr     a                       ; garbage tag: warm-up starts at 0
@@ -863,7 +863,7 @@ wshclr:
         move    b,x:(r7+$4a)            ; LFO phase line 7
         move    x:(r7+$15),a            ; reload count
         add     #>$1,a                
-        move    #>$2c0000,x0
+        move    #$2c,x0
         add     x0,a                    ; tag | count+1
         move    a,x:(r7+$82)
         bra     dry                     ; output stays dry until warm
@@ -1134,9 +1134,9 @@ md_big:                                 ; 2, and anything unexpected
 ; rings at -8.3 dB/s (~7 s) and its size knob was only at HALF. TIME's top
 ; now reaches ~-5 dB/s; the whole knob lengthens (T64 ~-10 dB/s, was -21).
 ; Falsifier: quiet-click stability sweep TIME 127 x SIZE corners, no growth.
-        move    #>$200000,a               ; k_mode 0.25 (13 Sep 2026: the TIME law
+        move    #$20,a                    ; k_mode 0.25 (13 Sep 2026: the TIME law
         move    a,x:(r7+$1e)              ; below; was the decay scale 0.67578)
-        move    #>$5a0000,a             ; wet gain/2 = -3 dB vs ROOM/PLATE.
+        move    #$5a,a                  ; wet gain/2 = -3 dB vs ROOM/PLATE.
         move    a,x:(r7+$20)            ; Two-step history, same day (18 Aug
                                         ; 2026): capture B measured BIG +8.4 dB
                                         ; over ROOM and a -6 trim shipped in
@@ -1182,7 +1182,7 @@ md_big:                                 ; 2, and anything unexpected
         move    a,x:(r7+$77)
         move    #>$7fffff,a             ; tap scale 1.00 -- the largest space
         move    a,x:(r7+$6f)
-        move    #>$0c0000,a             ; diffusion offset, ROOM's old level
+        move    #$0c,a                  ; diffusion offset, ROOM's old level
                                         ; (Round 13; 0.031 was too dry to
                                         ; wash the end-ring)
         move    a,x:(r7+$3f)
@@ -1220,7 +1220,7 @@ md_big:                                 ; 2, and anything unexpected
                                         ; single biggest shading on that band.
                                         ; Still below PLATE's 0.68 -- BIG stays
                                         ; the darker of the two by design.
-        move    #>$650000,a             ; lines 4-7 tap scale 0.789 -- wide
+        move    #$65,a                  ; lines 4-7 tap scale 0.789 -- wide
         move    a,x:(r7+$6c)            ; interleave suits the 1.69 spread
         bra     md_done
 md_room:
@@ -1234,7 +1234,7 @@ md_room:
 ; Parked in $1e for the TIME block below to fold in -- the r7 block ends at
 ; $83 and $7e..$81 went to the diffuser taps, so there is no spare slot.
 ; Scaling g DOWN is always safe; it is scaling UP that self-oscillates.
-        move    #>$400000,a               ; k_mode 0.5 (13 Sep 2026: the TIME law;
+        move    #$40,a                    ; k_mode 0.5 (13 Sep 2026: the TIME law;
         move    a,x:(r7+$1e)              ; was the decay scale 0.6505)
 ; (wet gain $20, diffusion offset $3f and movement scale $73 are ROOM/PLATE
 ; -common -- stored once at rp_tail, v8; only BIG differs on those three)
@@ -1264,7 +1264,7 @@ md_room:
         move    #>$4CCCCD,a             ; tap scale 0.60 (Round 13, was 0.45:
                                         ; the room grew for bloom + density)
         move    a,x:(r7+$6f)
-        move    #>$7A0000,a             ; damping 0.953 -- the loop barely
+        move    #$7a,a                  ; damping 0.953 -- the loop barely
                                         ; damps (Round 13); in-loop damping
                                         ; compounds per pass and was thinning
                                         ; + darkening the late tail. Tone
@@ -1272,9 +1272,9 @@ md_room:
                                         ; 0.75; Round 11's retune of the old
         move    a,x:(r7+$72)            ; inverted-HF finding -- VV room's HF
                                         ; dies FASTEST, ours hung on)
-        move    #>$430000,a             ; wet high-cut 0.523 (Round 13) -- VV room
+        move    #$43,a                  ; wet high-cut 0.523 (Round 13) -- VV room
         move    a,x:(r7+$7a)            ; is "darker tone"
-        move    #>$5c0000,a             ; lines 4-7 tap scale 0.71875 -- tighter
+        move    #$5c,a                  ; lines 4-7 tap scale 0.71875 -- tighter
         move    a,x:(r7+$6c)            ; interleave for a smaller space
         bra     rp_tail                 ; ROOM/PLATE-common stores, then md_done
 md_plate:
@@ -1326,9 +1326,9 @@ md_plate:
         move    a,x:(r7+$76)
         move    #>$2C7400,a             ; line 3: 2845 of 4096
         move    a,x:(r7+$77)
-        move    #>$480000,a             ; tap scale 0.5625 (was 0.65)
+        move    #$48,a                  ; tap scale 0.5625 (was 0.65)
         move    a,x:(r7+$6f)
-        move    #>$640000,a             ; damping 0.78 (was 0.953 ~= none: the
+        move    #$64,a                  ; damping 0.78 (was 0.953 ~= none: the
                                         ; ⚠️ 18 Aug 2026: a PLATE-brighten to
                                         ; 0.879 was built and REVERTED within
                                         ; the hour -- the hardware tilt that
@@ -1341,9 +1341,9 @@ md_plate:
         move    a,x:(r7+$72)            ; tail literally BRIGHTENED as it
                                         ; decayed -- Round 11. Still the
                                         ; brightest mode of the three.)
-        move    #>$570000,a             ; wet high-cut 0.68 (~8 kHz) -- plate
+        move    #$57,a                  ; wet high-cut 0.68 (~8 kHz) -- plate
         move    a,x:(r7+$7a)            ; stays the bright one
-        move    #>$620000,a             ; lines 4-7 tap scale 0.765625 -- moderate
+        move    #$62,a                  ; lines 4-7 tap scale 0.765625 -- moderate
         move    a,x:(r7+$6c)            ; interleave for a dense plate
 rp_tail:
 ; ---- ROOM/PLATE-common stores (v8): both modes carried these identically;
@@ -1352,7 +1352,7 @@ rp_tail:
         move    #>$7e8000,a             ; wet gain/2 (R18 full-wet, per-mode
         move    a,x:(r7+$20)            ; since 18 Aug 2026; BIG stores its
                                         ; own -6/-3 dB trim in its block)
-        move    #>$100000,a             ; diffusion offset, highest (Round 13)
+        move    #$10,a                  ; diffusion offset, highest (Round 13)
         move    a,x:(r7+$3f)
         move    #>$7fffff,a             ; movement scale 1.0 (18 Aug relaw;
         move    a,x:(r7+$73)            ; the knob spans it, taste lives there)
@@ -1402,7 +1402,7 @@ md_done:
     ; Setup only -- this runs once per block, not per sample.
             move    x:(r6+$3),x0            ; SIZE: slot 3 since the one-aux
                                             ; re-slot (AUX took slot 0)
-            move    #>$4c0000,y1            ; v77: SIZE FLOOR RAISED.
+            move    #$4c,y1                 ; v77: SIZE FLOOR RAISED.
             mpy     x0,y1,a
             add     #>$333000,a                  ; 0.125 .. 0.993 ; f = 0.400 .. 0.989, was
             move    a,x0                    ; then scaled by MODE's tap scale,
@@ -1753,17 +1753,17 @@ md_done:
 ; LP 126 (no limiter involved) rendered bit-identical, which is what pins
 ; the arithmetic; TONE 64 vs old HP 0 / LP 127 is the default's own gate.
         move    x:(r6+$4),b             ; TONE<<16 (slot 4, one-aux re-slot)
-        move    #>$400000,x0            ; 64<<16
+        move    #$40,x0                 ; 64<<16
         sub     x0,b                    ; (TONE-64)<<16, N while TONE < 64
         move    x:(r6+$4),a             ; TONE<<16 (moves leave the CCR alone)
         move    #>$3f8000,x0            ; 63.5<<16
         tpl     x0,a                    ; TONE >= 64 -> a = 63.5<<16
-        move    #>0,x0
+        move    #0,x0
         tmi     x0,b                    ; b = max(0, TONE-64)<<16, for LO
         asl     #$1,a,a                 ; a = min(2*TONE, 127)<<16, exact
         move    a,x0                    ; x0 = LP-equivalent knob field
-        move    #>$100000,a             ; c = 0.125 + 0.875*LP: the constant
-        move    #>$700000,y1            ; first, then mac -- one word fewer
+        move    #$10,a                  ; c = 0.125 + 0.875*LP: the constant
+        move    #$70,y1                 ; first, then mac -- one word fewer
         mac     x0,y1,a                 ; than mpy + add, and the same 56 bits
         move    a,x1                    ; v95: scale by MODE's damping constant
         move    x:(r7+$72),y1           ; before it lands. The scale is <= 1.0,
@@ -1792,7 +1792,7 @@ md_done:
 ; multiplier ($040000 -> $080000, a power of two, so the product is the
 ; same bits the old HP knob produced).
         move    b,x0                    ; x0 = (TONE-64)<<16, floored
-        move    #>$080000,y1
+        move    #$08,y1
         mpy     x0,y1,a
         move    a,x:(r7+$40)            ; LO coefficient
 
@@ -1918,9 +1918,9 @@ shfst:
         move    a1,x0
         move    x0,a
         move    a,x0
-        move    #>$2a0000,y1            ; span sized so that base + full DIFF +
+        move    #$2a,y1                 ; span sized so that base + full DIFF +
         mpy     x0,y1,a                 ; the LARGEST mode offset still lands
-        move    #>$2d0000,x0            ; under ~0.80. At the old $380000 span
+        move    #$2d,x0                 ; under ~0.80. At the old $380000 span
         add     x0,a                    ; PLATE overflowed $7fffff at DIFF=127
         move    x:(r7+$3f),x0           ; and g read NEGATIVE; the others sat at
         add     x0,a                    ; 0.88-0.97, where an allpass is a
@@ -1983,17 +1983,17 @@ shfst:
         move    x0,a                    ; A2-clean before the shift
         asl     #$8,a,a                 ; -> value<<16, the knob scale
         move    a1,x0                   ; SCALED TO A QUARTER. The raw knob is a
-        move    #>$600000,y1            ; loop gain on TOP of the tank's own
+        move    #$60,y1                 ; loop gain on TOP of the tank's own
         mpy     x0,y1,a                 ; feedback, and by ear 25/127 raw (0.20)
         move    a,x:(r7+$0e)            ; is the sweet spot while 45 at TIME=90
                                         ; already runs away. A quarter puts that
                                         ; sweet spot near the top of the travel
                                         ; instead of a fifth of the way up.
-        move    #>$280000,a             ; 40 << 16, where the knob used to land
+        move    #$28,a                  ; 40 << 16, where the knob used to land
         move    a1,x0
         move    x0,a
         move    a,x0
-        move    #>$500000,y1
+        move    #$50,y1
         mpy     x0,y1,a
         asr     #$8,a,a                 ; Round 13: BASE RATE x8, ~2.2 Hz at a
                                         ; mode scale of 1.0. The pinned ~0.4 Hz
@@ -2082,7 +2082,7 @@ g_off:
 ; target is always FULL, GLVL pinned so a fresh boot starts open.
         move    #>$7fffff,a
         move    a,x:(r7+$62)            ; GLVL: open now, not after an attack
-        move    #>$400000,a             ; ~4.19M samples ~= 95 s: never closes
+        move    #$40,a                  ; ~4.19M samples ~= 95 s: never closes
         move    a,x:(r7+$30)            ; GCNT: never runs out at GATE=0
 g_st:                                   ; (g_off falls through with a still
                                         ; $400000, so one load serves GCNT and
@@ -2101,7 +2101,7 @@ g_st:                                   ; (g_off falls through with a still
 
         move    x:(r7+$3e),a            ; line 0  (1.000x) phase
         move    x:(r7+$2f),x0           ; base increment, from RATE
-        move    #>$7f0000,y1               ; rate x0.992
+        move    #$7f,y1                    ; rate x0.992
         mpy     x0,y1,b                 ; this line's own rate
         move    b1,x0
         add     x0,a
@@ -2129,7 +2129,7 @@ lf3e:
 ; zero -- the same rule this file already records for the tank ("modulation
 ; must never reach zero"; a completely static tank rings). MOD stays the
 ; tank's control alone.
-        move    #>$200000,y1
+        move    #$20,y1
         mpy     x0,y1,a
         move    a1,x1
         asl     #$8,a,a
@@ -2188,7 +2188,7 @@ lf4f:
 ; zero -- the same rule this file already records for the tank ("modulation
 ; must never reach zero"; a completely static tank rings). MOD stays the
 ; tank's control alone.
-        move    #>$200000,y1
+        move    #$20,y1
         mpy     x0,y1,a
         move    a1,x1
         asl     #$8,a,a
@@ -2619,7 +2619,7 @@ lfrol:
 ;    sign-mask leaves A2 inconsistent and the store limiter saturates it):
         move    x:(r7+$30),a            ; GCNT
         sub     #>$1,a                  ; GCNT - 1  (sets N)
-        move    #>0,x0
+        move    #0,x0
         tmi     x0,a                    ; if < 0, floor to 0
         move    a,x1                    ; counted-down candidate
 ; B. retrigger: if |input| >= threshold, GCNT := GHOLD (else the countdown).
@@ -2653,13 +2653,13 @@ lfrol:
 ; C. target = FULL if GCNT > 0 else 0:
         tst     a                       ; Z = (GCNT == 0)
         move    #>$7fffff,a             ; FULL
-        move    #>0,x0
+        move    #0,x0
         teq     x0,a                    ; GCNT == 0 -> target 0
 ; D. one-pole smooth toward target -- the slam ramp:
         move    x:(r7+$62),b            ; GLVL
         sub     b,a                     ; delta = target - GLVL  (N=1 if closing)
         move    a,x0                    ; delta
-        move    #>$020000,a             ; ATTACK coeff ~1.4 ms -- fast, keeps the
+        move    #$02,a                  ; ATTACK coeff ~1.4 ms -- fast, keeps the
         move    #>$002500,x1            ; bloom's punch; RELEASE coeff ~20 ms
         tmi     x1,a                    ; delta<0 (closing) -> ease with release
         move    a,y0                    ; the moves above don't touch N, so tmi
@@ -3281,7 +3281,7 @@ tankend:
         sub     x0,a                    ; x - s
         move    a,x:(r7+$14)            ; the HP output, parked
         move    a,x0
-        move    #>$050000,y1            ; c ~0.039 -> corner ~280 Hz (Sam,
+        move    #$05,y1                 ; c ~0.039 -> corner ~280 Hz (Sam,
                                         ; 23 Aug, on the 4-corner ladder:
                                         ; 570 Hz was "a bit thin", 280 is
                                         ; "good" -- body kept, mud gone)
@@ -3789,7 +3789,7 @@ fbB:
         sub     x0,a
         asr     #$1,a,a
         move    a,x0
-        move    #>$600000,y0            ; width PINNED at the old default
+        move    #$60,y0                 ; width PINNED at the old default
                                         ; (wide, 0.75) -- the knob is SHFT
                                         ; now and $2c carries its step
         mpy     x0,y0,a
@@ -3988,7 +3988,7 @@ stampgr:
                                         ; leaves it stale; CLAUDE.md)
         move    #>$1,x0
         sub     x0,b
-        move    #>$0,x0
+        move    #0,x0
         tmi     x0,b                    ; floored at 0
         move    y:(r5),a                ; the stamp
         move    x0,y:(r5)               ; clear-on-read (x0 is still 0)
