@@ -150,7 +150,7 @@ proc:
         move    x:(r6+$2),y1
         mpy     x0,y1,a
         move    a,x0
-        move    #>$400000,y1
+        move    #$40,y1                 ; (short immediate: bits 23-16)
         mpy     x0,y1,a
         move    a,x:(r7+$2a)
         move    x:(r6+$3),x0
@@ -180,7 +180,7 @@ proc:
         move    a1,x0
         move    x0,a
         move    a,x0
-        move    #>$f0000,y1
+        move    #$0f,y1
         mpy     x0,y1,a                 ; RATE * $1e00 in Q23
         neg     a
         add     #>$7fe000,a
@@ -194,10 +194,10 @@ proc:
         move    a1,x0
         move    x0,a
         move    a,x:(r7+$31)
-        move    #>$400000,x0
+        move    #$40,x0
         sub     x0,a
         abs     a                       ; 0 .. $400000
-        move    #>$200000,x0
+        move    #$20,x0
         sub     x0,a
         asl     #$1,a,a                 ; -0.5 .. +0.5 -> -1 .. +1
         move    a,x:(r7+$49)            ; lfo, bipolar
@@ -242,7 +242,7 @@ fs_smod:
         and     #>$7f0000,a
         move    a1,x0
         move    x0,a
-        move    #>$400000,x0
+        move    #$40,x0
         sub     x0,a                    ; (DPTH-64)/128
         asl     #$1,a,a                 ; (DPTH-64)/64, -1 .. +1
         move    a,x0
@@ -250,9 +250,9 @@ fs_smod:
         mpy     x0,y1,a                 ; depth * mod  (x0 signed, y1 signed)
         move    x:(r6+$0),x0            ; FREQ
         add     x0,a                    ; FREQm
-        move    #>$0,x0
+        move    #$0,x0
         tmi     x0,a                    ; clamp below at 0
-        move    #>$7f0000,x0
+        move    #$7f,x0
         cmp     x0,a
         tgt     x0,a                    ; clamp above at 127/128
 ; g2 = table(FREQm): an EXPONENTIAL taper, 24 Hz..15 kHz, one octave per
@@ -312,7 +312,7 @@ fs_smod:
         add     #>$200000,a             ; + 1/4
         asr     #$1,a,a                 ; den/8
         move    a,x0
-        move    #>$100000,y1            ; 1/8
+        move    #$10,y1                 ; 1/8
         move    y1,a                    ; a clean load: a0 = 0 for the divide
         andi    #$fe,ccr                ; carry clear
         rep     #$18
@@ -347,7 +347,7 @@ fs_smod:
         move    x0,x:(r7+$27)
         bra     fs_rdone
 fs_rpar:
-        move    #>$400000,x0            ; PAR: out = (A + B) / 2
+        move    #$40,x0                 ; PAR: out = (A + B) / 2
         move    x0,x:(r7+$26)
         move    x0,x:(r7+$27)
         bra     fs_rdone
@@ -358,7 +358,7 @@ fs_rring:
 fs_rfm:
         move    #>$7fffff,x0            ; FM: out = A, f modulated by B
         move    x0,x:(r7+$26)
-        move    #>$400000,x0            ; kFM = 0.5 (0.25 was "a bit little" by ear, 12 Sep 2026)
+        move    #$40,x0                 ; kFM = 0.5 (0.25 was "a bit little" by ear, 12 Sep 2026)
         move    x0,x:(r7+$2c)
 fs_rdone:
 
@@ -431,9 +431,9 @@ fs_mvowl:
         move    x:(r7+$4e),r5           ; the P table's base (saved at the g2 lookup)
         move    #>$ffffff,m5
         move    (r5)+n5
-        move    #>33,n5
+        move    #$21,n5                 ; 33
         move    (r5)+n5                 ; r5 = COS_TABLE[idx][0] (33 words past G2)
-        move    #>3,n5
+        move    #$3,n5
 ; formant 0: cw = CW[idx][0] + frac*(CW[idx+1][0] - CW[idx][0]) (p:(r5)+n5
 ; reads the first and steps to the next vowel, p:(r5)-n5 reads it and steps
 ; back; (r5)+ moves to the next formant); R' = R0 + e0*RES narrows the band
@@ -564,7 +564,7 @@ fs_mladr:
         asl     #$1,a,a                 ; 2 (k/4) G^4 = k G^4 / 2  (<= 0.34)
         add     #>$400000,a             ; den = 1/2 + k G^4 / 2
         move    a,x0
-        move    #>$200000,a             ; num = 1/4: d/2 = (1/4)/den, <= 1/2
+        move    #$20,a                  ; num = 1/4 (a2 = a0 = 0): d/2 = (1/4)/den, <= 1/2
         andi    #$fe,ccr
         rep     #$18
         div     x0,a
@@ -583,7 +583,7 @@ fs_mdone:
 ; neutral block copies nothing and only does the sends.
         clr     b
         move    x:(r6+$0),a
-        move    #>$7f0000,x0
+        move    #$7f,x0
         cmp     x0,a
         bne     fs_live
         move    x:(r6+$1),a
@@ -605,7 +605,7 @@ fs_mdone:
         and     #>$7fff00,a
         move    a1,x0
         move    x0,a
-        move    #>$400000,x0
+        move    #$40,x0
         cmp     x0,a
         bne     fs_live
         bra     fs_bypass
@@ -617,7 +617,7 @@ fs_live:
 ; channel (13 Sep 2026). CYCLES_FORWARD_BRANCHES: the fork's dispatch is the
 ; only branch, and the pricer charges dispatch + the worst alternative.
 ; ===========================================================================
-        move    #>$1,n0
+        move    #$1,n0                  ; (short immediate, stock's own form)
         do      n7,>fs_end
 ; ---- input peak for the envelope follower (mono, pre-filter) --------------
         move    x:(r0),a
@@ -652,7 +652,7 @@ fs_live:
         mpy     x0,y1,a                 ; g2run * kFM * B: MULTIPLICATIVE FM,
         move    x:(r7+$2e),x0           ; so g stays positive by construction
         add     x0,a                    ; g = g2run * (1 + kFM * B)
-        move    #>$7f0000,x0            ; g2 < 1 (the halved g's own rail)
+        move    #$7f,x0                 ; g2 < 1 (the halved g's own rail)
         cmp     x0,a
         tgt     x0,a
         move    a,x:(r7+$1c)            ; g2 this sample
@@ -708,7 +708,7 @@ fs_live:
 ; filter B and the mix (the shared callee); r3 -> this channel's B poles,
 ; n3 -> its B_prev from there
         move    r7,r3
-        move    #>$38,n3
+        move    #$38,n3
         move    (r3)+n3
         move    #>$ffffe1,n3
         bsr     fs_bmix
@@ -725,7 +725,7 @@ fs_live:
         mpy     x0,y1,a                 ; g2run * kFM * B: MULTIPLICATIVE FM,
         move    x:(r7+$2e),x0           ; so g stays positive by construction
         add     x0,a                    ; g = g2run * (1 + kFM * B)
-        move    #>$7f0000,x0            ; g2 < 1 (the halved g's own rail)
+        move    #$7f,x0                 ; g2 < 1 (the halved g's own rail)
         cmp     x0,a
         tgt     x0,a
         move    a,x:(r7+$1c)            ; g2 this sample
@@ -781,7 +781,7 @@ fs_live:
 ; filter B and the mix (the shared callee); r3 -> this channel's B poles,
 ; n3 -> its B_prev from there
         move    r7,r3
-        move    #>$3c,n3
+        move    #$3c,n3
         move    (r3)+n3
         move    #>$ffffde,n3
         bsr     fs_bmix
@@ -824,7 +824,7 @@ fs_vowl:
         move    x0,x:(r7+$03)           ; y2 <- y1
         move    a,x:(r7+$02)            ; y1 <- y (limited)
         move    a,x0                    ; y, limited
-        move    #>$400000,y1          ; the formant's gain, halved
+        move    #$40,y1                 ; the formant's gain, halved
         mpy     x0,y1,a
         move    a,x:(r7+$1c)            ; the sum so far (halved)
 ; formant 1: y = 2*b0*(dx/2) + 2*m1*y1 - a2*y2; then y2 <- y1 <- y
@@ -845,7 +845,7 @@ fs_vowl:
         move    x0,x:(r7+$05)           ; y2 <- y1
         move    a,x:(r7+$04)            ; y1 <- y (limited)
         move    a,x0                    ; y, limited
-        move    #>$200000,y1          ; the formant's gain, halved
+        move    #$20,y1                 ; the formant's gain, halved
         mpy     x0,y1,b
         move    x:(r7+$1c),a
         add     b,a
@@ -878,7 +878,7 @@ fs_vowl:
         asl     #$1,a,a
         move    a,x:(r7+$1b)            ; wetA
         move    r7,r3
-        move    #>$38,n3
+        move    #$38,n3
         move    (r3)+n3
         move    #>$ffffe1,n3
         bsr     fs_bmix
@@ -914,7 +914,7 @@ fs_vowl:
         move    x0,x:(r7+$0b)           ; y2 <- y1
         move    a,x:(r7+$0a)            ; y1 <- y (limited)
         move    a,x0                    ; y, limited
-        move    #>$400000,y1          ; the formant's gain, halved
+        move    #$40,y1                 ; the formant's gain, halved
         mpy     x0,y1,a
         move    a,x:(r7+$1c)            ; the sum so far (halved)
 ; formant 1: y = 2*b0*(dx/2) + 2*m1*y1 - a2*y2; then y2 <- y1 <- y
@@ -935,7 +935,7 @@ fs_vowl:
         move    x0,x:(r7+$0d)           ; y2 <- y1
         move    a,x:(r7+$0c)            ; y1 <- y (limited)
         move    a,x0                    ; y, limited
-        move    #>$200000,y1          ; the formant's gain, halved
+        move    #$20,y1                 ; the formant's gain, halved
         mpy     x0,y1,b
         move    x:(r7+$1c),a
         add     b,a
@@ -968,7 +968,7 @@ fs_vowl:
         asl     #$1,a,a
         move    a,x:(r7+$1b)            ; wetA
         move    r7,r3
-        move    #>$3c,n3
+        move    #$3c,n3
         move    (r3)+n3
         move    #>$ffffde,n3
         bsr     fs_bmix
@@ -992,7 +992,7 @@ fs_ladr:
         move    r7,r3                   ; states s0..s3 at $00
         bsr     fs_lcore
         move    r7,r3
-        move    #>$38,n3
+        move    #$38,n3
         move    (r3)+n3
         move    #>$ffffe1,n3
         bsr     fs_bmix
@@ -1002,11 +1002,11 @@ fs_ladr:
         move    x0,x:(r7+$1d)           ; park x
         move    x:(r7+$1a),x0           ; B_prev
         move    r7,r3
-        move    #>$8,n3
+        move    #$8,n3
         move    (r3)+n3                 ; states s0..s3 at $08
         bsr     fs_lcore
         move    r7,r3
-        move    #>$3c,n3
+        move    #$3c,n3
         move    (r3)+n3
         move    #>$ffffde,n3
         bsr     fs_bmix
@@ -1111,7 +1111,7 @@ fs_lcore:
         mpy     x0,y1,a
         move    x:(r7+$16),x0
         add     x0,a                    ; G' = Grun * (1 + kFM * B)
-        move    #>$7f0000,x0
+        move    #$7f,x0
         cmp     x0,a
         tgt     x0,a                    ; G' < 1
         move    a,x:(r7+$1c)            ; G' this sample
@@ -1126,7 +1126,7 @@ fs_lcore:
         move    x:(r7+$10),y1           ; G
         mac     x0,y1,a
         move    x:(r3),x0               ; s3/2
-        move    #>$3,n3
+        move    #$3,n3
         add     x0,a                    ; S/2
         move    (r3)-n3                 ; back to s0
         asr     #$2,a,a                 ; S/8, <= 0.6
