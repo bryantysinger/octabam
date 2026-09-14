@@ -108,7 +108,8 @@ on the loaded project -- the port has no panel), `dram_card.img`, set
   `unlk/rts`; no trap.
 - ✅ `verify_dram_boot`: both windows read back equal to the linked
   runtimes.
-- 🟡 NOT measured: hardware. What the port cannot show: whether
-  rel_after's restore is the right thing to do after a KIT reload
-  (his semantics under her kits -- the same code his own build runs
-  after a stock reload).
+- ✅ Hardware: `OKMS2` (this bridge in `ok-ms`) flashed 14 Sep 2026 and
+  works; Part Reload no longer traps. Not measured on its own: whether
+  rel_after's restore is the right thing after a KIT reload (his
+  semantics under her kits -- the same code his own build runs after a
+  stock reload).
