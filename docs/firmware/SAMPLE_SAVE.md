@@ -9,29 +9,13 @@ sample pool, the file API underneath, and the clock that names the file.
 `0x40000400`. Disassembled with `scripts/disasm.sh emac`, that is
 `objdump -m m68k:cfv4e`.
 
-⚠️ **Do not read this region with r2.** `scripts/disasm.sh` records why:
-6,757 instructions below `0x40098000` that r2 cannot decode, 4,543 of them
-longer than two bytes, so the stream desynchronises and invents plausible
-code. An earlier reading of this same routine with r2 got the staging buffer
-wrong by a factor of the block size, and turned a `mulsl` and a `remul` into
-`invalid`. Every claim below was re-derived with cfv4e.
+r2 cannot decode this region (`scripts/disasm.sh`); every claim below was
+derived with cfv4e. Confidence markers as in `CHIP.md`: ✅ measured, 🟡
+inferred with a falsifier stated, ❌ retracted.
 
-Confidence markers as in `CHIP.md`: ✅ measured, 🟡 inferred with a falsifier
-stated, ❌ retracted.
+The writer is at `0x40020f04`; anything that wants to put samples on the
+card can call it.
 
----
-
-## 0. Why this page exists
-
-Two independent projects list this path as unmapped. `docs/history/COVERAGE.md`
-here, and octamax's `COVERAGE.md`, both record that no WAV writer and no
-sample-save path had been located. Both were wrong. The writer is at
-`0x40020f04` and it has always been in the image.
-
-The practical consequence: **writing audio to the card is not new machinery.**
-Anything that wants to put samples on the card can call what is already there.
-
----
 
 ## 1. The path, end to end
 
@@ -91,8 +75,7 @@ first word of that record drive the whole format:
 | 1 | 24 bit, 3 bytes per sample | 16 bit, 2 bytes per sample |
 
 Bit 1 is read twice, once for the byte count at `0x40020f48` and once for the
-`bits` field at `0x40020ff6`, and the two agree. That internal consistency is
-why the mapping is marked measured rather than inferred.
+`bits` field at `0x40020ff6`, and the two agree.
 
 ✅ Return codes: `1` success, `-2` a guard failed, `-51` a chunk of zero
 length was computed, or the negative value the write primitive returned.
@@ -103,17 +86,12 @@ length was computed, or the negative value the write primitive returned.
 
 ✅ Built in a scratch buffer at `0x46c2d980`, then written in one call. The
 CPU is big endian and RIFF is little endian, so every numeric field goes
-through `byterev.l` first. `byterev` is ColdFire ISA_A+ (the assembler
-accepts it from `-march=isaaplus` on; ❌ an earlier version of this page said
-ISA_C), opcode `0x02C0 | reg`. Under the `m68k:cfv4e` profile that
-`scripts/disasm.sh emac` uses, objdump prints it as `.short 0x02c0`, and r2
-does not decode it at all. The `m68k:isa-aplus` and `m68k:isa-c` profiles do
-print `byterev %d0`, but they drop the EMAC instructions: under either, the
-`msacl` gate at `0x40003664` comes out as `btst` and `.short` (checked
-10 Sep 2026). No single profile decodes both, so this page reads the header
-builder under `cfv4e` and decodes the `.short 0x02c0` words by hand; the
-little endian requirement makes the reading certain. To see `byterev` spelled
-out, re-run the span under `-m m68k:isa-aplus` and ignore its EMAC output.
+through `byterev.l` first. `byterev` is ColdFire ISA_A+ (opcode `0x02C0 |
+reg`). Under the `m68k:cfv4e` profile objdump prints it as `.short 0x02c0`;
+the `m68k:isa-aplus` and `m68k:isa-c` profiles print `byterev %d0` but drop
+the EMAC instructions (the `msacl` gate at `0x40003664` comes out as `btst`
+and `.short`). No single profile decodes both; this page reads the header
+builder under `cfv4e` and decodes the `.short 0x02c0` words by hand.
 
 Let `A` be the block align, that is bytes per sample times channels. Let `D`
 be `sampleCount * A`, the audio byte count. Let `P` be `D & 1`, the RIFF pad.
@@ -166,27 +144,16 @@ d6 = 3072 / A          remul %d4,%d6,%d6
 ```
 
 That is 512 frames at 24 bit stereo, 768 at 16 bit stereo, 1,024 at 24 bit
-mono. ❌ An earlier note here said "3,072 sample chunks". That was the r2
-misreading, and it is wrong: 3,072 is bytes.
+mono (3,072 is bytes; ❌ an earlier reading said "3,072 sample chunks").
 
-⚠️ **objdump prints that instruction as `remul`, which reads as a remainder.
-It is a divide, and the value is the quotient.** The encoding `4c44 6006` is
-ambiguous: `m68k-linux-gnu-as -mcpu=5407` assembles both `divu.l %d4,%d6` and
-`remul %d4,%d6,%d6` to exactly those bytes, because the destination and
-remainder registers are the same register, and binutils simply prefers the
-`remul` spelling when disassembling. Two independent reasons the quotient is
-the correct reading:
-
-- `A` is always 2, 3, 4 or 6, and 3,072 is divisible by all four. A remainder
-  would be 0 in every configuration, the frame count would be 0, and the loop
-  would abort with `-51` before writing a single sample. The unit saves
-  samples, so it is not the remainder.
-- The quotient is the only value that makes the surrounding code meaningful:
-  it is compared against the contiguous run and the remaining count to pick a
-  chunk size.
-
-Same family as the traps in `CLAUDE.md`: legal encoding, plausible-looking
-output, wrong meaning. Assemble the candidates when a mnemonic surprises you.
+objdump prints that instruction as `remul`; it is a divide and the value
+is the quotient. The encoding `4c44 6006` is ambiguous: `m68k-linux-gnu-as
+-mcpu=5407` assembles both `divu.l %d4,%d6` and `remul %d4,%d6,%d6` to
+those bytes (destination and remainder registers the same), and binutils
+prefers the `remul` spelling. `A` is 2, 3, 4 or 6 and 3,072 is divisible by
+all four, so a remainder would be 0 in every configuration and the loop
+would abort with `-51`; the quotient is what the surrounding code compares
+against the contiguous run to pick a chunk size.
 
 Each pass:
 
@@ -258,8 +225,7 @@ It reads the clock through two helpers:
   `0x46c8c5f4`) it pushes two frames to PUSHR (`+0x34`: `0x90020000 | index`,
   then `0x10020000`), polls SR (`+0x2c`) until RXCTR (bits 7:4) reads 2, pops
   POPR (`+0x38`) twice and keeps the second byte. ✅ (❌ was "an I2C
-  transaction", 13 Sep 2026: the I2C block is `0xfc058000`; the clock is on
-  SPI.)
+  transaction": the I2C block is `0xfc058000`; the clock is on SPI.)
 - `0x4001c31c(value)` converts BCD to binary, as
   `(v >> 4) * 10 + (v & 15)`. ✅ So the clock returns BCD.
 
