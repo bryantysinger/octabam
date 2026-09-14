@@ -16,7 +16,7 @@ T1..T7  ──(AMP VOL, BAL)──▶ FX1 station ──▶ FX2 = SEND, one AUX 
 T1 FX2 = DELAY SERVER ─ wet ─▶ T5 FX2 = REVERB SERVER ─ wet ─▶ (the last live stage's wet)
                                                                                  │
 T8 (MASTER TRACK on)  ◀──────────────────────────────────────────────────────────┘
-   FX1 = CHARACTER:  x += RET × wet  ▶  SRR ▶ CRSH ▶ FOLD ▶ RING ▶ SAT ▶ COMP ▶ WDTH ▶ MIX
+   FX1 = CHARACTER:  x += RET × wet  ▶  FOLD ▶ TXTR ▶ SAT ▶ TONE ▶ COMP ▶ WDTH ▶ MIX
    FX2 = nothing
 ```
 
@@ -48,35 +48,41 @@ T8 (MASTER TRACK on)  ◀──────────────────�
 | 1 | CHARACTER, defaults | DELAY SERVER, AUX 30 |
 | 2, 3, 4, 6, 7 | SPECTRUM, defaults | SEND, AUX 40 / 30 / 40 / 50 / 40 |
 | 5 | MODULATION, defaults | REVERB SERVER, AUX 40 |
-| 8 | CHARACTER, RET 127, CMOD GLUE, COMP 40 | — |
+| 8 | CHARACTER, RET 127, COMP 40 (GLUE by position) | — |
 
 Stamp every project for the current remix before play
 (`tools/hw/ot_project.py stamp-defaults`); a part saved under an older slot
 layout feeds the new layout its old bytes.
 
-## Character on the master, knob by knob
+## Character on the master, knob by knob (the 14 Sep 2026 surface, image 12)
 
-Page 1: DRV, FOLD, CRSH, COMP, RET, TONE. Page 2: MIX, SAT, RING, CMOD,
-WDTH, SRR. The chain runs in the fixed order drawn above; distortion sits
-BEFORE dynamics on purpose (a compressor after the dirt is a tool, before it
-is a fader for the dirt).
+Page 1: DRV, FOLD, TXTR, COMP, RET, TONE. Page 2: MIX, SAT, —, —, WDTH, —.
+The chain runs in the fixed order drawn above; distortion sits BEFORE
+dynamics on purpose (a compressor after the dirt is a tool, before it is a
+fader for the dirt). Every stage holds its level as its knob rises (the
+tape lifts about +2 dB by 127, by ear), so what you hear is the character.
 
 - **RET** — the return level. 127 in the stamp. Only meaningful on T8.
-- **DRV / SAT / TONE** — DRV 0 is bit-exact, no saturation stage at all
-  (✅ the master's whole mix would otherwise pass through a curve that is
-  unity only for small signals). SAT picks TAPE (TapeHead; TONE is its
-  tilt), TUBE (DaTube) or INFL (OInflator).
-- **COMP / CMOD** — JClones AC1's console channel law: |key| (the mono sum
-  of the station's own input) smoothed by attack/release; `Lv = K ×
-  level`; `gr = (Lv²/2 − 1)² + a·Lv` clamped at 1 — a dip around Lv = 1
-  whose depth is `a = 0.75 − 0.675·COMP/128`; makeup `1 / (1 −
-  0.3375·COMP/128)`. GLUE: 0.5 / 500 ms, K = 3. COMP: 0.5 / 50 ms, K = 4.
-  COMP 0 skips the stage bit-exactly. The stamp is GLUE 40. ✅ On the unit
-  (image 8): COMP 40 / 80 / 127 keep both channels within 0.6 dB of each
-  other, RET 0 or 127, WDTH 64 or 127.
-- **WDTH** — mid/side: mid stays, side scales; 64 is neutral.
+- **DRV / SAT** — DRV 0 is bit-exact, no saturation stage at all. SAT picks
+  TAPE (JClones TapeHead), TUBE (DaTube) or INFL (OInflator). ✅ TAPE's
+  drive law voiced live: unity plus a gentle lift ("drv sounds great").
+- **FOLD** — WarpFold's wavefolder, 1× to 48× into the fold at a held level.
+- **TXTR** — Airwindows Pockey, the 12-bit sampler texture: 0 off, up moves
+  its bit-depth and rate sliders together, 12-bit µ-law and a 27 kHz hold
+  at the bottom of the travel, 2 bits and 3.5 kHz at the top. 🟡 proven
+  against the transcription, unheard.
+- **TONE** — a tilt after the saturator in every mode, drawn −64..+63: 0
+  flat and bit-exact, + bright, − dark, about ±4 dB at the ends.
+- **COMP** — JClones AC1's console channel law: `Lv = K × level`; `gr =
+  (Lv²/2 − 1)² + a·Lv` clamped at 1 — a dip around Lv = 1 whose depth is
+  `a = 0.75 − 0.675·COMP/128`; makeup `1 / (1 − 0.3375·COMP/128)`. GLUE
+  (0.5 / 500 ms, K = 3) on the master BY POSITION, COMP (0.5 / 50 ms,
+  K = 4) on every other track; no knob for it. COMP 0 skips the stage
+  bit-exactly. The stamp is 40. ✅ On the unit (image 8): COMP 40 / 80 /
+  127 keep both channels within 0.6 dB of each other.
+- **WDTH** — mid/side, drawn −64..+63: 0 untouched, −64 mono, +63 double
+  the sides.
 - **MIX** — out = x + MIX·(w − x); 127 in the stamp.
-- **FOLD, CRSH, RING, SRR** — the dirt; all skip at 0.
 
 ## What it cost us to learn, and the rule that came out of it
 

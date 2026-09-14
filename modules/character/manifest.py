@@ -4,8 +4,11 @@ The second BamSep26 station. A per-track INSERT that REPLACES stock LO-FI
 (id 0x1c, both menus, and every saved part that chose LO-FI):
 
   * FOLD -- WarpFold's wavefolder at a held level (the trim, 14 Sep 2026);
-    CRUSH, SRR and RING retired the same day for a texture block to come
-    ("more of a character than specific effects" -- Sam);
+  * TXTR -- Airwindows Pockey (Chris Johnson, MIT, 2022): the 12-bit
+    sampler texture -- mu-law encode, a continuous quantiser in that
+    domain, decode, an interpolated sample-and-hold and a slew smoother --
+    one knob moving its two sliders together. CRUSH, SRR and RING retired
+    for it the same day ("more of a character than specific effects");
   * SATURATE -- three characters, each a JClones (MIT) clone re-derived
     here (13 Sep 2026): TAPE = TapeHead (a state-variable split at TONE,
     the low and band parts through a cubic smoothstep, the top passed
@@ -88,6 +91,13 @@ def _tube_up(n=16):
 
 
 TUBE_UP = _tube_up()
+# Pockey's mu-law codec as two 257-point tables over [0, 1] (index = the top
+# 8 bits of the magnitude, linear between points; the encode chord error is
+# 0.011 at worst, in the first interval), placed after TAPE_D8: ENC at
+# TUBE_UP + 51, DEC at + 308 (modules/character/pockey_ref.py).
+_math = __import__("math")
+POCKEY_ENC = tuple(round(8388607 * min(1.0, _math.log(1 + 255 * i / 256) / _math.log(255))) for i in range(257))
+POCKEY_DEC = tuple(round(8388607 * (256 ** (i / 256) - 1) / 255) for i in range(257))
 # TapeHead's drive: d/8 with d = 0.8 * 10^(i/16) (0.8x .. 8x over DRV/128),
 # 17 words, interpolated (idx = knob >> 19, frac = the 19 bits under it),
 # placed after TUBE_UP's 34 in the P table:
@@ -113,7 +123,8 @@ MODULE = Module(
               doc="saturation drive; 0 skips the stage (bit-exact); TAPE 0.8x..8x"),
         Param(b"FOLD", 0, active=True, formatter=_PLAIN,
               doc="wavefolder drive, 1x..48x into the fold at a held level; 0 = no folding"),
-        _BLANK,   # was CRSH (retired 14 Sep 2026); the texture block's slot
+        Param(b"TXTR", 0, active=True, formatter=_PLAIN,
+              doc="Airwindows Pockey (MIT): the 12-bit sampler texture, both sliders at once; 0 = off"),
         Param(b"COMP", 0, active=True, formatter=_PLAIN,
               doc="compression amount; 0 = no gain reduction at any level"),
         Param(b"RET", 0, active=True, formatter=_PLAIN,
@@ -135,7 +146,7 @@ MODULE = Module(
     # No mode views (13 Sep 2026): no knob changes meaning by mode.
     dsp=DspSection(
         asm="modules/character/character.asm",
-        ptable=TUBE_UP + TAPE_D8,
+        ptable=TUBE_UP + TAPE_D8 + POCKEY_ENC + POCKEY_DEC,
         priority=13,                  # after the Spectrum station
         bus_role=BusRole.NONE,        # an insert that also WRITES the bus
         ybase=YBase.NEVER,                # (an FX1 module may own no buffers;

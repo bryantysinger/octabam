@@ -2447,3 +2447,29 @@ Process notes: A/B/A/B over MIDI with 8 s sides was not judgeable live ("I
 can't tell when you are changing") — the panel knob in Sam's hand with the
 transport running is the instrument; level-match FIRST or nothing can be
 judged; stop the transport at the end of every scripted test.
+
+**14 Sep 2026, ROUND 2 BUILD (image 12, PR #252), from Sam's verdicts on the
+whole surface:** "fold is a massive volume increase" → a (1/128)/gq trim per
+block, unity within 0.5 dB on small signals, the ceiling comes down as it
+folds. "Plain bitcrush not cutting it ... SRR probably doesn't justify the
+spot ... not sure how useful ring is ... some kind of opinionated algo to
+replace ring, srr and crush" → all three retired; **TXTR = Airwindows Pockey
+(MIT, 2022)** in CRSH's slot: mu-law encode, a continuous quantiser in that
+domain (rounding UP, as the C++ does), decode, an interpolated sample-and-
+hold and the slew smoother, one knob moving its two sliders together along
+the plugin's own laws; the port tracks the transcription
+(`modules/character/pockey_ref.py`) to a mean error of 0.0003 at TXTR 8/32/
+64 and 0.009 at 127 (a one-sample tie at the hold instant), level exact, 0
+bit-exact. Cost: Character 439 → 732 cycles with TXTR live (the codec is 51
+words per channel, the hold and slew ~45 each); the rig's real layout stays
+under the credited line, the all-Character layouts price 4–6 % over it.
+"Can we call tone brightness if it's only on tape?" → TONE is a tilt after
+the saturator in every mode (one-pole at 1.2 kHz; ±4 dB at the ends, 64
+flat and bit-exact), drawn −64..+63. "Auto select glue mode for master and
+normal for others and not have the knob" → GLUE by position, CMOD gone.
+"Can width be 0 at neutral and go neg for mono (sounds awesome)" → drawn
+−64..+63 with SPRING BAL's renderer triple (`Formatter.BIPOLAR`; first
+drawn on image 12). TUBE's +6 dB step at DRV 1 (the JSFX's default output
+slider) modelled. And a bug of mine: the tape trim had landed in the
+detector's K/4 slot on images 10/11, so the COMP verdict on image 10 was on
+a wrong ratio — re-judge on 12.
