@@ -3,10 +3,12 @@
 The second BamSep26 station. A per-track INSERT that REPLACES stock LO-FI
 (id 0x1c, both menus, and every saved part that chose LO-FI):
 
-  * CRUSH -- sample-rate reduction (hold N samples) and bit depth, LO-FI's
-    own pair, on one knob each way (CRSH = bits, SRR = the rate divider);
-  * FOLD + RING -- WarpFold's wavefolder and its parabolic carrier, so the
-    fold and the ring mod are here rather than needing a second insert;
+  * FOLD -- WarpFold's wavefolder at a held level (the trim, 14 Sep 2026);
+  * TXTR -- Airwindows Pockey (Chris Johnson, MIT, 2022): the 12-bit
+    sampler texture -- mu-law encode, a continuous quantiser in that
+    domain, decode, an interpolated sample-and-hold and a slew smoother --
+    one knob moving its two sliders together. CRUSH, SRR and RING retired
+    for it the same day ("more of a character than specific effects");
   * SATURATE -- three characters, each a JClones (MIT) clone re-derived
     here (13 Sep 2026): TAPE = TapeHead (a state-variable split at TONE,
     the low and band parts through a cubic smoothstep, the top passed
@@ -15,20 +17,22 @@ The second BamSep26 station. A per-track INSERT that REPLACES stock LO-FI
     turns up), INFL = OInflator (the inflator's signed cubic, DRV is its
     Effect). FUZZ (a hard clip after a tanh) was retired: "very early 2000s
     digi" (Sam). DRV 0 skips the stage, bit-exact;
-  * COMPRESS -- a feedforward peak compressor with three characters: COMP
-    (fast, 4:1) and GLUE (slow attack and release, 2:1, soft knee -- the
-    mastering setting; TRNS retired 13 Sep 2026);
-  * WIDTH -- mid/side width, 64 = untouched, 0 = mono, 127 = 2x side. This
-    is what makes the station a master chain on T8's FX1;
+  * TONE -- a tilt after the saturator in every mode (14 Sep 2026), drawn
+    -64..+63: 0 flat and bit-exact, + bright, - dark;
+  * COMPRESS -- JClones AC1's console channel law: GLUE (slow) on the
+    master BY POSITION, COMP (fast) on every other track, no knob for it
+    (14 Sep 2026; TRNS retired 13 Sep 2026);
+  * WIDTH -- mid/side width, drawn -64..+63: 0 = untouched, -64 = mono,
+    +63 = 2x side. This is what makes the station a master chain on T8;
   * ->DEL / ->VRB -- the station is a BUS CLIENT, exactly as the filter
     station is: knob-gated registration, no housekeeping.
 
-Chain order is fixed: crush -> fold/ring -> saturate -> compress -> width.
+Chain order is fixed: fold -> saturate -> tilt -> compress -> width.
 Distortion before dynamics is the order that makes a compressor useful on a
 dirty signal rather than a fader for the dirt.
 
-DEFAULTS ARE A BIT-EXACT PASSTHROUGH (DRV 0, FOLD 0, CRSH 0, COMP 0, MIX
-127, RING 0, WDTH 64, SRR OFF, sends 0), because a part that stored LO-FI
+DEFAULTS ARE A BIT-EXACT PASSTHROUGH (DRV 0, FOLD 0, TONE 64, COMP 0, MIX
+127, WDTH 64, RET 0), because a part that stored LO-FI
 runs this after the flash. ⚠️ A part's STORED bytes are stock LO-FI's --
 the stamper (plan A6) writes ours.
 
@@ -57,6 +61,7 @@ from remix.schema import (BusRole, Claims, DspSection, Formatter, Harness, Kind,
 
 _PLAIN = Formatter.PLAIN
 _STEP = Formatter.STEPPED
+_BIPOL = Formatter.BIPOLAR   # drawn -64..+63 around 64 (14 Sep 2026)
 
 _BLANK = Param(b"", 0)
 
@@ -86,6 +91,13 @@ def _tube_up(n=16):
 
 
 TUBE_UP = _tube_up()
+# Pockey's mu-law codec as two 257-point tables over [0, 1] (index = the top
+# 8 bits of the magnitude, linear between points; the encode chord error is
+# 0.011 at worst, in the first interval), placed after TAPE_D8: ENC at
+# TUBE_UP + 51, DEC at + 308 (modules/character/pockey_ref.py).
+_math = __import__("math")
+POCKEY_ENC = tuple(round(8388607 * min(1.0, _math.log(1 + 255 * i / 256) / _math.log(255))) for i in range(257))
+POCKEY_DEC = tuple(round(8388607 * (256 ** (i / 256) - 1) / 255) for i in range(257))
 # TapeHead's drive: d/8 with d = 0.8 * 10^(i/16) (0.8x .. 8x over DRV/128),
 # 17 words, interpolated (idx = knob >> 19, frac = the 19 bits under it),
 # placed after TUBE_UP's 34 in the P table:
@@ -110,36 +122,41 @@ MODULE = Module(
         Param(b"DRV", 0, active=True, formatter=_PLAIN,
               doc="saturation drive; 0 skips the stage (bit-exact); TAPE 0.8x..8x"),
         Param(b"FOLD", 0, active=True, formatter=_PLAIN,
-              doc="wavefolder drive, 1x..8x into the fold; 0 = no folding"),
-        Param(b"CRSH", 0, active=True, formatter=_PLAIN,
-              doc="bit depth: 0 = 24 bits, 127 = about 3"),
+              doc="wavefolder drive, 1x..48x into the fold at a held level; 0 = no folding"),
+        Param(b"TXTR", 0, active=True, formatter=_PLAIN,
+              doc="Airwindows Pockey (MIT): the 12-bit sampler texture, both sliders at once; 0 = off"),
         Param(b"COMP", 0, active=True, formatter=_PLAIN,
               doc="compression amount; 0 = no gain reduction at any level"),
         Param(b"RET", 0, active=True, formatter=_PLAIN,
               doc="the bus return level; live on the master (T8) only, inert elsewhere (13 Sep 2026)"),
-        Param(b"TONE", 0, active=True, formatter=_PLAIN,
-              doc="TapeHead's tone: the SVF split, 2.1 kHz (0) to 5 kHz (127)"),
+        Param(b"TONE", 64, active=True, formatter=_BIPOL,
+              doc="a tilt after the saturator in every mode: 64 flat, 127 bright, 0 dark (14 Sep 2026)"),
         # ---- page 2: knob / select / knob / select / knob / select ----------
         Param(b"MIX", 127, 128, active=True, formatter=_PLAIN,
               doc="dry/wet across the whole chain; 0 = exact passthrough"),
         Param(b"SAT", 0, 3, active=True, formatter=_STEP,
               labels=("TAPE", "TUBE", "INFL"),
               doc="character: TAPE (TapeHead), TUBE (DaTube, asymmetric), INFL (OInflator). JClones, MIT"),
-        Param(b"RING", 0, 128, active=True, formatter=_PLAIN,
-              doc="ring-mod carrier, ~5 Hz..3 kHz; 0 = off"),
-        Param(b"CMOD", 0, 2, active=True, formatter=_STEP,
-              labels=("COMP", "GLUE"),
-              doc="AC1's dip (JClones): COMP 0.5/50 ms at 4x, GLUE 0.5/500 ms at 3x; depth is COMP"),
-        Param(b"WDTH", 64, 128, active=True, formatter=_PLAIN,
-              doc="mid/side width: 64 = untouched, 0 = mono, 127 = double the sides"),
-        Param(b"SRR", 0, 4, active=True, formatter=_STEP,
-              labels=("OFF", "/2", "/4", "/8"),
-              doc="sample-rate reduction: hold each sample 2, 4 or 8 times"),
+        _BLANK,   # was RING (retired 14 Sep 2026)
+        _BLANK,   # was CMOD: GLUE on the master by position, COMP elsewhere (14 Sep 2026)
+        Param(b"WDTH", 64, 128, active=True, formatter=_BIPOL,
+              doc="mid/side width, drawn -64..+63: 0 = untouched, -64 = mono, +63 = double the sides"),
+        _BLANK,   # was SRR (retired 14 Sep 2026)
     ),
-    # No mode views (13 Sep 2026): no knob changes meaning by mode.
+    # The SAT select NAMES ITSELF (14 Sep 2026, Sam: "rather than sat label
+    # being static with the mode flashing for a sec, get rid of sat and just
+    # have it showing tape | tube | infl"): the mode formatter's rename cave
+    # writes the select's own name field with its value, so the knob reads
+    # TAPE / TUBE / INFL. No other knob changes meaning by mode.
+    mode_slot=7,
+    mode_views=(
+        ModeView(mode=0, names={7: b"TAPE"}),
+        ModeView(mode=1, names={7: b"TUBE"}),
+        ModeView(mode=2, names={7: b"INFL"}),
+    ),
     dsp=DspSection(
         asm="modules/character/character.asm",
-        ptable=TUBE_UP + TAPE_D8,
+        ptable=TUBE_UP + TAPE_D8 + POCKEY_ENC + POCKEY_DEC,
         priority=13,                  # after the Spectrum station
         bus_role=BusRole.NONE,        # an insert that also WRITES the bus
         ybase=YBase.NEVER,                # (an FX1 module may own no buffers;

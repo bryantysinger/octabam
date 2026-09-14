@@ -1,5 +1,6 @@
 ; ---------------------------------------------------------------------------
-; CHARACTER -- crush, fold, ring, saturate, compress, width, sends.
+; CHARACTER -- fold, texture (Pockey), saturate, tilt, compress, width, return
+; (14 Sep 2026: CRSH, RING and SRR retired; TXTR took their place).
 ;
 ; Insert contract (modules/ripple/ripple_svf.asm): frames in place at
 ; x:(r0)/x:(r0+n0), knobs from r6, state in this instance's r7 block. PLUS
@@ -12,12 +13,11 @@
 ;
 ; ---- the chain, fixed order ----------------------------------------------
 ;   x    += RET * wet                                    RET (T8 only)
-;   held  = SRR ? (hold each sample 2/4/8) : x          SRR
-;   q     = quantise(held, bits)                        CRSH
-;   f     = fold(q * (1 + 7*FOLD/128))                  FOLD
-;   r     = f * carrier                                 RING (0 = skip)
-;   s     = TAPE: TapeHead(r; DRV, TONE) | TUBE/FUZZ: curve(r*drive)   DRV, SAT
-;   c     = s * gain(env)                                COMP, CMOD
+;   f     = fold(x * gain) / gain                       FOLD (held level)
+;   p     = pockey(f; TXTR)                              TXTR (0 = skip)
+;   s     = TAPE: TapeHead(f; DRV) | TUBE | INFL          DRV, SAT (held level)
+;   t     = tilt(s; TONE)                                TONE (64 = flat)
+;   c     = t * gain(env)                                COMP (GLUE on the master)
 ;   w     = width(c)                                     WDTH
 ;   out   = x + MIX*(w - x)                              MIX
 ; Distortion BEFORE dynamics: a compressor after the dirt is a tool, before
@@ -39,8 +39,8 @@
 ;   $15/$16 L y1/y2, $17/$18 R y1/y2: TapeHead's SVF states (PERSISTENT, /4)
 ;   $29 sat mode (0 TAPE = TapeHead, 1 TUBE = DaTube, 2 INFL = OInflator)  $30 k2  $31 k3mag  $48 d/8 (per block)
 ;   per block:
-;   $20 m (MIX)   $21 fold gain/64  $22 TAPE unity trim (1/11)/d8  $23 crush mask
-;   $24 carrier step  $25 srr mask  $26 comp amount    $27 makeup/4
+;   $20 m (MIX)   $21 fold gain/64  $22 K/4 (the detector's)  $2a TAPE trim (1/11)/d8 + 0.023
+;   $1d fold trim/2 (1/128)/gq   $24 tilt t/2   $26 comp amount    $27 makeup/4
 ;   $28 the dip's a   $29 sat mode   $2b width side gain
 ;   $2c width mid gain  $2d attack coeff   $2e release coeff
 ;   $30 ->DEL level     $31 ->VRB level
@@ -59,10 +59,13 @@
 ;   words before it was found. ⚠️ Until 14 Sep 2026 dsp_asm emitted the
 ;   two-word form for EVERY displacement, sub-$40 included -- the one-word
 ;   form is the assembler's since then, and only since then):
-;   $19 held L (PERSISTENT)      $1a held R (PERSISTENT)
-;   $1b srr counter (PERSISTENT) $1c carrier phase (PERSISTENT)
-;   $1d (free)  $1e level_s (PERSISTENT)  $2a (free)
-;   $1f gr (per sample)  $45 (free)  $22 K/4 (per block)
+;   $3f tilt lp L (PERSISTENT)   $23 tilt lp R (PERSISTENT)
+;   TXTR (Pockey): $19/$1a held L/R, $1b/$1c last L/R, $25 pos/2, $46/$47
+;   soften L/R (all PERSISTENT); per block $4e skip, $50 freq/2, $51 rez,
+;   $52 4 rez, $53 1 - rez, $54 q4096, $55..$58 table bases; per sample
+;   $4f wrap, $59 dry park, $5a 1 - pos, $5b pos, $5c d/2
+;   $1e level_s (PERSISTENT)   $45 master flag (1 = position 3 on A: GLUE, RET)
+;   $1f gr (per sample)
 ;   $32 key    $33 dry L park   $34 dry R park
 ;   $35 scratch (wet L)          $36 scratch (wet R)
 ;   r4 / r5: the REVERB / DELAY wet read pointers (BUS mode), linear, per
@@ -122,12 +125,18 @@ init:
         move    a,x:(r7+$17)
         move    a,x:(r7+$18)
         move    a,x:(r7+$1e)            ; the compressor's state: AC1 level_s
-        move    a,x:(r7+$19)            ; the SRR held pair, its counter, the
-        move    a,x:(r7+$1a)            ; carrier phase, the liveness grace:
-        move    a,x:(r7+$1b)            ; every slot read before written
-        move    a,x:(r7+$1c)            ; (14 Sep 2026, verify_dirtystate)
-        move    a,x:(r7+$3c)
-        move    a,x:(r7+$3d)
+        move    a,x:(r7+$3c)            ; the liveness grace, the tilt's two
+        move    a,x:(r7+$3d)            ; low-pass states, the master flag:
+        move    a,x:(r7+$3f)            ; every slot read before written
+        move    a,x:(r7+$23)            ; (14 Sep 2026, verify_dirtystate)
+        move    a,x:(r7+$45)
+        move    a,x:(r7+$19)            ; TXTR's states: held L/R, last L/R,
+        move    a,x:(r7+$1a)            ; the hold position, soften L/R
+        move    a,x:(r7+$1b)
+        move    a,x:(r7+$1c)
+        move    a,x:(r7+$25)
+        move    a,x:(r7+$46)
+        move    a,x:(r7+$47)
         move    #>$7fffff,x0
         move    x0,x:(r7+$1f)           ; gr = unity
         rts
@@ -196,6 +205,17 @@ ch_offok:
         mpy     x0,y1,a                 ; (47/64)*(FOLD/128)
         add     #>$020000,a             ; + 1/64 -> gain/64, 0.016 .. 0.75
         move    a,x:(r7+$21)            ; gq
+; FOLD's trim (14 Sep 2026, Sam's live round: "a massive volume increase"):
+; trim/2 = (1/128)/gq = 0.5/gain by one real division, applied after the
+; fold per sample with an asl -- exactly x1 at FOLD 0 (0.5 then the shift),
+; 1/48 at 127: the fold folds at a held level, its ceiling coming down.
+        move    a,x0                    ; gq = the denominator, >= 1/64
+        move    #>$010000,a             ; 1/128 (a clean load: a0 = 0)
+        andi    #$fe,ccr
+        rep     #$18
+        div     x0,a
+        move    a0,x0
+        move    x0,x:(r7+$1d)           ; fold trim/2
 ; DRV 0 = NO saturation stage at all (13 Sep 2026): every mode's curve is
 ; unity only for small signals, and with the return entering BEFORE the
 ; chain the master's whole mix would pass through it. A per-block flag ($4d) skips the stage per sample -- a forward
@@ -209,70 +229,16 @@ ch_offok:
         tst     a
         teq     x0,b                    ; DRV == 0 -> skip flag 1
         move    b,x:(r7+$4d)
-; CRSH -> a bit MASK, built ONCE PER BLOCK (the per-sample cost is then one
-; AND). The knob picks how many low bits are cleared, 0..21; the mask is
-; $ffffff shifted left that many times, under a `rep` here rather than one
-; per sample. The shifts carry into A2, so the mask leaves through a1 (a
-; `move a,x:` would saturate: the A2-staleness trap, CLAUDE.md).
-; bits = 21 * knob / 128. The knob word IS knob/128 in Q23, so the product
-; with 21/128 is 21*knob/2^14 as a fraction; one asr #16 of the accumulator
-; leaves the plain integer.
-        move    x:(r6+$2),x0
-        move    #$15,y1                 ; 21/128 (short immediate: bits 23-16)
-        mpy     x0,y1,a
-        asr     #$10,a,a                ; -> the integer, 0..20
-        move    a1,x0
-        move    x0,a
-        move    #>21,x0
-        cmp     x0,a
-        tgt     x0,a                    ; belt and braces: never past 21
-        move    a,y0                    ; bits to drop, 0..21 -- the do count
-        tst     a                       ; (tst takes an ACCUMULATOR, never a
-        move    #>$ffffff,a             ; register; a move does not disturb it)
-        beq     ch_mskz                 ; knob 0: the all-ones mask, unshifted
-        rep     y0                      ; (a rep of 0 would be 65536 trips: the
-        asl     #$1,a,a                 ; guard above)
-ch_mskz:
-        move    a1,x:(r7+$23)           ; the mask: AND clears the low bits
-; RING: carrier step, WarpFold's squared taper; 0 = OFF (a step of 0 leaves
-; the phase still, and the per-sample gate below skips the multiply)
-        move    x:(r6+$d),a             ; a knob word: bit 23 clear, a2 = 0
+; TONE -> the tilt's half-strength t/2 = (TONE - 64)/128 (14 Sep 2026, Sam's
+; live round: one TONE that works in every SAT mode, not TapeHead's split).
+; The knob word IS TONE/128 in Q23; minus 0.5 is exactly t/2, negative below
+; 64. 64 = 0 = bit-exact (the tilt adds t/2 * (x - 2 lp), and 0 * anything
+; is 0). CRSH, RING and SRR went the same day: "more of a character than
+; specific effects" -- their slots wait for the texture block.
+        move    x:(r6+$5),a
         and     #>$7f0000,a
-        move    a1,x0                   ; (no clean reload: the input was positive)
-        move    a1,y1
-        mpy     x0,y1,a                 ; RING^2
-        move    a,x0
-        move    #>$116000,y1            ; 2.95 kHz at full knob: step = 2f/fs
-                                        ; over (127/128)^2. ($5a0000 put 127
-                                        ; at 15 kHz and 20 at 379 Hz, measured
-                                        ; on the sidebands 12 Sep 2026 -- the
-                                        ; comment said 2.95 k, the value did not)
-        mpy     x0,y1,a
-        move    a,x:(r7+$24)            ; carrier step
-; SRR (slot 11 select of r6+$e): hold mask 0 / 1 / 3 / 7
-; The select is bits 8-15 of the knob word (bit 23 clear, so a2 = 0 and
-; the and leaves it 0): compare the masked field where it sits, no shift
-; and no clean reload (14 Sep 2026; long immediates, never the 6-bit form).
-        move    x:(r6+$e),a
-        and     #>$ff00,a
-        cmp     #>$100,a
-        beq     ch_srr2
-        cmp     #>$200,a
-        beq     ch_srr4
-        cmp     #>$300,a
-        beq     ch_srr8
-        clr     a                       ; OFF, and anything unexpected
-        bra     ch_srrz
-ch_srr2:
-        move    #>$1,a
-        bra     ch_srrz
-ch_srr4:
-        move    #>$3,a
-        bra     ch_srrz
-ch_srr8:
-        move    #>$7,a
-ch_srrz:
-        move    a,x:(r7+$25)            ; srr mask
+        sub     #>$400000,a
+        move    a,x:(r7+$24)            ; t/2, -0.5 .. +0.49
 ; COMP amount, straight from the knob
         move    x:(r6+$3),x0
         move    x0,x:(r7+$26)
@@ -286,10 +252,13 @@ ch_srrz:
 ; 1/(1 - 0.3375*COMP/128), HALF the JSFX's auto-gain in dB terms (that one
 ; restores unity at the dip's bottom and lifts a mix that mostly sits below
 ; the dip: +2.1 dB at COMP 40; this is +1.0 dB, today's GLUE on the unit).
-        move    x:(r6+$d),a             ; the select field where it sits (as SRR)
-        and     #>$ff00,a
-        cmp     #>$100,a
-        beq     ch_cglue
+; The flavour is BY POSITION since 14 Sep 2026 (Sam: "auto select glue mode
+; for master and normal for others and not have the knob"): $45 is 1 on the
+; master (position 3 on payload A, set where RET is resolved below, so the
+; first block of an instance runs COMP -- one block of latency, static after).
+        move    x:(r7+$45),a
+        tst     a
+        bne     ch_cglue
         move    #>$7fffff,x0            ; COMP: K/4 = 1.0 (4x), release 50 ms
         move    x0,x:(r7+$22)
         move    #>$000bd0,x0
@@ -405,10 +374,15 @@ ch_sdone:
 ; first instruction. The $6b00 compare that sat here went 14 Sep 2026.
         move    #>$6a00,x0
         cmp     x0,a
-        beq     ch_pos3
+        beq     ch_master
 ch_nopos:
         clr     a
         move    a,x:(r7+$3e)            ; not track 8: no return
+        move    a,x:(r7+$45)            ; ... and the COMP flavour
+        bra     ch_pos3
+ch_master:
+        move    #>$1,x0
+        move    x0,x:(r7+$45)           ; the master: GLUE
 ch_pos3:
 ; TUBE's post gain: comp(d) = 1 / ((0.5 + d)(1 + 1.727 d)), the inverse of
 ; DaTube's average small-signal gain (its positive half's slope is 1 + 1.151 d,
@@ -416,8 +390,9 @@ ch_pos3:
 ; densifies rather than turns up: 2.0 at d = 0, 0.244 at d = 1. Computed with
 ; the block's real division, no table: comp/4 = (1/32) / D8 with D8 = D/8 =
 ; ((0.5 + d)/2)((1 + 1.727 d)/4), D in [0.5, 4.1], so D8 in [1/16, 0.52] and
-; the quotient in [0.12, 1.0]. $39 = comp/2; chtube's asl #3 makes 2*y*comp,
-; the JSFX's own 2x output gain (its -6 dB default slider is not modelled).
+; the quotient in [0.12, 1.0]. $39 = comp/2; chtube's asl #2 makes y*comp:
+; the JSFX's 2x output times its -6 dB default output slider (modelled since
+; 14 Sep 2026 -- without it DRV 1 was a +6 dB step on the master).
         move    x:(r6+$0),a             ; d = DRV/128
         move    a,x1                    ; (x1 = DRV/128 for TapeHead's words below)
         move    a,x0
@@ -488,19 +463,72 @@ ch_pos3:
 ; +0.7 at 64, +2.0 at 127, small-signal.
         move    x0,a
         add     #>$02fb7f,a             ; 0.0233
-        move    a,x:(r7+$22)            ; TAPE trim
-        move    x:(r6+$5),a             ; TONE/128
-        and     #>$7f0000,a
-        move    a1,x0
-        move    #>$331d23,y1            ; k2 = 0.2981 + 0.3993*TONE/128 (the sine's
-        mpy     x0,y1,a                 ; curve is 0.5 % from linear over 2.1..5 kHz)
-        add     #>$2627a2,a
-        move    a,x:(r7+$30)            ; k2
+        move    a,x:(r7+$2a)            ; TAPE trim
+        move    #>$3fb89c,a             ; k2 = 0.4978: the split at its middle
+        move    a,x:(r7+$30)            ; (3.7 kHz; TONE is the tilt since 14 Sep 2026)
         move    a,x0
         move    #>$59999a,y1            ; 0.7: k3mag = 1.4 * k2, halved
         mpy     x0,y1,a
         asl     #$1,a,a
         move    a,x:(r7+$31)            ; k3mag (< 0.98)
+; ---- TXTR: Airwindows Pockey (Chris Johnson, MIT, 2022), 14 Sep 2026 -------
+; Sam: "some kind of opinionated algo to replace ring, srr and crush ... more
+; of a character than specific effects". One knob, t = TXTR/128, moves the
+; plugin's two sliders together along its own laws (modules/character/
+; pockey_ref.py is the transcription the gate proves the loop against):
+;   freq = (1-t)^3 (0.618 - 0.08) + 0.08   the hold rate, "always engaged"
+;   rez  = (0.618 t)^3 + 2^-12             the mu-law step, "at least 12 bit"
+; TXTR 0 skips the block (bit-exact). Per block: freq/2 ($50), rez ($51),
+; 4 rez ($52), 1 - rez ($53), q4096 = 2^-12 / rez ($54, one real division),
+; the two 257-point table bases ($57 ENC at TUBE_UP + 51, $55 DEC at
+; + 308; the interpolation's second point is one (r)+ away).
+        move    x:(r6+$2),a             ; t
+        clr     b                       ; b = 0 BEFORE the tst (the flag trap)
+        move    #>$1,x0
+        tst     a
+        teq     x0,b
+        move    b,x:(r7+$4e)            ; 1 = TXTR 0: skip
+        move    a,x1                    ; t
+        move    #>$7fffff,a
+        sub     x1,a                    ; 1 - t
+        move    a,x0
+        move    a,y1
+        mpy     x0,y1,a                 ; (1-t)^2
+        move    a,y1
+        mpy     x0,y1,a                 ; (1-t)^3
+        move    a,x0
+        move    #>$226f31,y1            ; (0.618 - 0.08)/2
+        mpy     x0,y1,a
+        add     #>$051eb8,a             ; + 0.08/2
+        move    a,x:(r7+$50)            ; freq/2
+        move    x1,x0
+        move    #>$4f1bbd,y1            ; 0.618
+        mpy     x0,y1,a                 ; 0.618 t
+        move    a,x0
+        move    a,y1
+        mpy     x0,y1,a
+        move    a,y1
+        mpy     x0,y1,a                 ; (0.618 t)^3
+        add     #>$000800,a             ; + 2^-12
+        move    a,x:(r7+$51)            ; rez, 2^-12 .. 0.2364
+        move    a,x0
+        asl     #$2,a,a
+        move    a,x:(r7+$52)            ; 4 rez (< 0.95)
+        move    #>$7fffff,a
+        sub     x0,a
+        move    a,x:(r7+$53)            ; 1 - rez
+        move    #>$000800,a             ; 2^-12 (a clean load: a0 = 0)
+        andi    #$fe,ccr
+        rep     #$18
+        div     x0,a                    ; 2^-12 / rez, <= 1 (= 1 only at t = 0, skipped)
+        move    a0,x0
+        move    x0,x:(r7+$54)           ; q4096
+        move    #>51,n1
+        lua     (r1)+n1,r3              ; ENC (r1/r2 are TUBE's own table
+        move    r3,x:(r7+$57)           ; registers in the loop: hands off)
+        move    #>257,n3
+        lua     (r3)+n3,r5              ; DEC
+        move    r5,x:(r7+$55)
 ; WDTH -> mid and side gains. 64 = (1, 1); 0 = (1, 0) mono; 127 = (1, ~2).
 ; side gain = WDTH/64, mid stays 1 -- widening only touches the difference,
 ; so a mono source is untouched at every setting.
@@ -598,7 +626,7 @@ ch_rvlive:
         move    x0,y:>$9d9
 ch_ndl:
 ; ---- BYPASS: the defaults are a bit-exact passthrough ---------------------
-; DRV 0, FOLD 0, CRSH 0, COMP 0, MIX 127, RING 0, WDTH 64, SRR OFF. Every
+; DRV 0, FOLD 0, TXTR 0, TONE 64, COMP 0, MIX 127, WDTH 64, RET 0. Every
 ; part that ever chose LO-FI runs this after the flash, so the neutral block
 ; does nothing at all.
         move    x:(r6+$0),a             ; DRV
@@ -607,20 +635,16 @@ ch_ndl:
         move    x:(r6+$1),a             ; FOLD
         tst     a
         bne     ch_live
-        move    x:(r7+$23),a            ; crush MASK (not the knob: in BUS
-        move    #>$ffffff,x0            ; mode the knob is RVRB and the mask
-        cmp     x0,a                    ; is identity)
+        move    x:(r6+$2),a             ; TXTR
+        tst     a
+        bne     ch_live
+        move    x:(r7+$24),a            ; the tilt's t/2 (TONE 64 = 0)
+        tst     a
         bne     ch_live
         move    x:(r7+$3e),a            ; a return level up needs the loop
         tst     a
         bne     ch_live
         move    x:(r6+$3),a             ; COMP
-        tst     a
-        bne     ch_live
-        move    x:(r7+$24),a            ; carrier step (RING)
-        tst     a
-        bne     ch_live
-        move    x:(r7+$25),a            ; srr mask
         tst     a
         bne     ch_live
         move    x:(r7+$2b),a            ; side gain/2: 64 -> exactly 0.5
@@ -633,6 +657,9 @@ ch_live:
 ; THE SAMPLE LOOP
 ; ===========================================================================
         move    #$1,n0                  ; (short immediate, stock's own form)
+        move    x:(r7+$55),r5           ; TXTR's DEC table (r5 is free in the
+        move    #>$ffffff,m5            ; loop); ENC goes into r3 per sample,
+        move    #>$ffffff,m3            ; the SAT callees own r3 after that
         do      n7,>ch_end
 ; ---- the return FIRST (13 Sep 2026): the bus wet enters before the chain --
 ; Skipped per sample when the level is 0 -- a forward skip, the class
@@ -665,39 +692,6 @@ ch_noret:
         add     x0,a
         asr     #$1,a,a
         move    a,x:(r7+$32)            ; key = mono in (the ->KEY hook)
-; ---- SRR: hold the pair for 2/4/8 samples ---------------------------------
-        move    x:(r7+$25),a            ; mask
-        tst     a
-        beq     ch_nosrr
-        move    x:(r7+$1b),b            ; counter
-        add     #>$1,b
-        move    b1,x0
-        move    x0,b
-        move    b,x:(r7+$1b)
-        and     x0,a                    ; counter & mask -- AND sets Z from A1,
-        bne     ch_hold                 ; which is what the tst on a clean
-                                        ; reload saw (a2 = a0 = 0 here); not a
-                                        ; fresh sample: reuse the held
-        move    x:(r0),x0               ; fresh: latch this pair
-        move    x0,x:(r7+$19)
-        move    x:(r0+n0),x0
-        move    x0,x:(r7+$1a)
-ch_hold:
-        move    x:(r7+$19),x0           ; the held pair drives the chain
-        move    x0,x:(r7+$33)
-        move    x:(r7+$1a),x0
-        move    x0,x:(r7+$34)
-ch_nosrr:
-; ---- CRSH: one AND per channel with the per-block mask -------------------
-; ⚠️ AND leaves A2 STALE and a `move a,x:` would saturate (CLAUDE.md), so
-; each value leaves through a1 -- straight to memory, which no limiter sees.
-        move    x:(r7+$23),x0           ; mask
-        move    x:(r7+$33),a
-        and     x0,a
-        move    a1,x:(r7+$33)
-        move    x:(r7+$34),a
-        and     x0,a
-        move    a1,x:(r7+$34)
 ; ---- FOLD: WarpFold's wrap-and-reflect, both channels --------------------
         move    x:(r7+$33),x0
         move    x:(r7+$21),y1           ; gq = gain/64
@@ -711,6 +705,10 @@ ch_nosrr:
         move    #$40,b                  ; 0.5, b2 = b0 = 0
         sub     b,a                     ; |s| - 0.5
         asl     #$1,a,a                 ; fold in [-1,1)
+        move    a,x0
+        move    x:(r7+$1d),y1           ; trim/2
+        mpy     x0,y1,a
+        asl     #$1,a,a                 ; the fold at a held level
         move    a,x:(r7+$35)            ; wet L
         move    x:(r7+$34),x0
         move    x:(r7+$21),y1
@@ -724,33 +722,150 @@ ch_nosrr:
         move    #$40,b
         sub     b,a
         asl     #$1,a,a
-        move    a,x:(r7+$36)            ; wet R
-; ---- RING: one carrier, both channels ------------------------------------
-        move    x:(r7+$24),a            ; step
-        tst     a
-        beq     ch_noring
-        move    x:(r7+$1c),b            ; phase
         move    a,x0
-        move    b,a
+        move    x:(r7+$1d),y1
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        move    a,x:(r7+$36)            ; wet R
+; ---- TXTR: Airwindows Pockey (MIT, 2022), both channels -------------------
+; mu-law encode -> quantise to rez -> x (1 - rez) -> decode (chtxc, on the
+; magnitude; the sign comes back by Tcc), then the hold (a crossfade of the
+; previous DRY sample and this coded one at the fractional hold instant,
+; shared position) and the slew smoother (strength = jump x rate, <= 0.5).
+        move    x:(r7+$4e),a
+        tst     a
+        bne     ch_notx
+        move    x:(r7+$57),r3           ; ENC
+        move    x:(r7+$25),a            ; pos/2
+        move    x:(r7+$50),x0           ; freq/2
         add     x0,a
-        move    a1,x0                   ; p = wrapped phase
-        move    x0,x:(r7+$1c)
-        move    x0,a
+        move    a,y0                    ; the unwrapped position (< 1)
+        clr     b                       ; wrap flag 0 BEFORE the sub (the flag trap)
+        move    #>$1,x1
+        move    #>$400000,x0            ; 0.5 (= a position of 1)
+        sub     x0,a                    ; a = pos - 1 ...
+        tlt     y0,a                    ; ... unless that is negative: no wrap
+        tge     x1,b                    ; wrapped -> flag 1 (the same sub's flags)
+        move    a,x:(r7+$25)
+        move    b,x:(r7+$4f)
+        asl     #$1,a,a                 ; pos (< 0.62)
+        move    a,x:(r7+$5b)
+        neg     a
+        add     #>$7fffff,a
+        move    a,x:(r7+$5a)            ; 1 - pos
+; --- L ---
+        move    x:(r7+$35),a
+        move    a,x:(r7+$59)            ; the dry (Pockey's input)
         abs     a
-        move    #$80,y1                 ; -1.0 (short immediate: bits 23-16)
-        add     y1,a                    ; |p| - 1
-        neg     a                       ; t = 1 - |p|
+        bsr     chtxc                   ; a = dec(quant(enc(|x|)))
+        move    a,x0
+        neg     a
+        move    x:(r7+$59),b
+        tst     b
+        tpl     x0,a                    ; the sign back
+; the hold, branch-free (cycle_count.py wants a straight loop): the wrap
+; path is computed every sample and selected by the flag with Tcc.
+        move    a,x0                    ; coded
+        move    x:(r7+$5a),y1           ; 1 - pos
+        mpy     x0,y1,a
+        move    x:(r7+$1b),x0           ; last L (the previous dry)
+        move    x:(r7+$5b),y1           ; pos
+        mpy     x0,y1,b
+        add     b,a                     ; heldN = last pos + coded (1 - pos)
+        move    a,x1
+        move    x:(r7+$19),x0           ; held
+        mpy     x0,y1,b                 ; held pos
+        move    x1,x0
+        move    x:(r7+$5a),y1
+        mpy     x0,y1,a                 ; heldN (1 - pos)
+        add     b,a                     ; outW (if wrapped)
+        move    a,y0                    ; outW
+        move    x:(r7+$19),x0           ; held (old)
+        move    x:(r7+$4f),a
+        tst     a                       ; the wrap flag; two Tcc read it
+        move    x0,b                    ; held' = held ...
+        tne     x1,b                    ; ... or heldN when wrapped
+        move    b,x:(r7+$19)
+        move    x0,a                    ; out = held ...
+        tne     y0,a                    ; ... or outW when wrapped
+        move    a,x1                    ; out, for soften
+        move    x:(r7+$46),b            ; soften L
+        sub     b,a                     ; d = out - soften
+        asr     #$1,a,a
+        move    a,x:(r7+$5c)            ; d/2 (|d| <= 2)
+        abs     a
+        move    a,x0                    ; |d|/2
+        move    x:(r7+$50),y1           ; freq/2
+        mpy     x0,y1,a
+        asl     #$2,a,a                 ; |d| freq
+        move    #>$400000,x0
+        cmp     x0,a
+        tgt     x0,a                    ; s = min(0.5, |d| freq)
         move    a,y1
-        mpy     x0,y1,a                 ; p*t
-        asl     #$2,a,a                 ; carrier = 4*p*t
-        move    a,y0                    ; held for both channels
-        move    x:(r7+$35),x0
-        mpy     y0,x0,a                 ; wet * carrier (signed order)
+        move    x:(r7+$5c),x0
+        mpy     x0,y1,a                 ; s d/2
+        asl     #$1,a,a
+        add     b,a                     ; y = soften + s d
         move    a,x:(r7+$35)
-        move    x:(r7+$36),x0
-        mpy     y0,x0,a
+        move    x1,x:(r7+$46)           ; soften = out
+        move    x:(r7+$59),x0
+        move    x0,x:(r7+$1b)           ; last = the dry
+; --- R ---
+        move    x:(r7+$36),a
+        move    a,x:(r7+$59)
+        abs     a
+        bsr     chtxc
+        move    a,x0
+        neg     a
+        move    x:(r7+$59),b
+        tst     b
+        tpl     x0,a
+        move    a,x0
+        move    x:(r7+$5a),y1
+        mpy     x0,y1,a
+        move    x:(r7+$1c),x0           ; last R
+        move    x:(r7+$5b),y1
+        mpy     x0,y1,b
+        add     b,a
+        move    a,x1
+        move    x:(r7+$1a),x0           ; held R
+        mpy     x0,y1,b
+        move    x1,x0
+        move    x:(r7+$5a),y1
+        mpy     x0,y1,a
+        add     b,a
+        move    a,y0
+        move    x:(r7+$1a),x0
+        move    x:(r7+$4f),a
+        tst     a
+        move    x0,b
+        tne     x1,b
+        move    b,x:(r7+$1a)
+        move    x0,a
+        tne     y0,a
+        move    a,x1
+        move    x:(r7+$47),b            ; soften R
+        sub     b,a
+        asr     #$1,a,a
+        move    a,x:(r7+$5c)
+        abs     a
+        move    a,x0
+        move    x:(r7+$50),y1
+        mpy     x0,y1,a
+        asl     #$2,a,a
+        move    #>$400000,x0
+        cmp     x0,a
+        tgt     x0,a
+        move    a,y1
+        move    x:(r7+$5c),x0
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        add     b,a
         move    a,x:(r7+$36)
-ch_noring:
+        move    x1,x:(r7+$47)
+        move    x:(r7+$59),x0
+        move    x0,x:(r7+$1c)
+ch_notx:
 ; ---- SATURATE: the character (13 Sep 2026, all JClones, MIT). TAPE is
 ; TapeHead, TUBE is DaTube, INFL is OInflator: one straight-line callee per
 ; mode per channel (a = the sample in, b = out; the caller's store is the
@@ -807,6 +922,47 @@ ch_sinfl:
         move    b,x:(r7+$36)
 ; MODEFORK_END
 ch_nosat:
+; ---- TONE: a tilt after the saturator, every mode (14 Sep 2026) ----------
+; One-pole low-pass at 1.2 kHz per channel (k = 0.157), y = x + (t/2)(x - 2lp):
+; TONE 127 = +3.5 dB above / -6 dB below, 0 the mirror, 64 bit-exact.
+        move    x:(r7+$35),a            ; L
+        move    x:(r7+$3f),x0           ; lp
+        sub     x0,a
+        move    a,x0                    ; x - lp
+        move    #>$141893,y1            ; k
+        mpy     x0,y1,a
+        move    x:(r7+$3f),b
+        add     b,a                     ; lp' = lp + k (x - lp)
+        move    a,x:(r7+$3f)
+        move    a,x0
+        move    x:(r7+$35),a
+        sub     x0,a
+        sub     x0,a                    ; x - 2 lp'
+        move    a,x0
+        move    x:(r7+$24),y1           ; t/2
+        mpy     x0,y1,a
+        move    x:(r7+$35),b
+        add     b,a
+        move    a,x:(r7+$35)
+        move    x:(r7+$36),a            ; R
+        move    x:(r7+$23),x0
+        sub     x0,a
+        move    a,x0
+        move    #>$141893,y1
+        mpy     x0,y1,a
+        move    x:(r7+$23),b
+        add     b,a
+        move    a,x:(r7+$23)
+        move    a,x0
+        move    x:(r7+$36),a
+        sub     x0,a
+        sub     x0,a
+        move    a,x0
+        move    x:(r7+$24),y1
+        mpy     x0,y1,a
+        move    x:(r7+$36),b
+        add     b,a
+        move    a,x:(r7+$36)
 ; ---- COMPRESS (13 Sep 2026, JClones AC1, MIT): COMP 0 skips the stage
 ; (bit-exact); else |key| smoothed by the flavour's attack / release, Lv =
 ; K * level_s, gr = (Lv^2/2 - 1)^2 + a*Lv, <= 1 by the limiting store --
@@ -978,7 +1134,9 @@ chtube:
         move    a,x0
         move    x:(r7+$39),y1           ; comp/2
         mpy     x0,y1,a                 ; (y/2)(comp/2) = y*comp/4
-        asl     #$3,a,a                 ; *8 -> 2*y*comp (JClones' output ~2x)
+        asl     #$2,a,a                 ; *4 -> y*comp: the JSFX's -6 dB default
+                                        ; output slider IS modelled since 14 Sep
+                                        ; 2026 (DRV 0 -> 1 was a +6 dB step)
         move    a,x0                    ; x, the DC blocker's input (LIMITING)
         move    x:(r3),x1               ; x1
         move    x0,x:(r3)               ; x1 <- x
@@ -1035,6 +1193,60 @@ chinfl:
         rts
 
 ; ---------------------------------------------------------------------------
+; chtxc -- Pockey's codec on a MAGNITUDE (14 Sep 2026): a = |x| in, a = out.
+; mu-law encode by the 257-point ENC table (r3 = t, idx = the top 8 bits,
+; frac = the 15 under them, the second point through (r3)+ and back),
+; quantise to rez in that domain -- the reference rounds UP: ceil(y/rez) rez
+; = floor(y q4096 + 2^-12 - lsb) on the 2^-12 grid, back by 4 rez x 1024,
+; exact multiples and zero unchanged -- scale by 1 - rez, decode by the DEC
+; table (r5). STRAIGHT-LINE. Clobbers x0, x1, y0, y1, b, n3, n5.
+chtxc:
+        move    a,x1                    ; u
+        asr     #$f,a,a                 ; idx = u >> 15  (0..255)
+        move    a1,n3
+        move    x1,a
+        and     #>$7fff,a               ; (a2 = 0: u >= 0)
+        asl     #$8,a,a                 ; frac
+        move    a,x0
+        move    p:(r3+n3),y0            ; t[i]
+        move    (r3)+
+        move    p:(r3+n3),b             ; t[i+1]
+        move    (r3)-
+        move    y0,a
+        sub     a,b
+        move    b,y1
+        mpy     x0,y1,a
+        add     y0,a                    ; y = enc(u)
+        move    a,x0
+        move    x:(r7+$54),y1           ; q4096
+        mpy     x0,y1,a
+        add     #>$0007ff,a             ; ceil on the grid (a multiple stays)
+        and     #>$fff800,a
+        move    a,x0
+        move    x:(r7+$52),y1           ; 4 rez
+        mpy     x0,y1,a
+        asl     #$a,a,a                 ; n rez
+        move    a,x0
+        move    x:(r7+$53),y1           ; 1 - rez
+        mpy     x0,y1,a
+        move    a,x1
+        asr     #$f,a,a
+        move    a1,n5
+        move    x1,a
+        and     #>$7fff,a
+        asl     #$8,a,a
+        move    a,x0
+        move    p:(r5+n5),y0
+        move    (r5)+
+        move    p:(r5+n5),b
+        move    (r5)-
+        move    y0,a
+        sub     a,b
+        move    b,y1
+        mpy     x0,y1,a
+        add     y0,a                    ; dec(...)
+        rts
+
 ; chtape -- TapeHead per channel (JClones_TapeHead.jsfx, MIT; 13 Sep 2026).
 ; In: a = x, r3 -> y1 (x:(r3)) and y2 (x:(r3+$1)), both kept at /4 (the
 ; port's headroom: |y1| <= 1.46, |y2| <= 1.95 true). Out: b = (g3*clip(y3)
@@ -1108,6 +1320,6 @@ chtape:
         mpy     x0,y1,a
         add     a,b
         move    b,x0                    ; LIMITING move: the JSFX's output clip
-        move    x:(r7+$22),y1           ; then the unity trim (1/11)/d8
+        move    x:(r7+$2a),y1           ; then the trim (1/11)/d8 + 0.023
         mpy     x0,y1,b
         rts
