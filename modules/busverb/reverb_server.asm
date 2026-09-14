@@ -3575,13 +3575,8 @@ shd1:
 ; r4 walks u[0..3] (post-increment), r5 walks scratch[0..3] ($1a..$1d).
 ; r6 already walks table B (weight + gain, 2 words per line). Input reloaded
 ; from $15 each iteration because mpy x0,y1,b overwrites b.
-        move    r7,a
-        add     #>$16,a                
-        move    a,r4                    ; r4 -> u0
-        move    r7,a
-        move    #>$1a,x0
-        add     x0,a
-        move    a,r5                    ; r5 -> scratch0
+        lua     (r7+$16),r4             ; r4 -> u0
+        lua     (r7+$1a),r5             ; r5 -> scratch0
         move    x:(r7+$15),b            ; input, also spaces the r5 write
         nop
         do      #4,>fbA
@@ -3605,15 +3600,12 @@ fbA:
 
 ; -- Step 1b: rolled feedback, group B (u[4..7] at $3a..$3d) --------------
 ; r4 walks u[4..7], r5 walks scratch[4..7] ($41..$44).
-        move    r7,a
-        add     #>$3a,a                
-        move    a,r4                    ; r4 -> u4
-        move    r7,a
-        move    #>$41,x0
-        add     x0,a
-        move    a,r5                    ; r5 -> scratch4
-        move    x:(r7+$15),b            ; input, also spaces the r5 write
-        nop
+        lua     (r7+$3a),r4             ; r4 -> u4
+        move    x:(r7+$15),b            ; input (spaces the r4 write)
+        lua     (r4+$7),r5              ; r5 -> scratch4 = r7+$41, past
+                                        ; lua's 7-bit displacement
+        nop                             ; r5 is first read ten
+                                        ; instructions into the loop
         do      #4,>fbB
         move    y:(r6)+,x0             ; weight[k]
         move    x:(r7+$15),b           ; input (fresh each iteration)
