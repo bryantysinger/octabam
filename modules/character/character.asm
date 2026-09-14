@@ -416,8 +416,9 @@ ch_pos3:
 ; densifies rather than turns up: 2.0 at d = 0, 0.244 at d = 1. Computed with
 ; the block's real division, no table: comp/4 = (1/32) / D8 with D8 = D/8 =
 ; ((0.5 + d)/2)((1 + 1.727 d)/4), D in [0.5, 4.1], so D8 in [1/16, 0.52] and
-; the quotient in [0.12, 1.0]. $39 = comp/2; chtube's asl #3 makes 2*y*comp,
-; the JSFX's own 2x output gain (its -6 dB default slider is not modelled).
+; the quotient in [0.12, 1.0]. $39 = comp/2; chtube's asl #2 makes y*comp:
+; the JSFX's 2x output times its -6 dB default output slider (modelled since
+; 14 Sep 2026 -- without it DRV 1 was a +6 dB step on the master).
         move    x:(r6+$0),a             ; d = DRV/128
         move    a,x1                    ; (x1 = DRV/128 for TapeHead's words below)
         move    a,x0
@@ -978,7 +979,9 @@ chtube:
         move    a,x0
         move    x:(r7+$39),y1           ; comp/2
         mpy     x0,y1,a                 ; (y/2)(comp/2) = y*comp/4
-        asl     #$3,a,a                 ; *8 -> 2*y*comp (JClones' output ~2x)
+        asl     #$2,a,a                 ; *4 -> y*comp: the JSFX's -6 dB default
+                                        ; output slider IS modelled since 14 Sep
+                                        ; 2026 (DRV 0 -> 1 was a +6 dB step)
         move    a,x0                    ; x, the DC blocker's input (LIMITING)
         move    x:(r3),x1               ; x1
         move    x0,x:(r3)               ; x1 <- x

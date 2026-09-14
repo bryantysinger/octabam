@@ -2426,3 +2426,24 @@ entry: `docs/remixer/FAILURE_MODES.md` "The master compressor collapses ONE
 channel". The stations run LIVE on the unit at the passthrough stamp
 (inferred from the DC; the port bypasses them) — a separate open question
 for the cycle budget, not the sound.
+
+**14 Sep 2026, LIVE ROUND 1 on the unit (image 9/10, bank G, the master, Sam
+at the panel, `out/hw/voicing/`).** Character, saturators, compressor off.
+- TAPE drive law: the port's small-signal gain rose +0.6 dB at DRV 1, +11.1
+  at 64, +21.0 at 127 (dsp_host, 1 kHz −30 dBFS). Sam: "can't compare due to
+  it being so much louder" → a per-block unity trim (1/11)/d8 by one real
+  division, applied to the clipped sum (image 9): within ±0.5 dB at every DRV.
+  Sam, turning it himself: "sounds awesome ... the drive actually feels like
+  it loses a little oomph now though, due to losing the highs, so we
+  overcompensated slightly" → +0.023 on the trim (image 10): +0.3 / +1.0 /
+  +2.4 dB at DRV 0 / 64 / 127. Sam: "drv sounds great". DECIDED (PR #251).
+- TUBE measured flat +6.0 dB the moment DRV > 0 (the JSFX's 2x output with
+  its −6 dB default slider unmodelled) → the callee's asl #3 becomes #2:
+  0 dB at DRV 1, −0.5 at 127 small-signal, −3 dB of squash at −12 dBFS.
+  For Sam's ear next (image 11).
+- INFL: +0 → +3.5 dB across DRV, rising gently like the voiced tape; left
+  as is for the ear.
+Process notes: A/B/A/B over MIDI with 8 s sides was not judgeable live ("I
+can't tell when you are changing") — the panel knob in Sam's hand with the
+transport running is the instrument; level-match FIRST or nothing can be
+judged; stop the transport at the end of every scripted test.
