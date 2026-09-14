@@ -2593,14 +2593,16 @@ lfrol:
 ; (the IN "own share" lived here until the one-aux rig, 7 Sep 2026: the
 ; host's dry reaches the engine through its AUX send into the accumulator
 ; now, exactly a SEND's path, so the bus sample IS the whole input)
-        move    x:(r7+$63),a            ; this sample's read address: the aux
+        move    x:(r7+$63),r5           ; this sample's read address: the aux
                                         ; accumulator, or the delay's output
                                         ; buffer while the delay is live
-        move    a,r5                    ; borrow r5: free here, every use
-                                        ; below recomputes it from scratch
-        move    y:(r5),x1               ; last block's fully-summed sends
         move    x:(r7+$0c),y1           ; auto-gain 1/sqrt(N) -- or exactly 1/8
-        mpy     x1,y1,a                 ; on the chain (unity after the asl)
+                                        ; on the chain (spaces the r5 write)
+        move    y:(r5)+,x1              ; last block's fully-summed sends,
+        move    r5,x:(r7+$63)           ; and the pointer advanced one sample
+                                        ; (m5 = $7ff: both buffers sit inside
+                                        ; one 2048-aligned block, no wrap)
+        mpy     x1,y1,a                 ; (unity after the asl)
         asl     #$3,a,a                 ; undo the writers' 3-bit headroom
         move    a,x:(r7+$1b)            ; the averaged input, feeding the tank
         move    a,y0                    ; ... and its MIX passthrough term,
@@ -2666,9 +2668,6 @@ lfrol:
         mpy     y0,x0,a                 ; sees the sub's flag. coeff * delta
         add     b,a
         move    a,x:(r7+$62)            ; GLVL += coeff*(target - GLVL)
-        move    x:(r7+$63),a
-        add     #>$1,a                
-        move    a,x:(r7+$63)            ; advance the read pointer one sample
 
         move    r1,a                    ; the allpass phase IS the tank phase:
         and     #>$7ff,a                ; both advance by 1 a sample, and the
@@ -3864,10 +3863,9 @@ fbB:
         mpy     y0,x0,a                 ; wet * MIX
         move    y:>$09f2,b              ; in * (1 - MIX), parked at loop top
         add     a,b                     ; b = stage output L
+        move    x:(r7+$64),r5           ; this call's OUTPUT pointer (L, R)
         move    a,x0                    ; x0 = wet * MIX, what the host prints
-        move    x:(r7+$64),a
-        move    a,r5
-        move    b,y:(r5)                ; -> shared REVERB OUTPUT, L
+        move    b,y:(r5)+               ; -> shared REVERB OUTPUT, L
 ; THE HOST PRINT GAIN (3 Sep 2026): 1/2 doubled back = exactly the wet, or 0
 ; while a return station is live on this bus (RETV, per block above).
         move    x:(r7+$69),y0           ; print gain
@@ -3894,19 +3892,16 @@ fbB:
         move    y:>$09f2,b              ; in * (1 - MIX)
         add     a,b                     ; b = stage output R
         move    a,x0                    ; x0 = wet * MIX
-        move    x:(r7+$64),a
-        add     #>$1,a
-        move    a,r5
-        move    b,y:(r5)                ; -> shared REVERB OUTPUT, R
+        move    b,y:(r5)+               ; -> shared REVERB OUTPUT, R (r5 is
+                                        ; still the L write + 1: nothing
+                                        ; between the two touches it)
         move    x:(r7+$69),y0           ; print gain, as on L
         mpy     y0,x0,a
         asl     #$1,a,a
         move    x:(r0+n0),x0            ; dry R, still in place
         add     x0,a                    ; + dry at unity (v5)
         move    a,x:(r0+n0)             ; R in place -- dry + wet
-        move    x:(r7+$64),b
-        add     #>$2,b
-        move    b,x:(r7+$64)            ; WET pointer: one stereo frame on
+        move    r5,x:(r7+$64)           ; WET pointer: one stereo frame on
         move    (r1)+                   ; all four line pointers advance together
         move    (r2)+                   ; and each wraps inside its own line
         move    (r3)+                   ; under m1..m4 = $fff
