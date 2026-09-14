@@ -1,8 +1,9 @@
-"""FLEX seek-bind, counter half -- pair with FLEX SEEK BIND (RTOS_FORK 10.48
-lever B). On a same-sample re-bind leave the per-voice counter (+0x90) alone
-so the frame builder does not re-send the voice as new; the +0x98 store is
-always replayed. Hook 0x4000f834 (addql #1,(144,a2) / movel a0,(152,a2)).
-Unflashed."""
+"""FLEX SEEK BIND CTR -- pairs with FLEX SEEK BIND: on a same-sample re-bind
+leave the per-voice counter (+0x90) alone so the frame builder does not
+re-send the voice as new; the +0x98 store is always replayed. Hook
+0x4000f834 (addql #1,(144,a2) / movel a0,(152,a2)). Removes the
++/-1.5-sample seam. On hardware as OCTABAM82/83.
+"""
 
 from remix.schema import CavePatch, Kind, Module
 

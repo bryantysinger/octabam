@@ -1,43 +1,36 @@
-"""CC -> FX2 PAGE-2 (CC 62-67; stores repointed 13 Sep 2026 and CONFIRMED on image 96) and CC -> FX1 PAGE-2 (CC 68-73; added 13 Sep 2026, unflashed).
+"""CC PAGE 2 -- MIDI CC 62-67 reach the FX2 effect's page-2 slots 6-11, CC 68-73
+the FX1 effect's.
 
 Stock incoming CC reaches only FX2 page 1 (CC 40-45; the handler admits
-cc-16 < 30, so slots 6-11 are unrepresentable -- docs/firmware/midi_re_cc.md 2). This
-module adds CC 62-67 -> the host bus engine's page-2 slots 6-11, so the
-voicing round can drive every control of BusVerb / BusDelay over MIDI, not
-just page 1. CC 68-73 do the same for the track's FX1 station's page-2
-slots 6-11 (13 Sep 2026), store for store as the FX1 page-2 editor
-0x4003abe4 writes them (Part +0x8f07e, shadow 0x100a51cc, lane +0x32, the
-same four dirty flags), clamped by the FX1 descriptor's own min/count for the
-slot; a count of 0 (NONE) writes nothing.
+cc-16 < 30, docs/firmware/midi_re_cc.md). The MIDI dispatch table entry
+0x400d6474[0xB] (the CC vector) is repointed from the stock handler
+0x4000e79c to the cave. The cave reads the CC number; anything but 62-73
+tail-calls CC_NEXT (stock, or Octakit's handler under the SCENES KITS
+bridge) with the argument intact. For 62-67 it rebuilds the channel->track
+map, gates on AUDIO CC IN, and writes page-2 slot (cc-62) on every audio
+track whose trig channel matches: Part, live byte and mirror, the stores
+the page-2 editor 0x4003a474 makes (traced; it does not touch TRACKB). For
+68-73 it writes the FX1 page-2 slot the same way the FX1 page-2 editor
+0x4003abe4 does (Part +0x8f07e, shadow 0x100a51cc, lane +0x32, the four
+dirty flags), clamped by the FX1 descriptor's min/count; count 0 (NONE)
+writes nothing. Selects are clamped to their count: an over-count stored
+value is used as an index and stalls the sequencer.
 
-HOW: the MIDI dispatch table 0x400d6474[0xB] (the CC vector) is repointed
-from the stock handler 0x4000e79c to the cave. The cave reads the CC number;
-anything but 62-67 tail-calls stock (jmp 0x4000e79c) with the argument
-intact, so no stock CC behaviour changes. For 62-67 it rebuilds the
-channel->track map, gates on AUDIO CC IN, and writes page-2 slot (cc-62) on
-every audio track whose trig channel matches -- Part, live byte and mirror,
-count-clamped, generalised over track. It does NOT call the page-2 editor
-0x4003a474 and does NOT touch TRACKB: that editor writes the same live byte +
-mirror directly and nothing in 0x40171xxx (traced 5 Sep 2026,
-docs/firmware/midi_re_cc.md), so a direct write reproduces its stores without the
-cross-task TRACKB race.
+Source is the truth: the build assembles and links cc_page2.s where the
+cave floats; `legacy_bytes()` is the hand-assembled oracle the linked
+source is compared against (CavePatch.reference, and
+tools/verify/verify_ccpage2.py, which also proves the write for all eight
+tracks in the emulator against the firmware editor).
 
-The clamp is mandatory: a select's over-count value becomes the stored index
-that stalls the sequencer (CLAUDE.md). Counts come from the same per-engine
-select layout the busscreen uses (VERB/DLY page-2 selects at slots 6/9/11).
-
-tools/verify/verify_ccpage2.py (in make check) re-assembles cc_page2.s, compares it
-to the pinned code, and proves the write for all eight tracks in the
-emulator against the firmware editor 0x4003a474.
+CC 62-67 confirmed on hardware 13 Sep 2026 (image 96); CC 68-73 unflashed.
 """
 
 import pathlib
 
 from remix.schema import CavePatch, Kind, Module
 
-# Page-2 clamp counts, slot2 order (slots 6..11). Selects carry their real
-# count; knobs are 128 (0..127). Must match modules/busverb / modules/busdelay
-# and the busscreen's VERB_SELECTS/DLY_SELECTS ({6,9,11}).
+# Page-2 clamp counts, slots 6..11: selects carry their count, knobs 128.
+# Must match modules/busverb and modules/busdelay.
 VERB_COUNTS = bytes((3, 128, 128, 4, 128, 4))   # MODE, SHMR, DIFF, SHFT, GATE, RATE
 DLY_COUNTS = bytes((3, 128, 128, 4, 128, 2))    # MODE, MDEP, MRAT, SIZE(select), PTCH, FRZE
 
@@ -45,13 +38,9 @@ DLY_COUNTS = bytes((3, 128, 128, 4, 128, 2))    # MODE, MDEP, MRAT, SIZE(select)
 DISPATCH_CC = 0x400d64a0
 STOCK_CC = 0x4000e79c
 
-# SOURCE IS THE TRUTH (9 Sep 2026): the build assembles and links
-# cc_page2.s where the cave floats; its two count tables are labels at the
-# end of the source, so `lea VCOUNT:l` resolves at link time. CODE below is
-# the hand-assembled form it replaced, with 0x40bad000/4 placeholders for
-# the tables; legacy_bytes(addr) patches them exactly as the old emit() did
-# and is the ORACLE -- the build compares the linked source to it on every
-# build (CavePatch.reference), as does tools/verify/verify_ccpage2.py.
+# The hand-assembled form of cc_page2.s, with 0x40bad000/4 placeholders
+# for its two count tables; legacy_bytes(addr) patches them in. The oracle
+# the linked source is compared against every build.
 CODE = bytes.fromhex(
     "206f000470001028000104800000003e720bb280650260064ef94000e79c4fefffe448d7"
     "04fc28002448263946104cf44eb9400018547a001a2a000202850000007f4a3980000049"
@@ -77,10 +66,9 @@ DCOUNT_MARK = bytes.fromhex("40bad004")
 
 
 def legacy_bytes(addr):
-    """What the hand-patched cave looked like at `addr`, until 9 Sep 2026:
-    CODE with its two placeholders patched to the appended tables. Kept as
-    the ORACLE tools/verify/verify_ccpage2.py holds the linked source against --
-    the build itself no longer writes these bytes."""
+    """CODE at `addr` with its two placeholders patched to the appended
+    tables: the oracle for the linked source. The build never writes these
+    bytes itself."""
     code = bytearray(CODE)
     vcount_at = addr + len(code)
     dcount_at = vcount_at + len(VERB_COUNTS)
@@ -93,9 +81,8 @@ def legacy_bytes(addr):
 
 
 def emit(addr):
-    """Source is the truth: cc_page2.s carries its own count tables as
-    labels and the build links it where it lands (schema.CavePatch), so
-    this returns no bytes -- only the dispatch repoint."""
+    """No cave bytes (the linked source supplies them); only the dispatch
+    repoint."""
     pokes = ((DISPATCH_CC, STOCK_CC.to_bytes(4, "big"), addr.to_bytes(4, "big")),)
     return b"", pokes
 
@@ -107,21 +94,13 @@ MODULE = Module(
     doc="MIDI CC 62-67 drive the FX2 engine's page-2 slots 6-11; CC 68-73 the FX1 station's.",
     cf_patches=(CavePatch(
         label="CC->FX2/FX1 page-2 cave + dispatch repoint",
-        # FLOATS in the decoded ColdFire free region, like the busscreen.
-        cave_addr=None,
-        pinned=b"",                     # bytes depend on the float address --
-                                        # the linked source is the truth, and
-                                        # verify_ccpage2 holds it against
-                                        # legacy_bytes() at a test address
+        cave_addr=None,                 # floats in the ColdFire free region
+        pinned=b"",                     # the linked source is the bytes
         source="modules/ccpage2/cc_page2.s",
         cpu="5407",
-        reference=legacy_bytes,         # the build holds the linked source
-                                        # against the hand-patched form, at
-                                        # whatever address it floats to
-        # Where CCs other than 62-67 go. Stock's handler -- unless a bridge
-        # (modules/scenes-kits) overrides it to Octakit's, in which case the
-        # build defines CC_NEXT as hers and skips the oracle above (the
-        # bytes then legitimately differ by that one address).
+        reference=legacy_bytes,         # checked at whatever address it floats to
+        # Where other CCs go: stock's handler, or Octakit's when the
+        # SCENES KITS bridge overrides it (the oracle is then skipped).
         defsyms=(("CC_NEXT", STOCK_CC),),
         emit=emit,
         report_note=" (CC 62-67 reach FX2 page 2, CC 68-73 FX1 page 2)",

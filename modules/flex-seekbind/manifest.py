@@ -1,16 +1,16 @@
-"""FLEX seek-bind -- a same-buffer FLEX re-bind tells the DSP "seek", not
-"new note" (RTOS_FORK 10.48 hypothesis, 10 Sep 2026; unflashed, port gates
-in 10.49).
+"""FLEX SEEK BIND -- a same-buffer FLEX re-bind tells the DSP "seek", not
+"new note".
 
 The bind (0x4000f450) decides at its tail whether a re-bind is the same
-sample (return 0) or a new one (return 0x100) from its own slot/type/
-generation verdict (sp@55) AND a position compare against a settings field
-(0x4000f8cc..0x4000f8ea). On a recorder-buffer voice re-trigged every bar the
-verdict holds but the compare plausibly fails, so every bar is a new note and
-the DSP restarts the voice -- the chirp-then-click of 10.48. This cave, hooked
-on the verdict test, takes the same-sample continuation with result 1 whenever
-the verdict holds and the stock "different" path otherwise. The position reset
-and everything else stay stock.
+sample (return 0) or a new one (return 0x100) from its slot/type/generation
+verdict (sp@55) and a position compare against a settings field
+(0x4000f8cc..0x4000f8ea). On a recorder-buffer voice re-trigged every bar
+the verdict holds and the compare fails, so every bar is a new note and the
+DSP restarts the voice (a chirp, then hash at 140 % of the signal over 300
+samples). This cave, hooked on the verdict test, takes the same-sample
+continuation with result 1 whenever the verdict holds and the stock
+"different" path otherwise. The position reset and everything else stay
+stock. On hardware as OCTABAM81/82/83 (docs/firmware/RECORDER_CLICK.md).
 """
 
 from remix.schema import CavePatch, Kind, Module

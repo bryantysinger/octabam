@@ -1,109 +1,30 @@
-"""MIDI SCENES -- MIDI-driven scene locks (bkkbrls-del/midisc), built from
-source as linker-placed units.
+"""MIDI SCENES -- MIDI-driven scene locks, built from bkkbrls-del/midisc.
 
-Octatrack 1.40C has no per-scene parameter lock over MIDI: XF morph reads a
-live 8x30 lock table that only the panel can write. midisc adds a second,
-addressable table -- MSC, `scene<<8 | track<<5 | flat`, 4096 bytes -- and
-rewires scene hold, XF morph, part save/reload and the scene
-clear/copy/paste menu rows to read and write it when a MIDI event, not the
-panel, is driving. The panel path is untouched. (Its author started from
-this project's own reverse-engineering.)
+Stock 1.40C has no per-scene parameter lock over MIDI: XF morph reads one
+live 8x30 lock table only the panel writes. midisc adds a second table
+(MSC, `scene<<8 | track<<5 | flat`, 4096 bytes) and rewires scene hold,
+XF morph, part save/reload and the scene clear/copy/paste rows to read it
+when a MIDI event is driving. The panel path is untouched.
 
-WHERE THE CODE COMES FROM. `upstream/` is HIS repository, bkkbrls-del/midisc,
-on `main`, since 13 Sep 2026: he merged the gas port (his PR #1), so the
-fork that carried it (sambanks/midisc, branch `octabam-gas`, tags
-`octabam-gas-1.40MSC` / `-1.40MIDISC5` for the older cuts) is no longer in
-the path. His caves are written in a small Python encoder
-(`tools/ot3_asm.py`); `tools/gas_port.py` (ours, now in his tree) drives
-his own build_* functions with an encoder subclass that also records one
-GNU-as line per instruction, writes `gas/*.s`, and then assembles and
-links every region at HIS address and compares -- all five regions
-reproduce his bytes exactly (`tools/verify/verify_midiscenes.py` re-runs that
-proof in `make verify`). Cross-cave references are linker symbols in the
-`.s` form, so this build can place each region where there is room. His
-build.py is untouched; the .s files are generated from it.
+Source: `upstream/` is his repository (submodule, tracking 1.40MIDISC8).
+His caves are written in his Python encoder; his `tools/gas_port.py`
+regenerates `gas/*.s` from the same builders and proves each region
+assembles to his bytes at his addresses (`tools/verify/verify_midiscenes.py`
+re-runs that). Nothing in `upstream/` is edited here.
 
-PLACEMENT: DRAM, all of it. Every unit is `dram=True`, so the build links
-the seven together as octabam's platform runtime (tools/remix/
-platform_build.py), packs it (~2 KB), appends it behind the loader and
-depacks it at boot into the platform's reserve at the bottom of the audio
-page arena (0x40a955e0, 10 MiB taken off the sample/recorder pool the
-way Octakit and octamax take theirs; docs/remixer/PLACEMENT.md) -- MSC's
-0xff fill included, so no boot-time initialisation is needed. The 8 KB of
-OS zero runs the pinned snapshot filled to within 52 bytes are untouched
-now; the only bytes this module changes inside the OS are the 35 detour
-sites, the two pokes, and (when Octakit is not in the image) the boot
-site's three-byte redirect into the loader.
+Placement: every unit is `dram=True`, linked into octabam's platform
+runtime and depacked at boot into the arena reserve (docs/remixer/
+PLACEMENT.md). Inside the OS this module changes only the detour and poke
+sites below, plus the boot redirect when no other module supplies it.
 
-THE DETOURS are his 41 sites -- 37 Detours and 4 Pokes -- each
-asserted against stock before it is rewritten, wired by SYMBOL: jmp for
-the stubs that replay what they displaced and jump on, jsr for the
-callable ones, one `lea` operand rewrite (SAVE_ALL), two `bne->bra` flips
-(never re-apply the part after Part Save/Clear) and two `bne->nop` flips
-(the MIDI lock LEDs scan MSC as well as the panel table).
-TRACK_GATE/PAGE_GATE jump straight to stock code.
+Not carried: his MIDI CONTROL CC48/55/56 tick rows (UI-table pokes, not a
+cave); CCs behave as stock. The apply_part entry (0x40009094) stays stock
+since his 1.40MSCN6, so Octakit owns it alone. His own 1.40MIDISC8 image
+fails project load under the port because his CAVE2 (0x400d2ee6) overruns
+a live descriptor's enable words at 0x400d3014/18; this build links every
+unit into DRAM and is immune (measured).
 
-WHAT 1.40MIDISC CHANGED (10 Sep 2026, his commits since 1.40MSC): taddi/
-paddi `rts` instead of jumping back, so the same cave serves two new
-MIDI lock-LED paint sites (`jsr`, 0x40034764/0x40034950) beside the two
-it already had; a scene-lock clamp routine in SAFE_CAVE (ARP page LEG/
-MODE/SPD/RNGE get their own ranges, everything else 0-127); `xf1` moved
-out of SAFE_CAVE into the stub; scene hold ENSURES MSC instead of
-unpacking it every tick (his fix for locks vanishing between encoder
-events); and bank switch/invalidate now preserve d1-d7/a0-a6 across the
-sample load. octabam tracks all of it by regenerating `gas/*.s` from his
-builders -- no transcription -- and re-proving the five regions.
-
-1.40MIDISC8 (14 Sep 2026, his eb8b4bc + the gas regeneration, his PR #5):
-the Octakit seam he was asked for -- `part_window`, one accessor (index in
-d3 -> window in a0, stride in d1, index masked to 8 bits for 256 kits)
-that pack/unpack/save/clear/freeze all call, in a new SEAM_CAVE with the
-two bank routines; `KITS_GATE`, a DRAM byte that turns off the bank<->part
-coupling in bank_switch/bank_invalidate; Part Save parks a freeze twin
-and Reload restores it (his "HW-confirmed" persistence); an apply bridge
-at the four part-change UI sites (STOCK_APPLY still stock); paste in its
-own cave. Thirteen units now, ten of his regions (SEAM_CAVE split in two
-so the linker can order part_window before pack/unpack and the bank
-routines after). NOT carried: his MIDI CONTROL CC48/55/56 tick rows --
-UI tables with absolute pointers plus ~10 menu pokes (midi_filter.py),
-not a cave; CCs behave as stock. The kit WRITE protocol (gk_workspace_*)
-is the open last mile, ours/Em's.
-
-⚠️ HIS OWN 1.40MIDISC8 IMAGE FAILS PROJECT LOAD UNDER THE PORT, AND THIS
-BUILD DOES NOT (14 Sep 2026, dram_card.img OCTABAM/RIG). Not the hooks:
-the sets are identical. His CAVE2 (0x400d2ee6) lies inside a stock
-descriptor at 0x400d2e8a (selected by `move.l #0x400d2e8a,d0` at
-0x40031e7e, an all-zero "no effect" record ending at 0x400d301c) whose
-enable-bitmap words at +0x18a/+0x18e = 0x400d3014/0x400d3018 the loader
-reads from 0x4004e56c, 0x4004e5a4 and 0x4004e7fa (read watch, this
-port). 1.40MSC..MSCN6's 300-byte CAVE2 ended at 0x400d3012, two bytes
-short; MIDISC8's freeze_alt grew it to 308, over both words, and the
-loader then walks a "descriptor" made of his code and jumps into space.
-Stock also WRITES 0x400d2e84..89 (0x40005388..), where his
-VOICE_RELOAD_CAVE starts. Both are placement facts about HIS zero-run
-choices; every unit here links into DRAM, so this image is immune (and
-measured: arms the control's five). Told him; a fix is his (move CAVE2
-and VOICE_RELOAD, or build from the linked form).
-
-1.40MSCN6 (13 Sep 2026, his 58b27c9): the apply_part wrapper at 0x40009094
-is GONE -- he leaves STOCK_APPLY stock ("apply pack/unpack during project
-load hangs HW"), which is also the site Octakit owns, so the SCENES KITS
-bridge no longer chains apply and Octakit has it alone. XF morph moved from
-the STUB into SAFE_CAVE (the detour at 0x4003F3A2 now targets safe_cave);
-the plock body in CAVE2 is his XF-by-trig remix (TRIG_SNAP, a DRAM table in
-his own memory map, not a unit here). Re-cut on his tip (tag
-octabam-gas-1.40MIDISC5 keeps the previous cut reachable), gas/*.s
-regenerated, all seven regions IDENTICAL to his encoder.
-
-MEASURED (10 Sep 2026, 1.40MIDISC): five regions byte-identical to his
-encoder at his addresses; the linked units, 34 detours and 4 pokes
-install with every assertion passing; `make check REMIX=midi-scenes` and
-`REMIX=mods` green, the reserve reading back equal to the linked runtime
-(8,622 B solo) under the port. ON HARDWARE 14 Sep 2026: `OKMS1` (remix
-ok-ms, 1.40MIDISC8 + Octakit) confirmed working by him on his own unit. His `apply_part`
-hook (0x40009094) is shared with Octakit; SCENES KITS bridges it, and
-the ledger still refuses the pair without that module. None of the four
-new 1.40MIDISC sites collides with anything Octakit writes.
+On hardware 14 Sep 2026 as OKMS1 (remix ok-ms), confirmed by him.
 """
 
 from remix.schema import Detour, Kind, Linked, Module, Poke
@@ -111,12 +32,7 @@ from remix.schema import Detour, Kind, Linked, Module, Poke
 UP = "modules/midi-scenes/upstream/gas/"
 H = bytes.fromhex
 
-# ORDER IS LINK ORDER: a unit can only reference symbols of units before
-# it (the build hands each link the globals of everything already placed).
-# The two data units go first; then safe_cave, which everything calls;
-# code2 last but one because it calls into safe_cave. msc floats into the
-# room right after the chooser; state and code2 are pinned to the bytes
-# after it (the 0x80 rounding a floating unit gets would waste the tail).
+# Link order: a unit can only reference symbols of units before it.
 UNITS = (
     Linked("msc", UP + "msc.s", dram=True),
     Linked("state", UP + "state.s", dram=True),
@@ -168,9 +84,8 @@ DETOURS = (
     Detour(0x40025AA2, H("23c046c82456"), "seam_bank", "bank_inv", "bank-pointer refresh on init B", kind="jsr"),
     Detour(0x400622C6, H("4eb9400418e0"), "project_cave", "after_proj", "post-project-load CKPT seed + unpack", kind="jsr"),
     Detour(0x4002DCD4, H("45f94004a908"), "safe_cave", "save", "SAVE ALL's lea -> the ported Save", kind="lea"),
-    # 1.40MIDISC8: the part-change UI sites that called STOCK_APPLY go through
-    # his apply bridge (pack, stock apply, unpack + mix); STOCK_APPLY itself
-    # stays stock, so project load and Octakit never see it.
+    # The part-change UI sites go through his apply bridge (pack, stock
+    # apply, unpack + mix); STOCK_APPLY itself stays stock.
     Detour(0x4002B59A, H("4eb940009094"), "safe_cave", "apply_bridge", "part-change UI apply -> bridge, site 1", kind="jsr"),
     Detour(0x4002B8F8, H("4eb940009094"), "safe_cave", "apply_bridge", "part-change UI apply -> bridge, site 2", kind="jsr"),
     Detour(0x4004A8FC, H("4eb940009094"), "safe_cave", "apply_bridge", "set pattern's part then apply -> bridge, site 3", kind="jsr"),
