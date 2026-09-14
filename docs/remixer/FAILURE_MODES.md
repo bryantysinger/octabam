@@ -408,8 +408,10 @@ grace. `tools/verify/verify_dirtystate.py` (in `make verify`, ahead of the
 selftest) renders every module of the remix from a garbage block on silence
 at its defaults and with every knob nudged, four fill words, and refuses any
 output above −100 dBFS: the old build fails on Spectrum (−6 dBFS) and
-Character (−69 dBFS), the fixed build is silent everywhere. Hardware
-confirmation: pending flash.
+Character (−69 dBFS), the fixed build is silent everywhere. ✅ **CONFIRMED ON
+THE UNIT (image 8, 14 Sep 2026, `out/hw/ladder/confirm8.log`):** every ladder
+bank plays; bank G's master at COMP 40 / 80 / 127 reads R−L −0.4 / −0.1 /
+−0.6 dB (was −44 at COMP 80), RET 0 and 127 alike, WDTH 127 −0.6.
 
 **Related.** The 13 Sep "DC thump from TRACK 6, LFO 2" entry above is a DC
 STEP on the output; an LFO moving an FX1 word flips a station from bypass to

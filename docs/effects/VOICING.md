@@ -2420,7 +2420,8 @@ above was right; the "master delivery" suspect was wrong. The trail
   $1d/$1e, Character $19..$1c, $3c/$3d); the gate is in `make verify`. Old
   build: Spectrum −6 dBFS, Character −69 dBFS from garbage; fixed: silent.
 Character's AC1 compressor is CORRECT as ported and needs no change; "master
-GLUE COMP ≤ 20" is lifted once the fix is confirmed on the unit. Register
+GLUE COMP ≤ 20" is LIFTED: image 8 (14 Sep) reads R−L −0.4 / −0.1 / −0.6 dB at
+COMP 40 / 80 / 127 on the master, RET 0 and 127 alike (`out/hw/ladder/confirm8.log`). Register
 entry: `docs/remixer/FAILURE_MODES.md` "The master compressor collapses ONE
 channel". The stations run LIVE on the unit at the passthrough stamp
 (inferred from the DC; the port bypasses them) — a separate open question
