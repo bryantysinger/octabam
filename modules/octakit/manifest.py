@@ -46,8 +46,9 @@ the handoff, and her window reads back byte-identical (149,653 B). The
 image is never identical to hers -- the build adds its own FX2 chooser and
 DSP null-stub edits, and now its own loader -- and the build says so.
 `elektron-firmware-tool` packs the grown section without changes.
-NOT measured: nothing from this pipeline has been flashed; her own
-development builds are what has run on hardware (via junes.website).
+MEASURED ON HARDWARE 14 Sep 2026: `OKMS1` (remix ok-ms, her 92cf70b +
+midisc 1.40MIDISC8) confirmed working by midisc's author on his unit --
+her runtime carried by our loader, on silicon. Extent: his word.
 
 COLLISIONS. Her recipe rewrites the apply_part entry 0x40009094, which
 midi-scenes (STOCK_APPLY) and octamax (scene_stub) also detour, and the
@@ -61,7 +62,8 @@ without relinking source Patterns, fixes for spill-backed kit state during
 pattern changes / STOP handoff / held Recording Edit and LOAD KIT
 assignment, fuller crash reports, a license. 730 writes (was 645), runtime
 154,718 B; verify_octakit reproduces her combined OS byte-exact; mods
-composes with midisc 1.40MIDISC8 and boots under the port. Unflashed.
+composes with midisc 1.40MIDISC8 and boots under the port; on silicon as
+OKMS1 (above).
 """
 
 from remix import arena

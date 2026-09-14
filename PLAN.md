@@ -34,9 +34,18 @@ remixer stays; where someone else's mechanism is better it is adopted —
 Em's loader-appended DRAM runtime is now octabam's own large-payload
 placement, and the m68k-elf toolchain is a standard dependency.
 
-## Where it stands (10 Sep 2026)
+## Where it stands (14 Sep 2026)
 
-**Built, gated, unflashed.** Every gate below is local: the ColdFire port
+✅ **ON SILICON, 14 Sep 2026: `OKMS1` — Octakit (ot-26914) + MIDI SCENES
+(1.40MIDISC8) on the stock effects, remix `ok-ms` — CONFIRMED WORKING by
+midisc's author on his own unit** (his word, his projects; the extent of
+"working" is his — boot, load, play, and his own mod at least). That is
+the first image from this pipeline to run on hardware, and it carries the
+whole platform: the appended loader, the reserve at the arena's bottom,
+her runtime relocated through our loader, his thirteen units in DRAM. The
+paragraph below is kept as the record of what was true until then.
+
+**Built, gated, unflashed (10 Sep 2026).** Every gate below is local: the ColdFire port
 (`tools/emu/ot_emu`) boots the built image, the bit-identity gate proves
 the build changed nothing for the twenty-six existing configurations, and
 each port's own oracle holds. **Nothing from the new pipeline has been
