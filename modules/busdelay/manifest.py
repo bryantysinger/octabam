@@ -50,7 +50,13 @@ SIZE_ROWS = (
 # exactly as the ladder they replace evaluated them. At offset 40.
 SNAP_DIVS = (0x1000, 0x1800, 0x2000, 0x3000, 0x4000,
              0x4800, 0x6000, 0x8000, 0x9000, 0xc000)
-PTABLE = tuple(w for row in SIZE_ROWS for w in row) + SNAP_DIVS
+# The bus auto-gain's 1/sqrt(N), Q23, indexed by the client count masked to
+# 0..7 -- so [0] is 1/sqrt(8), where eight writers wrap to (and a count of 0
+# lands, harmlessly: the accumulator is zero then). The law is 1/sqrt(N),
+# not 1/N (17 Aug 2026): uncorrelated senders sum as sqrt(N). At offset 50.
+RECIP = (0x2d413c, 0x7fffff, 0x5a8279, 0x49e69d,
+         0x400000, 0x393e4b, 0x34417a, 0x306123)
+PTABLE = tuple(w for row in SIZE_ROWS for w in row) + SNAP_DIVS + RECIP
 
 MODULE = Module(
     name="busdelay",

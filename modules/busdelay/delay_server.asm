@@ -766,30 +766,14 @@ bus_mine:
 ; to index 0, which therefore holds 1/sqrt(8). A count of 0 (nobody wrote)
 ; lands there too -- harmless, the accumulator is zero then anyway.
 ;
-; The table lives in the shared bus scratch at $9cb-$9d2 (relocated with the
-; rest of the $9xx layout under XBUS) because this server has no free ground
-; of its own: both line buffers fill its entire half-window. Rebuilt each
-; block; the stores are free in cycle terms. x1 (write_rotation) is still
-; valid from the address block above.
-        move    #>$9cb,b                ; reciprocal table base
-        move    b,r5
-        move    #>$ffffff,m5
-        move    #>$2d413c,a
-        move    a,y:(r5)+       ; [0] = 1/sqrt(8)  (count 8 wraps to here)
-        move    #>$7fffff,a
-        move    a,y:(r5)+       ; [1] = 1/sqrt(1)
-        move    #>$5a8279,a
-        move    a,y:(r5)+       ; [2] = 1/sqrt(2)
-        move    #>$49e69d,a
-        move    a,y:(r5)+       ; [3] = 1/sqrt(3)
-        move    #>$400000,a
-        move    a,y:(r5)+       ; [4] = 1/sqrt(4)
-        move    #>$393e4b,a
-        move    a,y:(r5)+       ; [5] = 1/sqrt(5)
-        move    #>$34417a,a
-        move    a,y:(r5)+       ; [6] = 1/sqrt(6)
-        move    #>$306123,a
-        move    a,y:(r5)        ; [7] = 1/sqrt(7)
+; The eight reciprocals are the manifest's RECIP, in the P table at offset
+; 50 (14 Sep 2026). Until then they were rebuilt into the shared bus scratch
+; every block, 27 words a call, because this server has no free ground of
+; its own; those eight bus-scratch words are free now. x1 (write_rotation)
+; is still valid from the address block above.
+        move    #>$ffffff,m5            ; r5 linear for the block (the
+                                        ; reciprocals are in the P table
+                                        ; since 14 Sep 2026: nothing to build)
 
         move    x1,a                    ; the count belongs to the buffer this
         add     #>$20,a                 ; block READS, which is two buffers back
@@ -811,10 +795,10 @@ bus_mine:
 ; disturb (the flag-clobber trap in CLAUDE.md, and the reason 5d shipped a
 ; noise wash on one channel). Tcc takes a register source, never an
 ; accumulator, so the increment travels through x0.
-; ⚠️ AND b HELD THE RECIPROCAL TABLE BASE from the table build above -- the
-; Tcc needs an accumulator, so it takes b and the base is RE-LOADED below
-; rather than "still live". Costs one word; the version that trusted the old
-; comment indexed the table at address 0 or 1, a wild Y read.
+; (b used to hold the reciprocal table's scratch base across this block and
+; the Tcc below took it -- the base was re-loaded rather than trusted, after a
+; version that indexed the table at address 0 or 1, a wild Y read. The table
+; is in P now and its base is n4, which nothing here touches.)
 ; ->DEL (5 Sep 2026): the host's own send into its delay is BACK, on page-2
 ; slot 10 (DRV's slot; drive is retired). Same discipline as the -VRB gate
 ; below: knob read from r6 DIRECTLY (the per-block decode runs later), masked
@@ -839,12 +823,10 @@ bus_mine:
         move    y:(r5),a                ; clients that wrote the buffer we read
         add     b,a                     ; ... plus ourselves, if sending
         and     #>$7,a                  ; masked: boot garbage cannot index wild
-        move    a1,x0
-        move    x0,a                    ; A2-clean before it becomes an address
-        move    #>$9cb,b                ; table base, RE-LOADED (see above)
-        add     b,a
-        move    a,r5
-        move    y:(r5),a
+        add     #>$32,a                 ; + 50, the reciprocals' offset in the
+        move    a1,n5                   ; P table -- a1 straight into n5, so
+        move    n4,r5                   ; there is no store and no A2 to clean
+        move    p:(r5+n5),a             ; 1/sqrt(N)
         move    a,x:(r7+$36)            ; this block's bus gain, used per sample
 
 ; ---- (the REVERB-client registration lived here until the one-aux rig,

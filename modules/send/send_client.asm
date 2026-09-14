@@ -93,7 +93,9 @@
 ;                        ⚠️ One word per buffer where the accumulators have
 ;                        sixteen, so these are the ONLY sites that scale the
 ;                        offset back down to a bare index (`asr #$4`).
-;   Y:0x9cb..0x9d2      DELAY SERVER's 1/sqrt(N) reciprocal table, rebuilt by it
+;   Y:0x9cb..0x9d2      FREE since 14 Sep 2026 (was DELAY SERVER's 1/sqrt(N)
+;                       reciprocal table, rebuilt every block; it reads
+;                       its P table now)
 ;                        each block. Lives in the shared scratch because the
 ;                        delay's own half-window is entirely line buffer.
 ;                        Nobody else reads or writes these eight words.
