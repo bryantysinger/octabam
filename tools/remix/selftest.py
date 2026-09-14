@@ -25,7 +25,7 @@ from remix.schema import (CavePatch, Claims, DspSection, Kind, MenuEntry,  # noq
 
 
 def _effect(name, fx2_id, priority=0, reserved=(), buffers=False,
-            ybase=YBase.NEVER):
+            ybase=YBase.NEVER, ptable=(), asm="does/not/exist.asm"):
     return Module(
         name=name, key=name.upper(), kind=Kind.DSP_EFFECT,
         doc="fixture",
@@ -35,11 +35,21 @@ def _effect(name, fx2_id, priority=0, reserved=(), buffers=False,
         # No asm path on disk, so the ledger's scan finds nothing and only
         # the reserved words below are claimed -- which is what lets these
         # fixtures test the claim path in isolation.
-        dsp=DspSection(asm="does/not/exist.asm", priority=priority,
-                       ybase=ybase),
+        dsp=DspSection(asm=asm, priority=priority, ybase=ybase,
+                       ptable=ptable),
         claims=Claims(reserved_private_y=reserved,
                       owns_fx2_buffers=buffers),
     )
+
+
+# A source that addresses the stock curve bank X:0x4840 by literal -- the
+# one claim the ledger derives from the TEXT of a source, so it needs a file
+# on disk (an absolute path: ledger joins it to ROOT, which pathlib leaves
+# absolute).
+import tempfile  # noqa: E402
+_HARD_ASM = pathlib.Path(tempfile.mkdtemp(prefix="octabam_selftest_")) / "hard.asm"
+_HARD_ASM.write_text("        move    x:>$4a40,x0             ; curve 4's base\n"
+                     "        rts\n")
 
 
 def _stock(name, fx2_id, buffer):
@@ -92,6 +102,12 @@ CASES = [
     ("a buffered stock effect beside a shared-window module",
      [_stock("comb", 0x13, True), _effect("beta", 0x07, ybase=YBase.ALWAYS)],
      "stock instance buffer"),
+    # The build parks a module's P table in the stock curve bank X:0x4840
+    # (14 Sep 2026); a module that addresses that record itself would find
+    # the table written under its reference.
+    ("a table module beside a module addressing the stock curve bank",
+     [_effect("alpha", 0x07, ptable=(1, 2, 3)),
+      _effect("beta", 0x1e, asm=str(_HARD_ASM))], "X:0x4840 curve bank"),
 ]
 
 CLEAN = [_effect("alpha", 0x07, reserved=(0x0905,)),

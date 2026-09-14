@@ -291,13 +291,19 @@ class DspSection:
     r7_latch_slot: int | None = None           # rotation-latch state word
     gate_label: str | None = None              # where the housekeeping gate jumps
     override_markers: tuple[str, ...] = ()     # ";_OVERRIDE" hooks it honours
-    # A P-MEMORY TABLE the module reads with p:(rN)+ -- placed by the build
-    # immediately BEFORE the module's code (so the address is known before
-    # assembly) and the source's one `$fab1e0` literal rewritten to it, the
+    # A TABLE the module reads with p:(rN) -- the source's one `$fab1e0`
+    # literal is rewritten by the build to wherever it put the words, the
     # reverb's LFOTAB mechanism made declarative (12 Sep 2026: Spectrum's
     # exponential FREQ taper is the first). dsp_asm has no dc directive,
-    # hence words here. Costs the module's own budget: the table rides in
-    # its run.
+    # hence words here. Where it goes (14 Sep 2026): in the stock curve
+    # bank X:0x4840 -- a 4,096-word data record at the same address in
+    # both payloads whose only stock reader is DJ EQ -- with the module's
+    # `p:(` table reads rewritten to `x:(`, costing the module's run
+    # nothing; or, when a reader of that record survives in the image, in
+    # P immediately BEFORE the module's code, out of its own budget, as it
+    # always was (build_bus.py XTABLE; stock.CURVE_BANK for the scan and
+    # its limits). ⚠️ So a module with a table may read P for NOTHING
+    # ELSE: every `p:(` in its code is the table.
     ptable: tuple[int, ...] = ()
 
 
