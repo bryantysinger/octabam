@@ -21,6 +21,31 @@ from remix.schema import (ModeView, BusRole, Claims, YBase, DspSection, Formatte
 _PLAIN = Formatter.PLAIN
 _STEP = Formatter.STEPPED
 
+# ---- the P table (14 Sep 2026) -------------------------------------------
+# SIZE rows, eight words each: REVERSE's [S, 2^23/S, 32704 - 2S] on the left
+# and GRAIN's [G-1, G/4, 2^(23-k), 2^(32-k)] on the right, one pad. Rows 0..3
+# are the four select positions in the engine's index order (46 / 93 / 23 ms,
+# then XTRM: 371 ms REVERSE segments, 186 ms grains); ROW 4 IS THE GARBAGE
+# ROW -- the engine clamps any index of 4 and up (a stale part byte holds
+# 0..127) onto it, and it pairs row 0's REVERSE half with row 3's GRAIN half
+# because that is where the two compare ladders it replaced sent such an
+# index. Read by delay_server.asm's one table block, parked by the build in
+# the stock curve bank X:0x4840 beside SPECTRUM's and CHARACTER's tables.
+SIZE_ROWS = (
+    # (index 0 and 1 SWAPPED, R62: the panel default is SIZE=1, and R60
+    # measured 46 ms as comb territory on sustained sources -- the default
+    # deserves the musical segment, not the ring)
+    (2048,  4096, 28608, 0x7ff,  0x200, 0x1000, 0x200000, 0),   # 0: 46 ms
+    (4096,  2048, 24512, 0xfff,  0x400, 0x800,  0x100000, 0),   # 1: 93 ms (default)
+    (1024,  8192, 30656, 0x3ff,  0x100, 0x2000, 0x400000, 0),   # 2: 23 ms
+    # 3: XTRM -- REVERSE-32K (13 Sep 2026): S = 16384 (371 ms), cap 0: the
+    # lag floor is TIME-free at this size, 2S - 2 = 32,766 is the mono
+    # ring's oldest valid sample. GRAIN: 8192-sample (186 ms) grains.
+    (16384, 512,  0,     0x1fff, 0x800, 0x400,  0x80000,  0),
+    (2048,  4096, 28608, 0x1fff, 0x800, 0x400,  0x80000,  0),   # 4+: garbage index
+)
+PTABLE = tuple(w for row in SIZE_ROWS for w in row)
+
 MODULE = Module(
     name="busdelay",
     key="DELAY SERVER",
@@ -139,6 +164,7 @@ MODULE = Module(
         gate_label="bus_notfirst",
         override_markers=("; DMODE_OVERRIDE", "; DINT_OVERRIDE",
                           "; DFRZ_OVERRIDE", "; DNOTE_OVERRIDE"),
+        ptable=PTABLE,
     ),
     # 0901h-0903h is named in the source as this module's RATE/DRV state
     # block. The scan sees 0901 and 0902; 0903 is reserved here because the

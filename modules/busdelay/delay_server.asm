@@ -647,6 +647,14 @@ bus_mine:
         move    r7,a
         add     #>$49,a
         move    a,r7                    ; r7 = state block + $49
+; ---- the P table (14 Sep 2026): five SIZE rows, the snap divisions and the
+; reciprocals live in a table the manifest declares (schema.DspSection.ptable)
+; and the build parks in the stock curve bank (X:0x4840, `p:(` reads become
+; `x:(`), or leaves in P in front of the code. Its base is held in n4 for the
+; whole block: r7 has no spare word and r4 walks GRAIN's records with no
+; stride, so n4 is free from here to `dry:`. The literal below is the one the
+; build rewrites; it may appear nowhere else in this file.
+        move    #>$fab1e0,n4            ; the P table -- rewritten by build_bus.py
 
 ; ---- this call's DELAY ACC read address and DELAY WET write address ------
 ; READ is the OTHER buffer from the current write rotation -- the one every
@@ -1471,49 +1479,37 @@ wowlive:
 ; pinned to 0 -- the read precedes the write each sample, so lag 32,768 is
 ; still the ring. Caps: 32704 - 2S. Any future size increase must re-check
 ; LAG0 + 2S <= 32768.
-        move    x:(r7+$16),a            ; select index
-        move    #>$1,x0
+; ONE TABLE READ FOR BOTH MODES (14 Sep 2026, replacing two ladders of
+; compares and immediates, 120 words): the manifest's SIZE_ROWS, eight words
+; a row -- REVERSE's S / 2^23/S / cap on the left, GRAIN's G-1 / G/4 /
+; 2^(23-k) / 2^(32-k) on the right -- for indices 0..3, and a FIFTH row for
+; anything from 4 up (a stale part byte can hold 0..127): the ladders sent
+; REVERSE to row 0 and GRAIN to row 3 for those, so the garbage row is exactly
+; that pairing and the change is bit-identical for garbage too. The clamp is
+; a Tcc off one compare with only a move between.
+        move    x:(r7+$16),a            ; select index, 0..127
+        move    #>$4,x0
         cmp     x0,a
-        beq     rsz1
-        move    #>$2,x0
-        cmp     x0,a
-        beq     rsz2
-        move    #>$3,x0
-        cmp     x0,a
-        beq     rsz3
-        move    #>2048,a                ; index 0 (and any garbage): 46 ms
-        move    a,x:(r7+$17)            ; (index 0 and 1 SWAPPED, R62: the
-        move    #>4096,a                ; step = 2^23 / S      panel default
-        move    a,x:(r7+$18)            ; is PTCH=1, and R60 measured 46 ms
-        move    #>28608,a               ; cap = 32704 - 2S     as comb
-                                        ; territory on sustained sources --
-                                        ; the default deserves the musical
-                                        ; segment, not the ring)
-        bra     rszend
-rsz1:
-        move    #>4096,a                ; 93 ms -- the DEFAULT, and the size
-        move    a,x:(r7+$17)            ; R60's ear round preferred
-        move    #>2048,a
-        move    a,x:(r7+$18)
-        move    #>24512,a
-        bra     rszend
-rsz2:
-        move    #>1024,a                ; 23 ms
-        move    a,x:(r7+$17)
-        move    #>8192,a
-        move    a,x:(r7+$18)
-        move    #>30656,a
-        bra     rszend
-rsz3:
-        move    #>16384,a               ; 371 ms (13 Sep 2026, REVERSE-32K; 186
-        move    a,x:(r7+$17)            ; earlier that day, 12 ms "stutter"
-        move    #>512,a                 ; before). cap 0: the lag floor is
-        move    a,x:(r7+$18)            ; TIME-free at this size -- 2S - 2 =
-        move    #>0,a                   ; 32,766 is the mono ring's oldest
-                                        ; valid sample (the write lands AFTER
-                                        ; this read each sample).
-rszend:
-        move    a,x:(r7+$d)            ; the cap for this size
+        tgt     x0,a                    ; 4 and up: the garbage row
+        asl     #$3,a,a                 ; row stride 8
+        move    n4,x0                   ; the table base (see the block preamble)
+        add     x0,a
+        move    a,r5
+        move    p:(r5)+,a               ; S
+        move    a,x:(r7+$17)            ; REVERSE segment length
+        move    p:(r5)+,a               ; 2^23 / S
+        move    a,x:(r7+$18)            ; REVERSE phase step
+        move    p:(r5)+,a               ; 32704 - 2S
+        move    a,x:(r7+$d)             ; the cap for this size
+        move    p:(r5)+,a               ; G - 1
+        move    a,x:(r7-$11)            ; GRAIN mask
+        move    p:(r5)+,a               ; G/4
+; GRAINOFF
+        move    a,x:(r7-$10)            ; G/4, the grain-to-grain offset
+        move    p:(r5)+,a               ; 2^(23-k)
+        move    a,x:(r7-$f)             ; GRAIN window multiplier
+        move    p:(r5),a                ; 2^(32-k)
+        move    a,x:(r7-$a)             ; GRAIN pitch-ceiling multiplier
         move    x:(r7+$2c),a            ; TIME
         move    x:(r7+$d),x0
         sub     x0,a                    ; sub/branch, not cmp (the
@@ -1531,52 +1527,8 @@ rlagok:
 ; size: the mask G-1, G/4 (grain-to-grain offset), the one-multiply window's
 ; multiplier 2^(23-k) (modules/nimbus/nimbus_grain.asm: 2^(23-k), NOT
 ; 2^(24-k) -- the a0 trap) and 2^(32-k), which turns the lag into the pitch
-; ceiling below with one mpy. Per block, so the loop pays nothing.
-        move    x:(r7+$16),a            ; SIZE index 0..3
-        move    #>$1,x0
-        cmp     x0,a
-        blt     gvs0
-        beq     gvs1
-        move    #>$2,x0
-        cmp     x0,a
-        beq     gvs2
-        move    #>$1fff,x0              ; idx 3: G = 8192 (186 ms)
-        move    x0,x:(r7-$11)
-        move    #>$800,a                ; G/4, stored once at gvsz
-        move    #>$400,x0               ; 2^(23-13)
-        move    x0,x:(r7-$f)
-        move    #>$80000,x0             ; 2^(32-13)
-        move    x0,x:(r7-$a)
-        bra     gvsz
-gvs2:
-        move    #>$3ff,x0               ; idx 2: G = 1024 (23 ms)
-        move    x0,x:(r7-$11)
-        move    #>$100,a                ; G/4
-        move    #>$2000,x0              ; 2^(23-10)
-        move    x0,x:(r7-$f)
-        move    #>$400000,x0            ; 2^(32-10)
-        move    x0,x:(r7-$a)
-        bra     gvsz
-gvs1:
-        move    #>$fff,x0               ; idx 1: G = 4096 (93 ms), the default
-        move    x0,x:(r7-$11)
-        move    #>$400,a                ; G/4
-        move    #>$800,x0               ; 2^(23-12)
-        move    x0,x:(r7-$f)
-        move    #>$100000,x0            ; 2^(32-12)
-        move    x0,x:(r7-$a)
-        bra     gvsz
-gvs0:
-        move    #>$7ff,x0               ; idx 0: G = 2048 (46 ms)
-        move    x0,x:(r7-$11)
-        move    #>$200,a                ; G/4
-        move    #>$1000,x0              ; 2^(23-11)
-        move    x0,x:(r7-$f)
-        move    #>$200000,x0            ; 2^(32-11)
-        move    x0,x:(r7-$a)
-gvsz:
-; GRAINOFF
-        move    a,x:(r7-$10)            ; G/4, the grain-to-grain offset
+; ceiling below with one mpy. Per block, so the loop pays nothing. All four
+; come from the table read above (the right half of the SIZE row).
 ; the read distance base: lag + G + 2, with lag = min(TIME, 12286 - mask).
 ; A grain at unity reads W - (lag + s + G + 2 - phase): at least lag + s + 2
 ; behind the write head and at most lag + s + G + 1 behind it; s tops out at
