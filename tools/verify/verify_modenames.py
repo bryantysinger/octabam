@@ -63,25 +63,34 @@ def main():
     remix = registry.remix(name)
     fails = 0
     checked = 0
+    # every labelled select of every drawn module: (module, slot, its rename
+    # table) -- the MODE's neighbour renames plus, since 14 Sep 2026, every
+    # select's own name following its value (the standard).
+    work = []
     for key in remix.modules:
         mod = mods.get(key)
-        if mod is None or not mod.mode_views or mod.mode_slot is None:
-            continue
+        if mod is None or mod.menu is None or getattr(mod, "is_stock", False):
+            continue          # a stock effect keeps its own descriptor: no clone, no cave
         # A BLANKED module (hidden, nowhere on FX1) draws no knobs and gets
-        # no MODE formatter from the build (5 Sep 2026), so there is nothing
-        # to rename on its page; the bus screen prints its own mode words.
+        # no formatter from the build (5 Sep 2026), so there is nothing to
+        # rename on its page; the bus screen prints its own mode words.
         if key in remix.blanked:
             continue
-        want = mode_names.complete(mod)
-        if not want:
-            continue
+        for slot, prm in enumerate(mod.params):
+            if not (prm.active and prm.labels):
+                continue
+            want = (mode_names.complete(mod)
+                    if slot == mod.mode_slot and mod.mode_views else {})
+            want = mode_names.with_selfname(want, slot, prm.labels)
+            work.append((key, mod, slot, want))
+    for key, mod, slot, want in work:
         desc = clones.get(key)
         if desc is None:
             print(f"  [FAIL] {key}: no clone address in the build report")
             fails += 1
             continue
-        fmt = rd32(desc + 0x0ca + mod.mode_slot * 4)
-        labels = mod.params[mod.mode_slot].labels
+        fmt = rd32(desc + 0x0ca + slot * 4)
+        labels = mod.params[slot].labels
 
         def names_now():
             out = {}
@@ -100,13 +109,13 @@ def main():
             checked += 1
             if bad:
                 fails += 1
-                print(f"  [FAIL] {key} mode {value} ({labels[value]}): "
+                print(f"  [FAIL] {key} slot {slot} value {value} ({labels[value]}): "
                       + ", ".join(f"slot {sl} should read {w!r}, reads {g!r}"
                                   for sl, w, g in bad))
             else:
                 shown = " ".join(f"{sl}:{got[sl]}" for sl in sorted(want[value]))
-                print(f"  [PASS] {key} mode {value} ({labels[value]:<5}) "
-                      f"renames {shown}")
+                print(f"  [PASS] {key} slot {slot} value {value} ({labels[value]:<5}) "
+                      f"names {shown}")
         # a part stores a RAW byte, so a value past the count must clamp
         emu._call(uc, fmt, (BUF, 200))
         got = names_now()
@@ -115,12 +124,12 @@ def main():
         checked += 1
         if bad:
             fails += 1
-            print(f"  [FAIL] {key}: an out-of-range mode leaves slots {bad} "
+            print(f"  [FAIL] {key} slot {slot}: an out-of-range value leaves slots {bad} "
                   f"renamed by whatever ran last")
         else:
-            print(f"  [PASS] {key}: mode 200 clamps to mode 0's names")
+            print(f"  [PASS] {key} slot {slot}: value 200 clamps to value 0's names")
     if not checked:
-        sys.exit(f"{name}: no module in this remix declares mode_views")
+        sys.exit(f"{name}: no labelled select in this remix")
     print(f"\n{fails} of {checked} checks failed" if fails
           else f"\nOK ({checked} checks)")
     return 1 if fails else 0

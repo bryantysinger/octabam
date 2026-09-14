@@ -208,6 +208,21 @@ def verify(labels: tuple[str, ...], desc: int,
                 f"  assembled {want.hex(' ')}")
 
 
+def with_selfname(renames: dict[int, dict[int, bytes]], slot: int,
+                  labels: tuple[str, ...]) -> dict[int, dict[int, bytes]]:
+    """EVERY SELECT NAMES ITSELF (14 Sep 2026, the standard). Sam, on the
+    master's SAT: "rather than sat label being static with the mode flashing
+    for a sec, can we get rid of sat and just have it showing tape | tube |
+    infl ... make that the standard for all switches". So a labelled
+    select's cave writes its own name field with the value's word before
+    printing it: the knob reads TAPE / TUBE / INFL, CLEAN / GRAIN / REVRS,
+    SER / PAR / RING / FM. Merged over a MODE's neighbour renames."""
+    out = {m: dict(v) for m, v in renames.items()}
+    for value, word in enumerate(labels):
+        out.setdefault(value, {})[slot] = word.encode("latin1")[:NAME_LEN - 1]
+    return out
+
+
 def complete(mod) -> dict[int, dict[int, bytes]]:
     """Every mode's FULL rename set for the slots ANY of its views touches.
 
