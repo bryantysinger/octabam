@@ -147,19 +147,16 @@ proc:
         move    a,x:(r7+$18)            ; saw weight 0
         move    #$10,x0                 ; square gain / 8 = 1/8, i.e. gain 1 (short: bits 23-16)
         move    x0,x:(r7+$28)
+; The select is bits 8-15 of the knob word (bit 23 clear, so a2 = 0 and
+; the and leaves it 0): compare the masked field where it sits, no shift
+; and no clean reload (14 Sep 2026; long immediates, never the 6-bit form).
         move    x:(r6+$d),a
         and     #>$ff00,a
-        move    a1,x0
-        move    x0,a
-        asl     #$8,a,a
-        move    #>$10000,x0
-        cmp     x0,a
+        cmp     #>$100,a
         beq     mo_shsin
-        move    #>$20000,x0
-        cmp     x0,a
+        cmp     #>$200,a
         beq     mo_shsqr
-        move    #>$30000,x0
-        cmp     x0,a
+        cmp     #>$300,a
         beq     mo_shsaw
         bra     mo_shdone               ; TRI, and anything unexpected
 mo_shsin:
@@ -207,16 +204,11 @@ mo_shdone:
 ; depth and feedback. CHOR is the fall-through -- and so is any stored value
 ; past 2 (an old part's PHSR/TREM/VIB/PAN byte, 3..6): only 1 (FLNG) and 2
 ; (COMB) match, everything else is CHOR.
-        move    x:(r6+$c),a
+        move    x:(r6+$c),a             ; the select field where it sits (as SHPE)
         and     #>$ff00,a
-        move    a1,x0
-        move    x0,a
-        asl     #$8,a,a
-        move    #>$10000,x0
-        cmp     x0,a
+        cmp     #>$100,a
         beq     mo_mflng
-        move    #>$20000,x0
-        cmp     x0,a
+        cmp     #>$200,a
         beq     mo_mcomb
 ; CHOR: a 10 ms centre, a gentle sweep, no feedback
         move    #>$28000,x0             ; 40 samples ~ 0.9 ms floor
