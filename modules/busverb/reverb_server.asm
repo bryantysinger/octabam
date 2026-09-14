@@ -623,35 +623,20 @@ bus_mine:
 ; Table order is unchanged: the count is masked to 0..7, so 8 senders wrap to
 ; index 0, which therefore holds 1/sqrt(8). A count of 0 lands there too, which
 ; is harmless -- the accumulator is zero in that case anyway.
-        move    #>$30000,b              ; SHARED WINDOW + 0x4400. Built as base
-        move    #>$4400,x0              ; + offset rather than one literal
-        add     x0,b                    ; because only the bare `$30000` is
-        move    b,r5                    ; rewritten to `$38000` for payload B --
-                                        ; a fused `$34400` would silently keep
-                                        ; core 1 pointing into core 0's memory.
-                                        ; x:(r7+$31) is not written until AFTER
-                                        ; this block, so reading it here would
-                                        ; take the PREVIOUS block's value (and
-                                        ; garbage on the very first). b is kept
-                                        ; live for the index below, and x0 is
-                                        ; free until the count load below.
-        move    #>$ffffff,m5
-        move    #>$2d413c,a
-        move    a,y:(r5)+       ; [0] = 1/sqrt(8)  (count 8 wraps to here)
-        move    #>$7fffff,a
-        move    a,y:(r5)+       ; [1] = 1/sqrt(1)
-        move    #>$5a8279,a
-        move    a,y:(r5)+       ; [2] = 1/sqrt(2)
-        move    #>$49e69d,a
-        move    a,y:(r5)+       ; [3] = 1/sqrt(3)
-        move    #$40,a
-        move    a,y:(r5)+       ; [4] = 1/sqrt(4)
-        move    #>$393e4b,a
-        move    a,y:(r5)+       ; [5] = 1/sqrt(5)
-        move    #>$34417a,a
-        move    a,y:(r5)+       ; [6] = 1/sqrt(6)
-        move    #>$306123,a
-        move    a,y:(r5)        ; [7] = 1/sqrt(7)
+; ---- the module's P table (14 Sep 2026): n4 holds its base for the block --
+; The eight 1/sqrt(N) reciprocals used to be REBUILT here every block, sixteen
+; moves into y:shared+0x4400; they are constants and live in the module's
+; table now (manifest.py, DspSection.ptable), first, with the three MODE rows
+; after them. The table literal (the one build_bus.py rewrites to the table's
+; address) may appear exactly ONCE per source, so it lands in n4 and both
+; readers -- the auto-gain below and the MODE copy after warm-up -- take it
+; from there into r5. n4 is free until the tank priming loads it, after both
+; (r1..r4 are NOT: they become the line pointers before the MODE block).
+; Every access goes through r5 under the linear m5 set here.
+        move    #>$fab1e0,n4            ; the table -- rewritten by build_bus.py
+        move    #>$ffffff,m5            ; r5 linear: for the read below and the
+                                        ; warm-up's clear ("whatever m5 the
+                                        ; previous block left", 9 Aug)
 
         move    x1,a
         add     #>$20,a                    ; read offset = write + 2 buffers
@@ -677,13 +662,10 @@ bus_mine:
         add     b,a                     ; ... plus ourselves, if sending
         and     #>$7,a                  ; masked: boot garbage cannot index wild
         move    a1,x0
-        move    x0,a                    ; A2-clean before it becomes an address
-        move    #>$30000,b              ; table base RE-LOADED (base + offset,
-        move    #>$4400,x0              ; not fused -- the substitution rule at
-        add     x0,b                    ; the table build above)
-        add     b,a
-        move    a,r5
-        move    y:(r5),a
+        move    x0,a                    ; A2-clean before it becomes an offset
+        move    a,n5                    ; the count, 0..7
+        move    n4,r5                   ; the table (m5 linear, set above)
+        move    p:(r5+n5),a             ; 1/sqrt(N): the reciprocals lead the table
 ; CHAIN INPUT (the one aux bus, 7 Sep 2026): while the delay -- chain stage 1
 ; -- is LIVE, this block's input is its OUTPUT BUFFER at unity, not the aux
 ; accumulator; the gain becomes exactly 1/8 so the loop's `asl #3` lands the
