@@ -17,14 +17,18 @@ THE CONTROL IS THE POINT. `octamax-assembler-traps` records two instructions
 this assembler silently mis-encodes, and the lesson from that session was that
 a bit-identical claim is worthless without a companion check proving the
 comparison can see a difference at all. So every run also renders the
-REFERENCE engine twice -- once at HP=0, once at HP=64 -- and those must
-DIFFER. If they do not, the harness is blind and every PASS below it means
-nothing. `tools/verify/verify_burn.py` uses the same pairing for the same reason.
+REFERENCE engine twice -- once at TONE=64, once at TONE=127 -- and those
+must DIFFER. If they do not, the harness is blind and every PASS below it
+means nothing. `tools/verify/verify_burn.py` uses the same pairing for the
+same reason. (The pair was HP=0 vs HP=64 until v8 folded HP and LP into
+TONE, 5 Sep 2026; TONE 64 is documented in reverb_server.asm as the old
+HP 0 / LP 127 exactly, and 127 is the low cut fully open. The gate died on
+`unknown knob 'HP'` from then until 14 Sep 2026.)
 
 Source material is synthesised deterministically: a broadband burst then
-silence. Equality does not care about spectrum, but the control does -- HP is
-a low cut inside the feedback path, so the source needs low content for the
-difference to exist.
+silence. Equality does not care about spectrum, but the control does -- TONE
+above 64 is a low cut inside the feedback path, so the source needs low
+content for the difference to exist.
 """
 import argparse
 import os
@@ -92,16 +96,32 @@ def build(src, mode, tag):
     else:
         env["MODE"] = str(mode)
     out = run([sys.executable, "tools/build/build_bus.py"], env=env)
-    words = free = None
+    words = free = image = None
     for line in out.splitlines():
         if "REVERB SERVER P:0x" in line:
             words = int(line.split("(")[1].split("words")[0])
         elif words is not None and "FREE" in line and free is None:
             free = int(line.split("FREE")[1].split()[0])
+        elif line.startswith("out/") and ".bin: " in line:
+            image = line.split(":")[0]
+    # ⚠️ THE IMAGE IS WHERE THE BUILD SAYS IT IS, not out/mainos_bus.bin. A
+    # MODE-forced build writes out/mainos_bus_modeN.bin (DIAGNOSTIC, DO NOT
+    # FLASH -- build_bus.py keeps it off the flashable path on purpose), and
+    # from the day that landed until 14 Sep 2026 this dumped out/mainos_bus.bin
+    # after EVERY build: the three MODE cases compared the stale default
+    # image with itself and passed a candidate whose ROOM dispatch landed on
+    # PLATE. Take the path from the build's own report line, and refuse
+    # rather than guess when it is missing.
+    if image is None:
+        sys.exit(f"verify_roll: build_bus.py did not report an image path "
+                 f"for {tag}:\n{out[-2000:]}")
+    if mode is not None and f"mode{mode}" not in image:
+        sys.exit(f"verify_roll: MODE={mode} build reported {image}, not a "
+                 f"MODE-forced image")
     import dsp_modmap
     SCRATCH.mkdir(parents=True, exist_ok=True)
     mem = SCRATCH / f"{tag}.mem"
-    dsp_modmap.dumpmem((ROOT / "out/mainos_bus.bin").read_bytes(), ["A", str(mem)])
+    dsp_modmap.dumpmem((ROOT / image).read_bytes(), ["A", str(mem)])
     return mem, words, free
 
 
@@ -146,6 +166,9 @@ def render(mem, src, out, params=(), wet=False):
 
 
 # The cases docs/effects/XBUS.md asks for: every MODE character, plus one extreme.
+# The MODE cases are BUILT with the override (build_bus.py MODE=N), so each
+# is its own image; the extreme case runs the unforced build at the render
+# harness's mode.
 # (label, MODE for the build, render params, wet-only)
 CASES = [(f"MODE={i} {name}", i, (), False) for i, name in enumerate(MODES)] + [
     ("TIME=127 SIZE=127 DIFF=127 wet", None,
@@ -178,18 +201,19 @@ def main():
     print(f"reference {args.ref}\ncandidate {args.candidate}\n")
 
     # ---- the control, first: can this comparison see anything? -----------
-    # Build the REFERENCE once with no MODE override and render it at two HP
-    # settings. HP=0 is documented in modules/busverb/reverb_server.asm as an exact bypass
-    # of the in-loop low cut, so HP=0 vs HP=64 is a real change to the audio.
+    # Build the REFERENCE once with no MODE override and render it at two
+    # TONE settings. TONE=64 is documented in modules/busverb/reverb_server.asm
+    # as an exact bypass of the in-loop low cut (the old HP 0 / LP 127), and
+    # TONE=127 opens that cut fully, so the pair is a real change to the audio.
     ref_mem, ref_words, ref_free = build(args.ref, None, "ref_default")
-    c0 = render(ref_mem, wav, SCRATCH / "ctl_hp0.wav", ("HP=0",))
-    c64 = render(ref_mem, wav, SCRATCH / "ctl_hp64.wav", ("HP=64",))
-    check("harness is sensitive (reference HP=0 vs HP=64 differ)", c0 != c64,
+    c0 = render(ref_mem, wav, SCRATCH / "ctl_tone64.wav", ("TONE=64",))
+    c64 = render(ref_mem, wav, SCRATCH / "ctl_tone127.wav", ("TONE=127",))
+    check("harness is sensitive (reference TONE=64 vs TONE=127 differ)", c0 != c64,
           "" if c0 != c64 else
           "  <-- the comparison is BLIND; every result below is meaningless")
 
     # ---- the second control: ONE nop, inside the sample loop -------------
-    # The HP pair proves the render responds to a parameter. This proves it
+    # The TONE pair proves the render responds to a parameter. This proves it
     # responds to the CODE, and that equality is a claim about audio rather
     # than about bytes: a single nop makes the module one word longer, which
     # moves every address after it and the `do` loop-end literals with it, and
@@ -199,13 +223,22 @@ def main():
     nop_mem, nop_words, _ = build(nop_src, None, "ref_nop")
     check("nop control: one nop moved the code", nop_words == (ref_words or 0) + 1,
           f"  ({ref_words} -> {nop_words} words)")
-    n0 = render(nop_mem, wav, SCRATCH / "ctl_nop.wav", ("HP=0",))
+    n0 = render(nop_mem, wav, SCRATCH / "ctl_nop.wav", ("TONE=64",))
     check("nop control: relocated code still renders identically", n0 == c0)
 
     # ---- then the equality cases ----------------------------------------
+    ref_default_mem = ref_mem.read_bytes()
     for label, mode, params, wet in CASES:
         slug = label.split()[0].replace("=", "") if mode is not None else "extreme"
         a_mem, _, _ = build(args.ref, mode, f"ref_{slug}")
+        if mode is not None:
+            # The third control: a MODE-forced build must differ from the
+            # unforced one (the override replaces the knob read with an
+            # immediate, so the code changes whatever the knob would say).
+            # Equal bytes mean the override never reached the image and the
+            # case below would compare a build with itself.
+            check(f"MODE={mode} override reached the image",
+                  a_mem.read_bytes() != ref_default_mem)
         a = render(a_mem, wav, SCRATCH / f"ref_{slug}.wav", params, wet)
         b_mem, cw, cf = build(args.candidate, mode, f"cand_{slug}")
         b = render(b_mem, wav, SCRATCH / f"cand_{slug}.wav", params, wet)
