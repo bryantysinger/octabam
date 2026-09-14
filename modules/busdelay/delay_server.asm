@@ -732,7 +732,7 @@ bus_mine:
         move    x0,b                    ; A2-clean, boot garbage masked
         move    #>$1,x0
         sub     x0,b
-        move    #>$0,x0
+        move    #$0,x0 
         tmi     x0,b                    ; floored at 0
         move    y:>$9d9,a               ; the stamp
         move    x0,y:>$9d9              ; clear-on-read (x0 is still 0)
@@ -740,8 +740,8 @@ bus_mine:
         tst     a
         tne     x0,b                    ; stamped this block: 3 blocks of grace
         move    b,y:>$090b
-        move    #>$400000,a             ; print gain 1/2 (x2 on use = exactly 1)
-        move    #>$0,x0
+        move    #$40,a               ; print gain 1/2 (x2 on use = exactly 1)
+        move    #$0,x0 
         tst     b
         tne     x0,a                    ; a return is live: print nothing
         move    a,y:>$090c              ; this block's host print gain
@@ -865,7 +865,7 @@ bus_mine:
         and     #>$fffe00,a             ; tag field -- AND cleans A1 only
         move    a1,x0
         move    x0,a                    ; A2-clean before the compare
-        move    #>$2e0000,x0
+        move    #$2e,x0  
         cmp     x0,a
         beq     dwarmtag
         clr     a                       ; garbage tag: warm-up starts at 0
@@ -1079,12 +1079,12 @@ snapz:
         move    a,x:(r7+$2c)            ; TIME, as every consumer below sees it
 
         move    x:(r6+$2),x0            ; FDBK: slot 2 (one-aux re-slot)
-        move    #>$700000,y1
+        move    #$70,y1  
         mpy     x0,y1,a
         move    a,x:(r7+$2a)            ; FDBK, 0 .. ~0.87
 
         move    x:(r6+$3),x0            ; TONE: slot 3 (one-aux re-slot)
-        move    #>$700000,y1
+        move    #$70,y1  
         mpy     x0,y1,a
         add     #>$100000,a
         move    a,x:(r7+$29)            ; TONE, 0.125 (dark) .. 0.99 (bright)
@@ -1170,11 +1170,11 @@ snapz:
 ; disturb it, and teq moves a CLEAN register in (never a hand-rolled mask).
         clr     a
         move    x:(r7+$20),b            ; MODE
-        move    #>$10000,x0             ; 1 << 16 = GRAIN
+        move    #$1,x0               ; 1 << 16 = GRAIN
         cmp     x0,b
         move    #>$1,x0
         teq     x0,a
-        move    #>$20000,x0             ; 2 << 16 = REVERSE
+        move    #$2,x0               ; 2 << 16 = REVERSE
         cmp     x0,b
         move    #>$1,x0
         teq     x0,a
@@ -1187,7 +1187,7 @@ snapz:
 ; output is mono to both channels. CLEAN and GRAIN see $3fff and skipR 0:
 ; bit-identical (verify-bus).
         clr     a
-        move    #>$20000,x0             ; 2 << 16 = REVERSE
+        move    #$2,x0               ; 2 << 16 = REVERSE
         cmp     x0,b                    ; b = MODE, still
         move    #>$1,x0
         teq     x0,a
@@ -1197,7 +1197,7 @@ snapz:
         teq     x0,a                    ; the flag survives the moves
         move    a,x:(r7+$22)            ; the L ring's mask
         move    x:(r7+$2b),a
-        move    #>$0,x0
+        move    #$0,x0 
         teq     x0,a
         move    a,x:(r7+$2b)            ; PING 0 in REVERSE
         move    x:(r7+$37),a
@@ -1272,7 +1272,7 @@ snapz:
 ; had them wobbling by +-254 samples ("modulating heavily"). Knob 12's worth,
 ; ~+-24 samples at 1x: a tape's breath rather than a wobble.
         move    x:(r7+$20),b            ; MODE
-        move    #>$10000,x0             ; 1 << 16 = GRAIN
+        move    #$1,x0               ; 1 << 16 = GRAIN
         cmp     x0,b
         bne     wowlive
         move    #>$18000,a              ; 12 << 13
@@ -1297,9 +1297,9 @@ wowlive:
         and     #>$7f0000,a             ; MRAT knob field
         move    a1,x0
         move    x:(r7+$20),b            ; v5.1: in GRAIN MRAT is density and the
-        move    #>$10000,x0             ; mod rate is fixed at exactly 1x (64),
+        move    #$1,x0               ; mod rate is fixed at exactly 1x (64),
         cmp     x0,b                    ; the DPTH=0 bypass law's own value.
-        move    #>$400000,x0            ; 64 << 16 -- a move between the cmp
+        move    #$40,x0              ; 64 << 16 -- a move between the cmp
         teq     x0,a                    ; and the Tcc is fine; Tcc's DESTINATION
         move    a1,x0                   ; is an accumulator, never a register
         move    #>$130,y1
@@ -1501,7 +1501,7 @@ gvlag:
         tgt     x0,a
         add     x0,a                    ; st + 24, 0..48
         move    a,x:(r7-$c)            ; park (integer)
-        move    #>0,b                   ; oct'
+        move    #$0,b                    ; oct'
         move    #>12,x0
         cmp     x0,a                    ; the ladder: subtract 12 while >= 12
         blt     gvn0
@@ -1640,7 +1640,7 @@ gvrdone:
         move    b1,x0
         move    #>$492492,y1            ; 8/14 in Q23
         mpy     x0,y1,b                 ; n/14 (x0,y1 -- a SIGNED encode)
-        move    #>$400000,x0
+        move    #$40,x0  
         add     x0,b                    ; + 1/2
         move    b1,x0
         move    x0,b
@@ -1678,8 +1678,8 @@ gvrdone:
 ; the TIME-behind read address is computed per sample and the write
 ; pointers are wrapped by hand below. n1/n2 are unused.
 
-        move    #>$1,n0
-        do      n7,>dlyend
+        move    #$1,n0                  ; the frame stride (a byte lands
+        do      n7,>dlyend              ; LOW in an address register)
 
 ; ---- input: own dry mono sum + shared DELAY bus accumulator --------------
         move    x:(r0),a
@@ -1856,10 +1856,10 @@ rskipr:
 ; always runs; each MID..next is one mutually exclusive alternative, and the
 ; tool charges dispatch + the WORST alternative, never every engine summed.
         move    x:(r7+$20),a
-        move    #>$10000,x0             ; 1 << 16 = GRAIN (v5 numbering)
+        move    #$1,x0               ; 1 << 16 = GRAIN (v5 numbering)
         cmp     x0,a
         beq     gmode
-        move    #>$20000,x0             ; 2 << 16 = REVERSE
+        move    #$2,x0               ; 2 << 16 = REVERSE
         cmp     x0,a
         beq     rmode
         bra     pdone                   ; CLEAN, and every unknown value
@@ -1990,7 +1990,7 @@ gmode:
         teq     x0,b
         move    b,x:(r4)+               ; w
         move    b,y1                    ; w, the window multiplier
-        move    #>$0,x0
+        move    #$0,x0 
         move    x:(r4),b
         teq     x0,b                    ; acc restarts at the wrap
         move    x:(r7-$b),x0           ; rstep
@@ -2112,7 +2112,7 @@ gvlz:
         teq     x0,b
         move    b,x:(r4)+               ; w
         move    b,y1                    ; w, the window multiplier
-        move    #>$0,x0
+        move    #$0,x0 
         move    x:(r4),b
         teq     x0,b                    ; acc restarts at the wrap
         move    x:(r7-$b),x0           ; rstep
@@ -2264,7 +2264,7 @@ rmode:
         move    a,x:(r7+$e)            ; g0
 ; ---- head 1: half a segment further on, same machinery -------------------
         move    x:(r7+$15),a
-        move    #>$400000,x0
+        move    #$40,x0  
         add     x0,a
         and     #>$7fffff,a
         move    a1,x0
@@ -2801,7 +2801,7 @@ satdrv:
 ; Bit-identity across all modes is the gate this shipped under, same as the
 ; modtap/satdrv rolls before it.
 smoothw:
-        move    #>$400000,x0
+        move    #$40,x0  
         sub     x0,a
         abs     a
         neg     a
