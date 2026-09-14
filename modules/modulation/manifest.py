@@ -27,8 +27,9 @@ each, enough for chorus, flanger, vibrato and a comb down to 43 Hz. The FX1
 bases (0x1000 0x1c00 0x2800 0x3400) are all multiples of 1,024, but nothing
 here depends on that -- the read offset is masked, not the address.
 
-It is a BUS CLIENT on the other two stations' terms: ->DEL / ->VRB on page 1,
-registration gated on each knob, and it never housekeeps.
+NOT a bus client since 14 Sep 2026: the stations lost their sends in the
+one-aux rig (7 Sep) and the bus bookkeeping went with them (Spectrum shed
+its copy on 12 Sep). It never housekeeps and never writes the bus.
 
 DEFAULTS ARE A PASSTHROUGH (MIX 0), because a part that stored CHORUS runs
 this after the flash. ⚠️ A part's STORED bytes are stock CHORUS's -- the
@@ -102,9 +103,9 @@ MODULE = Module(
     dsp=DspSection(
         asm="modules/modulation/modulation.asm",
         priority=14,                  # after the Character station
-        bus_role=BusRole.NONE,        # an insert that also WRITES the bus
+        bus_role=BusRole.NONE,        # an insert; it writes nothing to the bus
         ybase=YBase.NEVER,
-        r7_latch_slot=0x69,           # ROTLATCH parks this block's offset here
+        r7_latch_slot=None,           # no ROTLATCH/ROTINIT: not a bus client
         gate_label=None,              # no housekeeping: a station never elects
     ),
     # The FX1-only allocator buffer: two 1,024-word lines out of the 3,072 an
@@ -112,5 +113,5 @@ MODULE = Module(
     # nothing -- the ledger admits it beside a server on that basis, and
     # tools/verify/verify_modulation.py is what proves it.
     claims=Claims(stock_instance_buffer=True, buffer_words=2048, fx1_only=True),
-    harness=Harness(layout_char="3", is_server=False, bus_client=True),
+    harness=Harness(layout_char="3", is_server=False, bus_client=False),
 )

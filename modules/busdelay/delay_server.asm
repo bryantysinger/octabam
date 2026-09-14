@@ -1381,20 +1381,14 @@ wowlive:
         move    a,y:>$0902
 
 ; ---- DRIVE: RETIRED (5 Sep 2026) -- p10 is ->DEL now, see the IN block. ----
-; The drive stage itself stays in the loop with d pinned to 0, which the
-; manifest documented as bypass ("0 = bypass"): bit-identical to every DRV=0
-; render, and a cycle trim for later rather than a risk now. Its history is
-; in git (the v5.1 block read $e's knob field into $83).
-        clr     a
-        move    a,x:(r7+$83)            ; d = 0, always (18 Aug 2026, probe V0/V127:
-                                        ; d via Y read INSIDE the bsr callee
-                                        ; measured dead on hardware -- crest
-                                        ; unchanged at levels where a 4x knee
-                                        ; must crush ~6 dB -- while the SAME
-                                        ; in-loop Y mechanism works for the
-                                        ; increments read INLINE. $83 was the
-                                        ; delay's one free r7 slot; both ends
-                                        ; are now the battle-proven r7 path)
+; From 5 Sep to 14 Sep 2026 the drive stage stayed in the loop with d pinned
+; to 0 here ("a cycle trim for later"): satdrv's blend w + d*(hot - w) and the
+; output stage's makeup wet*(1 + d/2) both ran on that 0 every sample, 66
+; cycles a sample for an exact identity. They are gone (bit-identical by
+; construction: mpy by 0 is a clean 0 and adding it changes nothing) and
+; r7+$83, the slot d lived in, is free. The stage's history is in git: the
+; v5.1 block read $e's knob field into $83, and the 18 Aug 2026 V0/V127 probes
+; measured d dead when read from Y inside the callee but live from r7.
 
 ; ---- FREEZE select (v2 stage 3) ------------------------------------------
 ; Page-2 slot 11's companion field, r6+$e LOW bits -- the same low-byte
@@ -1447,9 +1441,8 @@ wowlive:
         move    x0,a                    ; A2-clean (AND cleans A1 only)
         asl     #$8,a,a                 ; -> knob<<16
         move    a,x:(r7+$5c)            ; SPRAY, 0 .. ~0.992 as Q23
-        move    #>4,n4                  ; GRAIN's readers stride one record
-                                        ; past the other line's, per block so
-                                        ; the sample loop never pays for it
+; (a `move #>4,n4` sat here until 14 Sep 2026 for a reader stride nothing
+; used: the rolled readers advance r4 a word at a time)
 
 ; ---- REVERSE: segment size, phase step, and the lag floor (v2 stage 6) ----
 ; The PTCH select read as a SIZE. S must be a POWER OF TWO, and that is not
@@ -2092,8 +2085,7 @@ gmode:
         move    r7,a
         move    #>$40,x0
         add     x0,a
-        move    a,r4
-        move    #>$ffffff,m4
+        move    a,r4                    ; (m4 is linear from the block preamble)
         move    x:(r7+$32),x0
         move    x0,x:(r7+$5d)           ; cursor = age (grain 0's phase)
         clr     a
@@ -2222,7 +2214,6 @@ gvlz:
         move    #>$4c,x0
         add     x0,a
         move    a,r4
-        move    #>$ffffff,m4
         move    x:(r7+$32),x0
         move    x0,x:(r7+$5d)           ; cursor = age (grain 0's phase)
         clr     a
@@ -2676,6 +2667,8 @@ rskipw:
 ; load-bearing, see build_bus.py's DEFAULTS: a nonzero default registers an
 ; audio-less client and dilutes every real sender.)
 ; ---- DRIVE MAKEUP (18 Aug 2026): out = wet * (1 + d/2), OUTPUT STAGE ONLY --
+; (gone 14 Sep 2026 with d pinned to 0 since 5 Sep -- the wet is taken as is;
+; the note stays for the day a drive comes back)
 ; The V0b/V127b captures proved the drive WORKS (peak -4.2 dB, crest -2.5,
 ; harmonics +5.3) and also why it reads as "not much": flat-top without
 ; makeup is quieter-and-harsher, not driven. +3.5 dB at full d matches the
@@ -2713,10 +2706,7 @@ rskipw:
         mpy     y0,x0,b                 ; in * (1 - MIX)
         move    b,x:(r7+$6e)            ; the passthrough term, both channels
         move    x:(r7+$7b),x0           ; wet L = fL
-        move    x:(r7+$83),y1           ; d
-        mpy     x0,y1,a                 ; d*wet
-        asr     #$1,a,a                 ; d*wet/2
-        add     x0,a                    ; wet * (1 + d/2)
+        move    x0,a                    ; (was wet * (1 + d/2) with d = 0)
         move    x0,b
         asr     #$1,b,b                 ; wet/2 -> x1.5 both channels (R58)
         add     b,a
@@ -2737,14 +2727,11 @@ rskipw:
         add     b,a                     ; + dry at unity (v5)
         move    a,x:(r0)                ; L in place -- dry + wet*MIX
         move    x:(r7+$7c),x0           ; wet R = fR
-        move    x:(r7+$83),y1           ; d, reloaded (y1 carried the print gain)
-        mpy     x0,y1,a
-        asr     #$1,a,a
-        add     x0,a
+        move    x0,a
         move    x0,b
         asr     #$1,b,b                 ; wet/2 -> x1.5, matching L
         add     b,a
-        move    x:(r7+$74),y1           ; PING (y1's d is done for this channel)
+        move    x:(r7+$74),y1           ; PING
         mpy     x0,y1,b                 ; wet*PING (signed order)
         asr     #$1,b,b
         add     b,a                     ; + wet*PING/2
@@ -2876,44 +2863,14 @@ satdrv:
         move    x:(r7+$2f),a            ; w back (DPTH=0 keeps it)
         move    x:(r7+$30),x0           ; sat
         tne     x0,a
-; ---- DRIVE (18 Aug 2026): blend toward the 2x-driven curve ----------------
-; out = w + d*(hot - w), hot = sat(clamp(2w))/2. Unity small-signal at EVERY
-; d (the blend of two unity-small-signal curves), monotonic, |out| bounded --
-; so it adds no loop gain and cannot self-oscillate at any FDBK, the same
-; argument as the base curve above. The LIMITING move on 2w IS the knee's
-; hard half above |w| = 0.5, on purpose: clamp-then-cubic is the harder drive.
-; d comes from core-private Y 0903h (p10 in every mode but GRAIN, where p10 stays SPRA and
-; d is pinned 0 -- the per-block decode owns that fork). d = 0 is an EXACT
-; bypass: the R35 gates all survive at DRIVE 0, which is this change's gate.
-; w1 is already parked in $2f by the saturation block above -- reused, and u
-; is parked in y0, which nothing reads between here and its next reload.
-        move    a,x:(r7+$2f)            ; w1 (post-DPTH-select), limited park
-        asl     #$2,a,a                 ; 4w (18 Aug 2026: the 2x knee measured
-                                        ; under 1 dB at real repeat levels --
-                                        ; "drive no". The knee now bites from
-                                        ; 0.25 FS, and the clamp plateau above
-                                        ; it is the flat-top half of the sound)
-        move    a,x0                    ; u = 4w, LIMITED
-        move    x0,y0                   ; park u
-        move    x0,y1
-        mpy     x0,y1,b                 ; u^2
-        move    b,y1
-        mpy     x0,y1,b                 ; u^3
-        move    b,x0
-        move    #>$2aaaab,y1
-        mpy     x0,y1,b                 ; u^3/3
-        move    y0,a                    ; u
-        move    b,x0
-        sub     x0,a                    ; sat(u)
-        asr     #$2,a,a                 ; hot = sat(4w)/4
-        move    x:(r7+$2f),x0           ; w1
-        sub     x0,a                    ; hot - w1 (possibly negative)
-        move    a,x0
-        move    x:(r7+$83),y1           ; d (r7 -- see the decode's V0/V127 note)
-        mpy     x0,y1,a                 ; d*(hot-w1) -- signed form, x0 negative-capable
-        move    a,x0
-        move    x:(r7+$2f),a
-        add     x0,a                    ; w1 + d*(hot-w1)
+; ---- DRIVE (18 Aug 2026 - 14 Sep 2026): the blend toward the 4x-driven ----
+; curve, out = w + d*(hot - w), lived here. d has been pinned to 0 by the
+; per-block decode since 5 Sep 2026 (DRIVE retired for ->DEL), so the block
+; returned its input to the bit -- `a` arrives from a 24-bit load or a Tcc
+; register, the limiting park and reload were the identity, and adding a
+; product by 0 changes nothing. 29 words, 58 cycles a sample (two calls).
+; Its text is in git; the safety argument (unity small-signal, monotonic,
+; bounded, no loop gain) still applies to any drive that comes back.
 
 ; ---- FREEZE crossfaded hold (v6, 23 Aug 2026) -----------------------------
 ; THE SEAM CLICK FIX. v2 stage 3's hold switched the write from the live

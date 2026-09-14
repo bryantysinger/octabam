@@ -905,19 +905,10 @@ warmdone:
 ;
 ; Everything below still derives from x0, so the only change to the shape of
 ; this block is which base x0 holds.
-        move    #>$0,a
-        add     x0,a
-        move    a,x:(r7+$10)            ; line 0 base
-        move    #>$1000,a
-        add     x0,a
-        move    a,x:(r7+$11)            ; line 1 base
-        move    #>$2000,a
-        add     x0,a
-        move    a,x:(r7+$12)            ; line 2 base
-        move    #>$3000,a
-        add     x0,a
-        move    a,x:(r7+$13)            ; line 3 base
-; $36/$37 and $10..$13 are line bases the rolled tap loop no longer reads.
+; ($10..$13, lines 0-3's bare bases, were still stored here until 14 Sep
+; 2026 -- 20 words with no reader in this file, the roll source or the
+; build's LFO slot tables.)
+; $36/$37 are line bases the rolled tap loop no longer reads.
 ; r1..r4 carry lines 0..3 inside the sample loop (built from the saved
 ; phase, below). $36/$37 and $4c/$4d carry the four new lines for the
 ; state-table priming carry seed -- those are the only places that need
@@ -1102,10 +1093,9 @@ warmdone:
                                         ; step) as the short immediates the
                                         ; dispatch below compares against
 ; MODE_OVERRIDE
-        move    a,x:(r7+$6e)
-
-        move    x:(r7+$6e),a
-        tst     a
+        tst     a                       ; (the override substitutes a `move #>N,a`
+                                        ; above; the $6e park-and-reload it used
+                                        ; to sit between went 14 Sep 2026)
         beq     md_room
         move    #$1,x0                  ; SHORT immediates, which the DSP56300
         cmp     x0,a                    ; places MSB-ALIGNED ($010000) -- which
@@ -2875,11 +2865,9 @@ lfrol:
 ; use y0 and x1, which is why this sits after them.
         move    x:(r7+$1f),y0           ; DAMP, for all eight lines
         move    x:(r7+$40),x1           ; LO coefficient, for all eight lines
-        asr     #$1,a,a
-        move    a,x:(r7+$27)            ; VESTIGIAL: v4's second injection level.
-                                        ; Nothing reads $27 since injection went
-                                        ; table-driven (table B); store kept only
-                                        ; to avoid perturbing a verified build.
+; (an `asr #$1,a,a / move a,x:(r7+$27)` -- v4's second injection level,
+; marked VESTIGIAL since injection went table-driven -- sat here until
+; 14 Sep 2026; nothing read $27 and `a` is reloaded before its next use)
 
 ; ---- the tank's eight taps, damped and low-cut inside the feedback path --
 ; ROLLED. This was 4 x 25 instructions of identical arithmetic differing only

@@ -1,11 +1,12 @@
 ; ---------------------------------------------------------------------------
 ; MODULATION -- one modulated line, seven modes, FX1 only.
 ;
-; Insert contract (modules/ripple/ripple_svf.asm) plus the bus-client contract
-; the other two stations carry (modules/spectrum/): the processed mono
-; goes into both accumulators, registration is gated on each send knob, and
-; the station NEVER HOUSEKEEPS -- an FX1 instance runs before its track's FX2
-; one, so an electing station would double-flip the rotation.
+; Insert contract (modules/ripple/ripple_svf.asm). NOT a bus client since
+; 14 Sep 2026: the stations lost their sends in the one-aux rig (7 Sep) and
+; the bus bookkeeping this carried -- the split-aware frame offset, the
+; rotation latch, a registration that could never register (its level was
+; a hard 0) and two sends multiplying by that 0 -- went with them, as
+; Spectrum's did on 12 Sep. Harness(bus_client=False).
 ;
 ; ---- FX1 ONLY, ENFORCED HERE ---------------------------------------------
 ; The base comes from the host's bump allocator, read in INIT and only there
@@ -47,7 +48,6 @@
 ; a limiting store. All three are one code path with per-block weights.
 ;
 ; ---- r7 slots -------------------------------------------------------------
-;   $14 $65..$69  bus bookkeeping, SEND's layout ($69 = this block's offset)
 ;   ⚠️ EVERY SLOT THE SAMPLE LOOPS TOUCH IS BELOW $40: an r7 displacement past
 ;   63 assembles to the two-word long form (it cost the Spectrum station 30
 ;   words before that was found).
@@ -61,20 +61,16 @@
 ;   $27 sin blend weight             $28 square gain / 8
 ;   $18 saw blend weight             $17 saw this sample (shape scratch)
 ;   $2a scratch (shape)
-;   $30 ->DEL level                  $31 ->VRB level
 ;   $32/$33 feedback tone state L/R      (PERSISTENT)
 ;   $3c tap L  $3d tap R  $3e scratch  $3f scratch
 ;
-; Every mpy is `mpy x0,y1` (the audited-signed encoding) except the send
-; taps, which are SEND's `mpy x1,y1` / `mpy x1,y0` with a non-negative level
-; second. Every Tcc reads the ONE compare above it with nothing but moves
+; Every mpy is `mpy x0,y1` (the audited-signed encoding). Every Tcc reads the ONE compare above it with nothing but moves
 ; between (the flag-clobber trap). No label here is a PREFIX of another --
 ; dsp_asm resolves by prefix, and `ch_sat` inside `ch_satr` cost the
 ; Character station an afternoon.
 ; ---------------------------------------------------------------------------
 
 init:
-; ROTINIT
 ; ---- the allocator base, and the FX1/FX2 decision ------------------------
 ; Nimbus Lite's idiom (modules/nimbuslite/nimbus_lite.asm): X:0x213 points at
 ; this instance's entry in the base table. Valid HERE and nowhere else.
@@ -111,88 +107,13 @@ monoclr:
         rts
 
 proc:
-; ===========================================================================
-; BUS: split-aware frame offset, verbatim from modules/send/send_client.asm
-; ===========================================================================
-        move    a,x:(r7+$14)
-        clr     a
-        move    a,x:(r7+$67)
-        move    x:(r7+$14),a
-        tst     a
-        bne     moa1
-        move    #>$1,a
-        move    a,x:(r7+$65)
-        move    n7,a
-        and     #>$f,a
-        move    a1,x0
-        move    x0,a
-        move    a,x:(r7+$66)
-        bra     mooffok
-moa1:
-        move    x:(r7+$65),a
-        and     #>$ff,a
-        move    a1,x0
-        move    x0,a
-        move    #>$1,x0
-        cmp     x0,a
-        bne     mooffok
-        clr     a
-        move    a,x:(r7+$65)
-        move    x:(r7+$66),a
-        and     #>$f,a
-        move    a1,x0
-        move    x0,a
-        move    a,x:(r7+$67)
-mooffok:
-; ---- resolve this block's write offset (per payload) -> r7+$69, r1, r2 ---
-; ROTLATCH
-        move    a,x0
-        move    #>$901,a
-        add     x0,a
-        move    x:(r7+$67),b
-        add     b,a
-        move    a,r1                    ; REVERB ACC[write] + frame offset
-        move    #>$961,a
-        add     x0,a
-        add     b,a
-        move    a,r2                    ; DELAY  ACC[write] + frame offset
-        move    #>$ffffff,m1
-        move    #>$ffffff,m2
-; ---- register, once per block, per bus, ONLY IF SENDING (r6+4 / r6+5) ----
-        move    x:(r7+$67),a
-        tst     a
-        bne     mocntz
-        move    x:(r7+$69),a
-        asr     #$4,a,a
-        move    a1,x0
-        move    x0,a
-        move    #>$9c3,x0
-        add     x0,a
-        move    a,r3
-        move    #>$ffffff,m3
-        move    #>$1,x0
-        clr     b
-        clr     a                       ; NO STATION SENDS (one-aux rig, 7 Sep
-                                        ; 2026): the level is 0 whatever the
-                                        ; part stores, so nothing registers
-        tst     a
-        tne     x0,b
-        move    y:(r3),a
-        add     b,a
-        move    a,y:(r3)
-        move    #4,n3
-        move    (r3)+n3
-        clr     b
-        clr     a                       ; (no sends: never a client)
-        tst     a
-        tne     x0,b
-        move    y:(r3),a
-        add     b,a
-        move    a,y:(r3)
-mocntz:
-        move    #>$0,x0                 ; the send levels are 0: the stations
-        move    x0,x:(r7+$30)           ; lost their sends in the one-aux
-        move    x0,x:(r7+$31)           ; rig (every track sends from FX2's AUX)
+; (the bus section -- split-aware frame offset, the rotation latch, the
+; registration and the r1/r2 accumulator pointers -- left with the sends,
+; 14 Sep 2026: the station has carried no send since the one-aux rig of
+; 7 Sep, the registration compared a hard 0 so it never registered, and the
+; ~156 words and ~19 cycles a sample it cost bought nothing. Spectrum shed
+; its copy on 12 Sep. The station is no longer a bus client:
+; Harness(bus_client=False).)
 
 ; ===========================================================================
 ; PER-BLOCK KNOB DECODE
@@ -295,7 +216,6 @@ mo_shdone:
         move    a1,x0
         move    x0,a
         asl     #$8,a,a
-        move    a,x:(r7+$2a)            ; park the mode
         move    #>$10000,x0
         cmp     x0,a
         beq     mo_mflng
@@ -508,7 +428,7 @@ mo_mdone:
         move    a,r5
         move    x:(r7+$3e),a
         move    a,y:(r5)
-        bsr     momixs                  ; MIX from $3c/$3d, then the sends
+        bsr     momixs                  ; MIX from $3c/$3d
         move    #>$2,n0
         move    (r0)+n0
         move    #>$1,n0
@@ -517,33 +437,11 @@ molinz:
         rts
 
 ; ===========================================================================
-; THE DRY PATH: an FX2 slot, or MIX at zero. Frames untouched, sends only.
+; THE DRY PATH: an FX2 slot, or MIX at zero. Frames untouched -- with no
+; sends there is nothing to do at all (the loop that multiplied the mono by
+; two zero levels and added 0 to both accumulators went 14 Sep 2026).
 ; ===========================================================================
 mo_dry:
-        move    x:(r7+$31),y0
-        move    x:(r7+$30),y1
-        move    #>$1,n0
-        do      n7,>mobypz
-        move    x:(r0),a
-        move    x:(r0+n0),x0
-        add     x0,a
-        asr     #$1,a,a
-        move    a,x1
-        mpy     x1,y1,a
-        asr     #$3,a,a
-        move    y:(r2),b
-        add     b,a
-        move    a,y:(r2)+
-        mpy     x1,y0,a
-        asr     #$3,a,a
-        move    y:(r1),b
-        add     b,a
-        move    a,y:(r1)+
-        move    #>$2,n0
-        move    (r0)+n0
-        move    #>$1,n0
-mobypz:
-        nop
         rts
 
 ; ---------------------------------------------------------------------------
@@ -664,9 +562,10 @@ moshap:
 
 
 ; ---------------------------------------------------------------------------
-; momixs -- MIX the wet in $3c/$3d against the dry still in the frame, write
-; it back, and put the PROCESSED mono onto both buses. One copy of the mix
-; law and the send (it was shared by three engines until 13 Sep 2026).
+; momixs -- MIX the wet in $3c/$3d against the dry still in the frame and
+; write it back. One copy of the mix law (it was shared by three engines
+; until 13 Sep 2026; the send tail that followed it -- the processed mono
+; times two zero levels into both accumulators -- went 14 Sep 2026).
 ; ---------------------------------------------------------------------------
 momixs:
         move    x:(r7+$3c),a
@@ -689,21 +588,4 @@ momixs:
         asl     #$1,a,a
         add     b,a
         move    a,x:(r0+n0)
-        move    x:(r0),a
-        move    x:(r0+n0),x0
-        add     x0,a
-        asr     #$1,a,a
-        move    a,x1                    ; the processed mono
-        move    x:(r7+$30),y1           ; ->DEL
-        mpy     x1,y1,a
-        asr     #$3,a,a
-        move    y:(r2),b
-        add     b,a
-        move    a,y:(r2)+
-        move    x:(r7+$31),y0           ; ->VRB
-        mpy     x1,y0,a
-        asr     #$3,a,a
-        move    y:(r1),b
-        add     b,a
-        move    a,y:(r1)+
         rts
