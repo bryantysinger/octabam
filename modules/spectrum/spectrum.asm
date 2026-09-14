@@ -46,7 +46,13 @@
 ;   ⚠️ EVERY SLOT THE SAMPLE LOOP TOUCHES IS BELOW $40: an r7-indexed move
 ;   with a displacement past 63 takes the two-word long form, and the loop
 ;   priced 30 words dearer with these at $40..$4f (3 Sep 2026). Per-block
-;   slots may sit high; per-sample ones may not.
+;   slots may sit high; per-sample ones may not. ⚠️ Until 14 Sep 2026 that
+;   was only half true: dsp_asm emitted the two-word form for EVERY
+;   displacement (the one-word form did not exist in the assembler), so
+;   the sub-$40 slots cost 2 words each as well; the 30-word difference was
+;   real but came from elsewhere. Since 14 Sep the assembler emits the
+;   chip's one-word form for -64..63 with a data-ALU register, and the
+;   rule above holds as written.
 ; Persistent states are bounded by the limited stores or masked on use;
 ; nothing here ever becomes an address except the bus pointers, which come
 ; masked exactly as SEND's are.

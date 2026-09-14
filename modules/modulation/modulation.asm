@@ -50,7 +50,9 @@
 ; ---- r7 slots -------------------------------------------------------------
 ;   ⚠️ EVERY SLOT THE SAMPLE LOOPS TOUCH IS BELOW $40: an r7 displacement past
 ;   63 assembles to the two-word long form (it cost the Spectrum station 30
-;   words before that was found).
+;   words before that was found). ⚠️ Until 14 Sep 2026 dsp_asm emitted the
+;   two-word form for EVERY displacement, sub-$40 included; the one-word
+;   form is the assembler's since then, and only since then.
 ;   $19 line base (per instance)     $1a dry flag: 1 = FX2 slot or MIX 0
 ;   $1b write phase (PERSISTENT)     $1c LFO phase (PERSISTENT)
 ;   $1d lfo L this sample            $1e lfo R this sample

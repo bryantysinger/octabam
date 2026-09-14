@@ -55,7 +55,9 @@
 ;   $3c/$3d reverb / delay liveness grace (BUS mode, per block)
 ;   per sample / persistent (ALL BELOW $40 -- an r7 displacement past 63
 ;   assembles to the two-word long form, which cost the Spectrum station 30
-;   words before it was found):
+;   words before it was found. ⚠️ Until 14 Sep 2026 dsp_asm emitted the
+;   two-word form for EVERY displacement, sub-$40 included -- the one-word
+;   form is the assembler's since then, and only since then):
 ;   $19 held L (PERSISTENT)      $1a held R (PERSISTENT)
 ;   $1b srr counter (PERSISTENT) $1c carrier phase (PERSISTENT)
 ;   $1d (free)  $1e level_s (PERSISTENT)  $2a (free)
