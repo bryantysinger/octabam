@@ -1,14 +1,13 @@
-# Borrowed voicings: what the stations can take from JSFXClones and audiojs/filter
+# Borrowed voicings: sources, laws, licences
 
-13 Sep 2026. Sam's question: can published algorithms make the stations
-"right out of the box" the way Mutable's Clouds did for GRAIN? Two reads,
-both MIT: [JClones/JSFXClones](https://github.com/JClones/JSFXClones) (JSFX,
-clones of console/tape/tube processors and limiters) for CHARACTER, and
-[audiojs/filter](https://github.com/audiojs/filter) (JS, ZDF ladders and
-SVFs, a formant bank, resonators, tilt) for SPECTRUM. What is borrowed is
-the curve or the law, re-derived under the gates; the code never runs here.
-**Every word and cycle figure below is an estimate from reading**, marked so,
-until the stage is built and priced.
+The published algorithms the stations' modes are derived from. What is
+borrowed is the curve or the law, re-derived under the gates; the source
+code never runs here. Character and Spectrum (13 Sep 2026):
+[JClones/JSFXClones](https://github.com/JClones/JSFXClones) (MIT; console,
+tape and tube processors) and [audiojs/filter](https://github.com/audiojs/filter)
+(MIT; ZDF ladders and SVFs, a formant bank, resonators, tilt). Modulation
+(14 Sep 2026): the licence map below. Word and cycle figures marked "est"
+are estimates from reading; the "Built" tables are measured.
 
 ## The rules that shape a port (the 56300 side)
 
@@ -81,18 +80,7 @@ affordable now.
 
 Not yet: heard on the unit (the live rounds), the LMC1 COMP, the Moog ladder.
 
-## Order of work
-
-Character first (TAPE done, TUBE + INFL in progress, then GLUE, COMP), one
-flash, the live Character round. Then Spectrum: the linear SEM core and the
-`f` ramp; the formant bank and anything heavier after the re-price.
-
 ## MODULATION from the chorus / flanger / phaser canon (14 Sep 2026)
-
-Sam's ask: step back, find the best open source, and make Modulation a
-pedal the way Character and Spectrum became one. Three surveys, sources
-read not paraphrased, saved under the session scratchpad. Every cycle
-figure is an estimate from reading, marked so, until built and priced.
 
 Budget as it stands on origin/main (14 Sep): Modulation 453 words /
 277 cycles; core A FREE 1,282 (1,735 with today's Modulation removed),
@@ -141,7 +129,7 @@ lines); the full Holters-Parker BBD (≈ 100..150 a line a channel, five
 complex poles a side) — the proxy every practical port uses is a one-pole
 or a biquad each side of the line plus a soft clip, ≤ 15 a line.
 
-### Interpolation, the thing every source is about
+### Interpolation
 
 - Airwindows: a 3-point read (weights 1−f, 1, f, × 0.5, minus 1/50 of
   the second difference) preceded by an "air" pre-emphasis (3 mul, 8 add
@@ -155,7 +143,7 @@ or a biquad each side of the line plus a soft clip, ≤ 15 a line.
   fix). A chorus that reads darker at the sweep's extremes is the linear
   interpolation; the BBD proxy filter hides it, the air/allpass reads fix it.
 
-### The pedal (proposed, 14 Sep 2026 — the mode set is Sam's call)
+### The pedal's surface
 
 Page 1 the performance surface, page 2 knob / select / knob / select:
 
@@ -176,10 +164,8 @@ Page 1 the performance surface, page 2 knob / select / knob / select:
 - **DLY** the centre (Dattorro: "manual" on a flanger pedal); in COMB the
   pitch.
 - **MODE** JUNO · DIM · ENS · FLNG · PHSR · COMB (six positions, the
-  select's maximum; drop one for VIB/FLUT if wanted). PHSR was retired
-  13 Sep at 464 cycles; ChowPhaser's law prices ≈ 120 — a different
-  fact, the decision stays Sam's. VIBE stays out: no permissive code,
-  every constant unproven.
+  select's maximum). VIBE is out: no permissive code, every constant
+  unproven.
 - Each mode is proven against a float transcription of its source
   (`modules/modulation/<source>_ref.py`, the Capacitor2/Pockey pattern);
   the Juno and Solina against the measured delay ranges and rates.
