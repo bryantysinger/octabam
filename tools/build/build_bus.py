@@ -3053,8 +3053,11 @@ hostquit:
             _xa = _xt_base
             for _k in _xt_tables:
                 _t = _texts[_k]
-                _n = (len(LFO01 + LFOTAB) if LFO01_MARK in _t else len(LFOTAB)) \
-                    if "$facade" in _t else len(_MODS[_k].dsp.ptable)
+                # A module may carry BOTH the LFO table and its own ptable
+                # (the reverb, 14 Sep 2026): they go in one slot, LFOTAB
+                # first, and each literal is rewritten to its own start.
+                _n = ((len(LFO01 + LFOTAB) if LFO01_MARK in _t else len(LFOTAB))
+                      if "$facade" in _t else 0) + len(_MODS[_k].dsp.ptable)
                 _xt_layout[_k] = (_xa, _n)
                 _xa += _n
             if _xa > _xt_base + _xt_words:
@@ -3172,25 +3175,22 @@ hostquit:
             for _r in runs:
                 _c, _end = _r["cursor"], _r["base"] + _r["words"]
                 _tab, _s2, _lfo = None, src, "$facade" in src
-                if _lfo:
-                    _tab = (LFO01 + LFOTAB) if LFO01_MARK in src else LFOTAB
+                # LFOTAB, the module's ptable, or BOTH in one slot (LFOTAB
+                # first; each literal rewritten to its own start).
+                _ltab = ((LFO01 + LFOTAB) if LFO01_MARK in src else LFOTAB) \
+                    if _lfo else []
+                if _lfo or _ptab:
+                    _tab = _ltab + _ptab
+                    _at = _xa[0] if _xa is not None else _c
+                    if _xa is None and _c + len(_tab) > _end:
+                        continue
+                    if _lfo:
+                        _s2 = _s2.replace("$facade", f"${_at:x}")
+                    if _ptab:
+                        _s2 = _s2.replace(PTABLE_MARK, f"${_at + len(_ltab):x}")
                     if _xa is not None:
-                        _s2, _xt_sites[name] = _p2x(
-                            src.replace("$facade", f"${_xa[0]:x}"), name)
+                        _s2, _xt_sites[name] = _p2x(_s2, name)
                     else:
-                        if _c + len(_tab) > _end:
-                            continue
-                        _s2 = src.replace("$facade", f"${_c:x}")
-                        _c += len(_tab)
-                elif _ptab:
-                    _tab = _ptab
-                    if _xa is not None:
-                        _s2, _xt_sites[name] = _p2x(
-                            src.replace(PTABLE_MARK, f"${_xa[0]:x}"), name)
-                    else:
-                        if _c + len(_tab) > _end:
-                            continue
-                        _s2 = src.replace(PTABLE_MARK, f"${_c:x}")
                         _c += len(_tab)
                 _w, _ia, _pa = assemble(_s2, _c)
                 _last = (_c, len(_w))
@@ -3218,20 +3218,26 @@ hostquit:
                     sys.exit(f"payload {tag}: {name}'s table is {len(tab)} "
                              f"words, its X slot {_xa[1]}")
                 place_x(tab, _xa[0])
-                print(f"  {'LFOTAB' if _lfo else 'PTABLE':13} "
+                _both = _lfo and bool(_ptab)
+                print(f"  {'LFOTAB+PTABLE' if _both else 'LFOTAB' if _lfo else 'PTABLE':13} "
                       f"X:0x{_xa[0]:05x}..0x{_xa[0] + len(tab):05x} "
                       f"({len(tab):4d} words)  "
                       + (f"rolled LFO lines {'0-7' if LFO01_MARK in src else '2-7'}"
-                         if _lfo else f"{name}'s table")
+                         if _lfo else "")
+                      + (" + " if _both else "")
+                      + (f"{name}'s table" if _ptab else "")
                       + f"  in the stock curve bank, {_xt_sites[name]} p:( "
                         f"reads -> x:(")
             elif tab is not None:
                 place(tab, _r["cursor"])
+                _both = _lfo and bool(_ptab)
                 if _lfo:
-                    print(f"  LFOTAB        P:0x{_r['cursor']:05x}.."
+                    print(f"  {'LFOTAB+PTABLE' if _both else 'LFOTAB':13} "
+                          f"P:0x{_r['cursor']:05x}.."
                           f"0x{_r['cursor'] + len(tab):05x} "
                           f"({len(tab):4d} words)  rolled LFO lines "
-                          f"{'0-7' if LFO01_MARK in src else '2-7'}")
+                          f"{'0-7' if LFO01_MARK in src else '2-7'}"
+                          + (f" + {name}'s table" if _both else ""))
                 else:
                     print(f"  PTABLE        P:0x{_r['cursor']:05x}.."
                           f"0x{_r['cursor'] + len(tab):05x} "
