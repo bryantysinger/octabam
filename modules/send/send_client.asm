@@ -306,8 +306,7 @@ bus_dohk:                               ; nobody did -- take over this block
         move    b,r2                     ; r2 = AUX ACC[new] base
         move    #>$ffffff,m2
         clr     a
-        move    #>16,y0
-        do      y0,>zclr
+        do      #16,>zclr
         move    a,y:(r2)+
 zclr:
         nop

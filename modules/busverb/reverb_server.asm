@@ -421,8 +421,7 @@ bus_dohk:                               ; nobody did -- take over this block
         move    b,r2                    ; r2 = AUX ACC[new] base
         move    #>$ffffff,m2
         clr     a
-        move    #>16,y0
-        do      y0,>bus_zclr
+        do      #16,>bus_zclr
         move    a,y:(r2)+
 bus_zclr:
         nop
@@ -2379,7 +2378,8 @@ lfrol:
 ; The seeding read still goes through r1..r4, because they are already sitting
 ; on the four line bases here and the priming happens once per block, not per
 ; sample: there is nothing to save by rolling it.
-        move    #>$4,n6                 ; w2 -> the NEXT line's w0
+        move    #4,n6                   ; w2 -> the NEXT line's w0 (short:
+                                        ; an address register, zero-extended)
         move    x:(r7+$0b),a            ; the per-line state table
         move    a,r6
         move    #>$1,x1                 ; "one sample further back", hoisted:
@@ -2940,7 +2940,8 @@ tankend:
 ; The loop leaves them in the state table at stride 6. Lines 0-3 go to
 ; $16..$19, lines 4-7 to $3a..$3d -- the two 4-word groups the 8x8 FWHT
 ; operates on in-place.
-        move    #>$6,n6                 ; the table's stride
+        move    #6,n6                   ; the table's stride (short: address
+                                        ; register, zero-extended)
         move    x:(r7+$0b),a
         add     #>$5,a                
         move    a,r6                    ; -> line 0's output word
@@ -3903,13 +3904,9 @@ noloop:
 
 ; ---- save the phase, restore the M registers ---------------------------
         move    r1,a
-        move    #>$fff,x0               ; 4096-word lines (increment 2), so
-        and     x0,a                    ; the phase is 0..4095 -- which is what
-                                        ; the pre-delay derivation ($30, masked
-                                        ; $fff into a 4096 buffer) was already
-                                        ; shaped for; PRE above ~46 ms read
-                                        ; never-written memory while the phase
-                                        ; wrapped at 2048.
+        and     #>$fff,a                ; 4096-word lines (increment 2), so
+                                        ; the phase is 0..4095 -- which is what
+                                        ; m1 = $fff wraps it to anyway
         move    a,x:(r7+$83)
 dry:
         move    #>$ffffff,m0
