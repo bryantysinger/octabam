@@ -187,7 +187,7 @@ ch_offok:
 ; 28) while 80 -> 127 still grew (ear, 12 Sep 2026); doubled to 64x, 127
 ; was "insane, maybe too much": 48x.
         move    x:(r6+$1),x0            ; the knob word IS FOLD/128 in Q23
-        move    #>$5e0000,y1            ; 47/64
+        move    #$5e,y1                 ; 47/64 (short immediate: bits 23-16)
         mpy     x0,y1,a                 ; (47/64)*(FOLD/128)
         add     #>$020000,a             ; + 1/64 -> gain/64, 0.016 .. 0.75
         move    a,x:(r7+$21)            ; gq
@@ -212,7 +212,7 @@ ch_offok:
 ; with 21/128 is 21*knob/2^14 as a fraction; one asr #16 of the accumulator
 ; leaves the plain integer.
         move    x:(r6+$2),x0
-        move    #>$150000,y1            ; 21/128
+        move    #$15,y1                 ; 21/128 (short immediate: bits 23-16)
         mpy     x0,y1,a
         asr     #$10,a,a                ; -> the integer, 0..20
         move    a1,x0
@@ -303,7 +303,7 @@ ch_srrz:
         move    x0,x:(r7+$2e)
         bra     ch_cset
 ch_cglue:
-        move    #>$600000,x0            ; GLUE: K/4 = 0.75 (3x), release 500 ms
+        move    #$60,x0                 ; GLUE: K/4 = 0.75 (3x), release 500 ms
         move    x0,x:(r7+$22)
         move    #>$00017c,x0
         move    x0,x:(r7+$2e)
@@ -321,7 +321,7 @@ ch_cset:
         neg     a
         add     #>$7fffff,a             ; den = 1 - 0.3375*COMP/128 (0.66..1)
         move    a,x0
-        move    #>$200000,a             ; num = 0.25 (a1), a0 = 0
+        move    #$20,a                  ; num = 0.25 (a1), a2 = a0 = 0 (short: bits 23-16)
         andi    #$fe,ccr
         rep     #$18
         div     x0,a
@@ -446,7 +446,7 @@ ch_pos3:
         move    a,y1
         mpy     x0,y1,a                 ; D8
         move    a,x0                    ; den
-        move    #>$080000,y1            ; 1/16
+        move    #$08,y1                 ; 1/16
         move    y1,a                    ; a clean load: a0 = 0 for the divide
         andi    #$fe,ccr                ; carry clear
         rep     #$18
@@ -465,7 +465,7 @@ ch_pos3:
 ; k3mag = 1.4*k2 = (0.7*k2)*2. The table sits in the manifest after DaTube's
 ; curve, so the one P-table literal above still finds everything.
         move    r1,r3
-        move    #>34,n3
+        move    #$22,n3                 ; 34 (short immediate: an integer)
         move    #>$ffffff,m3
         move    x1,a                    ; DRV/128
         asr     #$13,a,a
@@ -553,7 +553,7 @@ ch_pos3:
         move    x0,b
         move    #>$1,x0
         sub     x0,b
-        move    #>$0,x0
+        move    #$0,x0
         tmi     x0,b
         move    y:>$9c4,a
         move    x0,y:>$9c4              ; clear-on-read
@@ -567,7 +567,7 @@ ch_pos3:
         move    x0,b
         move    #>$1,x0
         sub     x0,b
-        move    #>$0,x0
+        move    #$0,x0
         tmi     x0,b
         move    y:>$9c5,a
         move    x0,y:>$9c5              ; clear-on-read
@@ -621,7 +621,7 @@ ch_ndl:
         tst     a
         bne     ch_live
         move    x:(r7+$2b),a            ; side gain/2: 64 -> exactly 0.5
-        move    #>$400000,x0
+        move    #$40,x0
         cmp     x0,a
         beq     ch_bypass
 ch_live:
@@ -629,7 +629,7 @@ ch_live:
 ; ===========================================================================
 ; THE SAMPLE LOOP
 ; ===========================================================================
-        move    #>$1,n0
+        move    #$1,n0                  ; (short immediate, stock's own form)
         do      n7,>ch_end
 ; ---- the return FIRST (13 Sep 2026): the bus wet enters before the chain --
 ; Skipped per sample when the level is 0 -- a forward skip, the class
@@ -703,12 +703,12 @@ ch_nosrr:
         move    x:(r7+$21),y1           ; gq = gain/64
         mpy     x0,y1,a                 ; v/64
         asl     #$5,a,a                 ; v/2
-        move    #>$400000,x1
+        move    #$40,x1                 ; 0.5 (short immediate: bits 23-16)
         add     x1,a                    ; (v+1)/2
         move    a1,x1                   ; s = wrap(...), raw A1: the fold
         move    x1,a                    ; clean re-load, A2 consistent
         abs     a
-        move    #>$400000,b
+        move    #$40,b                  ; 0.5, b2 = b0 = 0
         sub     b,a                     ; |s| - 0.5
         asl     #$1,a,a                 ; fold in [-1,1)
         move    a,x:(r7+$35)            ; wet L
@@ -716,12 +716,12 @@ ch_nosrr:
         move    x:(r7+$21),y1
         mpy     x0,y1,a
         asl     #$5,a,a
-        move    #>$400000,x1
+        move    #$40,x1
         add     x1,a
         move    a1,x1
         move    x1,a
         abs     a
-        move    #>$400000,b
+        move    #$40,b
         sub     b,a
         asl     #$1,a,a
         move    a,x:(r7+$36)            ; wet R
@@ -737,7 +737,7 @@ ch_nosrr:
         move    x0,x:(r7+$1c)
         move    x0,a
         abs     a
-        move    #>$800000,y1            ; -1.0
+        move    #$80,y1                 ; -1.0 (short immediate: bits 23-16)
         add     y1,a                    ; |p| - 1
         neg     a                       ; t = 1 - |p|
         move    a,y1
@@ -765,13 +765,13 @@ ch_noring:
         bne     ch_s12
 ; MODEFORK_MID -- alternative 1: TAPE = TapeHead
 ; r3 -> the channel's y1/y2 pair (the SVF state).
-        move    #>$15,n3
+        move    #$15,n3
         move    r7,r3
         move    x:(r7+$35),a            ; L in (post fold/ring)
         move    (r3)+n3                 ; r3 = r7+$15: L y1, y2
         bsr     chtape
         move    b,x:(r7+$35)            ; LIMITING store: the hard clip
-        move    #>$17,n3
+        move    #$17,n3
         move    r7,r3
         move    x:(r7+$36),a            ; R in
         move    (r3)+n3                 ; r3 = r7+$17: R y1, y2
@@ -784,13 +784,13 @@ ch_s12:
         cmp     x0,a
         bne     ch_sinfl
 ; r3 -> the channel's DC-blocker pair (x1, y1).
-        move    #>$41,n3
+        move    #$41,n3
         move    r7,r3
         move    x:(r7+$35),a            ; L in
         move    (r3)+n3                 ; r3 = r7+$41: L x1, y1
         bsr     chtube
         move    b,x:(r7+$35)            ; LIMITING store: the clip
-        move    #>$43,n3
+        move    #$43,n3
         move    r7,r3
         move    x:(r7+$36),a            ; R in
         move    (r3)+n3                 ; r3 = r7+$43: R x1, y1
@@ -946,7 +946,7 @@ chtube:
         neg     a
         add     #>$400000,a             ; u/2 = 0.5 - |xin/2|, in [-0.25, 0.5]
         move    a,x:(r7+$49)            ; park u/2
-        move    #>$0,x0                 ; (a move does not disturb the flags)
+        move    #$0,x0                  ; (a move does not disturb the flags)
         tst     a
         tmi     x0,a                    ; the lookup's argument: max(u, 0)/2
         move    a,b
@@ -1009,7 +1009,7 @@ chinfl:
         move    a,x1
         abs     a
         move    a,x0                    ; |x2|
-        move    #>$200000,y1            ; 0.25
+        move    #$20,y1                 ; 0.25
         mpy     x0,y1,a
         add     #>$300000,a             ; g/2 = 0.375 + 0.25*|x2|
         move    a,y1
