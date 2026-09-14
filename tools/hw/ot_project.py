@@ -626,8 +626,14 @@ def stamp_slot(pdir, which, slot, value=None, guard=True, tracks=None):
             if done:
                 print(f"bank{num:02d}: {len(done)} slot(s) already {value}, untouched")
             continue
-        done = []
+        # _bank_write runs mut over .work AND .strd, so `done` would carry
+        # the saved copy's entries too; the read-back below is the .work
+        # file's, so it checks the dry run's entries (14 Sep 2026: a .strd
+        # whose part named SEND where .work did not made every stamp of
+        # OCTABAM_F7TEST abort AFTER both files were written).
+        done, dry = [], done
         _bank_write(pdir, num, mut, guard=guard)
+        done = dry
         data = bank.read_bytes()
         if int.from_bytes(data[-2:], "big") != (sum(data[0x10:-2]) & 0xFFFF):
             sys.exit(f"{bank.name}: checksum did not take -- do NOT use this")
