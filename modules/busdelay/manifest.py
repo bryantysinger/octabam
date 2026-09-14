@@ -21,6 +21,43 @@ from remix.schema import (ModeView, BusRole, Claims, YBase, DspSection, Formatte
 _PLAIN = Formatter.PLAIN
 _STEP = Formatter.STEPPED
 
+# ---- the P table (14 Sep 2026) -------------------------------------------
+# SIZE rows, eight words each: REVERSE's [S, 2^23/S, 32704 - 2S] on the left
+# and GRAIN's [G-1, G/4, 2^(23-k), 2^(32-k)] on the right, one pad. Rows 0..3
+# are the four select positions in the engine's index order (46 / 93 / 23 ms,
+# then XTRM: 371 ms REVERSE segments, 186 ms grains); ROW 4 IS THE GARBAGE
+# ROW -- the engine clamps any index of 4 and up (a stale part byte holds
+# 0..127) onto it, and it pairs row 0's REVERSE half with row 3's GRAIN half
+# because that is where the two compare ladders it replaced sent such an
+# index. Read by delay_server.asm's one table block, parked by the build in
+# the stock curve bank X:0x4840 beside SPECTRUM's and CHARACTER's tables.
+SIZE_ROWS = (
+    # (index 0 and 1 SWAPPED, R62: the panel default is SIZE=1, and R60
+    # measured 46 ms as comb territory on sustained sources -- the default
+    # deserves the musical segment, not the ring)
+    (2048,  4096, 28608, 0x7ff,  0x200, 0x1000, 0x200000, 0),   # 0: 46 ms
+    (4096,  2048, 24512, 0xfff,  0x400, 0x800,  0x100000, 0),   # 1: 93 ms (default)
+    (1024,  8192, 30656, 0x3ff,  0x100, 0x2000, 0x400000, 0),   # 2: 23 ms
+    # 3: XTRM -- REVERSE-32K (13 Sep 2026): S = 16384 (371 ms), cap 0: the
+    # lag floor is TIME-free at this size, 2S - 2 = 32,766 is the mono
+    # ring's oldest valid sample. GRAIN: 8192-sample (186 ms) grains.
+    (16384, 512,  0,     0x1fff, 0x800, 0x400,  0x80000,  0),
+    (2048,  4096, 28608, 0x1fff, 0x800, 0x400,  0x80000,  0),   # 4+: garbage index
+)
+# The sticky snap's ten tempo divisions, M << 11 for M in 2, 3, 4, 6, 8, 9,
+# 12, 16, 18, 24 (1/32T .. 1/4; 1/2T and 1/4. never fit the 370 ms line
+# below ~170 BPM), smallest first -- last match wins in the engine's loop,
+# exactly as the ladder they replace evaluated them. At offset 40.
+SNAP_DIVS = (0x1000, 0x1800, 0x2000, 0x3000, 0x4000,
+             0x4800, 0x6000, 0x8000, 0x9000, 0xc000)
+# The bus auto-gain's 1/sqrt(N), Q23, indexed by the client count masked to
+# 0..7 -- so [0] is 1/sqrt(8), where eight writers wrap to (and a count of 0
+# lands, harmlessly: the accumulator is zero then). The law is 1/sqrt(N),
+# not 1/N (17 Aug 2026): uncorrelated senders sum as sqrt(N). At offset 50.
+RECIP = (0x2d413c, 0x7fffff, 0x5a8279, 0x49e69d,
+         0x400000, 0x393e4b, 0x34417a, 0x306123)
+PTABLE = tuple(w for row in SIZE_ROWS for w in row) + SNAP_DIVS + RECIP
+
 MODULE = Module(
     name="busdelay",
     key="DELAY SERVER",
@@ -139,6 +176,7 @@ MODULE = Module(
         gate_label="bus_notfirst",
         override_markers=("; DMODE_OVERRIDE", "; DINT_OVERRIDE",
                           "; DFRZ_OVERRIDE", "; DNOTE_OVERRIDE"),
+        ptable=PTABLE,
     ),
     # 0901h-0903h is named in the source as this module's RATE/DRV state
     # block. The scan sees 0901 and 0902; 0903 is reserved here because the

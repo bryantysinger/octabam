@@ -35,10 +35,10 @@ def roll(src, grains):
         raise ValueError("; ".join(f"{m.strip()}: {f} markers, expected {n}"
                                    for m, f, n in bad))
     src = src.replace("; GRAINCNT\n        do      #4,", "        do      #2,")
-    src = src.replace("; GRAINOFF\n", """        move    x:(r7+$39),a
-        asl     #$1,a,a                 ; grain-to-grain offset G/4 -> G/2
-        move    a1,x0
-        move    x0,x:(r7+$39)
+    # G/4 arrives in `a` at the marker and the engine stores it on the next
+    # line (14 Sep 2026: the r7 rebase moved every slot's spelling, so the
+    # lever names no slot at all -- it doubles what is in the accumulator).
+    src = src.replace("; GRAINOFF\n", """        asl     #$1,a,a                 ; grain-to-grain offset G/4 -> G/2
 """, 1)
     return src.replace("; GRAINMK\n", """        asl     #$1,b,b                 ; two windows sum to 1, not 2
 """)

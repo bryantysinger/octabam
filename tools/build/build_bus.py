@@ -3096,6 +3096,14 @@ hostquit:
                 sys.exit(f"payload {tag}: {name} has multiple $facade "
                          f"LFOTAB literals -- expected exactly one")
             _ptab = list(remix_modules()[name].dsp.ptable) if name in remix_modules() else []
+            if (name == "DELAY SERVER" and os.environ.get("DLSRC") and _ptab
+                    and PTABLE_MARK not in src):
+                # A DLSRC= engine that predates the manifest's table -- the
+                # REFERENCE side of verify_delay.py's comparison -- carries
+                # its own constants and needs no table; refusing it would
+                # make the manifest's table the first change that cannot be
+                # gated against the source it replaces (14 Sep 2026).
+                _ptab = []
             if (PTABLE_MARK in src) != bool(_ptab) or src.count(PTABLE_MARK) > 1:
                 sys.exit(f"payload {tag}: {name}: a DspSection.ptable and exactly one "
                          f"{PTABLE_MARK} literal in the source go together "
@@ -3111,17 +3119,40 @@ hostquit:
                 # never flashed. The region below now carries only SEND +
                 # LFOTAB + reverb, so the delay's growth budget is payload
                 # B's, not the hatch's.
-                words, init_a, proc_a = assemble(src, DEV_DELAY_P)
-                if DEV_DELAY_P + len(words) >= 0x20000:
+                # Its table (14 Sep 2026, the SIZE/snap/reciprocal rows):
+                # parked in the stock curve bank like everyone else's when
+                # the bank is free, else it LEADS the out-of-region record
+                # at DEV_DELAY_P and the code follows it -- the dump's one
+                # P record carries both, at the origin the code was
+                # assembled against.
+                _xa, _at, _lead = _xt_layout.get(name), DEV_DELAY_P, []
+                if _ptab and _xa is not None:
+                    src, _xt_sites[name] = _p2x(
+                        src.replace(PTABLE_MARK, f"${_xa[0]:x}"), name)
+                    if len(_ptab) != _xa[1]:
+                        sys.exit(f"payload {tag}: {name}'s table is "
+                                 f"{len(_ptab)} words, its X slot {_xa[1]}")
+                    place_x(_ptab, _xa[0])
+                    print(f"  {'PTABLE':13} X:0x{_xa[0]:05x}..0x{_xa[0] + len(_ptab):05x} "
+                          f"({len(_ptab):4d} words)  {name}'s table  in the stock "
+                          f"curve bank, {_xt_sites[name]} p:( reads -> x:(")
+                elif _ptab:
+                    src = src.replace(PTABLE_MARK, f"${DEV_DELAY_P:x}")
+                    _at, _lead = DEV_DELAY_P + len(_ptab), list(_ptab)
+                    print(f"  {'PTABLE':13} P:0x{DEV_DELAY_P:05x}..0x{_at:05x} "
+                          f"({len(_ptab):4d} words)  {name}'s table  (DEV: leads "
+                          f"the out-of-region record)")
+                words, init_a, proc_a = assemble(src, _at)
+                if _at + len(words) >= 0x20000:
                     sys.exit(f"payload {tag}: DEV delay overruns the "
                              f"entry-point plausibility bound "
-                             f"(0x{DEV_DELAY_P + len(words):05x} >= 0x20000)")
+                             f"(0x{_at + len(words):05x} >= 0x20000)")
                 wrw_p(pp["xtab"] + NEW_IDS[name] * 3, init_a)
                 wrw_p(pp["xtab"] + (32 + NEW_IDS[name]) * 3, proc_a)
                 if tag == "A":
-                    dev_delay = words
-                print(f"  {name:13} P:0x{DEV_DELAY_P:05x}..0x"
-                      f"{DEV_DELAY_P + len(words):05x} ({len(words):4} words)"
+                    dev_delay = _lead + list(words)
+                print(f"  {name:13} P:0x{_at:05x}..0x"
+                      f"{_at + len(words):05x} ({len(words):4} words)"
                       f"  id 0x{NEW_IDS[name]:02x}  Y base 0x38000  "
                       f"(DEV: OUT OF REGION, code lives in the .mem dump)")
                 continue

@@ -134,7 +134,7 @@ def make_source():
     return src
 
 
-def build(src, tag, dmode=None, dint=None):
+def build(src, tag, dmode=None, dint=None, dfrz=None):
     """Build the delay hatch with DLSRC=src, keep its payload-A dump, return
     (mem, delay_words, hatch_free). DFRZ/DINT are popped as well as DMODE:
     an override leaking in from the caller's environment would silently move
@@ -147,6 +147,8 @@ def build(src, tag, dmode=None, dint=None):
         env["DMODE"] = str(dmode)
     if dint is not None:
         env["DINT"] = str(dint)
+    if dfrz is not None:
+        env["DFRZ"] = str(dfrz)
     r = subprocess.run([sys.executable, "tools/build/build_bus.py"], cwd=ROOT,
                        env=env, capture_output=True, text=True)
     if r.returncode:
@@ -252,6 +254,11 @@ def main():
           f"  ({ref_words} -> {nop_words} words)")
     n_hi = render(nop_mem, dp(TONE=100), source=source)
     check("nop control: relocated code still renders identically", n_hi == c_hi)
+    c_wob = render(ref_mem, dp(MDEP=100, MRAT=64), source=source)
+    check("wobble is LIVE (reference MDEP=100 MRAT=64 differs from MDEP=0)",
+          c_wob != c_hi,
+          "" if c_wob != c_hi else
+          "  <-- the wobble cases below are VACUOUS")
 
     # ---- then the equality cases ------------------------------------------
     cand_mem, cand_words, cand_free = build(args.candidate, "cand")
@@ -263,6 +270,14 @@ def main():
         ("TIME=127 (16320 max)", dp(TIME=127), 0),
         ("FDBK=127 TONE=127 (long recirculation)", dp(FDBK=127, TONE=127), 0),
         ("defaults, split=7 (a=0/a=1 sub-block path)", dp(), 7),
+        # THE WOBBLE (14 Sep 2026). BASE pins MDEP=0 and MRAT=0, so until
+        # this case modtap's modulated lerp (mod_int != 0, frac != 0), the
+        # LFO pair and satdrv's DPTH-keyed saturation were rendered only
+        # through GRAIN's fixed wow. A rewrite of those paths could pass
+        # every case above with the identity they reduce to at depth 0.
+        ("wobble MDEP=100 MRAT=64 (modtap lerp + loop saturation)",
+         dp(MDEP=100, MRAT=64), 0),
+        ("deep wobble MDEP=127 MRAT=127 FDBK=127", dp(MDEP=127, MRAT=127, FDBK=127), 0),
         # MIX=0 is the DRY PATH, and stage 5c turned MIX from an add into a
         # crossfade. At 0 the two are identical by construction, so this case
         # is what proves the change touched only the blend and nothing else
@@ -300,6 +315,8 @@ def main():
             ("GRAIN sparse (MRAT 0) at 93 ms", 1, 1, dp(MDEP=64, MRAT=0, PTCH=64)),
             ("REVERSE size 4096 (93 ms, the line's ceiling)", 2, 1, dp()),
             ("REVERSE size 512 (stutter) at TIME=127", 2, 3, dp(TIME=127)),
+            ("REVERSE 93 ms with wobble MDEP=100 MRAT=64", 2, 1,
+             dp(MDEP=100, MRAT=64)),
         ]
         for label, dmode, dint, params in MODES:
             if dmode > shared_modes - 1:
@@ -323,6 +340,31 @@ def main():
                               if x != y), -1)
                 detail = f"  (first differing sample {first}, {n} of {len(fa)} differ)"
             check(f"bit-identical: {label}", a == b, detail)
+
+        # ---- FREEZE (14 Sep 2026): DFRZ=1 on both engines -----------------
+        # The hold and its engage crossfade live in satdrv's tail and were
+        # never rendered by this gate (slot 11 is a companion field; the
+        # override is the local way in). Frozen defaults must DIFFER from
+        # running defaults, or the case is vacuous.
+        rf, _, _ = build(args.ref, "ref_frz", dfrz=1)
+        cf, _, _ = build(args.candidate, "cand_frz", dfrz=1)
+        a = render(rf, dp(), source=source)
+        check("FREEZE is LIVE: DFRZ=1 differs from running", a != clean_ref,
+              "" if a != clean_ref else
+              "  <-- the override never reached the engine; the case below "
+              "is VACUOUS")
+        b = render(cf, dp(), source=source)
+        detail = ""
+        if a != b:
+            fa, fb = a[0] + a[1], b[0] + b[1]
+            n = sum(1 for x, y in zip(fa, fb) if x != y)
+            first = next((i for i, (x, y) in enumerate(zip(fa, fb))
+                          if x != y), -1)
+            detail = f"  (first differing sample {first}, {n} of {len(fa)} differ)"
+        check("bit-identical: FREEZE (DFRZ=1) with wobble MDEP=100",
+              render(rf, dp(MDEP=100, MRAT=64), source=source)
+              == render(cf, dp(MDEP=100, MRAT=64), source=source))
+        check("bit-identical: FREEZE (DFRZ=1), defaults", a == b, detail)
 
         # ---- unknown MODE must fall back to CLEAN --------------------------
         # DMODE=5, not 3: 3 is GRAIN now, and a fallback case aimed at a mode
