@@ -68,6 +68,36 @@ def private_y(m) -> set[int]:
     return words
 
 
+# An X-space reference by literal: absolute, register-relative with a
+# displacement, or an immediate into an address/offset register.
+_X_ADDR = re.compile(r"x:>\$([0-9a-f]{1,6})\b|x:\(r[0-7]\+\$([0-9a-f]{1,6})\)"
+                     r"|#>\$([0-9a-f]{1,6}),[rn][0-7]\b", re.I)
+
+
+def curve_bank_claims(selected) -> tuple[list[str], list[str]]:
+    """(names of modules whose table the build may park in the stock curve
+    bank, names of modules whose source addresses that record itself),
+    both scanned from the modules' sources -- see check() for the rule."""
+    from remix import stock
+    lo, hi = stock.CURVE_BANK[0], stock.CURVE_BANK[0] + stock.CURVE_BANK[1]
+    tables, hard = [], []
+    for m in selected:
+        if m.dsp is None:
+            continue
+        src = ROOT / m.dsp.asm
+        code = ""
+        if src.exists():
+            code = "\n".join(l.split(";", 1)[0]
+                             for l in src.read_text().splitlines())
+        if m.dsp.ptable or "$facade" in code:
+            tables.append(m.name)
+        for g in _X_ADDR.findall(code):
+            if lo <= int(next(h for h in g if h), 16) < hi:
+                hard.append(m.name)
+                break
+    return tables, hard
+
+
 def _overlap(a_start, a_len, b_start, b_len) -> bool:
     return a_start < b_start + b_len and b_start < a_start + a_len
 
@@ -326,6 +356,30 @@ def check(selected) -> list[str]:
                   "that is where the module's fixed buffers are; the chooser "
                   "cannot keep them on different cores. Its FX2 ROW is what "
                   "is refused: on FX1 it keeps working, out of reach")
+
+    # ---- the stock curve bank, X:0x4840 (4,096 words) ----------------------
+    # Since 14 Sep 2026 the build parks the modules' P tables (a
+    # DspSection.ptable, the reverb's LFOTAB) in this stock data record
+    # instead of the donor region, whenever no stock effect that reads it
+    # survives in the image (stock.curve_bank_readers; the build keeps the
+    # tables in P otherwise, and says so). That makes the record a resource
+    # with claimants, all DERIVED:
+    #   * a module with a table (ptable, or a `$facade` literal in its source);
+    #   * a module that ADDRESSES the record itself -- an X-space literal in
+    #     its source inside the range: `x:>$`, `x:(rN+$`, or an immediate
+    #     loaded into an address register. (An immediate into an
+    #     accumulator is not one: the reverb's `#>$5000,a` is a Y line base.)
+    # Tables are packed by the build and cannot overlap each other; a table
+    # beside a module that addresses the record is a collision, because the
+    # build would write the table under that module's reference. A kept
+    # stock reader beside a table is NOT refused here: the build falls back
+    # to P placement for it.
+    tables, hard = curve_bank_claims(selected)
+    for h in hard:
+        for t in tables:
+            clash("X:0x4840 curve bank", t, h,
+                  "the stock curve bank X:0x4840 -- the build parks the "
+                  "first's table there and the second addresses it directly")
 
     # ---- core-private Y ---------------------------------------------------
     # Low Y is per CORE. Two effects that can share a core share these words,

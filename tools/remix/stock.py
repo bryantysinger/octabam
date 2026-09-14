@@ -447,3 +447,79 @@ def region_words(harvest=CONSUMED) -> int:
 NO_DSP = frozenset({"DELAY"})
 
 BY_KEY = {m.key: m for m in MODULES}
+
+# ---- the stock curve bank at X:0x4840, and who reads it --------------------
+# A 4,096-word data record (32 curves x 128, docs/firmware/TABLES.md) at the
+# SAME X address in BOTH payloads -- the exception to the per-payload table
+# shift CLAUDE.md warns about (measured 14 Sep 2026, dsp_modmap: A at image
+# 0x400e7181, B at 0x400fa786, word for word identical) -- and immediately
+# above the core's boot clear (P:0x300a6, `do #$7c0` from X:0x4080 ends at
+# 0x4840 exactly), so nothing zeroes it and its image bytes are what the DSP
+# reads. The build may park the modules' P tables there instead of in the
+# donor region (build_bus.py, XTABLE) -- but only while nothing stock that
+# reads it survives. WHO READS IT IS DERIVED FROM THE IMAGE, not written
+# down: every P record of both payloads is scanned for a raw word inside the
+# record's range and each hit is mapped to the effect whose span holds it.
+# On the stock image that is DJ EQ alone (36 sites per payload, all
+# `x:(r5+$xxx0),reg` reads of curve bases, 0 as a destination; measured
+# 14 Sep 2026 over tools/build/dsp_disasm_all.py's output), which is why
+# EXTERNAL.md's "LO-FI AMPH table" label for the record is not repeated
+# here -- LO-FI's code carries no address into it.
+#
+# ⚠️ STATIC SCAN, NOT A READ-WATCH. A reader that reaches the record through
+# a pointer held in DATA is invisible to this: the boot hands the per-core
+# staging bases 0x4000/0x4080/0x4400/0x4600/0x4800 out through X:0x205..
+# 0x209 (P:0x54..0x90), and a scan cannot see how far they are indexed.
+# What bounds it: 0x4800 is the last of them and the boot clear that covers
+# them stops at 0x4840. Falsifier: a DSP read-watch on X:0x4840..0x583f
+# under the ColdFire port, every stock effect harvested, reporting a hit.
+CURVE_BANK = (0x4840, 4096)
+_readers: dict[str, tuple[str, ...]] | None = None
+
+
+def curve_bank_readers() -> dict[str, tuple[str, ...]]:
+    """{payload: effect keys whose P code holds a word inside the curve
+    bank's range}. A word in P code outside every effect span is reported
+    under the key "OUTSIDE-DONOR": code no remix can harvest reads the
+    record, and the build must leave it alone."""
+    global _readers
+    if _readers is not None:
+        return _readers
+    import sys as _sys, pathlib as _pl
+    _sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+    import toolpath  # noqa: F401
+    import dsp_modmap as dm
+    img = dm.IMG.read_bytes()
+    lo, hi = CURVE_BANK[0], CURVE_BANK[0] + CURVE_BANK[1]
+    out = {}
+    for tag, va, ln in dm.PAYLOADS:
+        sp = p_spans(tag)
+        mods, b = dm.modules(img, va, ln)
+        hits = set()
+        for space, addr, cnt, data in mods:
+            if space != 0:
+                continue
+            for i in range(cnt):
+                if lo <= dm.w24(b, data + i * 3) < hi:
+                    pc = addr + i
+                    hits.add(next((k for k, (a, n) in sp.items()
+                                   if a <= pc < a + n), "OUTSIDE-DONOR"))
+        out[tag] = tuple(sorted(hits))
+    _readers = out
+    return out
+
+
+def curve_bank_record(img: bytes, tag: str):
+    """(image byte offset, words) of the curve bank's X record in one
+    payload, or None when the payload has no record at exactly that
+    address and size."""
+    import sys as _sys, pathlib as _pl
+    _sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+    import toolpath  # noqa: F401
+    import dsp_modmap as dm
+    va, ln = [(v, l) for t, v, l in dm.PAYLOADS if t == tag][0]
+    mods, _b = dm.modules(img, va, ln)
+    for space, addr, cnt, data in mods:
+        if space == 1 and addr == CURVE_BANK[0] and cnt == CURVE_BANK[1]:
+            return va - dm.BASE + data, cnt
+    return None

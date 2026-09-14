@@ -2657,10 +2657,49 @@ mkgo:""",
             # -- it is not the housekeeper there either; SEND's self-healing
             # election covers that, exactly as on hardware.
             gated = (tag == ("A" if _hkb else "B")) or (DEV and name == "DELAY SERVER")
-            body = (f"        bra     {_GATE_LABEL[name]}         "
-                    f"; payload {tag} never housekeeps" if gated else
-                    f";  (payload {tag} housekeeps: no gate emitted)")
-            return src.replace("; XBUS_GATE", body, 1)
+            label = _GATE_LABEL[name]
+            if not gated:
+                return src.replace("; XBUS_GATE",
+                                   f";  (payload {tag} housekeeps: no gate emitted)", 1)
+            # ⚠️ EXCISED, NOT BRANCHED OVER (14 Sep 2026). Until then the
+            # gated payload carried the whole housekeeping block behind a
+            # 2-word `bra <label>`: 72 dead words in SEND, 70 in the delay,
+            # on a payload that was at FREE 5 once and 193 the day this
+            # landed. The block runs from the marker to its exit label and
+            # nothing outside it reaches in -- checked HERE, not assumed:
+            # every label the span defines must be referenced only inside
+            # it, and every r7 slot it STORES must be read nowhere outside
+            # (SEND's last-seen rotation at r7+$68 and the delay's at
+            # r7+$88 are the block's own; the delay's later r7+$68 is its
+            # LineR base, a different slot in a different file). The exit
+            # label itself is kept: the block below it is the everyone-path.
+            # Behaviourally identical to the bra: the branch was
+            # unconditional, so no instruction in the span could execute.
+            i = src.index("; XBUS_GATE")
+            j = src.find(f"\n{label}:", i)
+            if j < 0:
+                sys.exit(f"XBUS: {name}: no `{label}:` after its ; XBUS_GATE marker")
+            j += 1                              # keep the exit label's line
+            span, rest = src[i:j], src[:i] + src[j:]
+            _code = lambda s: "\n".join(l.split(";", 1)[0] for l in s.splitlines())
+            _rest_code = _code(rest)
+            for lab in re.findall(r"^([A-Za-z_]\w*):", _code(span), re.M):
+                if re.search(rf"\b{re.escape(lab)}\b", _rest_code):
+                    sys.exit(f"XBUS: {name}: label `{lab}` inside the gated "
+                             f"housekeeping block is referenced outside it -- "
+                             f"the block cannot be excised")
+            for slot in set(re.findall(r",x:\(r7\+\$([0-9a-f]+)\)", _code(span))):
+                if re.search(rf"x:\(r7\+\${slot}\)", _rest_code):
+                    sys.exit(f"XBUS: {name}: r7+${slot} is stored by the gated "
+                             f"housekeeping block and read outside it -- "
+                             f"the block cannot be excised")
+            _n = sum(1 for l in _code(span).splitlines()
+                     if l.strip() and not re.match(r"^\w+:\s*$", l.strip()))
+            return (src[:i]
+                    + f";  payload {tag} never housekeeps: the housekeeping "
+                      f"block ({_n} instructions, marker -> {label}) is "
+                      f"EXCISED by build_bus.py, not branched over\n"
+                    + src[j:])
 
         def _rotinit(src, name, slot):
             """Seed the tracked rotation at init. PAYLOAD B ONLY."""
@@ -2965,6 +3004,93 @@ hostquit:
         # once and compare them.
         LFO01_MARK = "LFO lines 0-1: ROLLED TOO"
         PTABLE_MARK = "$fab1e0"          # schema.DspSection.ptable's literal
+
+        # ---- XTABLE: the P tables go to the stock curve bank ------------
+        # (14 Sep 2026.) Every table a module reads with p:(rN) -- the
+        # reverb's LFOTAB (24 or 36 words), SPECTRUM's 48, CHARACTER's 51 --
+        # used to be placed in the donor region in front of its module: 123
+        # words of payload A's budget holding data that never executes.
+        # X:0x4840 is a 4,096-word STOCK DATA record (a 32 x 128 curve
+        # bank, docs/firmware/TABLES.md) at the SAME address in both
+        # payloads, above the boot clear, and read by one stock effect, DJ
+        # EQ (stock.curve_bank_readers, derived from the image). When every
+        # reader is harvested the tables go there instead: the module's
+        # table literal is rewritten to its X address, its `p:(` table
+        # reads become `x:(` -- the same addressing modes exist in both
+        # spaces at the same length, so the code loses no words and gains
+        # none -- and the table words are written into this payload's copy
+        # of the record. Each table sits at the same X address in both
+        # payloads (the layout is built from the whole plan, before SPEC
+        # drops the absent server), so a module stays one source for both.
+        # ⚠️ A MODULE WITH A TABLE MAY READ P FOR NOTHING ELSE: every `p:(`
+        # in its code is substituted, and any other p: form is refused.
+        # ⚠️ DEADNESS IS BY STATIC SCAN, NOT A READ-WATCH -- the scan and
+        # its blind spot are written up at stock.CURVE_BANK. FALLBACK, not
+        # refusal, when a reader survives: the tables stay in P exactly as
+        # before, and the report says why.
+        _xt_base, _xt_words = stock_mod.CURVE_BANK
+        _xt_readers = stock_mod.curve_bank_readers()
+        _xt_kept = sorted({k for ks in _xt_readers.values() for k in ks
+                           if k == "OUTSIDE-DONOR" or k in _listed})
+        _xt_tables = [k for k in sorted((k for k in CARRIED if k in _texts),
+                                        key=lambda k: _MODS[k].dsp.priority)
+                      if "$facade" in _texts[k] or _MODS[k].dsp.ptable]
+        _pristine = IMG.read_bytes()
+        _xt_rec = {t: stock_mod.curve_bank_record(_pristine, t) for t in "AB"}
+        _xt_same = (all(_xt_rec.values()) and
+                    _pristine[_xt_rec["A"][0]:_xt_rec["A"][0] + _xt_words * 3]
+                    == _pristine[_xt_rec["B"][0]:_xt_rec["B"][0] + _xt_words * 3])
+        _xt_layout, _xt_sites = {}, {}
+        if _xt_tables and _xt_kept:
+            print(f"  XTABLE: P tables stay in P -- "
+                  f"{', '.join(_xt_kept)} reads the stock curve bank "
+                  f"X:0x{_xt_base:05x} and is kept in the image")
+        elif _xt_tables and not _xt_same:
+            print(f"  XTABLE: P tables stay in P -- the stock curve bank "
+                  f"X:0x{_xt_base:05x} is not one identical 4,096-word "
+                  f"record in both payloads of this image")
+        elif _xt_tables:
+            _xa = _xt_base
+            for _k in _xt_tables:
+                _t = _texts[_k]
+                _n = (len(LFO01 + LFOTAB) if LFO01_MARK in _t else len(LFOTAB)) \
+                    if "$facade" in _t else len(_MODS[_k].dsp.ptable)
+                _xt_layout[_k] = (_xa, _n)
+                _xa += _n
+            if _xa > _xt_base + _xt_words:
+                sys.exit(f"payload {tag}: the P tables ({_xa - _xt_base} words) "
+                         f"overrun the stock curve bank ({_xt_words} words)")
+            print(f"  XTABLE: P tables parked in the stock curve bank "
+                  f"X:0x{_xt_base:05x}..0x{_xa:05x} ({_xa - _xt_base} words) -- "
+                  f"every stock reader of it "
+                  f"({'/'.join(sorted({k for ks in _xt_readers.values() for k in ks}))}) "
+                  f"is harvested (static scan, not a read-watch)")
+
+        def place_x(words, start):
+            """Write table words into this payload's copy of the curve bank."""
+            off, cnt = _xt_rec[tag]
+            if not (_xt_base <= start and start + len(words) <= _xt_base + cnt):
+                sys.exit(f"payload {tag}: X table at 0x{start:05x} runs past "
+                         f"the curve bank record")
+            for k, w in enumerate(words):
+                wrw_p(BASE + off + (start - _xt_base + k) * 3, w)
+
+        def _p2x(src, name):
+            """Every `p:(` table read in the CODE becomes `x:(`; comments
+            are left alone. Returns (source, sites)."""
+            out, n = [], 0
+            for l in src.split("\n"):
+                code, sep, cmt = l.partition(";")
+                if re.search(r"\bp:", code) and "p:(" not in code:
+                    sys.exit(f"XTABLE: {name} reads P memory other than "
+                             f"through p:(rN) -- {l.strip()!r}; a module "
+                             f"with a table may read P for nothing else")
+                n += code.count("p:(")
+                out.append(code.replace("p:(", "x:(") + sep + cmt)
+            if not n:
+                sys.exit(f"XTABLE: {name} has a table but no p:( read of it")
+            return "\n".join(out), n
+
         for name, src in plan:
             if "$facade" in src and src.count("$facade") != 1:
                 sys.exit(f"payload {tag}: {name} has multiple $facade "
@@ -3011,21 +3137,30 @@ hostquit:
             # encoding, which is exactly the kind of assumption this codebase
             # has been burned by.
             _fit, _last = None, None
+            _xa = _xt_layout.get(name)          # (X address, words) or None
             for _r in runs:
                 _c, _end = _r["cursor"], _r["base"] + _r["words"]
                 _tab, _s2, _lfo = None, src, "$facade" in src
                 if _lfo:
                     _tab = (LFO01 + LFOTAB) if LFO01_MARK in src else LFOTAB
-                    if _c + len(_tab) > _end:
-                        continue
-                    _s2 = src.replace("$facade", f"${_c:x}")
-                    _c += len(_tab)
+                    if _xa is not None:
+                        _s2, _xt_sites[name] = _p2x(
+                            src.replace("$facade", f"${_xa[0]:x}"), name)
+                    else:
+                        if _c + len(_tab) > _end:
+                            continue
+                        _s2 = src.replace("$facade", f"${_c:x}")
+                        _c += len(_tab)
                 elif _ptab:
                     _tab = _ptab
-                    if _c + len(_tab) > _end:
-                        continue
-                    _s2 = src.replace(PTABLE_MARK, f"${_c:x}")
-                    _c += len(_tab)
+                    if _xa is not None:
+                        _s2, _xt_sites[name] = _p2x(
+                            src.replace(PTABLE_MARK, f"${_xa[0]:x}"), name)
+                    else:
+                        if _c + len(_tab) > _end:
+                            continue
+                        _s2 = src.replace(PTABLE_MARK, f"${_c:x}")
+                        _c += len(_tab)
                 _w, _ia, _pa = assemble(_s2, _c)
                 _last = (_c, len(_w))
                 if _c + len(_w) <= _end:
@@ -3047,7 +3182,19 @@ hostquit:
                          f"only {_big}; harvest an effect BETWEEN two runs to "
                          f"join them into one")
             _r, tab, src, cursor, words, init_a, proc_a = _fit
-            if tab is not None:
+            if tab is not None and _xa is not None:
+                if len(tab) != _xa[1]:
+                    sys.exit(f"payload {tag}: {name}'s table is {len(tab)} "
+                             f"words, its X slot {_xa[1]}")
+                place_x(tab, _xa[0])
+                print(f"  {'LFOTAB' if _lfo else 'PTABLE':13} "
+                      f"X:0x{_xa[0]:05x}..0x{_xa[0] + len(tab):05x} "
+                      f"({len(tab):4d} words)  "
+                      + (f"rolled LFO lines {'0-7' if LFO01_MARK in src else '2-7'}"
+                         if _lfo else f"{name}'s table")
+                      + f"  in the stock curve bank, {_xt_sites[name]} p:( "
+                        f"reads -> x:(")
+            elif tab is not None:
                 place(tab, _r["cursor"])
                 if _lfo:
                     print(f"  LFOTAB        P:0x{_r['cursor']:05x}.."
@@ -3185,6 +3332,14 @@ hostquit:
         # stock any more and must not be reported as kept.)
         kept = [d for d, (a, _n) in _hv.items()
                 if not _written(a) and d not in _replaced]
+        # A harvested reader of the curve bank whose code the stream never
+        # reached would keep its stock dispatch and read our tables as its
+        # curves. Its code is untouched, its data is not: null it, and say so.
+        for d in [d for d in kept if _xt_layout and d in _xt_readers.get(tag, ())]:
+            kept.remove(d)
+            print(f"  {d}: code untouched, but the stock curve bank "
+                  f"X:0x{_xt_base:05x} it reads now carries our tables -- "
+                  f"dispatch nulled")
         # ⚠️ A REPLACED effect's dispatch is OURS, not the null stub's.
         # A module with MenuEntry(replaces=...) carries the stock id and
         # the placement above already wrote its entries there; its
