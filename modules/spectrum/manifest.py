@@ -29,7 +29,7 @@ filter -- plus the Sherman-filterbank moves that fit in twelve slots:
     cannot double-flip the rotation with its own FX2.
 
 DEFAULTS ARE A BIT-EXACT PASSTHROUGH (FREQ 127, RES 0, BASE 0, WDTH 127,
-DPTH 64, LP, SER, sends 0; DRV retired 13 Sep 2026 -- Character owns drive): the engine detects that block and copies
+LDP 0, MODE 0 = LADR, sends 0; DRV retired 13 Sep 2026 -- Character owns drive): the engine detects that block and copies
 nothing, because after the flash every part that ever chose FILTER runs
 this on FX1. ⚠️ A part's STORED bytes are stock FILTER's, not these defaults
 (DEC=64 lands on ->VRB): the project stamper writes ours (plan A6).
@@ -104,8 +104,8 @@ MODULE = Module(
               doc="the flavour: resonance in LP/BP/LADR, sharpness in VOWL, the dielectric colour in ISO"),
         Param(b"ENV", 64, 128, active=True, formatter=_BIPOL,
               doc="the envelope follower onto the cutoff, drawn -64..+63; 0 = none"),
-        Param(b"LDP", 64, 128, active=True, formatter=_BIPOL,
-              doc="LFO depth onto the cutoff, drawn -64..+63; 0 = none"),
+        Param(b"LDP", 0, active=True, formatter=_PLAIN,
+              doc="LFO depth onto the cutoff, 0 = none (a negative depth would only flip the phase)"),
         Param(b"LSP", 64, 128, active=True, formatter=_PLAIN,
               doc="LFO speed ~0.08..9 Hz, and the envelope release (0 slow .. 127 fast)"),
         Param(b"WDTH", 64, 128, active=True, formatter=_BIPOL,
@@ -113,8 +113,8 @@ MODULE = Module(
         # ---- page 2: knob / select / knob / select / knob / select ----------
         _BLANK,
         Param(b"MODE", 0, 5, active=True, formatter=_STEP,
-              labels=("LP", "BP", "ISO", "VOWL", "LADR"),
-              doc="LP/BP the SEM; ISO an isolator with colour (Capacitor2); VOWL formants; LADR the Moog"),
+              labels=("LADR", "LP", "BP", "ISO", "VOWL"),
+              doc="LADR the Moog (first: the best one); LP/BP the SEM; ISO an isolator (Capacitor2); VOWL"),
         _BLANK,   # was DPTH (14 Sep 2026: ENV and LFO on page 1)
         _BLANK,   # was ROUT (SER/PAR/RING/FM: filter B retired 14 Sep 2026)
         _BLANK,   # was RATE (14 Sep 2026: LSP beside LDP on page 1)
@@ -125,8 +125,8 @@ MODULE = Module(
     # (a stamp lands them; the live re-default on MODE is stage B's open
     # ColdFire half). Five positions: the tick widget draws five (14 Sep 2026).
     mode_slot=7,
-    mode_views=(ModeView(mode=2, names={0: b"LOW", 1: b"COLR"}, defaults={0: 127, 1: 64}),
-                ModeView(mode=3, names={1: b"SHRP"})),
+    mode_views=(ModeView(mode=3, names={0: b"LOW", 1: b"COLR"}, defaults={0: 127, 1: 64}),
+                ModeView(mode=4, names={1: b"SHRP"})),
     dsp=DspSection(
         asm="modules/spectrum/spectrum.asm",
         # FREQ's taper: 33 SVF f coefficients (Q23, 2*sin(pi*fc/fs)) at FREQ

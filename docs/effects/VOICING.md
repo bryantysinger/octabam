@@ -2548,3 +2548,32 @@ quiet." Built (image 17):
 - Image 16 bank levels: E/F/G captured at −47/−48/−46 dBFS L (image 14's
   G reference −34.7) and bank A silent; audio present (peaks −25), cause
   not bisected (main volume / loaded project on Sam's side unconfirmed).
+
+**14 Sep 2026, Sam's round on image 17:** "moog is best, first in list
+please. lfo depth and speed at some settings makes it spike high pitched
+though. And why does depth go negative? Have we got the knobs mixed up?
+Otherwise it sounds awesome." Built (image 18):
+
+- MODE = LADR LP BP ISO VOWL; MODE 0 (the stamp) is LADR. ISO's and
+  VOWL's ModeViews moved to 3 and 4.
+- LDP is 0..127, default 0 (the knobs were not mixed up: a negative depth
+  on the triangle LFO only flips its phase; ENV keeps its sign because a
+  closing envelope is a different filter). The passthrough detector tests
+  LDP 0.
+- THE SPIKE = A LADDER DEFECT, MEASURED. The feedback sum S used G^3 s0 +
+  G^2 s1 + G s2 + s3; each TPT stage feeds its state through as (1-G) s,
+  so the sum was 1/(1-G) too big: 6% at 1 kHz (G 0.06), 2.9x at 14 kHz
+  (G 0.65). A float model of the code's sum diverges at 15 kHz from RES 64
+  (scratch ladder_model.py); the DSP render of drums under LDP 127 hit the
+  rail with > 6 kHz energy at -1 dB of the total (LADR FREQ 64 RES 100:
+  rms -12 vs -29 static). Fixed: $18 = 1-G, $11/$12/$17 = G^n (1-G), one
+  mac more per channel. After: the same render peaks at -17 dBFS, no rail,
+  HF -21 dB; DSP vs float at FREQ 64 mean |err| < 3e-4 at every RES, at
+  FREQ 127 RES 64/100 < 0.014 (RES 127 differs by 0.16: the limiting stores
+  bound the edge of oscillation, float does not). What Sam heard as "best"
+  at low cutoffs is unchanged (the error was under 1% there).
+- The linear ladder's passband sits at 1/(1+k): RES 64 = -9 dB, RES 127 =
+  -14 dB on bass-heavy material (the Moog law, no compensation; the gate
+  allows 12 dB). Open: whether to add a bass makeup with RES.
+- verify_spectrum gates: LADR at FREQ 127 RES 64/100/127 on noise bounded
+  and off the rail; LADR under LDP 127 LSP 127 bounded.

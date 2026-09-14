@@ -85,6 +85,9 @@ def params(**kw):
     return v
 
 
+LP = 1   # MODE 0 is LADR since 14 Sep 2026 ("moog is best, first in list")
+
+
 def render(samples, slot="fx1", guard=False, **kw):
     """samples: MONO ints in Q23 -- dsp_host feeds one stream to both
     channels (verify_hello's shape). Returns (L, R) lists.
@@ -93,6 +96,7 @@ def render(samples, slot="fx1", guard=False, **kw):
     r7 2) is an FX2 instance, which the station runs as a DRY PASS since
     12 Sep 2026 (Claims.fx1_only) -- the gate below proves it. Until then
     every gate here rendered on alloc 1 and would now read dry."""
+    kw.setdefault("MODE", LP)
     src = TMP / "fs_in.raw"
     src.write_bytes(b"".join(struct.pack("<i", m) for m in samples))
     out = TMP / "fs_out.raw"
@@ -140,7 +144,7 @@ def check(label, ok, detail=""):
 
 # ---- 1. defaults: bit-exact passthrough --------------------------------------
 ramp = [int(round(-8388607 + 2 * 8388607 * i / (N - 1))) for i in range(N)]
-L, R = render(ramp)
+L, R = render(ramp, MODE=0)
 check("defaults are a bit-exact passthrough (the bypass block)",
       L == ramp and R == ramp,
       "" if L == ramp else f"first diff at {next(i for i,(a,b) in enumerate(zip(L,ramp)) if a!=b)}")
@@ -154,7 +158,7 @@ check("LP is a 2-pole: 2 kHz vs 4 kHz differ by ~12 dB at FREQ=30",
 
 # ---- 3. DC through the modes --------------------------------------------------
 d_lp = tail_mean(render(dc(), FREQ=64)[0])
-d_bp = tail_mean(render(dc(), FREQ=64, MODE=1)[0])
+d_bp = tail_mean(render(dc(), FREQ=64, MODE=2)[0])
 dcv = int(0.25 * 8388607)
 check("BP at DC -> 0", abs(d_bp) < 64, f"{d_bp:.0f} LSB")
 check("LP at DC -> DC", abs(d_lp - dcv) < 256, f"{d_lp:.0f} vs {dcv}")
@@ -164,13 +168,13 @@ check("LP at DC -> DC", abs(d_lp - dcv) < 256, f"{d_lp:.0f} vs {dcv}")
 # transcription modules/spectrum/capacitor2_ref.py after its chase settles.
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "modules/spectrum"))
 import capacitor2_ref as _C2
-_c_open = rms_db(render(tone(1000, 0.2), MODE=2, FREQ=127, RES=0)[0]) - rms_db(tone(1000, 0.2))
+_c_open = rms_db(render(tone(1000, 0.2), MODE=3, FREQ=127, RES=0)[0]) - rms_db(tone(1000, 0.2))
 check("ISO open (LOW 127, COLR 0) passes 1 kHz at the plugin's trim, -2.1 dB (1.5/cbrt(7))", abs(_c_open + 2.1) < 1.0, f"{_c_open:+.2f} dB")
-_c_lo = rms_db(render(tone(4000, 0.2), MODE=2, FREQ=40, RES=0)[0]) - rms_db(render(tone(100, 0.2), MODE=2, FREQ=40, RES=0)[0])
+_c_lo = rms_db(render(tone(4000, 0.2), MODE=3, FREQ=40, RES=0)[0]) - rms_db(render(tone(100, 0.2), MODE=3, FREQ=40, RES=0)[0])
 check("ISO LOW 40 cuts 4 kHz by > 12 dB against 100 Hz", _c_lo < -12, f"{_c_lo:.1f} dB")
 for _f, _c in ((127, 0), (60, 64), (90, 127)):
     _src = tone(440, 0.3)
-    _L, _ = render(_src, MODE=2, FREQ=_f, RES=_c)
+    _L, _ = render(_src, MODE=3, FREQ=_f, RES=_c)
     _ref = _C2.Capacitor2(_f / 128, 0.0, _c / 128, octabam=True); _rL, _ = _ref.process([v / 8388607 for v in _src], [v / 8388607 for v in _src])
     _me = sum(abs(_L[i] / 8388607 - _rL[i]) for i in range(N // 2, N)) / (N - N // 2)
     _lv = rms_db(_L) - 20 * math.log10(max(1e-9, math.sqrt(sum(v * v for v in _rL[N // 2:]) / (N - N // 2))))
@@ -189,28 +193,28 @@ _w0 = [rms_db(_y0[i:i + 400], 0) for i in range(N // 2, N - 400, 200)]
 check("LDP 0 (64) leaves the level still (< 1 dB swing)", max(_w0) - min(_w0) < 1, f"{max(_w0) - min(_w0):.1f} dB swing")
 
 # ---- 6. VOWEL renders and morphs ---------------------------------------------
-va = rms_db(render(tone(1100), MODE=3, FREQ=0, RES=90)[0])     # A: F2 1090
-vi = rms_db(render(tone(1100), MODE=3, FREQ=64, RES=90)[0])    # I: F2 2290
+va = rms_db(render(tone(1100), MODE=4, FREQ=0, RES=90)[0])     # A: F2 1090
+vi = rms_db(render(tone(1100), MODE=4, FREQ=64, RES=90)[0])    # I: F2 2290
 check("VOWEL A vs I differ at 1.1 kHz", abs(va - vi) > 3, f"A {va:.1f}  I {vi:.1f} dBFS")
 
 # ---- 6b. the SEM core: two modes at one setting ----------------------------
 # FREQ 64 is fc = 949 Hz on the taper (60 * 250^(64/128)); RES 64 is Q ~ 3.
 lv = {m: {hz: rms_db(render(tone(hz, 0.2), FREQ=64, RES=64, MODE=m)[0])
-          for hz in (100, 949, 4000)} for m in range(2)}
+          for hz in (100, 949, 4000)} for m in range(1, 3)}
 check("LP passes 100 Hz and cuts 4 kHz by > 20 dB (FREQ 64)",
-      lv[0][100] - lv[0][4000] > 20, f"{lv[0][100] - lv[0][4000]:.1f} dB")
+      lv[1][100] - lv[1][4000] > 20, f"{lv[1][100] - lv[1][4000]:.1f} dB")
 check("BP peaks at 949 Hz, both skirts > 15 dB down",
-      lv[1][949] - lv[1][100] > 15 and lv[1][949] - lv[1][4000] > 15,
-      f"949 Hz {lv[1][949]:.1f}, 100 Hz {lv[1][100]:.1f}, 4 kHz {lv[1][4000]:.1f} dBFS")
+      lv[2][949] - lv[2][100] > 15 and lv[2][949] - lv[2][4000] > 15,
+      f"949 Hz {lv[2][949]:.1f}, 100 Hz {lv[2][100]:.1f}, 4 kHz {lv[2][4000]:.1f} dBFS")
 
 # ---- 6c. the BP peak sits on the taper ----------------------------------------
 # fc = 60 * 250^(FREQ/128): 239 / 949 / 3773 Hz. RES 100 is Q ~ 12 (+21 dB at
 # fc), so the tone is small (0.02 FS) -- at 0.2 FS the peak would sit on the
 # limiter and the skirts would read only a dB or two lower.
 for freq, fc in ((32, 239), (64, 949), (96, 3773)):
-    at = rms_db(render(tone(fc, 0.02), FREQ=freq, RES=100, MODE=1)[0])
-    below = rms_db(render(tone(fc / 1.26, 0.02), FREQ=freq, RES=100, MODE=1)[0])
-    above = rms_db(render(tone(fc * 1.26, 0.02), FREQ=freq, RES=100, MODE=1)[0])
+    at = rms_db(render(tone(fc, 0.02), FREQ=freq, RES=100, MODE=2)[0])
+    below = rms_db(render(tone(fc / 1.26, 0.02), FREQ=freq, RES=100, MODE=2)[0])
+    above = rms_db(render(tone(fc * 1.26, 0.02), FREQ=freq, RES=100, MODE=2)[0])
     check(f"BP peak at FREQ {freq} is at {fc} Hz (a third-octave either side > 3 dB lower)",
           at - below > 3 and at - above > 3, f"{at:.1f} vs {below:.1f} / {above:.1f} dBFS")
 
@@ -235,11 +239,11 @@ def bounded(label, out):
 bounded("RES 127 LP at fc (949 Hz), 0.02 FS in: below full scale, never on the rails",
         render(tone(949, 0.02), FREQ=64, RES=127)[0])
 bounded("RES 127 BP at fc (949 Hz), 0.02 FS in: below full scale, never on the rails",
-        render(tone(949, 0.02), FREQ=64, RES=127, MODE=1)[0])
+        render(tone(949, 0.02), FREQ=64, RES=127, MODE=2)[0])
 bounded("RES 127 VOWL a at F1, 0.1 FS in (x8 makeup): below full scale, never on the rails",
-        render(tone(730, 0.1), FREQ=0, RES=127, MODE=3)[0])
+        render(tone(730, 0.1), FREQ=0, RES=127, MODE=4)[0])
 burst = tone(949, 0.5, N // 2) + [0] * (N // 2)
-for m, mn in ((0, "LP"), (1, "BP")):
+for m, mn in ((1, "LP"), (2, "BP")):
     out = render(burst, FREQ=64, RES=127, MODE=m)[0]
     hit = max(abs(v) for v in out[N // 4:N // 2]) >= 0x7ffff0
     # Q ~ 34 at 600 Hz rings with tau = Q / (pi fc) = 18 ms = 794 samples, so
@@ -257,14 +261,14 @@ VOWELS = (("a", 0, 730, 1090), ("e", 32, 530, 1840), ("i", 64, 270, 2290),
 own = {}
 for name, freq, f1, f2 in VOWELS:
     for fn, fk in (("F1", f1), ("F2", f2)):
-        at = rms_db(render(tone(fk, 0.2), FREQ=freq, RES=100, MODE=3)[0])
-        lo_ = rms_db(render(tone(fk / 1.19, 0.2), FREQ=freq, RES=100, MODE=3)[0])
-        hi_ = rms_db(render(tone(fk * 1.19, 0.2), FREQ=freq, RES=100, MODE=3)[0])
+        at = rms_db(render(tone(fk, 0.2), FREQ=freq, RES=100, MODE=4)[0])
+        lo_ = rms_db(render(tone(fk / 1.19, 0.2), FREQ=freq, RES=100, MODE=4)[0])
+        hi_ = rms_db(render(tone(fk * 1.19, 0.2), FREQ=freq, RES=100, MODE=4)[0])
         check(f"VOWL {name} {fn} is a peak at {fk} Hz (a quarter octave either side lower)",
               at > lo_ and at > hi_, f"{at:.1f} vs {lo_:.1f} / {hi_:.1f} dBFS")
         if fn == "F1":
             own[name] = at
-    others = [rms_db(render(tone(o1, 0.2), FREQ=freq, RES=100, MODE=3)[0])
+    others = [rms_db(render(tone(o1, 0.2), FREQ=freq, RES=100, MODE=4)[0])
               for on, _, o1, _ in VOWELS if on != name]
     check(f"VOWL {name} is loudest at its own F1 among the five", own[name] > max(others),
           f"own {own[name]:.1f}, best other {max(others):.1f} dBFS")
@@ -279,27 +283,47 @@ for name, freq, f1, f2 in VOWELS:
 # Measured at FREQ 64 (fc 949 Hz since the 60 Hz floor), not the LP gate's FREQ 30: four poles put
 # 2 kHz 100 dB under fc = 109 Hz, below the 24-bit floor, and both tones read
 # the floor (the first draft of this gate measured -0.0 dB/oct that way).
-l_lo = rms_db(render(tone(2000), FREQ=64, RES=0, MODE=4)[0])
-l_hi = rms_db(render(tone(4000), FREQ=64, RES=0, MODE=4)[0])
+l_lo = rms_db(render(tone(2000), FREQ=64, RES=0, MODE=0)[0])
+l_hi = rms_db(render(tone(4000), FREQ=64, RES=0, MODE=0)[0])
 p_lo = rms_db(render(tone(2000), FREQ=64, RES=0)[0])
 p_hi = rms_db(render(tone(4000), FREQ=64, RES=0)[0])
 l_slope, p_slope = l_lo - l_hi, p_lo - p_hi
 check("LADR is a 4-pole: 2 kHz vs 4 kHz differ by ~24 dB at FREQ=64 (LP reads ~12 there)",
       19 <= l_slope <= 29 and 9 <= p_slope <= 15 and l_slope > p_slope + 6,
       f"LADR {l_slope:.1f} dB/oct vs LP {p_slope:.1f}")
-d_ld = tail_mean(render(dc(), FREQ=64, MODE=4)[0])
+d_ld = tail_mean(render(dc(), FREQ=64, MODE=0)[0])
 check("LADR at DC -> DC (a low-pass, unity at RES 0)", abs(d_ld - dcv) < 256, f"{d_ld:.0f} vs {dcv}")
-l4k = rms_db(render(tone(4000, 0.2), FREQ=64, RES=64, MODE=4)[0])
+l4k = rms_db(render(tone(4000, 0.2), FREQ=64, RES=64, MODE=0)[0])
 check("LADR cuts 4 kHz at FREQ 64 by > 10 dB more than LP does (distinct from LP)",
-      lv[0][4000] - l4k > 10, f"LP {lv[0][4000]:.1f}, LADR {l4k:.1f} dBFS")
-lr = {res: rms_db(render(tone(949, 0.02), FREQ=64, RES=res, MODE=4)[0]) for res in (0, 64, 100, 127)}
+      lv[1][4000] - l4k > 10, f"LP {lv[1][4000]:.1f}, LADR {l4k:.1f} dBFS")
+lr = {res: rms_db(render(tone(949, 0.02), FREQ=64, RES=res, MODE=0)[0]) for res in (0, 64, 100, 127)}
 check("LADR resonance grows with RES: the tone at fc rises RES 0 < 64 < 100 < 127",
       lr[0] < lr[64] < lr[100] < lr[127] and lr[127] - lr[0] > 15,
       " / ".join(f"RES {r} {v:.1f}" for r, v in lr.items()) + " dBFS")
 bounded("RES 127 LADR at fc, 0.13 FS in: below full scale, never on the rails",
-        render(tone(600, 0.13), FREQ=64, RES=127, MODE=4)[0])
+        render(tone(600, 0.13), FREQ=64, RES=127, MODE=0)[0])
 bounded("RES 127 LADR at fc, 0.5 FS in: below full scale, never on the rails",
-        render(tone(600, 0.5), FREQ=64, RES=127, MODE=4)[0])
+        render(tone(600, 0.5), FREQ=64, RES=127, MODE=0)[0])
+
+# ---- 6h. LADR at the top of the dial stays bounded with resonance ------------
+# The feedback sum carries each stage's (1-G) feed-through (14 Sep 2026);
+# without it the ladder diverged above ~4 kHz with any RES (the float model
+# of the old sum went to inf at 15 kHz RES 64) -- Sam's "spike high pitched".
+import random as _rnd
+_rnd.seed(7)
+_wn = [int(_rnd.uniform(-0.3, 0.3) * 8388607) for _ in range(N)]
+_l0 = rms_db(render(_wn, FREQ=127, RES=0, MODE=0)[0])
+for _res in (64, 100, 127):
+    _y = render(_wn, FREQ=127, RES=_res, MODE=0)[0]
+    _lr = rms_db(_y)
+    _rail = sum(1 for v in _y[N // 2:] if abs(v) >= 0x7ffff0) / (N - N // 2)
+    # the linear ladder's passband sits at 1/(1+k): -9 dB at RES 64, the Moog law
+    check(f"LADR FREQ 127 RES {_res} on noise: bounded (within 12 dB of RES 0, no rail)",
+          abs(_lr - _l0) < 12 and _rail == 0, f"RES 0 {_l0:.1f}, RES {_res} {_lr:.1f} dBFS, rail {_rail*100:.1f}%")
+_y = render(_wn, FREQ=64, RES=100, LDP=127, LSP=127, MODE=0)[0]
+_lr = rms_db(_y); _rail = sum(1 for v in _y[N // 2:] if abs(v) >= 0x7ffff0) / (N - N // 2)
+check("LADR FREQ 64 RES 100 under LDP 127 LSP 127: bounded (no rail, < RES 0 + 6 dB)",
+      _rail == 0 and _lr < _l0 + 6, f"{_lr:.1f} dBFS, rail {_rail*100:.1f}%")
 
 # ---- 7. every knob at its extremes renders -----------------------------------
 for name in K:
@@ -312,11 +336,11 @@ check("every knob at both extremes renders", True)
 # envelope (tools/harness/pressure.py) and the FX2 chooser both take it at
 # its word, so it is proven here at every extreme, and the guard sees no
 # write outside the frame.
-L, R = render(ramp, slot="fx2", FREQ=30, RES=110, MODE=1, ENV=127, LDP=127)
+L, R = render(ramp, slot="fx2", FREQ=30, RES=110, MODE=2, ENV=127, LDP=127)
 check("FX2 instance is a bit-exact DRY PASS at every extreme (fx1_only)",
       L == ramp and R == ramp,
       "" if L == ramp else f"first diff at {next(i for i,(a,b) in enumerate(zip(L,ramp)) if a!=b)}")
-render(ramp, slot="fx2", guard=True, FREQ=30, RES=110, MODE=1, ENV=127, LDP=127)
+render(ramp, slot="fx2", guard=True, FREQ=30, RES=110, MODE=2, ENV=127, LDP=127)
 g = getattr(render, "guard_out", "")
 check("FX2 instance trips no write guard",
       "guard clean" in g,

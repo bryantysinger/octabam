@@ -209,10 +209,12 @@ proc:
         clr     a
         move    a,x:(r7+$1e)            ; this block's peak starts at 0
 
-; ---- ENV (slot 2) and LFO (slot 3): two bipolar depths onto the cutoff ------
+; ---- ENV (slot 2, bipolar) and LDP (slot 3, 0..127): two depths onto the cutoff
 ; (14 Sep 2026, Spectrum v2: the SRC select and the one DPTH knob became two
-; page-1 knobs, 64 = none, so the touch-sensitive filter and the moving one
-; are both under the hand.) FREQm = FREQ + (ENV-64)/64 * env + (LFO-64)/64 * lfo.
+; page-1 knobs, so the touch-sensitive filter and the moving one are both
+; under the hand; LDP went unipolar the same day -- a negative depth on a
+; triangle is only a phase flip, Sam: "why does depth go negative?").
+; FREQm = FREQ + (ENV-64)/64 * env + LDP/128 * lfo.
         move    x:(r6+$2),a             ; ENV, a knob word (bit 23 clear, a2 = 0)
         and     #>$7f0000,a
         move    #$40,x0
@@ -222,12 +224,9 @@ proc:
         move    x:(r7+$32),y1           ; env (>= 0)
         mpy     x0,y1,a
         move    a,x1                    ; the envelope's term
-        move    x:(r6+$3),a             ; LFO
+        move    x:(r6+$3),a             ; LDP
         and     #>$7f0000,a
-        move    #$40,x0
-        sub     x0,a
-        asl     #$1,a,a
-        move    a,x0
+        move    a,x0                    ; LDP/128
         move    x:(r7+$49),y1           ; lfo, bipolar
         mpy     x0,y1,a                 ; (x0 signed, y1 signed: the audited order)
         add     x1,a
@@ -330,15 +329,14 @@ fs_msame:
         move    a,x:(r7+$25)
         move    #>$7fffff,x0
         move    x:(r6+$c),a             ; the select field where it sits (as SRC)
-        and     #>$ff00,a
-        cmp     #>$100,a
-        beq     fs_mbp
+        and     #>$ff00,a               ; 0 LADR, 1 LP, 2 BP, 3 ISO, 4 VOWL
+        beq     fs_mladr                ; (LADR first, 14 Sep 2026: "moog is best")
         cmp     #>$200,a
-        beq     fs_mcap
+        beq     fs_mbp
         cmp     #>$300,a
-        beq     fs_mvowl
+        beq     fs_mcap
         cmp     #>$400,a
-        beq     fs_mladr
+        beq     fs_mvowl
         move    x0,x:(r7+$23)           ; LP, and anything unexpected
         bra     fs_mdone
 fs_mbp:
@@ -513,7 +511,8 @@ fs_mladr:
 ; stages y = G'(v - s) + s, s' = 2y - s, out = y4. G ramps per sample as g2
 ; does ($16 Grun += $15 dG), FM moves G' multiplicatively with the block's
 ; powers frozen (the same approximation as the SEM's frozen d). Slots:
-; $10 G  $11 G^2  $12 G^3  $13 k/4  $14 d/2  $15 dG  $16 Grun.
+; $10 G  $11 G(1-G)  $12 G^2(1-G)  $17 G^3(1-G)  $18 1-G  $13 k/4  $14 d/2
+; $15 dG  $16 Grun ($17/$18 are VOWL's b0 slots: one mode per block).
         move    #>$2,x0
         move    x0,x:(r7+$2d)           ; the loop runs the ladder
         move    x:(r6+$1),x0            ; RES/128
@@ -530,15 +529,11 @@ fs_mladr:
         rep     #$18
         div     x0,a
         move    a0,x0                   ; G = g/(1+g), <= 0.65
-        move    x0,x:(r7+$10)
+        move    x0,x:(r7+$10)           ; G, the ramp's target
         move    x0,y1
         mpy     x0,y1,a                 ; G^2
-        move    a,x:(r7+$11)
         move    a,x0
-        mpy     x0,y1,a                 ; G^3
-        move    a,x:(r7+$12)
-        move    x:(r7+$11),x0
-        move    x:(r7+$11),y1
+        move    a,y1
         mpy     x0,y1,a                 ; G^4
         move    a,x0
         move    x:(r7+$13),y1           ; k/4
@@ -552,6 +547,25 @@ fs_mladr:
         div     x0,a
         move    a0,x0
         move    x0,x:(r7+$14)           ; d/2
+; S's coefficients: a stage's zero-input feed-through is (1-G) s (y = G v +
+; (1-G) s), so $18 = 1-G, $11 = G(1-G), $12 = G^2(1-G), $17 = G^3(1-G).
+; Until 14 Sep 2026 the sum used G^3, G^2, G, 1: the feedback overestimated
+; by 1/(1-G), nothing at 1 kHz (G 0.06) and unstable above ~4 kHz with any
+; RES -- Sam's "LFO makes it spike high pitched"; the float model of the
+; same sum diverges at 15 kHz RES 64.
+        move    x:(r7+$10),y1           ; G
+        move    #>$7fffff,a
+        sub     y1,a
+        move    a,x:(r7+$18)            ; 1-G
+        move    a,x0
+        mpy     x0,y1,a
+        move    a,x:(r7+$11)            ; G(1-G)
+        move    a,x0
+        mpy     x0,y1,a
+        move    a,x:(r7+$12)            ; G^2(1-G)
+        move    a,x0
+        mpy     x0,y1,a
+        move    a,x:(r7+$17)            ; G^3(1-G)
         move    x:(r7+$10),a            ; G
         move    x:(r7+$16),x0           ; Grun, where the last block ended
         sub     x0,a
@@ -567,7 +581,7 @@ fs_mdone:
         move    a,x:(r7+$2c)            ; ($25 is the SVF's HP tap -- 14 Sep 2026's first build put this there and every LP leaked half its HP)
 
 ; ---- BYPASS: the defaults are a bit-exact passthrough ---------------------
-; FREQ 127, RES 0, ENV 64, LDP 64, WDTH 64, MODE LP (LSP is inert at LDP 64 / ENV 64).
+; FREQ 127, RES 0, ENV 64, LDP 0, WDTH 64, MODE 0 (LSP is inert at LDP 0 / ENV 64).
 ; Every part that ever chose stock FILTER runs this on FX1 after the flash,
 ; so the neutral block copies nothing at all.
         clr     b
@@ -583,7 +597,7 @@ fs_mdone:
         cmp     x0,a
         bne     fs_live
         move    x:(r6+$3),a
-        cmp     x0,a
+        tst     a
         bne     fs_live
         move    x:(r6+$5),a
         cmp     x0,a
@@ -1161,19 +1175,20 @@ fs_lcore:
         cmp     x0,a
         tgt     x0,a                    ; G' < 1
         move    a,x:(r7+$1c)            ; G' this sample
-; S/8 = (G^3 s0 + G^2 s1 + G s2 + s3)/8 with the states at s/2: sum/4
+; S/8 = (1-G)(G^3 s0 + G^2 s1 + G s2 + s3)/8 with the states at s/2: sum/4
         move    x:(r3)+,x0              ; s0/2
-        move    x:(r7+$12),y1           ; G^3
+        move    x:(r7+$17),y1           ; G^3(1-G)
         mpy     x0,y1,a
         move    x:(r3)+,x0              ; s1/2
-        move    x:(r7+$11),y1           ; G^2
+        move    x:(r7+$12),y1           ; G^2(1-G)
         mac     x0,y1,a
         move    x:(r3)+,x0              ; s2/2
-        move    x:(r7+$10),y1           ; G
+        move    x:(r7+$11),y1           ; G(1-G)
         mac     x0,y1,a
         move    x:(r3),x0               ; s3/2
+        move    x:(r7+$18),y1           ; 1-G
         move    #$3,n3
-        add     x0,a                    ; S/2
+        mac     x0,y1,a                 ; S/2
         move    (r3)-n3                 ; back to s0
         asr     #$2,a,a                 ; S/8, <= 0.6
         move    a,x0
