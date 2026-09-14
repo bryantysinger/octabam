@@ -359,6 +359,94 @@ track). Save a copy of the card's project before any overwrite.
 
 ---
 
+## The master compressor collapses ONE channel above COMP ~40 ✅ CAUSE MEASURED 14 Sep 2026: a station's UNCLEARED filter state is a near-full-scale DC on its output, and the makeup clips it
+
+**Symptom.** Character on the master (T8) with COMP above ~40: the RIGHT
+channel drops 40+ dB and what is left is L leaking through the width stage
+(R ≈ −45 dB × L); L holds. Scales with WDTH, balance-independent, bistable
+around the stamp's COMP 40, RET 127 and RET 0 alike but RET 32/64 clean.
+Recorded across 13 Sep evening and 14 Sep (`docs/effects/VOICING.md`).
+
+**Measured (14 Sep 2026, images 6 and 7 = the shipping Character plus a tap
+selector on RING, `out/hw/ladder/chdiag2_taps.log`, `chdiag3_taps.log`,
+`ret_probe.log`, `where_probe.log`, `engine_probe.log`, `level_probe.log`,
+`input_probe.log`).**
+- Character's compressor is INNOCENT. On the unit the R product is right
+  (stored unshifted it lands at exactly −12 dB; stored from a1 after the ×4
+  it lands at unity), the slot is right (R := L_comp is clean), and the
+  collapse survives every rewrite of the ×4 (accumulator b, 56-bit adds,
+  single-bit asl twice, mpy + 3 mac), the order (R first) and the y1 state.
+  Only the LIMITED store after the ×4 gives a constant — i.e. the value is
+  out of range: a large offset the AC-coupled capture cannot see.
+- It needs the STATIONS. Bank B (master Character, no engines), C (verb),
+  D (delay), E (verb + delay) are clean at COMP 80; a per-track Character on
+  T1 in bank F is clean; bank G (E + the stations) collapses.
+- Track LEVEL (post-FX) 0 on **T4** clears it outright; T5, T6, T7 each
+  relieve it ~10 dB; T1, T2, T3 do nothing. T4's AMP VOL 0 (pre-FX) changes
+  NOTHING, T4 MUTE (post-FX) clears it: T4's Spectrum GENERATES the offset
+  from its state, not from its input. T2/T3/T4/T6/T7 carry identical
+  Spectrum knob bytes.
+- **Reproduced under dsp_host** (`verify_dirtystate.py`): Spectrum live with
+  its instance block pre-filled with 0x400000 outputs −0.5 FS on silence
+  forever; the SVF states and the LP poles decay in a few samples, the two
+  HP poles of filter B at cHP = 0 (BASE 0) are FROZEN, and
+  `hp2 = yB − h2` subtracts the stale h2 from every sample. Init cleared
+  $00..$17 only; $19/$1a, $31..$3f were never written.
+
+**Inferred.** Why the stations are LIVE at the passthrough stamp on the unit
+(under the port their bypass loop runs: 257 instructions a frame): the
+bypass compare tests the published page-2 words (`x:(r6+$c)`, `x:(r6+$d)`)
+against the manifest's 0-based selects, and the unit's page-2 publish is
+the one path the port does not run at load (O9c). Not measured; the fix
+below makes it moot for the DC, not for the cycles (a live station costs
+its full price — which is what the pricer charges anyway).
+
+**Fix (branch `initstate`).** Every persistent slot is zeroed at init:
+Spectrum $00..$3f in one loop (the FX2 flag stored after it), Modulation's
+LFO L/R values, Character's SRR pair/counter, carrier phase and liveness
+grace. `tools/verify/verify_dirtystate.py` (in `make verify`, ahead of the
+selftest) renders every module of the remix from a garbage block on silence
+at its defaults and with every knob nudged, four fill words, and refuses any
+output above −100 dBFS: the old build fails on Spectrum (−6 dBFS) and
+Character (−69 dBFS), the fixed build is silent everywhere. Hardware
+confirmation: pending flash.
+
+**Related.** The 13 Sep "DC thump from TRACK 6, LFO 2" entry above is a DC
+STEP on the output; an LFO moving an FX1 word flips a station from bypass to
+live, which is exactly when a frozen stale pole first appears. Worth a
+re-test after this fix before it is called the same mode.
+
+---
+
+## A diagnostic image silenced every bank with stations, and the port played them 🔴 14 Sep 2026, CAUSE OPEN (placement)
+
+**Symptom.** Image OCTABAM5 (DIAG 2: Character 189 words shorter than the
+shipping build) played the ladder's banks A, B, E and was SILENT on F and G
+(the station layouts) — silent from the panel too, DSP not hung (A played
+again straight after G). Image 4 (DIAG 1) and the shipping image play G.
+
+**Measured.** Under the port image 5 plays F and G with the card's own
+ladder project, the stations dispatched on both cores; the stopwatch reads
+the image-5 Character CHEAPER than shipping; at the banks' knobs no
+instruction runs in image 5 that image 4 did not run. The only differences
+left were placement: Modulation moved down on both payloads (A 0x1c1b,
+B 0x193c) and the build KEPT the stock COMB code and dispatch on payload B
+(its record started past the shorter selection; never executed under the
+port, `--dsp-pcwatch`). **Image 6 = image 5's exact Character words plus
+189 nop words** (image 4's placement) plays F and G.
+
+**Cause. OPEN.** Something at that placement the port does not model. A
+candidate is the kept stock COMB on payload B; the other is Modulation's
+address. Not bisected (each half is a flash).
+
+**Workaround for diagnostic images.** Keep the module's word count at a
+placement known to play (pad with nops after the last rts) so the
+diagnostic changes one thing. Any future build whose station bank goes
+silent while the port plays it: compare the placement lines of the build
+log against the last image that played before anything else.
+
+---
+
 ## Sequencer stuck on step 1 AT PROJECT LOAD: an init that moved r1 ✅ CAUSE MEASURED under the port, 13 Sep 2026 (image 99)
 
 **Symptom.** Image 99 flashed, project loaded: play sticks on step 1, AED

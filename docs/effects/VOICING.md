@@ -2392,3 +2392,36 @@ the port does not run. The emulator-side investigation is exhausted: the DSP
 arithmetic is symmetric and does not collapse R for any content. Next
 instrument is hardware (measure the master out under sustained GR directly)
 or modeling the firmware's master delivery in the port -- both need Sam.
+
+**14 Sep 2026, RESOLVED ON THE UNIT: the R collapse was never the compressor,
+the master path, or the width — it was a DC OFFSET from a STATION'S UNCLEARED
+STATE that the compressor's makeup clipped.** Every "not in Character" line
+above was right; the "master delivery" suspect was wrong. The trail
+(`out/hw/ladder/chdiag2_taps.log`, `chdiag3_taps.log`, `ret_probe.log`,
+`where_probe.log`, `engine_probe.log`, `level_probe.log`, `input_probe.log`):
+- Two diagnostic images with a tap selector on RING (11 + 11 whole-apply
+  variants): on the unit the R product is right (no ×4: exactly −12 dB; a1
+  store: unity), the slot is right (R := L_comp clean), every ×4 rewrite
+  (b, 56-bit adds, single-bit asl, mac), the order and the y1 state still
+  collapse; ONLY the limited store gives a constant → the value is OUT OF
+  RANGE, i.e. carries an offset the AC-coupled capture cannot show.
+- RET 127 and RET 0 collapse, RET 32/64 clean (the offset scaled down, and
+  the compressor actually engaging = the −40 dB "nonlinear" residual).
+- Banks B/C/D/E (no stations) clean at COMP 80; T1's Character clean; only
+  the station banks collapse. LEVEL 0 on T4 clears it; T5/T6/T7 relieve it
+  ~10 dB each; T1/T2/T3 nothing. T4 AMP VOL 0 (pre-FX) changes nothing, T4
+  MUTE clears it: the station makes it from STATE. Identical knob bytes on
+  T2/T3/T4/T6/T7 — the garbage differs per block.
+- Reproduced in one dsp_host run with the instance block pre-filled
+  (`tools/verify/verify_dirtystate.py`): Spectrum live → −0.5 FS forever;
+  filter B's HP poles at cHP = 0 are frozen and `hp2 = yB − h2` subtracts
+  the stale h2 every sample. Init cleared $00..$17 only.
+- Fix: every persistent slot zeroed at init (Spectrum $00..$3f, Modulation
+  $1d/$1e, Character $19..$1c, $3c/$3d); the gate is in `make verify`. Old
+  build: Spectrum −6 dBFS, Character −69 dBFS from garbage; fixed: silent.
+Character's AC1 compressor is CORRECT as ported and needs no change; "master
+GLUE COMP ≤ 20" is lifted once the fix is confirmed on the unit. Register
+entry: `docs/remixer/FAILURE_MODES.md` "The master compressor collapses ONE
+channel". The stations run LIVE on the unit at the passthrough stamp
+(inferred from the DC; the port bypasses them) — a separate open question
+for the cycle budget, not the sound.
