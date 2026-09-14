@@ -1,112 +1,102 @@
 # MODULATION
 
-The third BamSep26 station: one modulated line, seven modes, **FX1 only**,
-replacing stock CHORUS (id 0x12). Design page:
-https://claude.ai/code/artifact/1f1bfff2-9d4e-41b6-b0a7-91a3c8989aaf
+The third BamSep26 station, a modulation pedal: **FX1 only**, replacing
+stock CHORUS (id 0x12). v2 (14 Sep 2026) rebuilt every mode from a
+published, permissively licensed source; the survey, licences and laws are
+in `docs/effects/PORTS.md`.
 
-| page 1 | RATE · DPTH · FDBK · MIX · →DEL · →VRB |
+| page 1 | RATE · DPTH · FDBK · MIX · TONE · WDTH |
 |---|---|
-| page 2 | DLY · MODE (CHOR FLNG PHSR COMB TREM VIB PAN) · TONE · SHPE (TRI SIN SQR SAW) · WID · STGS (2P 4P 6P 8P) |
+| page 2 | DLY · MODE (JUNO DIM ENS FLNG COMB PHSR) |
 
-Three sample loops, chosen once per block — the Ripple pattern, which
-`cycle_count` prices as "worst of N mode loops"; a dispatch *inside* a sample
-loop cannot be priced at all.
+| mode | source | licence | what it is |
+|---|---|---|---|
+| JUNO | jpcima `HeraChorus.dsp` + pendragon-andyh's Juno-60 measurements | ISC | two BBD lines on one triangle LFO, R inverted; I 0.513 Hz / II 0.863 Hz over 1.5..5.4 ms; I+II 9.75 Hz mono; dry 0.83 + wet 1.0 |
+| DIM | Roland SDD-320 service notes + measurements | laws | antiphase lines, the other side's wet through a highpass, a bass lift on the dry; 0.25 / 0.5 Hz, 5..12 ms. The amounts (0.25 same-side, −1 cross, 0.5 lift, 200 Hz one-poles) are unpublished: **ours** |
+| ENS | jpcima `string-machine` (the Solina) | BSL-1.0 | three taps on one mono line, two three-phase LFOs (0.6 + 6 Hz, equal depth), 5 ± 1 ms; L = t1 + t2 − t3, R = t1 − t2 − t3 |
+| FLNG | Dattorro, *Effect Design Part 2* (JAES 1997), Table 6 | paper | blend 0.7071 of the dry read from a FIXED tap at the sweep's centre, feedforward −0.7071 of the swept tap (through-zero: the sweep crosses the dry and nulls), feedback −0.7071 |
+| PHSR | ChowPhaser (Schulte Compact Phasing A) | BSD-3 | two RC allpasses (15 nF) with feedback, then 2/4/6/8 allpasses (25 nF) on one coefficient from the LDR's law (`R = 100k (light/0.1)^-0.75`, light = 20.1 − 20·lfo); the coefficient decoded per block from two 33-word tables and ramped per sample; the feedback closes through one sample; no tanh |
+| COMB | Mutable Instruments Rings `string.h/.cc` | MIT | a Hermite-read loop tuned by DLY, a 3-tap FIR damping filter (brightness = TONE), the per-pass gain from a DECAY TIME (rt60 = 0.07 s · 2^(8·lf), lf = d(2−d)) so every pitch rings for the same time; no IIR damping (the MIC_W build's omission), no dispersion. FDBK's sign is the polarity: **ours** |
 
-- **LINE** (CHOR, FLNG, COMB, VIB): one interpolated tap with feedback and a
-  one-pole damping inside the loop. The modes differ only in per-block
-  coefficients — centre delay, sweep depth, feedback.
-- **PHSR**: four one-pole allpass stages swept by the LFO, tapped after 1–4
-  stages by four per-block weights, so STGS costs no branch.
-- **AMP** (TREM, PAN): the LFO on amplitude, together or opposite, which is
-  one per-block polarity word.
+Every mode outputs the wet only and MIX blends, so MIX 0 is an exact
+passthrough and MIX 127 the wet outright.
 
-Every mode outputs the **wet only** and MIX blends, so MIX 0 is an exact
-passthrough in all seven and 127 is vibrato or tremolo outright. The LFO runs
-**per sample** (a per-block LFO steps at 2.9 kHz, which a chorus hears as
-zipper), with two shaped copies — L and its WID-offset partner.
+## The knobs
 
-## FX1 only, and it enforces that itself
-
-It needs a per-track line, and beside the servers the only free per-track
-buffer is the FX1 slot: every FX2 instance buffer is BusVerb's tank on core
-0 or BusDelay's line on tracks 3–4. It reads its base from the host's bump
-allocator **at init and only there** (`docs/firmware/DSP.md` §10), and a base ≥ 0x4000
-sets a flag that sends proc down the dry path, which writes nothing to Y.
-`Claims(fx1_only=True, buffer_words=2048)` is that promise to the ledger, and
-the first three gates below are what it rests on.
-
-Two lines of 1,024 words (23 ms each) of the 3,072 an FX1 slot gives. The
-read offset is masked, not the address, so nothing depends on where the
-allocator put us.
-
-## Measured (3 Sep 2026, local)
-
-- **1,133 words** (payload A, 1,166 on B), **402 cycles/sample** (the LINE
-  loop is the worst of the four; PHSR is 354, AMP 193, dry 20).
-- `tools/verify/verify_modulation.py`, **9 gates, all PASS**:
-  - MIX=0 is a bit-exact passthrough in all seven modes;
-  - **an FX2 instance is a bit-exact dry pass in all seven modes at any
-    setting**, and `dsp_host -guard` reports "nothing written over a loaded
-    module" — the FX1-only claim, proven;
-  - the LFO is square-law in RATE (0.5 → 3.0 cycles in 0.68 s at RATE 20 vs
-    110), measured in TREM **on a DC input**, where the output *is* the LFO;
-  - VIB reads the line: an impulse comes back **473 samples** later, which is
-    the centre delay the knob asks for;
-  - PHSR is unity magnitude (+0.01 dB against the dry);
-  - TREM modulates the amplitude, PAN drives the channels 3.3 M apart;
-  - every knob at both extremes renders.
-
-## What the gates cost to get right
-
-- **An hour was spent on a stale audition dump.** The scratch image is cached
-  against the newest mtime under `modules/`, and a stale hit does not fail —
-  it silently measures the STOCK effect whose id this module replaces. Every
-  mode read as a dry pass, the LFO looked dead, and the emulator eventually
-  died on `MACRI`, an instruction stock code uses and it does not implement.
-  The three station gates now delete and rebuild their dump first.
-- **The delay decode shifted an already-scaled product**, pinning every line
-  mode at its 8-sample floor: an 8-sample chorus, measured as an impulse
-  returning 7 samples late instead of 473.
-- **The feedback's one-pole accumulated instead of tracking** (`s += c*tap`
-  rather than `s += c*(tap − s)`), which walks the state to the rail.
-- **The allpass was not an allpass**: `y = x − c·s` instead of `y = −c·x + s`
-  measured 19.6 dB down where an allpass must be 0.0.
-- **The LFO topped out at 51 Hz** — audio rate, not an LFO.
-- Two gates measured the wrong signal before they measured the right one: an
-  envelope follower on a 438 Hz tone tracks the tone, not the sweep.
-
-## Measured laws (12 Sep 2026, `tools/harness/station_laws.py --probe lfo|impulse|noise`)
-
-| knob | law | readout |
+| knob | law | in the modes |
 |---|---|---|
-| RATE | squared, ~0.05 → 8 Hz (kept: chorus rates in the bottom half, tremolo/vibrato in the top) | 32 → 0.64 Hz, 48 → 1.24, 64 → 2.1, 80 → 3.3, 96 → 4.6, 112 → 6.3, 127 → 8.0 |
-| DLY | linear, ≈1 ms + 0.18 ms per detent; **the read is clamped to the 1,024-word line** (centre ≤ 1,000 samples, depth ≤ min(centre − 8, 1,015 − centre)) | 16 → 3.9 ms, 64 → 12.3, 96 → 18.0, 127 → 22.7 (it was 0.18 ms: CHOR's 40-sample floor pushed 127 past the line and the mask wrapped it) |
-| FDBK (FLNG) | linear | a 4-sample comb decaying −9.6 / −5.6 / −3.5 dB per pass at 64 / 100 / 127 |
-| DPTH (TREM, PAN) | | 5 / 10 / 17 / 38 dB at 32 / 64 / 96 / 127 |
-| COMB | DLY = the pitch; FDBK the ring | resonance peaks +8..+12 dB, bw 20–40 Hz |
-| PHSR | **rewritten**: the allpass coefficient was multiplied `mpy x1,y1` — the order that ENCODES AS MPYSU — so a negative `c` (half of every LFO cycle) read as a large positive one and the chain measured +34 dB at Nyquist and +6 dB across the band; the sweep had no centre (DLY unused) and the RES knob reached nothing. Now: `c = centre + DPTH·0.75·lfo`, centre `0.94 − 1.24·DLY/128` (first notch ≈ 1 kHz at DLY 0 → 15 kHz at 127), the sweep clamped per block so `c` stays inside ±0.95, RES = negative feedback of the chain's output (capped 0.9·knob; positive fed back at DC) | unity peaks, notches −55 dB, one more notch per STGS step; RES 64 +3 dB resonance between the notches |
+| RATE | (k/128)² · 0x780 + 0x10 per sample in 2^23rds of a cycle: 0.08..10 Hz; 26 = 0.5 Hz | the LFO everywhere; ENS's fast LFO is 10× |
+| DPTH | 480 · k/128 samples either side of DLY, clamped inside the line (≤ DLY − 8, ≤ 1015 − DLY) | the sweep; in PHSR the LFO's reach into the LDR's law (0..1) |
+| FDBK | bipolar, (k − 64)/64 | feedback from the swept tap into the line; the phaser's regen (clamped ±0.95); COMB's decay time (size) and polarity (sign) |
+| MIX | k/128, 127 = 1.0 | |
+| TONE | one-pole 0.25 + 0.75 · k/128, 127 = 1.0 (exact bypass); 0 = 2 kHz | the BBD proxy in AND out of every line (the Juno's ~10 kHz filters at 80); COMB's FIR brightness; inert in PHSR |
+| WDTH | the right channel's LFO lag, (k/128)/2 of a cycle: 0 mono, 64 quadrature, 127 antiphase | the Juno's and the Dimension's are antiphase; inert in ENS (three fixed phases) and COMB |
+| DLY | 8 + 992 · k/128 samples (0.2..23 ms), capped 1000 | the centre; MANL in FLNG; the pitch in COMB (a 33-word table, 1000..8 samples exponential = 44 Hz..5.5 kHz); STGS in PHSR (2/4/6/8 by quarters) |
 
-Cost: the phaser loop 464 (it was cheaper broken); the line loop 386.
+Each mode's ModeView re-defaults the knobs to its source's numbers (the
+Juno's I, the Dimension's mode 1, the Solina, Dattorro's flanger,
+ChowPhaser's, Rings at a mid pitch).
 
-Kits for the ear in `out/ab/mod_*` (`tools/harness/abkit.py`): the seven
-modes, CHOR depth, FLNG feedback, PHSR stages and resonance, COMB pitch,
-TREM rate.
+## Structure
+
+Four sample loops, one chosen per block (the pricer takes the worst): LINE
+(JUNO, DIM and FLNG share it — the three differ only in five per-block
+mix weights `bl bd ff kc kb`), ENS, PHSR, COMB. Straight-line callees:
+`mo_tap` (the linear read, blending toward the older sample), `mo_herm`
+(the 4-point Hermite read, scaled 1/16 inside), `mo_apst` (one allpass
+stage), `mo_para` (the parabola sine), `mo_lfo`, `mo_tab` (the table
+read), `momixs`. The PHSR chain runs at half scale for headroom (an
+allpass cascade peaks above its input).
+
+PHSR is the last MODE position on purpose: dropping it would move no other
+mode's stored byte (Sam retired the phaser on 13 Sep at 464 cycles; the
+ChowPhaser port prices 476 and is in pending his call).
+
+Two lines of 1,024 words from the FX1 slot's allocator buffer; an FX2
+instance reads its base at init and runs as a dry pass (`Claims(fx1_only)`,
+proven by the gates). A change of MODE clears every state slot.
+
+## Measured (14 Sep 2026, local)
+
+- **1,199 words** (453 in v1), core A FREE 536 in the rig; **476
+  cycles/sample** worst (PHSR 476; LINE 401, ENS 440, COMB 306) — under
+  Character's 639, so the worst core is unchanged at 3,831.
+- `tools/verify/verify_modulation.py`, **24 gates, all PASS**: MIX 0
+  bit-exact in every mode; an FX2 instance a bit-exact dry pass with the
+  guard clean; every mode against `modulation_ref.py` on a stereo signal
+  (max error ≤ 1e-4 where the law is linear; COMB's ring recirculates its
+  rounding, 5.5e-4 against a 3e-3 bar); the Juno's sweep 1.56..5.10 ms and
+  0.5 Hz; the through-zero null −138 dB; the phaser unity at FDBK 64; the
+  comb's period at three pitches.
+
+## What the reference taught (bugs found by it, 14 Sep 2026)
+
+- The per-block "did MODE change" memory shared a slot with the loops'
+  scratch, so any non-zero right channel cleared every state slot at every
+  block boundary: a 0.6 % dip at the first sample of each block, seen as a
+  periodic error and localised by the impulse and DC probes.
+- The flanger's fixed tap was parked in the tap reader's own scratch and
+  read back after the right channel's sweep had overwritten it (the JUNO
+  weight of 0 hid it).
+- The LFO's increment is an integer count of 2^-23 cycles (the mpy keeps
+  the integer part); a float reference drifted 2.5 % at RATE 14 and made
+  every swept mode look 1e-2 wrong.
+- MIX 127 and TONE 127 are pinned to 1.0 so the through-zero null and the
+  flanger's blend are exact (the knob word alone is 127/128).
 
 ## Open
 
-- Voicing (ear pass, 12 Sep 2026, kits in `out/ab/mod_*`): the seven modes
-  all distinct. CHOR depth 16–127 "sounds good". FLNG had a **crackle** on the
-  loop (not on a 440 Hz sine): the tap's linear interpolation blended toward
-  the NEWER neighbour, so a delay of i + f read as i − f and jumped two
-  samples at every integer crossing of the sweep — every LINE mode, shipped
-  on flash 4 and 7 unheard. Fixed (blend toward the older sample): off-tone
-  energy on a 5 kHz sine −48.7 → −89.5 dB max; "gone" by ear. PHSR: the
-  first kit rendered DRY (MIX 0 — `rig_render` now applies a mode's
-  ModeView.defaults on a MODE `--set`); wet, 2P → 8P "good", 6P ≈ 8P; RES
-  110 "usable". COMB "works, sounds good". TREM: the WID knob's default 64
-  ran L and R a quarter-cycle apart — half a panner on a mono source (±10 dB
-  L/R, heard) → TREM and PAN views default WID 0; rate range "good".
-  **Modulation's ear pass is complete.**
-- SAW is a real shape since 3 Sep 2026 (`modulation.asm`).
-- On hardware since flash 4 (tag 79) as T5's FX1; the FX1-only dry pass is
-  emulator-proven; none of the 12 Sep changes are flashed.
+- Never heard: every mode is unheard on the unit (v1's ear pass, 12 Sep,
+  covered CHOR/FLNG/COMB in their old laws). Kits for the ear in
+  `out/ab/mod2_pad` and `out/ab/mod2_loop` (`tools/harness/abkit.py`, the
+  six modes at their defaults, level-matched). Active-RMS level against
+  JUNO's (MIX 70) before matching: DIM +6 / +10 dB (pad / loop), ENS +5 /
+  +7, FLNG +5 / +10 (the −0.7071 feedback), COMB +23 / +6 (a 1 s ring
+  resonates a sustained pad's harmonics by up to 1/(1 − g) ≈ +37 dB), PHSR
+  −0.5 / +5 — a live-round item.
+- DIM's amounts are ours; the Juno's own asymmetry (R 1.51..5.40 ms vs L
+  1.54..5.15) and the I+II shape ("sine-like") are not modelled.
+- The tap read is linear (Dattorro's allpass or Airwindows' 3-point + air
+  are the alternatives, `docs/effects/PORTS.md`).
+- Stored parts: TONE moved from slot 8 to 4 and WID from 10 to 5; SHPE and
+  STGS are gone. `stamp-defaults` before play.
