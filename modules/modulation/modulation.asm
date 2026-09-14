@@ -147,7 +147,7 @@ proc:
         clr     a
         move    a,x:(r7+$27)            ; sin weight 0
         move    a,x:(r7+$18)            ; saw weight 0
-        move    #>$100000,x0            ; square gain / 8 = 1/8, i.e. gain 1
+        move    #$10,x0                 ; square gain / 8 = 1/8, i.e. gain 1 (short: bits 23-16)
         move    x0,x:(r7+$28)
         move    x:(r6+$d),a
         and     #>$ff00,a
@@ -182,7 +182,7 @@ mo_shdone:
         move    a1,x0
         move    x0,a
         move    a,x0
-        move    #>$7c0000,y1
+        move    #$7c,y1                 ; (short immediate: bits 23-16)
         mpy     x0,y1,a
         add     #>$040000,a
         move    a,x:(r7+$24)
@@ -197,13 +197,13 @@ mo_shdone:
 ; that used to be here divided it by 2,048, which pinned every line mode at
 ; its 8-sample floor -- an 8-sample chorus, measured as an impulse coming
 ; back 7 samples late instead of 473 (3 Sep 2026).
-        move    #>$3e0000,y1            ; 992 samples, pre-scaled to Q11.12
+        move    #$3e,y1                 ; 992 samples, pre-scaled to Q11.12 (short: bits 23-16)
         mpy     x0,y1,a
         add     #>$8000,a               ; + 8 samples of floor
         move    a,x:(r7+$21)
 ; DPTH -> the sweep depth in Q11.12 samples
         move    x:(r6+$1),x0
-        move    #>$1e0000,y1            ; 480 samples, pre-scaled to Q11.12
+        move    #$1e,y1                 ; 480 samples, pre-scaled to Q11.12 (short: bits 23-16)
         mpy     x0,y1,a                 ; (no shift -- see the note above)
         move    a,x:(r7+$22)
 ; FDBK -> the feedback amount (RES in PHSR: the chain's resonance)
@@ -282,7 +282,7 @@ mo_mdone:
 ; ===========================================================================
 ; THE LINE LOOP -- CHOR, FLNG, COMB (the one engine since 13 Sep 2026)
 ; ===========================================================================
-        move    #>$1,n0
+        move    #$1,n0                  ; (short immediate, stock's own form)
         do      n7,>molinz
         bsr     moshap                  ; both LFOs, into $1d and $1e
 ; ---- advance the write phase --------------------------------------------
@@ -463,7 +463,7 @@ moshap:
         move    a1,x0
         move    x0,a
         move    a,x:(r7+$1c)
-        move    #>$400000,x0
+        move    #$40,x0                 ; 0.5 (short immediate: bits 23-16)
         move    a,b
         sub     x0,b                    ; phase - 0.5 ...
         asl     #$1,b,b                 ; ... x2: the saw, -1 .. 1
@@ -514,7 +514,7 @@ moshap:
         and     #>$7fffff,a
         move    a1,x0
         move    x0,a
-        move    #>$400000,x0
+        move    #$40,x0                 ; 0.5 (short immediate: bits 23-16)
         move    a,b
         sub     x0,b                    ; phase - 0.5 ...
         asl     #$1,b,b                 ; ... x2: the saw, -1 .. 1
