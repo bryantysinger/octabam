@@ -3034,7 +3034,7 @@ hostquit:
                            if k == "OUTSIDE-DONOR" or k in _listed})
         _xt_tables = [k for k in sorted((k for k in CARRIED if k in _texts),
                                         key=lambda k: _MODS[k].dsp.priority)
-                      if "$facade" in _texts[k] or _MODS[k].dsp.ptable]
+                      if "$facade" in _texts[k] or PTABLE_MARK in _texts[k]]
         _pristine = IMG.read_bytes()
         _xt_rec = {t: stock_mod.curve_bank_record(_pristine, t) for t in "AB"}
         _xt_same = (all(_xt_rec.values()) and
@@ -3057,7 +3057,8 @@ hostquit:
                 # (the reverb, 14 Sep 2026): they go in one slot, LFOTAB
                 # first, and each literal is rewritten to its own start.
                 _n = ((len(LFO01 + LFOTAB) if LFO01_MARK in _t else len(LFOTAB))
-                      if "$facade" in _t else 0) + len(_MODS[_k].dsp.ptable)
+                      if "$facade" in _t else 0) \
+                    + (len(_MODS[_k].dsp.ptable) if PTABLE_MARK in _t else 0)
                 _xt_layout[_k] = (_xa, _n)
                 _xa += _n
             if _xa > _xt_base + _xt_words:
@@ -3099,18 +3100,30 @@ hostquit:
                 sys.exit(f"payload {tag}: {name} has multiple $facade "
                          f"LFOTAB literals -- expected exactly one")
             _ptab = list(remix_modules()[name].dsp.ptable) if name in remix_modules() else []
-            if (name == "DELAY SERVER" and os.environ.get("DLSRC") and _ptab
-                    and PTABLE_MARK not in src):
-                # A DLSRC= engine that predates the manifest's table -- the
-                # REFERENCE side of verify_delay.py's comparison -- carries
-                # its own constants and needs no table; refusing it would
-                # make the manifest's table the first change that cannot be
-                # gated against the source it replaces (14 Sep 2026).
-                _ptab = []
-            if (PTABLE_MARK in src) != bool(_ptab) or src.count(PTABLE_MARK) > 1:
+            if PTABLE_MARK in src and (not _ptab or src.count(PTABLE_MARK) > 1):
                 sys.exit(f"payload {tag}: {name}: a DspSection.ptable and exactly one "
                          f"{PTABLE_MARK} literal in the source go together "
                          f"(table {len(_ptab)} words, literal x{src.count(PTABLE_MARK)})")
+            if _ptab and PTABLE_MARK not in src:
+                # The manifest declares a table this SOURCE never reads: an
+                # alternate engine (RVSRC= / DLSRC=, the reference side of
+                # verify_roll / verify_delay) from before the module owned
+                # one. Keyed on the source, like the LFO table, so the two
+                # engines build through one manifest (14 Sep 2026).
+                print(f"  {name}: declares a {len(_ptab)}-word ptable the "
+                      f"source does not read -- not placed")
+                _ptab = []
+                sys.exit(f"payload {tag}: {name}: a DspSection.ptable and exactly one "
+                         f"{PTABLE_MARK} literal in the source go together "
+                         f"(table {len(_ptab)} words, literal x{src.count(PTABLE_MARK)})")
+            if _ptab and PTABLE_MARK not in src:
+                # The manifest declares a table this SOURCE never reads: an
+                # alternate engine (RVSRC=, verify_roll's reference) from
+                # before the module owned one. Keyed on the source, like the
+                # LFO table, so the two engines build through one manifest.
+                print(f"  {name}: declares a {len(_ptab)}-word ptable the "
+                      f"source does not read -- not placed")
+                _ptab = []
             if DEV and name == "DELAY SERVER":
                 # DEV: the delay does NOT go in the donor region. It is
                 # assembled at DEV_DELAY_P (see that constant) and its module
