@@ -2510,3 +2510,16 @@ landed on the SVF's HP-tap slot (every LP leaked half its HP), and LADR
 fell through into the new CAP alternative (silent). Spectrum prices 290
 (was 369: filter B and FM gone), CAP the dearest mode at ~280 live.
 Unheard: every mode, for Sam's hand.
+**Same round, image 14 on the unit (Sam):** "all sound good ... if you mess
+around with the high and low on cap enough it goes silent and they stop
+working ... env not making much diff on this one ... nlin can't hear any
+effect ... cap pops when you select it ... blank mode is still there".
+Fixes (image 15): the blank is the panel's five-position tick widget, so
+HP went (CAP's HIGH is the high-pass): MODE = LP, BP, CAP, VOWL, LADR;
+LOW never closes (0.004 + 0.996 F^2) and follows FREQm so ENV and LFO work
+in CAP; HIGH never freezes nor kills (0.9 B^2 + 2^-12 -- the frozen-pole DC
+lives in Capacitor2 at B = 0 too); NLIN gains its term 1 + 15C (the plugin
+reads full-scale signals, ours sit a tenth of that); a mode change clears
+the shared state block (the pop); CAP's defaults declared (LOW 127, HIGH 0,
+NLIN 64) for the stamp. The reference carries the station's knob laws as
+an option; CAP tracks it to 6e-4 at NLIN 127.

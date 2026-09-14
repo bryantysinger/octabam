@@ -303,6 +303,25 @@ proc:
         move    x0,x:(r7+$33)           ; d
 
 ; ---- MODE (slot 7 select of r6+$c): tap coefficients; VOWL runs the bank ---
+; A mode change clears the shared state block $00..$17 (the SVF, VOWL, LADR
+; and CAP all keep theirs there) and CAP's chases: landing on CAP popped
+; from the SVF's states (Sam, 14 Sep 2026). $38 = the last block's select.
+        move    x:(r6+$c),a
+        and     #>$ff00,a
+        move    x:(r7+$38),x0
+        move    a1,x:(r7+$38)
+        sub     x0,a                    ; (a2 = 0: both positive)
+        beq     fs_msame
+        clr     a
+        move    r7,r5
+        move    #>$ffffff,m5
+        do      #>24,>fs_mclr
+        move    a,x:(r5)+
+fs_mclr:
+        nop
+        move    a,x:(r7+$26)
+        move    a,x:(r7+$27)
+fs_msame:
         clr     a
         move    a,x:(r7+$2d)            ; the SVF alternative unless VOWL says so
         move    a,x:(r7+$23)
@@ -314,21 +333,18 @@ proc:
         cmp     #>$100,a
         beq     fs_mbp
         cmp     #>$200,a
-        beq     fs_mhp
-        cmp     #>$300,a
         beq     fs_mcap
-        cmp     #>$400,a
+        cmp     #>$300,a
         beq     fs_mvowl
-        cmp     #>$500,a
+        cmp     #>$400,a
         beq     fs_mladr
         move    x0,x:(r7+$23)           ; LP, and anything unexpected
         bra     fs_mdone
 fs_mbp:
         move    x0,x:(r7+$24)
         bra     fs_mdone
-fs_mhp:
-        move    x0,x:(r7+$25)
-        bra     fs_mdone
+; (HP went 14 Sep 2026: the panel's tick widget draws FIVE positions and
+; the sixth was blank; CAP's HIGH is the high-pass now)
 fs_mcap:
 ; ---- CAP (14 Sep 2026): Airwindows Capacitor2 (Chris Johnson, MIT), the
 ; isolator with a dielectric: a lowpass and a highpass (LOW = FREQ, HIGH =
@@ -340,9 +356,19 @@ fs_mcap:
 ; 0.75/cbrt(nl) fitted in NLIN.
         move    #>$3,x0
         move    x0,x:(r7+$2d)           ; the loop runs the capacitor
-        move    x:(r6+$0),x0
-        move    x:(r6+$0),y1
-        mpy     x0,y1,a                 ; (LOW/128)^2
+; LOW follows FREQm -- the knob WITH the envelope and the LFO on it (Sam:
+; "what does env do? not making much diff on this one") -- and never closes
+; fully: target = 0.004 + 0.996 (FREQm)^2 (a ~30 Hz corner at the bottom).
+; HIGH never freezes nor kills everything: 0.9 (HIGH/128)^2 + 2^-12 (a pole
+; at amount 0 holds its last value and SUBTRACTS it forever -- the frozen
+; HP-pole DC of 14 Sep 2026 lives in Capacitor2 too, at B = 0).
+        move    x:(r7+$4f),x0           ; FREQm
+        move    x:(r7+$4f),y1
+        mpy     x0,y1,a                 ; (FREQm)^2
+        move    a,x0
+        move    #>$7f7cee,y1            ; 0.996
+        mpy     x0,y1,a
+        add     #>$008312,a             ; + 0.004
         move    x:(r7+$26),x0
         sub     x0,a
         asr     #$4,a,a
@@ -351,23 +377,36 @@ fs_mcap:
         move    x:(r6+$1),x0
         move    x:(r6+$1),y1
         mpy     x0,y1,a                 ; (HIGH/128)^2
+        move    a,x0
+        move    #>$733333,y1            ; 0.9
+        mpy     x0,y1,a
+        add     #>$000800,a             ; + 2^-12
         move    x:(r7+$27),x0
         sub     x0,a
         asr     #$4,a,a
         add     x0,a
         move    a,x:(r7+$27)            ; hpBase
+; NLIN: the plugin's dielectric reads the signal near full scale; ours sits
+; a tenth of that, so the knob also GAINS the term (Sam: "can't hear any
+; effect from it"): scale = |1 - g x / nl| with g = 1 + 15 C and
+; nl = 1 + 6 (1 - C) -- x/7 at 0 (the plugin's mildest), 16 x at 127.
+; Stored as gn/16 = (1 + 15C)/(16 nl) = ((1 + 15C)/128) / (nl/8), one
+; division; the loop's asl #3 puts the 8 back.
         move    x:(r6+$5),x0            ; C = NLIN/128
         move    #$60,y1                 ; 6/8
         mpy     x0,y1,a
         neg     a
         add     #>$700000,a             ; nl/8 = 7/8 - 6C/8, 1/8 .. 7/8
-        move    a,x0
-        move    #$10,a                  ; 1/8 (a clean load: a0 = 0)
+        move    a,x1                    ; the denominator
+        move    #>$0f0000,y1            ; 15/128
+        mpy     x0,y1,a
+        add     #>$010000,a             ; (1 + 15C)/128, < nl/8 always
+        move    x1,x0
         andi    #$fe,ccr
         rep     #$18
         div     x0,a
         move    a0,x0
-        move    x0,x:(r7+$28)           ; 1/nl, 1/7 .. 1
+        move    x0,x:(r7+$28)           ; gn/16 = (1 + 15C)/(16 nl), <= 0.993
         move    x:(r6+$5),x0
         move    x:(r6+$5),y1
         mpy     x0,y1,a                 ; C^2
@@ -580,7 +619,7 @@ fs_live:
         move    x:(r7+$2d),a
         tst     a
         bne     fs_v_or_l
-; MODEFORK_MID -- alternative 1: the SEM zero-delay SVF, LP / BP / HP / NOTCH
+; MODEFORK_MID -- alternative 1: the SEM zero-delay SVF, LP / BP
 ; ===================== channel L =====================
         move    x:(r0),x0
         move    x0,x:(r7+$1d)           ; park x
@@ -996,13 +1035,13 @@ fs_end:
 fs_ccore:
         move    a,x:(r7+$1d)            ; x (the dry drives the dielectric)
         move    a,x0
-        move    x:(r7+$28),y1           ; 1/nl
-        mpy     x0,y1,a                 ; x/nl
-        asr     #$1,a,a
+        move    x:(r7+$28),y1           ; gn/16
+        mpy     x0,y1,a                 ; g x / (16 nl)
+        asl     #$3,a,a                 ; g x / (2 nl)
         neg     a
-        add     #>$400000,a             ; 1/2 - x/(2 nl)
+        add     #>$400000,a             ; 1/2 - g x/(2 nl)
         abs     a
-        move    a,x0                    ; scale/2, 0 .. 1
+        move    a,x0                    ; scale/2, 0 .. 1 (clipped: the plugin's own bound)
         move    x:(r7+$26),y1           ; lpBase
         mpy     x0,y1,a
         move    a,x:(r7+$1f)            ; lpAmt/2

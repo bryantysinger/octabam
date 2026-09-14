@@ -99,7 +99,7 @@ MODULE = Module(
     params=(
         # ---- page 1: the performance surface, scene/CC-reachable -----------
         Param(b"FREQ", 127, active=True, formatter=_PLAIN,
-              doc="cutoff, 60 Hz..15 kHz exponential; in VOWL the vowel A-E-I-O-U; in CAP the LOW cut"),
+              doc="cutoff, 60 Hz..15 kHz exponential; in VOWL the vowel A-E-I-O-U; in CAP the LOW cut (never closed)"),
         Param(b"RES", 0, active=True, formatter=_PLAIN,
               doc="resonance, up to Q~33 (bounded); in VOWL the formants' bandwidth; in CAP the HIGH cut"),
         Param(b"ENV", 64, 128, active=True, formatter=_BIPOL,
@@ -112,18 +112,21 @@ MODULE = Module(
               doc="CAP only: how hard the signal bends the cutoff (the dielectric); 0 mild, 127 intense"),
         # ---- page 2: knob / select / knob / select / knob / select ----------
         _BLANK,
-        Param(b"MODE", 0, 6, active=True, formatter=_STEP,
-              labels=("LP", "BP", "HP", "CAP", "VOWL", "LADR"),
-              doc="LP/BP/HP the SEM; CAP Airwindows Capacitor2; VOWL formants by FREQ; LADR the Moog ladder"),
+        Param(b"MODE", 0, 5, active=True, formatter=_STEP,
+              labels=("LP", "BP", "CAP", "VOWL", "LADR"),
+              doc="LP/BP the SEM; CAP Airwindows Capacitor2; VOWL formants by FREQ; LADR the Moog ladder"),
         _BLANK,   # was DPTH (14 Sep 2026: ENV and LFO on page 1)
         _BLANK,   # was ROUT (SER/PAR/RING/FM: filter B retired 14 Sep 2026)
         Param(b"RATE", 64, 128, active=True, formatter=_PLAIN,
               doc="LFO speed ~0.08..9 Hz, and the envelope release (0 slow .. 127 fast)"),
         _BLANK,   # was SRC (14 Sep 2026: both depths have their own knob)
     ),
-    # CAP renames the cutoff pair to what they are there (14 Sep 2026)
+    # CAP renames the cutoff pair to what they are there, and its defaults
+    # (a stamp lands them; the live re-default on MODE is stage B's open
+    # ColdFire half). Five positions: the tick widget draws five (14 Sep 2026).
     mode_slot=7,
-    mode_views=(ModeView(mode=3, names={0: b"LOW", 1: b"HIGH"}),),
+    mode_views=(ModeView(mode=2, names={0: b"LOW", 1: b"HIGH"},
+                         defaults={0: 127, 1: 0, 5: 64}),),
     dsp=DspSection(
         asm="modules/spectrum/spectrum.asm",
         # FREQ's taper: 33 SVF f coefficients (Q23, 2*sin(pi*fc/fs)) at FREQ
