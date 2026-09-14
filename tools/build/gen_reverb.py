@@ -126,66 +126,11 @@ SLOT_SHIFT = 0x40                   # -> $10..$3f, inside DARK REV's region
 #               same region, so two tracks collide by construction.
 BASE_MODE = "stash"
 
-# How the four tank lines are addressed.
-#
-#   "modulo"    r1..r4 with m1..m4 = LINE_MASK, tap read as y:(rN+nN), write as
-#               y:(rN)+. One instruction each and eight Y accesses a sample.
-#   "computed"  the address built arithmetically and masked, read and written
-#               through r5 with m5 linear -- the style the diffuser and the
-#               modulated reads already use.
-#
-# The docstring at the top of this file has said since the diffuser was written
-# that modulo addressing with an N register hangs this DSP, and the diffuser and
-# the modulated reads were converted to computed arithmetic because of it. The
-# tank kept modulo on the argument that it is only fatal when r/n are
-# RECOMPUTED inside the sample loop, and the tank sets them once a block.
-#
-# That argument holds for one instance and not for two. v40 -- tank, modulo,
-# 8 Y accesses a sample -- hangs on two tracks. v41, the same 135 instructions a
-# sample with only the four reads and four writes removed, runs. So it is not
-# the instruction count, and it is not the access count either: dsp/yburn.asm
-# sustained 66 Y accesses a sample on one track with no break at all. The one
-# thing v40 does that neither v41 nor yburn does is y:(rN+nN) -- an indexed read
-# under modulo -- and four simultaneous modulo buffers to do it in.
-#
-# r1 stays base + phase as before. The base is LINE_LEN-aligned, so masking
-# (r1 - tap) with LINE_MASK yields the offset within the line regardless.
 TANK_ADDR = os.environ.get("RV_TANK_ADDR") or "computed"
 
 LINE_BASE = [0x50, 0x51, 0x52, 0x53]    # the only slots free in $50..$7f
 TANK_TMP  = 0x54
 
-# Which stages of the engine to emit. dsp/minimal.asm -- a bare rts init and a
-# five-instruction copy loop -- runs happily on two tracks, so the hang is in
-# something the algorithm does, and this is how we find out what. Drop a stage
-# and the data flow closes over the gap: without "pre" the mono input goes
-# straight to the diffuser, without "diff" it goes straight to the tank, without
-# "mod" every line uses its fixed N-register tap and the LFO is not emitted.
-#
-#   "tank"  the four delay lines, the Hadamard, the damping and the output
-#   "pre"   the pre-delay, which is the only other user of r5/m5 modulo
-#   "diff"  the four series allpasses, which use computed addressing
-#   "mod"   the LFO and the interpolated modulated reads on MOD_LINES
-#   "size"  SIZE scaling the taps; without it every tap is a constant
-#   "lines" the delay-line reads and writes themselves. Without it the pointers
-#           still advance under modulo and every other thing proc does still
-#           happens -- there is simply no Y buffer traffic. That splits "what the
-#           setup does" from "touching the buffer", which is the last division
-#           left after instprobe proved the base and r7 both arrive correctly.
-#
-# "tank" is not optional -- without it there is no effect, and dsp/minimal.asm
-# already covers that case.
-# Stages are SUBTRACTIVE: the default is always the whole engine and a bisect
-# build names what to remove.
-#
-#     RV_DROP=pre,diff,mod,size,lines python3 tools/build/gen_reverb.py v43 > ...
-#
-# It used to be additive, and that cost a build. "lines" was added to the stage
-# list after v40 was generated with RV_STAGES=tank, so the same string silently
-# stopped emitting the delay-line reads and writes: v42 shipped as v41 with
-# smaller buffers, produced no reverb at all, and would have "run" on two tracks
-# for the one reason that proves nothing. Subtractive cannot do that -- adding a
-# stage cannot change what an existing command means.
 ALL_STAGES = {"tank", "pre", "diff", "mod", "size", "lines"}
 STAGES = ALL_STAGES - set(x for x in (os.environ.get("RV_DROP") or "").split(",") if x)
 _unknown = set(x for x in (os.environ.get("RV_DROP") or "").split(",") if x) - ALL_STAGES
@@ -196,19 +141,6 @@ assert not _unknown, f"RV_DROP names no such stage: {sorted(_unknown)}"
 ALLOC_FIXED = 0x4000
 
 LINE_OFF  = 0x0000          # four tank lines, one per 0x800
-# RV_LINE_LEN shrinks the lines without changing how many times a sample touches
-# them. v40 hangs on two tracks and v41 -- identical bar the four line reads and
-# four line writes -- does not, so it is the buffer access. That leaves two
-# possibilities, and they need different fixes:
-#
-#   how OFTEN     8 Y accesses a sample per instance, doubling with the second
-#                 track. No probe has ever exercised this: cycleburn burned NOPs
-#                 and memburn2 used X memory.
-#   how MUCH      the extent touched. 4 x 2048 words from the base, which
-#                 assumes the FX2 allocation really is 0x4000 words.
-#
-# Shrinking the lines keeps the access count identical and cuts the extent by 8,
-# so it tells the two apart in one build.
 LINE_LEN  = int(os.environ.get("RV_LINE_LEN") or 2048)
 LINE_TAPS = [max(3, t * LINE_LEN // 2048) for t in (1567, 1249, 977, 733)]
 
@@ -283,30 +215,6 @@ BASE      = "x:(r7+$71)"    # this instance's buffer base
 APB       = 0x72            # the four allpass bases, r7+$72..$75
 
 # ---- parameters -----------------------------------------------------------
-# Layout follows Blackhole's primary page (Mix, Gravity, Feedback, Size, Lo, Hi)
-# and Supermassive's core set, which agree on what belongs where. LO is the one
-# gap: a low cut inside the feedback loop needs four more filter states and ~24
-# instructions a sample, and the cycle headroom is not measured yet.
-# Page 1 is r6+0..5. Page 2 is NOT r6+6..8, and it is not in display order
-# either -- mapped on hardware with dsp/pagemap_probe.asm, which put an
-# unmistakable behaviour on each candidate offset:
-#
-#     knob PRE   -> r6+$c        knob MONO  -> r6+$d
-#     knob BAL   -> r6+$b        knob MIXF  -> r6+$e   (boolean mix/send)
-#
-# CORRECTED 3 Aug: PRE and MIXF were the wrong way round here, and it cost a
-# hardware flash. Read it off stock DARK instead of the probe --
-#   $c  P:0x17d4 masks the knob field, scales it, sets m5 = $7ff and walks a
-#       2048-word delay buffer. That is a PRE-DELAY, unmistakably.
-#   $e  P:0x173c and P:0x1a0d only ever `btst #$8` it and branch. That is a
-#       FLAG. A knob arrives as value<<16, so bit 8 is always clear, and an
-#       effect reading PRE from $e sees 0 for every knob position.
-# Confirmed on hardware too: with wet gain wired to $c, the PRE knob is the
-# one that moves it. STOCK'S OWN READS ARE THE AUTHORITY ON SLOT MEANING --
-# the pagemap probe is not.
-#
-# Our pre-delay therefore sits on the knob already labelled PRE, and page 1's
-# fourth slot is freed for LO.
 P_TIME, P_HI, P_SIZE, P_SPARE, P_MOD, P_MIX = range(6)
 P_PRE   = 0xc               # knob PRE (was 0xe -- see above)
 P_WIDTH = 0xb               # knob BAL

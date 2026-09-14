@@ -52,7 +52,7 @@ TMP.mkdir(parents=True, exist_ok=True)
 # ⚠️ REBUILD THE DUMP, ALWAYS. The audition caches its scratch image against
 # the newest mtime under modules/, and a stale hit here does not fail -- it
 # silently measures the STOCK effect whose id this module replaces. That cost
-# an hour on 3 Sep 2026: every mode read as a dry pass, because the dump's
+# an hour: every mode read as a dry pass, because the dump's
 # dispatch still pointed at stock CHORUS, and the emulator eventually died on
 # a stock instruction it does not implement.
 pathlib.Path(MEM).unlink(missing_ok=True)
@@ -163,7 +163,7 @@ for sat, name in ((0, "TAPE"), (1, "TUBE"), (2, "INFL")):
 for sat, name in ((0, "TAPE"), (1, "TUBE"), (2, "INFL")):
     _g = rms_db(render(tone(438, amp=0.03), DRV=127, SAT=sat)[0]) - rms_db(tone(438, amp=0.03))
     check(f"SAT {name} DRV=127 is within 4 dB of unity on a -30 dBFS tone", abs(_g) < 4.0, f"{_g:+.1f} dB")
-# TONE is a tilt after the saturator in every mode (14 Sep 2026): on noise
+# TONE is a tilt after the saturator in every mode: on noise
 # the top/bottom balance must rise with the knob, and 64 must be the input.
 def _tilt(L):
     n = len(L) // 2; seg = [v / 8388607 for v in L[n:]]
@@ -228,7 +228,7 @@ for _t in (8, 32, 64, 127):
 _L, _ = render(_tx_src, TXTR=0)
 check("TXTR 0 is a bit-exact skip", _L == _tx_src, "")
 
-# ---- 8. the compressor is AC1's dip (JClones, 13 Sep 2026) -----------------
+# ---- 8. the compressor is AC1's dip (JClones) -----------------
 # gr = (Lv^2/2 - 1)^2 + a*Lv, <= 1: a dip around Lv = 1 (level 0.25 FS at
 # COMP's 4x), unity well below it; the dip's depth is COMP. Above ~1.5 the
 # law lets go (the JSFX's AC101 mode, a division, is not ported).
@@ -252,9 +252,6 @@ glue, _ = render(tone(438, amp=0.13), COMP=40, slot="master")
 g0, _ = render(tone(438, amp=0.13), COMP=0, slot="master")
 check("GLUE (the master, by position) at COMP 40 lifts a 0.13 FS tone by about +1 dB (the makeup)",
       0.4 < rms_db(glue) - rms_db(g0) < 1.6, f"{rms_db(glue) - rms_db(g0):+.2f} dB")
-# release, as the reference harness measures it: a 0.13 FS tone stepped up
-# 10 dB for a third and back; the time after the step down until the output
-# sits within 1 dB of its final level. COMP (50 ms) beats GLUE (500 ms).
 NS = 24000
 stepped = [int(0.13 * (10 ** 0.5 if NS // 3 <= i < 2 * NS // 3 else 1.0) * 8388607
                * math.sin(2 * math.pi * 438 * i / SR)) for i in range(NS)]
@@ -269,7 +266,7 @@ rc, rg = env_after("fx1"), env_after("master")
 check("the insert's COMP (50 ms) has recovered more than the master's GLUE (500 ms, by position) 150 ms after a 10 dB step down",
       rc > rg + 3.0, f"COMP {rc:+.1f} dB, GLUE {rg:+.1f} dB")
 
-# ---- 9. TRNS retired 13 Sep 2026 (was here) --------------------------------
+# ---- 9. TRNS retired (was here) --------------------------------
 
 # ---- 10. WDTH -----------------------------------------------------------------
 # dsp_host feeds one stream to both channels here, so what this can prove is
@@ -287,7 +284,7 @@ for name in K:
         render(tone(438, n=600), **{name: v})
 check("every knob at both extremes renders", True)
 
-# ---- THE FX1-ONLY PROMISE (12 Sep 2026): an FX2 instance is dry -------------
+# ---- THE FX1-ONLY PROMISE: an FX2 instance is dry -------------
 # Claims.fx1_only says an FX2-slot instance touches nothing; the rig's cycle
 # envelope (tools/harness/pressure.py) and the FX2 chooser both take it at
 # its word, so it is proven here at every extreme, and the guard sees no
@@ -302,15 +299,7 @@ check("FX2 instance trips no write guard",
       "guard clean" in g,
       next((ln.strip() for ln in reversed(g.splitlines()) if "guard" in ln), ""))
 
-# ---- 12. STEREO CHANNEL SYMMETRY (13 Sep 2026) -------------------------------
-# The mono renders above feed L == R, so a per-channel bug is invisible: the
-# right-channel compressor collapse Sam heard on the unit passed 28/28. These
-# feed DIFFERENT L and R through dsp_host -stereo and assert the chain treats
-# the channels identically -- swap the inputs, the outputs must swap exactly;
-# a stereo signal through COMP must reduce both channels equally. (The unit's
-# collapse does NOT reproduce here even in stereo, so it is the master path /
-# delivery, not this arithmetic -- but this gate catches any future asymmetry
-# in the code.)
+# ---- 12. STEREO CHANNEL SYMMETRY -------------------------------
 def render_stereo(Ls, Rs, **kw):
     inter = []
     for i in range(len(Ls)):

@@ -24,10 +24,6 @@ import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# The patched Unicorn (scripts/build_unicorn.sh): stock 2.1.4's ColdFire EMAC
-# halves every fractional-mode product (docs/firmware/RTOS_FORK.md section 10.16).
-# The Python bindings load the library named by LIBUNICORN_PATH, so point
-# them at the built one whenever it exists and the caller has not chosen.
 EMAC_LIB_DIR = os.path.join(REPO, ".venv", "lib", "unicorn-emac")
 if "LIBUNICORN_PATH" not in os.environ and os.path.isdir(EMAC_LIB_DIR):
     os.environ["LIBUNICORN_PATH"] = EMAC_LIB_DIR
@@ -56,12 +52,6 @@ def emac_selftest():
             b"\xa1\xc0"                     # movclrl %acc0,%d0
             b"\x4e\x71")                    # nop
     msac = code[:6] + b"\xa2\x00\x09\x00" + code[10:]   # msacl %d0,%d1,%acc0: ext bit 8 = subtract
-    # Fourth case (8 Sep 2026): MACSR 0xa0 = fractional + OMC (saturate on
-    # overflow), the mode the recorder's fade stage runs in. A NEGATIVE
-    # result must survive: msacl -1.0 x -0.1685 = -0.1685 (0xea700000).
-    # The first fractional patch left the extraction's saturation path
-    # unsigned, so every negative value "overflowed" to 0 and a recorded
-    # buffer lost its negative half-waves (RTOS_FORK section 10.18).
     sat = b"\xa9\x3c\x00\x00\x00\xa0" + b"\xa2\x00\x09\x00" + code[10:]
     got = []
     for prog, d0, d1 in ((code, 0xc00, 0x200000), (code, (-0xc00) & 0xffffffff, 0x200000),
@@ -371,7 +361,7 @@ def read_menu_tree(uc, desc=MENU_ROOT_DESC, depth=0, _seen=None):
 # illegal-instruction exception (vector 4) on each. 437 sites in the image
 # (147 bitrev, 219 byterev, 71 ff1); the FAT code is full of byterev and the
 # RTOS event-bit allocator uses bitrev+ff1, so every storage detour hits them.
-# Found 5 Sep 2026 when card init stopped silently at 0x40015a22 (`bitrev %d1`).
+# Found when card init stopped silently at 0x40015a22 (`bitrev %d1`).
 # objdump prints them as `.short 0x00c1` etc. — it cannot decode them either.
 ISA_C_OPS = {0x00C0: "bitrev", 0x02C0: "byterev", 0x04C0: "ff1"}
 _DREGS = None
@@ -485,19 +475,6 @@ def _call(uc, addr, args=(), count=20_000_000):
 
 TRAMP = 0x47ef0000           # 3 pages: +0x800 emu_rtos SR trampoline, +0x1000 EMAC slots, +0x2000 diagnostics
 
-# -- MAC-with-load words Unicorn executes NATIVELY, and wrongly (8 Sep 2026) --
-# The shim below exists because the CFV4E core raises illegal-instruction on
-# the MAC-with-parallel-load form. It does -- for 95 of the 122 distinct
-# (opcode, extension) pairs in this image. The other 27 it DECODES and runs,
-# with a made-up effective address (a bare core with every An pointing at
-# mapped memory still reads UNMAPPED), so the parallel load fetches from
-# the wrong place and the multiply goes on with a stale register. Two of
-# them are the recorder's mix loop at 0x400076f8/0x400076fc (`msacl
-# %a0,%d0,%a2@+,%d0,%acc0` = a09a 0908), which is why an INAB source at
-# unity vanished from a recorded buffer (RTOS_FORK 10.18). Rule: a word is
-# trusted natively only if a bare core REFUSES it; anything it accepts is
-# hooked and routed through the shim before it executes. The classification
-# is measured here, per pair, on the library actually loaded.
 _NATIVE_CACHE = {}
 
 def _macload_native(op, ext):
@@ -586,18 +563,6 @@ def _emac_load_shim(uc, r):
     val = int.from_bytes(uc.mem_read(ea, width), "big")
     if ext & 0x0020:                                   # '&' form: AND with the MASK register
         return None                                    # not modelled; surface it
-    # THE LOAD LANDS AFTER THE MULTIPLY (8 Sep 2026). The chip multiplies
-    # with the register values from BEFORE the parallel load, which is the
-    # whole point of the pipelined idiom `msacl %a0,%d0,%a2@+,%d0,%acc0`
-    # (multiply the sample already in d0, fetch the next one into d0). The
-    # first version wrote Rw first, so every product in the recorder's mix
-    # loop (0x400076f6) took the NEXT word -- the R channel, or the next
-    # sample -- and a unity-gain source vanished from the recorded buffer
-    # (RTOS_FORK section 10.18). Rw is written below, after the trampoline.
-    # plain form: msacl/macl Ry,Rx,ACC — same ext bits minus the load-form fields
-    # plain form (from the image: `macl %d5,%d0,%acc0` = a005, `macl %a1,%d0,%acc1`
-    # = a089): Ry in bits 3:0 with bit 3 = A/D, Rx in bits 11:9 with A/D at bit 6,
-    # acc bit 0 at bit 7 (straight, unlike the load form)
     plain_op = 0xA000 | ((rx & 7) << 9) | (((rx >> 3) & 1) << 6) | ((acc & 1) << 7) | ry
     # ext bits 6-7 are the .w forms' U/L half selects (`%d4u,%d0l`): keep them
     plain_ext = (ext & 0x0FC0) | (size_l << 11) | ((acc >> 1) << 4)
@@ -606,18 +571,6 @@ def _emac_load_shim(uc, r):
     except UcError:
         pass
     nxt = pc + ilen
-    # ONE TRAMPOLINE SLOT PER DISTINCT PLAIN INSTRUCTION (7 Sep 2026). The
-    # first version rewrote a single slot for every shimmed instruction, and
-    # Unicorn did not reliably drop the slot's cached translation on that
-    # write once the emulator had been running for a while: the trampoline
-    # then executed whichever plain form had been translated there LAST --
-    # measured in the sequencer's frame builder, where `msacl ..,%acc1`
-    # ran as the previous `msacl ..,%acc0` and corrupted acc0 by the lane
-    # event (RTOS_FORK section 10.16). Distinct slots are never rewritten,
-    # so no invalidation is needed and nothing is stale. Slots are 16
-    # bytes: plain form (4), jmp park (6), on the SECOND page (the first
-    # page's 0x800 holds emu_rtos's SR trampoline); the park (nop nop) sits
-    # at the end of it and the third page is for diagnostics.
     park = TRAMP + 0x1ff0
     slots = getattr(r, "emac_slots", None)
     if slots is None:
@@ -983,25 +936,7 @@ def part_label(draws):
     return None
 
 
-# ---- the LCD's own geometry, MEASURED (3 Sep 2026) -------------------------
-# A character cell is FOUR pixels wide, so the 128 px screen is 32 characters,
-# not the 42 this used to assume. The measurement is exact and falls out of
-# the capture: the same column drawn with labels of different length starts at
-# a different x, and the shift is 2 px per character -- i.e. the firmware
-# CENTRES each label on a fixed anchor.
-#
-#   page-2 col 1   '12dB' x=55   'LOW' x=57   'HP' x=59   -> centre 63
-#   page-1 col 1   'BASE' x=62   'ATK' x=64   'FB' x=66   -> centre 70
-#   page-2 col 2   'NONE' x=75   'NUM' x=77   'LP' x=79   'Q' x=81  -> 83
-#   page-1 col 2   'WDTH' x=82   'GN1' x=84                         -> 90
-#   page-2 col 3   'BASE' x=95   'ENV' x=97                         -> 103
-#   page-1 col 3   'RTIM' x=102  'MIX' x=104  'Q1' x=106  'Q' x=108 -> 110
-#
-# Three parameter columns, each drawn twice 7 px apart (the page-1 name above
-# its dial, the page-2 name and value beside it). At 4 px per character that
-# 7 px is under two characters, so preserving it buys a ragged indent and
-# nothing else -- the columns are SNAPPED to one anchor per column instead,
-# which is the whole point of a column.
+# ---- the LCD's own geometry, MEASURED -------------------------
 CELL = 4                                  # px per character
 COLS = 128 // CELL
 LEFT_X = 40                               # left of this, text is left-aligned

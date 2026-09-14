@@ -69,7 +69,7 @@ def same(a, b):
     return read(a)[0] == read(b)[0]
 
 
-# v5 (3 Sep 2026): the note drives GRAIN's continuous pitch (MODE 1), the
+# v5: the note drives GRAIN's continuous pitch (MODE 1), the
 # same law the PTCH knob uses -- so the knob path is the reference, and two
 # of the cases are BIT-IDENTICAL rather than spectral: no note ever == the
 # knob, and note 84 (the OT's unison) == PTCH 64, because both feed the same

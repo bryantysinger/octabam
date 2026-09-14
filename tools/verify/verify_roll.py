@@ -104,14 +104,6 @@ def build(src, mode, tag):
             free = int(line.split("FREE")[1].split()[0])
         elif line.startswith("out/") and ".bin: " in line:
             image = line.split(":")[0]
-    # ⚠️ THE IMAGE IS WHERE THE BUILD SAYS IT IS, not out/mainos_bus.bin. A
-    # MODE-forced build writes out/mainos_bus_modeN.bin (DIAGNOSTIC, DO NOT
-    # FLASH -- build_bus.py keeps it off the flashable path on purpose), and
-    # from the day that landed until 14 Sep 2026 this dumped out/mainos_bus.bin
-    # after EVERY build: the three MODE cases compared the stale default
-    # image with itself and passed a candidate whose ROOM dispatch landed on
-    # PLATE. Take the path from the build's own report line, and refuse
-    # rather than guess when it is missing.
     if image is None:
         sys.exit(f"verify_roll: build_bus.py did not report an image path "
                  f"for {tag}:\n{out[-2000:]}")

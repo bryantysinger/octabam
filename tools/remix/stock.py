@@ -105,7 +105,7 @@ def _image():
 #
 # Read from the pristine image rather than written down, so it cannot drift.
 # (Both stock lists open with a NONE row, id 0x00 -- which our rebuilt FX2
-# list drops. Noted 2 Sep 2026 from an outside report; see PLAN.)
+# list drops. Noted from an outside report; see PLAN.)
 FX1_CHOOSER, FX2_CHOOSER = 0x400d6060, 0x400d6090
 _fx1_ids: frozenset[int] | None = None
 
@@ -259,20 +259,7 @@ MODULES = (
            "Stock Echo Freeze delay -- runs on the ColdFire, so it costs the "
            "DSP nothing; the row works as on a stock unit. No local render.",
            "Y"),
-    # ---- THE THREE REVERBS, listable since 2 Sep 2026 -------------------
-    # Their code IS the donor region, so they are the only stock rows whose
-    # availability depends on the rest of the selection: the build packs from
-    # PLATE upward and nulls a donor id ONLY where words actually landed
-    # (build_bus.py), so a light selection keeps the ones it never reached.
-    # It refuses a row whose words were taken, which is the guard that makes
-    # listing them safe.
-    #
-    # buffer=True is MEASURED, not assumed: all three read x:>$213 -- the
-    # host's bump allocator -- within the first ~25 words of their entry
-    # (PLATE 0x01018, SPRING 0x01267, DARK 0x01692; payload A disassembly,
-    # 2 Sep 2026), exactly like the four stock effects already flagged. So
-    # the ledger refuses them beside any module with fixed Y buffers, on the
-    # same grounds and with the same evidence.
+    # ---- THE THREE REVERBS, listable -------------------
     _stock("PLATE REV", "plate", 0x14, 0x400d5594, b"PLTE", b"PLATE REV", 594,
            "Stock plate reverb. Its 594 words are the FIRST of the donor "
            "region, so it is the first row any module of ours takes.",
@@ -295,7 +282,7 @@ MODULES = (
 # ---- where each effect's CODE lives, per payload ---------------------------
 # The thirteen DSP effects are laid out CONTIGUOUSLY and every one of them is
 # self-contained: no control flow leaves its own span and nothing enters it
-# but its own dispatch entry (measured 3 Sep 2026, tools/build/dsp_reach.py over
+# but its own dispatch entry (measured, tools/build/dsp_reach.py over
 # both payloads; the one apparent exception is PLATE's `do #<$6,>$1267`,
 # whose operand is a loop END and therefore exclusive). That is what makes
 # any of them harvestable for its words, not just the three reverbs.
@@ -451,7 +438,7 @@ BY_KEY = {m.key: m for m in MODULES}
 # ---- the stock curve bank at X:0x4840, and who reads it --------------------
 # A 4,096-word data record (32 curves x 128, docs/firmware/TABLES.md) at the
 # SAME X address in BOTH payloads -- the exception to the per-payload table
-# shift CLAUDE.md warns about (measured 14 Sep 2026, dsp_modmap: A at image
+# shift CLAUDE.md warns about (measured, dsp_modmap: A at image
 # 0x400e7181, B at 0x400fa786, word for word identical) -- and immediately
 # above the core's boot clear (P:0x300a6, `do #$7c0` from X:0x4080 ends at
 # 0x4840 exactly), so nothing zeroes it and its image bytes are what the DSP
@@ -462,7 +449,7 @@ BY_KEY = {m.key: m for m in MODULES}
 # record's range and each hit is mapped to the effect whose span holds it.
 # On the stock image that is DJ EQ alone (36 sites per payload, all
 # `x:(r5+$xxx0),reg` reads of curve bases, 0 as a destination; measured
-# 14 Sep 2026 over tools/build/dsp_disasm_all.py's output), which is why
+# over tools/build/dsp_disasm_all.py's output), which is why
 # EXTERNAL.md's "LO-FI AMPH table" label for the record is not repeated
 # here -- LO-FI's code carries no address into it.
 #

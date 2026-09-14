@@ -75,8 +75,6 @@ ID2POS = 0x400d6150
 LIST_REFS = [0x400375f4, 0x40052496, 0x40059a42]
 DESC_LEN = 0x192
 
-# fresh cave, confirmed zero for 0x113c bytes from here (tools/build/build_menu.py's
-# own -check, and previously by build_dspprobe.py's neighbouring 0x400d7000 use)
 NEW_LIST = 0x400d6b00
 CLONE_BASE = 0x400d6b20
 CLONE_STRIDE = 0x1a0                    # > DESC_LEN, comfortable spacing
@@ -124,13 +122,6 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"BVRB", "SEND": b"SEND"}
 FULLNAME = {"DELAY SERVER": b"BusDelay", "REVERB SERVER": b"BusVerb",
             "SEND": b"Send"}
 
-# (page-array index, default byte). Set explicitly for every knob we enable,
-# rather than inheriting the donor's -- the donor's defaults are for a
-# DIFFERENT algorithm on that slot and several are actively wrong for ours.
-# In particular DARK REV's MIX default is 0, which would make a freshly
-# selected REVERB SERVER completely silent, and SPRING's TONE-slot default
-# is 0, which is our darkest possible setting. Both would look exactly like
-# "the effect does nothing" on hardware.
 DEFAULTS = {
     "DELAY SERVER": [(0, 40),    # TIME  ~ 5k samples, an obvious echo
                      (1, 60),    # FDBK  a few audible repeats, well short of runaway

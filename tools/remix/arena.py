@@ -58,8 +58,6 @@ OCTAKIT_RECIPE_WRITES = ("reserve-audio-page-free-list-tail",
                          "shorten-audio-page-free-list-initializer",
                          "shorten-audio-page-arena-clear",
                          "cap-recorder-page-allocation")
-# The platform's own reservation when a remix carries DRAM units: 1,707
-# pages = 10,487,808 B (10 MiB + 2 KB), Sam's call, 10 Sep 2026.
 PLATFORM_PAGES = 1707
 MIN_PAGES_LEFT = 2048                 # 12 MB for the unit; below this, refuse
 

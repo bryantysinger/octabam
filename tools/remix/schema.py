@@ -41,28 +41,10 @@ class Kind(Enum):
                                 # (tools/remix/stock.py is the whole list)
 
 
-# The fifteen FX2 ids stock assigns (docs/firmware/PARAM_PAGES.md section 2). Both
-# dispatch tables (X:0x215 init / X:0x235 process) are indexed by the RAW id
-# and are SHARED BETWEEN FX1 AND FX2, so a module that answers to one of
-# these hijacks the stock effect on both menus: its descriptor replaces the
-# stock one in FX2_IDS and its code replaces the stock code wherever that id
-# is selected, FX1 included. Found 2 Sep 2026 by making the stock effects
-# first-class: Rungs had shipped on 0x0c (EQUALIZER's id) and Nimbus on 0x0d
-# (DJ EQ's), so every image built since 29 Aug 2026 ran Rungs where FX1
-# selected EQUALIZER -- and the remixes WITHOUT Rungs aliased 0x0c to SEND,
-# which took FX1's EQUALIZER away in the `bus` image too. Only
-# a Kind.STOCK module may carry one of these.
 STOCK_FX2_IDS = frozenset({0x04, 0x05, 0x08, 0x0c, 0x0d, 0x10, 0x11, 0x12,
                            0x13, 0x14, 0x15, 0x16, 0x18, 0x19, 0x1c})
 
 
-# A stepped select -- and therefore a MODE -- may sit on any page-2 slot.
-# (7, 9, 11) until 4 Sep 2026, on the belief that the companion byte fields
-# were the only place the panel draws a select; stock CHORUS TAPS on slot 6
-# says otherwise. An even slot is the PROVEN place for a MODE: the panel's
-# page-2 knob editor (0x4003a474) was first read as even-only; slot 6 is
-# hardware-confirmed. A later emulator run showed it writing all six slots
-# (docs/firmware/MAINMENU.md 9c-ii/9e), so any page-2 slot is allowed here.
 STEPPED_ONLY = (6, 7, 8, 9, 10, 11)
 
 
@@ -192,7 +174,7 @@ class MenuEntry:
     # selected -- FX2 and FX1 alike, and in every saved project that already
     # chose it. That is the POINT of an upgraded stock effect and it is also
     # the whole hazard: Rungs sat on EQUALIZER's 0x0c and Nimbus on DJ EQ's
-    # 0x0d from 29 Aug to 2 Sep 2026, in every local image, and the remixes
+    # 0x0d from 29 Aug to, in every local image, and the remixes
     # WITHOUT them aliased those ids to SEND, taking FX1's EQUALIZER away
     # too. The difference now is that it is declared and checked rather than
     # accidental: a remix that omits a replacement leaves the stock effect
@@ -233,28 +215,6 @@ class MenuEntry:
         if not 0x04 <= self.fx2_id <= 0x1f:
             raise ValueError(f"fx2 id 0x{self.fx2_id:02x} is out of range "
                              f"(0x00-0x03 are stock's 'no effect' synonyms)")
-        # ⚠️ FOUR, not five. The abbr field is 5 bytes NUL-TERMINATED, so a
-        # 5-character abbreviation fills it with no terminator and whatever
-        # reads the abbreviation as a C string runs past it into `fullname`.
-        # Found on hardware 2 Sep 2026 by Bryan T, contributing the HELLO
-        # WORLD module: `abbr=b"HELLO"` drew correctly and behaved normally
-        # under manual knob use, and threw a line-F exception the moment a
-        # parameter was LFO-MODULATED -- faulting PC 0x48454C4C, which is
-        # "HELL". It presented as "custom effects cannot be modulated".
-        #
-        # A faulting PC made of the field's own ASCII is the signature of a
-        # SMASHED RETURN ADDRESS, not merely a long read: something copies
-        # the abbreviation into a fixed 5-byte destination, and the extra
-        # characters land past it. INFERRED -- the copy has not been located
-        # in the disassembly. Falsifier: a 5-char abbr whose overrun stays
-        # printable but does not fault.
-        #
-        # What is MEASURED is the rule: all 30 of the firmware's own page
-        # descriptors carry an abbr of 4 characters or fewer with byte 5
-        # zero, every shipping module already did (WFLD, BODE, RPPL, RNGS,
-        # STRM, ...), and hello at 5 was the sole crash. The build used to
-        # accept it and silently overrun -- one evening to find, so it is a
-        # refusal now.
         if len(self.abbr) > 4:
             raise ValueError(
                 f"abbr {self.abbr!r} is {len(self.abbr)} characters -- the "
@@ -296,7 +256,7 @@ class DspSection:
     # literal is rewritten by the build to wherever it put the words, the
     # reverb's LFOTAB mechanism made declarative (12 Sep 2026: Spectrum's
     # exponential FREQ taper is the first). dsp_asm has no dc directive,
-    # hence words here. Where it goes (14 Sep 2026): in the stock curve
+    # hence words here. Where it goes: in the stock curve
     # bank X:0x4840 -- a 4,096-word data record at the same address in
     # both payloads whose only stock reader is DJ EQ -- with the module's
     # `p:(` table reads rewritten to `x:(`, costing the module's run
@@ -350,16 +310,6 @@ class CavePatch:
     """
 
     label: str                          # name used in the build report
-    # Where the cave is planted. None = FLOATING: the build places it at
-    # the first free address after whatever precedes it (the descriptor
-    # clones, then earlier caves), rounded up to 0x80. A cave may float
-    # only if its code is position-independent -- short branches and OS
-    # absolutes, no absolute reference to itself -- which both tempo-sync
-    # caves are. Pinned addresses stood until 3 Sep 2026, when a remix with
-    # more than three descriptor clones ran the clone block straight into
-    # the tempo cave at 0x400d7000: three clones end EXACTLY there, so the
-    # shipping image had fit by arithmetic coincidence. For that image the
-    # floating rule reproduces the old addresses byte for byte.
     cave_addr: int | None                # None = floating; pass it explicitly
     pinned: bytes
     source: str | None = None           # .s re-assembled and compared
@@ -367,24 +317,12 @@ class CavePatch:
     hook_stock: bytes = b""             # bytes that MUST be there first
     registers_formatter: FormatterReg | None = None
     # ---- a cave whose CONTENT depends on where it lands -------------------
-    # `pinned` is bytes decided before the build. A cave that contains
-    # POINTERS TO ITSELF -- a relocated menu row array, whose rows name their
-    # own labels and handlers -- cannot be: its bytes are a function of its
-    # address, and since 3 Sep 2026 addresses float. So a module may hand the
-    # build a callable instead:
-    #
-    #     emit(addr) -> (bytes, ((poke_addr, expect_stock, write), ...))
-    #
-    # The build resolves the address, calls it, plants the bytes, then asserts
-    # each poke site still holds the stock bytes before writing -- the same
-    # discipline `hook_stock` applies to a hook site, for the same reason: a
-    # table that has moved under us must stop the build, not be written over.
     emit: object | None = None
     # Trailing prose for this cave's line in the build report, separator
     # included. The installer is generic; what a given cave actually DOES is
     # not, and the build report is the only place a human sees it.
     report_note: str = ""
-    # ---- SOURCE IS THE TRUTH (9 Sep 2026) ---------------------------------
+    # ---- SOURCE IS THE TRUTH ---------------------------------
     # With the m68k-elf toolchain now a standard dependency (`make setup`),
     # a cave with a `source` is assembled and LINKED by the build at the
     # address it lands on, and THOSE bytes are what is written; `pinned` is
@@ -419,25 +357,6 @@ class Claims:
     """
 
     reserved_private_y: tuple[int, ...] = ()
-    # Does this module hold memory in the per-core FX2 INSTANCE BUFFER region
-    # Y:0x4000-0xBFFF? BusVerb's eight tank lines live there and so does
-    # Nimbus's granular line, and two such modules on one core silently
-    # corrupt each other -- each works perfectly alone, which is the worst
-    # shape a defect can have.
-    #
-    # DECLARED, where private-Y is derived, and the difference is not
-    # laziness. A source scan cannot tell an address from a mask or a
-    # constant: scanning for this range flags `and #>$7fff` and every
-    # coefficient that happens to land in it, and docs/firmware/DSP.md 7c records
-    # that static scanning could not find even the STOCK reverbs' buffers,
-    # because they compute their bases at runtime. A checker that fires on
-    # six modules out of eight teaches people to ignore it.
-    #
-    # ⚠️ This is narrower than "the shared 64K window", which PLAN.md still
-    # lists as unledgered: this region's extents are established (DSP.md's
-    # load map -- 2 FX2 instances of 16,384 words), so it can be written
-    # down honestly. The shared window's are not, and a plausible claim
-    # there would read as a guarantee.
     owns_fx2_buffers: bool = False
     # A STOCK effect that allocates an FX2 instance buffer through the host's
     # bump allocator (it reads X:0x213 at init -- docs/firmware/DSP.md section 10).
@@ -448,7 +367,7 @@ class Claims:
     # buffered stock effect on the wrong track silently corrupts a server
     # on the same core, and the chooser is one list for all eight tracks,
     # so the build cannot tell which track it will land on. The ledger
-    # refuses the pair. Measured 2 Sep 2026 by scanning the payload
+    # refuses the pair. Measured by scanning the payload
     # disassembly for `x:>$213` reads: SPATIALIZER, FLANGER, CHORUS and
     # COMB read it; FILTER, EQ, DJ EQ, PHASER, COMPRESSOR and LO-FI do not.
     # (Falsifier: an effect reaching its base another way -- dsp_host's
@@ -465,7 +384,7 @@ class Claims:
     #   * an allocator reader (stock_instance_buffer): the FX2 slots it
     #     would be handed are BusVerb's tank and BusDelay's line, and the
     #     ledger refuses every other allocator reader beside them;
-    #   * a buffer-free station (12 Sep 2026: SPECTRUM, CHARACTER): the
+    #   * a buffer-free station: the
     #     rig's cycle envelope only closes with the stations on FX1 -- a
     #     station on both slots of four tracks priced a core at 4,830
     #     against 3,120 usable (tools/harness/pressure.py) -- so an FX2
@@ -813,18 +732,6 @@ class Module:
                              f"caves -- they are already in the image (its "
                              f"params are READ from the stock descriptor, "
                              f"never written)")
-        # A stepped control may sit on ANY page-2 slot. Until 4 Sep 2026 this
-        # refused everything but 7/9/11 on the reasoning that the companion
-        # byte fields are the selects -- but that was our convention, not the
-        # panel's: stock CHORUS TAPS (count 5) sits on slot 6, FILTER's HP/ENV/
-        # Q2 on 6/8/10, and stock knobs sit on 9 and 11 (CHORUS FBLP, FILTER
-        # DIST). The field a slot is DELIVERED in is fixed by the slot (even ->
-        # bits 16-23, odd -> bits 8-15); its count and renderer are free. The
-        # reason to prefer an even slot for a MODE: the panel's page-2 knob
-        # editor (0x4003a474, docs/firmware/MAINMENU.md 9c-ii/9e) is PROVEN to reach
-        # even slots (MODE on slot 6, hardware tag 84); whether it reaches the
-        # odd slots too is unresolved. Either way any page-2 slot is allowed.
-        # Page 1 is untested for the tick widget and stays refused.
         for i, p in enumerate(self.params):
             if p.formatter is Formatter.STEPPED and i < 6:
                 raise ValueError(
@@ -1050,7 +957,7 @@ class Remix:
     # NAMES is what empties the page: the parameter COUNTS and enable bits
     # stay, so the stock parameter writer still clamps and commits every slot
     # and the frame builder still carries it to the DSP -- measured in the
-    # emulator, 4 Sep 2026, both halves (the page drew nothing; the writer
+    # emulator, both halves (the page drew nothing; the writer
     # landed a value in the Part).
     #
     # ⚠️ IT BELONGS TO THE REMIX, NOT THE MODULE, and the bit-identity gate
@@ -1063,13 +970,6 @@ class Remix:
     # runs this code. A module that must run on one track only has to detect
     # that itself, the way modules/modulation does with its allocator slot.
     hidden: tuple[str, ...] = ()
-    # HIDDEN BUT NAMED: a hidden module that KEEPS its twelve names, so it is
-    # off the chooser (reached only by the project stamp) and its host page
-    # still draws every knob, labelled. This is the rig's FALLBACK SHAPE
-    # (Sam, 6 Sep 2026): a blank page with dials and no labels is the worst
-    # outcome, and a hidden engine may only go blank when the screen that
-    # edits it has been PROVEN ON HARDWARE -- the bus screen has not (tag 16:
-    # its CONTROL rows never appeared). Keys must be in `hidden`.
     named: tuple[str, ...] = ()
 
     @property

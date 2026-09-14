@@ -43,13 +43,13 @@ SPRINTF = 0x40013a08
 # ⚠️ P-RELATIVE. The build hands this cave the CLONE address, which is the
 # page descriptor P (the pointer the OS tables hold), and P = E + 0x38
 # (docs/firmware/PARAM_PAGES.md "P = E + 0x38"): the twelve 6-byte names sit at
-# E+0x4e = P+0x16. From 3 Sep to 13 Sep 2026 this read 0x4e, so every rename
+# E+0x4e = P+0x16. From 3 Sep to this read 0x4e, so every rename
 # landed 0x38 too high -- in the MINIMUM-VALUE table (P+0x6a + 4*slot):
 # BusDelay's GRAIN names hit min[3..5] (TONE, PING, MIX), which is why those
 # three knobs locked and the delay went dead whenever its MODE was drawn,
 # cleared by a reboot (FAILURE_MODES "BusDelay went silent with its knobs
 # pinned"). The verifier read the names back from the same wrong offset and
-# passed. Measured 13 Sep 2026 under the ColdFire emulator with a write watch.
+# passed. Measured under the ColdFire emulator with a write watch.
 NAMES_AT = 0x16                    # P + 0x16 = E + 0x4e = 12 x 6-byte names
 NAME_LEN = 6
 CODE_LEN = 88                      # rtab starts here: the code runs to the jmp

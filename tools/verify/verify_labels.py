@@ -56,7 +56,7 @@ def main():
         m = mods[key]
         P = CLONE_BASE + ci * CLONE_STRIDE
         # A BLANKED module (hidden, nowhere on FX1) draws no knobs, and the
-        # build gives it no label formatters (5 Sep 2026); the firmware
+        # build gives it no label formatters; the firmware
         # printing plain numbers for its selects is correct, not a failure.
         # (Keep `cloned` unfiltered: ci is the clone's position.)
         if key in remix.blanked:

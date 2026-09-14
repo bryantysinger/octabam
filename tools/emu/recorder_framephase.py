@@ -69,7 +69,6 @@ def summarise(name, L, P, eps, order, mode="rec-free/play-retrig"):
 
 rows = [(199, 4), (298.2, 2), (286.2, 2), (251, 16), (198, 16), (229, 16), (120, 16), (120, 4), (300, 2),
         (261.3, 2), (128, 16), (128, 4), (128, 32)]
-# Bryan T's hardware log (sessions 4-5). NOTE his epsilon is L - P; ours below is P - L.
 obs = {(199, 4): "clicks", (298.2, 2): "clicks", (286.2, 2): "clicks", (251, 16): "clicks",
        (120, 16): "clean", (120, 4): "clean", (300, 2): "clean",
        (261.3, 2): "clicks (session 5)", (128, 16): "clicks (session 5, predicted)"}

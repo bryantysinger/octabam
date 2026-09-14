@@ -159,14 +159,6 @@ def main():
         outL, outR = rl.readback_audio(c, t), rl.readback_audio(c, t, True)
         taps[t] = dict(inL=inL, inR=inR, outL=outL, outR=outR,
                        in_db=db(rms(inL[1500:] + inR[1500:]) / 8388608), out_db=db(rms(outL[1500:] + outR[1500:]) / 8388608))
-    # Compare the tracks that PASS audio under the port: chain input AND chain
-    # output live. A record with audio and a chain output of digital zero is
-    # not a closed chain -- it is a machine whose record carries something
-    # other than its chain input (a STATIC/FLEX slot's record is not the
-    # THRU's, O10), and feeding that to the harness compares two different
-    # things. Listed, not compared, unless --tracks names it.
-    # A bus HOST or a return has chain output and no chain input of its own
-    # (it is fed over the bus): compared on its output, its stem silent.
     live = [t for t, v in taps.items() if v["out_db"] > -120]
     skipped = [t for t, v in taps.items() if v["in_db"] > -120 and t not in live]
     want = [int(x) for x in a.tracks.split(",") if x] if a.tracks else live

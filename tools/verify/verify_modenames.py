@@ -63,16 +63,13 @@ def main():
     remix = registry.remix(name)
     fails = 0
     checked = 0
-    # every labelled select of every drawn module: (module, slot, its rename
-    # table) -- the MODE's neighbour renames plus, since 14 Sep 2026, every
-    # select's own name following its value (the standard).
     work = []
     for key in remix.modules:
         mod = mods.get(key)
         if mod is None or mod.menu is None or getattr(mod, "is_stock", False):
             continue          # a stock effect keeps its own descriptor: no clone, no cave
         # A BLANKED module (hidden, nowhere on FX1) draws no knobs and gets
-        # no formatter from the build (5 Sep 2026), so there is nothing to
+        # no formatter from the build, so there is nothing to
         # rename on its page; the bus screen prints its own mode words.
         if key in remix.blanked:
             continue

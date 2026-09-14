@@ -143,7 +143,7 @@ def main():
         # both emulators reached -- one must be a prefix of the other -- and
         # NOT the total, which is a clock artefact.
         #
-        # ⚠️ Measured 8 Sep 2026, and it is the reason this is written the
+        # ⚠️ Measured, and it is the reason this is written the
         # awkward way. The firmware drains its transmit ring in bursts, so
         # whether the last ~900-byte drain lands before or after the M6a gate
         # depends on the instruction budget per sample. Same image, same
@@ -218,11 +218,6 @@ def main():
                 notes.append(f"dispatches[{i}]: same task at the same time, resumed at "
                              f"{da['pc']:#x} (oracle) vs {db['pc']:#x} (port)")
 
-    # -- M6c, the sequencer's fidelity (milestone O6) ------------------------
-    # Every one of these is compared STRICTLY. Unlike the dispatch PCs and the
-    # serial count, none of them tracks the instruction-budget knob: a trig
-    # either fires on the frame the other emulator fires it on or it does not,
-    # and the tick count is a property of the tempo and the frame period.
     if (v := field("m6c_trig")) is not None:
         ta = [tuple(x) for x in a["m6c_trig"]]
         tb = [tuple(x) for x in v]
@@ -245,12 +240,6 @@ def main():
         problems.append(f"m6c_bank: [saved, final, seq bank, seq pattern] "
                         f"oracle {a['m6c_bank']}, port {list(v)}")
 
-    # ⚠️ COUNT ONLY WHAT WAS ACTUALLY COMPARED. The summary used to say
-    # "N field(s) agree" where N was every field in the golden, which quietly
-    # took credit for `gate_ms`, `pit0_fired` and `serial_sent` -- none of
-    # which this script has ever compared, because all three track the ips
-    # knob. A gate that reports fields it did not check is the same defect as
-    # a watch that prints nothing (RTOS_FORK section 10.3b). Fixed 8 Sep 2026.
     reported = [k for k in a if k not in compared and k not in missing]
     for n in notes:
         print(f"NOTE     {n}")

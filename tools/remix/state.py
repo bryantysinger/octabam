@@ -24,9 +24,6 @@ from remix import ledger, registry  # noqa: E402
 from remix.schema import NO_FALLBACK, on_the_bus  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-# Per payload, for the DEFAULT harvest (the three reverbs). It is no longer a
-# constant of the image -- Remix.harvest decides the region -- so this is the
-# fallback for "no selection in hand"; ask stock.region_words(sel.harvest).
 DONOR_WORDS = 2724
 # The ColdFire cave: the firmware's zero run at 0x400d6b00..0x400d7c3c, which
 # is where EVERYTHING a remix plants on the ColdFire lives -- the chooser
@@ -118,11 +115,8 @@ class State:
         # (worst per-core cycles, what our code may spend, the mix that
         # produced it) -- tools/build/cycle_count.py against this selection.
         self.cycles: tuple[int, int, dict] | None = None
-        # ⚠️ `enter` stopped swapping on 2 Sep 2026; this line did not.
+        # ⚠️ `enter` stopped swapping; this line did not.
         self.msg = "enter adds · r hears it · ? for keys"
-        # Per-MODULE knob values, so an effect's settings belong to the effect
-        # rather than to a track. (The retired rig kept these per track, which
-        # was the redundancy: one knob set per effect is what a remix means.)
         self.knobs: dict[str, dict[str, int]] = {}
         self.loaded_name = ""
         self.load_stock()
@@ -380,20 +374,6 @@ class State:
             out.append("no fallback and none can be picked automatically "
                        "(no SEND, and several effects) — press f to choose "
                        "which effect unimplemented ids alias to")
-        # THE WORD BUDGET IS NOT CHECKED HERE, deliberately. It used to be:
-        # every module's words summed against ONE 2,724-word region. There
-        # are TWO -- one per payload -- and SPEC=1 puts each server on its
-        # own, so the sum is not a quantity the image has to fit. It read
-        # `bus`, the plain two-server remix, as "5130 words exceeds the 2724-word
-        # donor region by 2406" when the truth was A 2650/74 free and B
-        # 2719/5 free. The check was latent while the words were only known
-        # after an explicit keypress; it became a permanent false alarm the
-        # moment the remixer started measuring on every change.
-        #
-        # The build is the authority and it refuses per payload ("payload B:
-        # RUNGS overruns the region (3599 > 2724 words)"), so an overrun
-        # arrives as a build failure with the payload named. measure() keeps
-        # the real per-payload numbers in self.regions.
         return out
 
     def forget_build(self):
@@ -428,17 +408,6 @@ class State:
             r = subprocess.run([sys.executable, "tools/build/build_bus.py"],
                                cwd=ROOT, env=env, capture_output=True,
                                text=True)
-            # ⚠️ PARSE THE REPORT EVEN WHEN THE BUILD FAILED. Returning
-            # here left every build-derived number -- the donor budget, the
-            # cave, the rows, which reverbs survived -- holding the LAST
-            # SUCCESSFUL build's values, so a failed selection showed the
-            # budget of an image it was not. And the report is usually still
-            # informative: a chooser-row refusal happens after the region
-            # line is printed, so "726 used, 1998 free" is exactly the fact
-            # that tells you the failure is not about space.
-            #
-            # forget_build() is the other half: when the parse yields
-            # nothing, the fields go empty rather than stale.
             failed = r.returncode != 0
             words, regions, payload, runs = {}, [], None, []
             kept, saw_donor_line = set(), False
@@ -459,16 +428,6 @@ class State:
                 if m and payload:
                     regions.append((payload, int(m.group(1)),
                                     int(m.group(2)), int(m.group(3))))
-                # WHICH DONORS SURVIVED, from the build rather than
-                # re-derived here. The three reverbs' code IS the donor
-                # region and the build nulls a donor id only where words
-                # actually landed, so "are they gone" is a question only the
-                # placement can answer -- and the remixer used to assume
-                # the answer was always yes.
-                # ⚠️ ONE ENTRY PER RUN, and only when the region is split.
-                # The map needs to know WHICH opening a module went into --
-                # a single global cursor cannot say, and drawing one bracket
-                # across a gap claims ground the placer cannot use.
                 m = re.match(r"\s+run \d+ P:0x([0-9a-f]+)\.\.0x[0-9a-f]+"
                              r"\s+(\d+) w\s+used (\d+)", line)
                 if m and payload:
@@ -498,12 +457,6 @@ class State:
             self.cave_free = cave_free
             self.chooser_rows = rows
             # ---- CYCLES, the fifth scarce thing --------------------------
-            # It is the one that breaks AUDIO rather than the build: over
-            # budget the core does not refuse, it wedges (PLAN.md s2, "the
-            # wall is a CLIFF"). cycle_count.py is already remix-aware and
-            # costs 0.17 s, so it rides the same scratch remix rather than
-            # waiting for `make check` -- which is where this answer lived,
-            # behind a key, after the fact.
             self.cycles = None
             c = subprocess.run([sys.executable, "tools/build/cycle_count.py",
                                 "--json"], cwd=ROOT, env=env,

@@ -206,7 +206,7 @@ def remix(name: str = DEFAULT_REMIX):
                 f"{', '.join(sorted(on_bus))} -- an unassigned track would run "
                 f"nothing, so nobody would flip the rotation or clear the "
                 f"accumulators. Use fallback=\"SEND\".")
-    # AN FX1-ONLY MODULE ON THE FX1 CHOOSER TAKES NO FX2 ROW (12 Sep 2026).
+    # AN FX1-ONLY MODULE ON THE FX1 CHOOSER TAKES NO FX2 ROW.
     # Claims.fx1_only is the module's promise that an FX2 instance runs dry,
     # so an FX2 row for it would be a row that does nothing; the build's
     # `hidden` mechanism already removes a row while keeping the names of a

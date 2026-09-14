@@ -43,9 +43,6 @@ from remix.schema import Kind  # noqa: E402
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 TRACKS = range(1, 9)
-# Which tracks each payload's core serves. Measured 10 Aug 2026 (MrkVerb32
-# marker flash); the inversion from old docs cost two flashes, so this is the
-# one place the remixer states it.
 PAYLOAD_TRACKS = {"A": range(5, 9), "B": range(1, 5)}
 
 # BUS, not "server". It is the natural opposite of INSERT and the word this
@@ -134,7 +131,7 @@ def menus(mod, fx1_rows=()) -> tuple[str, ...]:
     if mod.menu is None:
         return ()
     # ⚠️ CAPABILITY, NOT CURRENT ROWS -- deliberately, after trying the other
-    # way on 3 Sep 2026. Gating the FX2 half on "is it in the image" is more
+    # way. Gating the FX2 half on "is it in the image" is more
     # literally true (an unlisted FLANGER really has no FX2 row) and it made
     # the LIBRARY worse: every module you had not added yet read `—`, which
     # the missing ✓ beside it already said, in place of the one thing the

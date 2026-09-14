@@ -90,18 +90,41 @@
 
 init:
 ; ---- seed the tracked rotation, so a cold boot cannot start out of step ---
-; The tracking cannot self-correct a bad start: "read pre-flip" and "stuck
-; one step ahead" give an identical comparison every block, and a client
-; stuck one step ahead writes precisely the buffer core 0 is clearing, so
-; every core-1 sender is wiped. init runs on instantiation, so seeding here
-; makes a cold boot deterministic; the shared word may advance one step
-; before the first proc, and that direction snaps.
+; ⚠️ THE TRACKING CANNOT SELF-CORRECT A BAD START, and the commit that added it
+; claimed otherwise. "This client legitimately read PRE-FLIP" and "this client
+; is stuck one step AHEAD" give an identical comparison result, every block,
+; forever -- no observation separates them, so a client that boots one step
+; ahead stays there. Harmless when written; NOT harmless once the clear moved
+; one block ahead, because a client stuck one step ahead then writes precisely
+; the buffer core 0 is clearing, and every core-1 sender is wiped. That was the
+; metallic on every power cycle of R25, and why re-selecting the effect cured
+; it: the instance misses blocks during the switch, falls BEHIND, and snaps.
+; If it cannot self-correct it must begin correct. init runs on instantiation
+; -- exactly what re-selecting does -- so seeding here makes a cold boot
+; deterministic. The shared word may advance one step before the first proc;
+; that direction DOES snap, so it is safe.
 ; build_bus.py emits a body here for PAYLOAD B ONLY -- payload A recomputes the
 ; offset from the shared word every block and has nothing to seed.
 ; ROTINIT
         rts
 
 proc:
+; ---- split-aware frame offset (BUS.md fix, found while wiring the REVERB
+; SERVER): a track's proc() runs TWICE in a block that has a nonzero split
+; (dsp/reverb89.asm's dispatcher note, reproduced here since this file has
+; no other comment on it) -- a=0 first for frames [0,split), then always
+; a=1 for [split,16). Naively gating position-0's flip on "r7==0x6200"
+; alone flips the shared rotation ONCE PER CALL, i.e. TWICE in a split block,
+; which cancels itself out and silently desyncs the bus. And without an
+; offset, every call's per-sample ACC/WET writes start back at index 0,
+; so a split a=1 call stomps the START of the block instead of continuing
+; from where a=0 left off.
+;
+; x:(r7+$67) ends this section holding the correct write offset for THIS
+; call (0 if it is the first dispatch of the block -- either the a=0 call,
+; or the a=1 call when there was no a=0 this block -- else the stashed
+; split point). x:(r7+$65)/(r7+$66) are private bookkeeping, consumed by
+; the a=1 call that matches an a=0.
         move    a,x:(r7+$14)             ; stash the dispatcher's incoming call
                                           ; flag before it's clobbered: 0 for
                                           ; a=0 (first sub-block), left-aligned
@@ -194,6 +217,18 @@ bus_dohk:                               ; nobody did -- take over this block
                                           ; boot garbage, which is why four
                                           ; buffers cost less than three
         move    a,y:>$900               ; the new CURRENT rotation
+; ⚠️ CLEAR THE BUFFER WRITTEN **NEXT** BLOCK, NOT THIS ONE.
+; Clearing the buffer we are about to write races the OTHER core's writers:
+; core 0 clears at the start of its block and everyone fills it during that
+; block, so a core-1 writer that gets there BEFORE core 0's housekeeper has
+; its contribution written and then wiped. Straddle that boundary and the
+; sender drops out on some blocks and not others -- intermittent dropout,
+; which is broadband hash exactly like the two defects before it.
+; The four-buffer rotation fixed clear-vs-READ and the per-core tracking fixed
+; which-buffer; NEITHER touches clear-vs-WRITE. This does, and it is free:
+; with four buffers there is an idle slot. The buffer written next block was
+; last READ a full block ago and will not be WRITTEN for another full block,
+; so clearing it now has a block of margin on both sides.
         add     #>$10,a                 ; one further on: the NEXT block's
         and     #>$30,a                 ; write target, idle right now
         move    a,x0                    ; bases for the clear AND the count
@@ -273,46 +308,16 @@ notfirst:
         move    x:(r7+$67),b             ; this call's split-aware frame offset
         add     b,a
         move    a,r2                     ; r2 = AUX ACC[write] base + offset.
+                                         ; ONE BUS: this is the
+                                         ; old DELAY accumulator, kept because
+                                         ; the delay -- chain stage 1 -- already
+                                         ; reads it, so its input never changed.
+                                         ; 0x901-0x940 and 0x9c3-0x9c6 (the old
+                                         ; REVERB accumulator and its counts) are
+                                         ; FREE and nothing writes them.
         move    #>$ffffff,m2
 
 ; ---- register as a bus client, once per block, PER BUS, ONLY IF SENDING ---
-; The server divides the accumulator by this count, which is what keeps eight
-; tracks from summing into the rail (measured: the bus clamps at 1.0, and with
-; no scaling it breaks up at THREE sends).
-;
-; Gated on the split offset, so a block whose proc() runs twice still counts
-; ONCE -- the same trap the rotation flip and the housekeeping election were both
-; written around. Counted per block rather than per sample because every sample
-; slot in the block receives exactly one contribution from this track.
-;
-; ⚠️ AND GATED ON EACH KNOB (17 Aug 2026). This used to register on BOTH buses
-; unconditionally, "because both accumulators are written unconditionally
-; (zeros count too)". That reasoning is wrong and it was the single largest
-; level defect in the box. A client that registers and contributes nothing
-; still takes a 1/N share, so it dilutes the real senders by N/(N+1) -- and
-; **a fresh or unassigned track IS a SEND**, because build_bus.py aliases
-; id 0x00 to this module. So an ordinary bank quietly ran N ~= 8 with one real
-; sender, costing that sender 1/8.
-; MEASURED before the fix, one real sender at ->DELAY 100 plus N idle SENDs
-; whose knobs are both zero: -14.19 / -20.21 / -23.74 / -26.23 / -28.17 /
-; -29.76 / -31.10 dB for N = 0..6. That tracks 20*log10(1/(N+1)) to 0.01 dB
-; the whole way -- every idle client cost a full share. Sam heard it as the
-; bus path being "much quieter" than the same audio on its own track.
-; Same defect and same fix as BusVerb's phantom ->DEL registration; this is
-; the bigger one, because BusVerb is on one track and SEND is on all of them.
-;
-; ⚠️ THE KNOBS ARE READ STRAIGHT FROM r6, not from a decoded copy: the
-; per-sample loop below reads exactly these two words as its multipliers, so
-; testing them here tests the very value that decides whether we contribute.
-; No mask and no A2 dance -- they are page-1 knob fields, val<<16 with
-; val <= 127, so they load positive with A2 = 0 (SEND has no page 2 and no
-; companion low bytes at all). If that ever changes, this needs a clean
-; register before the tst (CLAUDE.md's A2-staleness trap).
-; ⚠️ `clr` SETS THE CONDITION CODES, so each one goes BEFORE the tst it must
-; not disturb -- the flag-clobber trap, and the reason GRAIN 5d shipped a
-; noise wash on one channel. Tcc takes a REGISTER source, never an
-; accumulator, so the increment travels through x0. Branchless: no new label,
-; which also keeps dsp_asm's prefix-resolution trap out of it.
 ; ---- THE SEND IS REFUSED ON TRACK 8 (the one-aux rig, 7 Sep 2026) --------
 ; Track 8 is where the aux returns (a Character station in BUS mode), so a
 ; send from it would feed the return back into the bus it returns -- the

@@ -13,7 +13,7 @@
 
 init:
 ; ROTINIT
-; ---- FX1 ONLY (12 Sep 2026): the allocator base decides, at init --------
+; ---- FX1 ONLY: the allocator base decides, at init --------
 ; Modulation's idiom (modules/modulation/modulation.asm): X:0x213 points at
 ; this instance's entry in the base table, valid HERE and nowhere else. FX1
 ; slots are below 0x4000, FX2 slots at or above it. An FX2 instance runs as
@@ -32,6 +32,7 @@ init:
         move    #>$1,x0
         tst     a
         tpl     x0,b                    ; base >= 0x4000: an FX2 slot
+; ---- EVERY PERSISTENT SLOT IS ZEROED HERE -------------------
         clr     a
         move    r7,r5
         move    #>$ffffff,m5
@@ -57,6 +58,13 @@ proc:
         move    x:(r7+$30),a           ; an FX2 slot: dry, nothing written
         tst     a
         bne     fs_end
+; (the bus section -- split-aware frame offset, the rotation latch, the registration
+; and the r1/r2 accumulator pointers -- left with the sends: the
+; stations have carried no send since the one-aux rig of 7 Sep, and the ~70
+; words and ~10 cycles a block it cost bought nothing. The station is no
+; longer a bus client: Harness(bus_client=False).)
+; ===========================================================================
+; PER-BLOCK KNOB DECODE
         move    x:(r6+$1),x0
         move    #>$4b2350,y1            ; 0.587
         mpy     x0,y1,a
@@ -113,6 +121,7 @@ proc:
         clr     a
         move    a,x:(r7+$1e)            ; this block's peak starts at 0
 
+; ---- ENV (slot 2, bipolar) and LDP (slot 3, 0..127): two depths onto the cutoff
         move    x:(r6+$2),a             ; ENV, a knob word (bit 23 clear, a2 = 0)
         and     #>$7f0000,a
         move    #$40,x0
@@ -156,6 +165,10 @@ proc:
         add     y0,a
         move    a,x:(r7+$20)            ; g2 = tan(pi fc/fs)/2, this block's target
         move    x1,x:(r7+$4f)           ; FREQm, kept for VOWL's morph
+; ---- the cutoff RAMP: dg = (g2 - g2run)/16 per block, added
+; once per sample in the loop, so a fast FREQ sweep or LFO has no block-rate
+; step (the ~2.8 kHz comb of a per-block jump). A 15-sample block reaches
+; 15/16 of the way and the next block starts from where it got to.
         move    x:(r7+$2e),x0           ; g2run, where the last block ended
         sub     x0,a
         asr     #$4,a,a
@@ -186,6 +199,7 @@ proc:
         move    a0,x0
         move    x0,x:(r7+$33)           ; d
 
+; ---- MODE (slot 7 select of r6+$c): tap coefficients; VOWL runs the bank ---
         move    x:(r6+$c),a
         and     #>$ff00,a
         move    x:(r7+$38),x0
@@ -222,7 +236,17 @@ fs_msame:
 fs_mbp:
         move    x0,x:(r7+$24)
         bra     fs_mdone
+; (HP went: the panel's tick widget draws FIVE positions and
+; the sixth was blank; CAP's HIGH is the high-pass now)
 fs_mcap:
+; ---- ISO: Airwindows Capacitor2 (Chris Johnson, MIT), the
+; isolator with a dielectric: a lowpass and a highpass (LOW = FREQ, HIGH =
+; RES here, the knobs renamed by the mode) whose one-pole amounts are the
+; knob squared, chased 1/16 per block, and per sample scaled by the signal
+; itself -- |1 - x/nl|, nl = 1 + 6 (1 - NLIN/128) -- six poles per channel
+; rotated three-at-a-time (modules/spectrum/capacitor2_ref.py). Per block:
+; $26 lpBase, $27 hpBase (persistent chases), $28 1/nl, $29 trim/2 =
+; 0.75/cbrt(nl) fitted in NLIN.
         move    #>$3,x0
         move    x0,x:(r7+$2d)           ; the loop runs the capacitor
         move    x:(r7+$4f),x0           ; FREQm
@@ -237,6 +261,9 @@ fs_mcap:
         asr     #$4,a,a
         add     x0,a
         move    a,x:(r7+$26)            ; lpBase += (target - lpBase)/16
+; the high-pass side is a fixed 2^-12 (a ~2 Hz corner: a DC block, never a
+; frozen pole) -- option B: one cutoff, one flavour, so ISO's
+; separate HIGH cut went and RES became the dielectric's colour (COLR).
         move    #>$000800,x0
         move    x0,x:(r7+$27)           ; hpBase
         move    x:(r6+$1),x0            ; C = RES/128, drawn COLR in ISO
@@ -271,6 +298,15 @@ fs_mvowl:
         asr     #$1,a,a
         add     #>$400000,a
         move    a,x:(r7+$48)            ; vg/8
+; ---- VOWL: three parallel constant-peak-gain resonators
+; (audiojs formant / resonator, JOS's two-zero form, MIT) replace the
+; two-peak trick. Per formant y = b0*(x - x2) + 2*m1*y1 - a2*y2 with
+; R = exp(-pi*bw/fs), m1 = R*cos(w0), a2 = R^2, b0 = (1-R^2)/2; gains
+; 1 / 0.5 / 0.3. FREQm (post-modulation, so DPTH and the LFO sweep the
+; vowels) morphs A E I O U: idx = FREQm >> 21 (0..3) picks the pair, frac =
+; the 5 bits under it. RES narrows the bandwidths: R' = R + 0.9(1-R)*RES.
+; ROUT is left as decoded -- the bank is filter A, B and the mix
+; run as in every other mode; FM has no cutoff to move here.
         move    #>$1,x0
         move    x0,x:(r7+$2d)           ; the loop runs the bank, not the SVF
         move    x:(r7+$4f),a            ; FREQm
@@ -292,6 +328,13 @@ fs_mvowl:
         move    #$21,n5                 ; 33
         move    (r5)+n5                 ; r5 = COS_TABLE[idx][0] (33 words past G2)
         move    #$3,n5
+; ONE loop over the three formants (14 Sep 2026; it was three copies of the
+; block, 27 words each). The coefficient slots are stride-1 per formant --
+; m1 at $10..$12, a2 at $13..$15, b0 at $16..$18 -- so r3 = r7 + $10 + k and
+; the stores are r3-relative; the only per-formant constants, e_k and R_k,
+; sit in the P table after the COS table (manifest VOWL_ER) and r2 walks
+; them. m3 is linear here as it is in the sample loop, which addresses
+; through r3 the same way.
         move    x:(r7+$4e),r2           ; the P table's base ...
         move    #>$ffffff,m2
         move    #$30,n2
@@ -335,6 +378,19 @@ fs_vfz:
         nop
         bra     fs_mdone
 fs_mladr:
+; ---- LADR: the Moog transistor ladder, the LINEAR zero-delay
+; 4-pole (audiojs/filter moogLadder without its tanh; Zavalishin ch. 6): per
+; block G = g/(1+g) = (g2/2)/(1/4 + g2/2) by the second real division, its
+; powers, k/4 = 0.975*RES/128 (the linear ladder oscillates at k = 4; 3.9
+; rings hard and the limiting stores bound it), d/2 = (1/4)/(1/2 + 2*(k/4)*G^4)
+; by a third. Per sample (the loop's third alternative): S/8 from the four
+; states stored HALVED (s/2 in $00..$03 L, $08..$0b R -- VOWL's slots, the
+; two modes never run in one block), u = (x - k*S)*d, four trapezoidal
+; stages y = G'(v - s) + s, s' = 2y - s, out = y4. G ramps per sample as g2
+; does ($16 Grun += $15 dG), FM moves G' multiplicatively with the block's
+; powers frozen (the same approximation as the SEM's frozen d). Slots:
+; $10 G  $11 G(1-G)  $12 G^2(1-G)  $17 G^3(1-G)  $18 1-G  $13 k/4  $14 d/2
+; $15 dG  $16 Grun ($17/$18 are VOWL's b0 slots: one mode per block).
         move    #>$2,x0
         move    x0,x:(r7+$2d)           ; the loop runs the ladder
         move    x:(r6+$1),x0            ; RES/128
@@ -403,6 +459,10 @@ fs_mdone:
         div     x0,a
         move    a0,x0
         move    x0,x:(r7+$3b)           ; 1/g
+; ---- WDTH (slot 5; slot 4 until LSP took it): stereo width of
+; the output, Character's mid/side, drawn -64..+63; the knob word IS WDTH/128
+; = the side gain HALVED (64 -> 0.5, doubled back per sample: 0 = mono, 127 =
+; double sides).
         move    x:(r6+$5),a
         and     #>$7f0000,a
         move    a,x:(r7+$2c)            ; ($25 is the SVF's HP tap -- 14 Sep 2026's first build put this there and every LP leaked half its HP)
@@ -631,6 +691,10 @@ fs_vowl:
         move    #$40,y1                 ; the formant's gain, halved
         mpy     x0,y1,a
         move    a,y0                    ; the sum so far (halved), kept in y0:
+                                        ; free on this path and in fs_bmix, and
+                                        ; |sum| <= 0.5 + 0.25 + 0.15 < 1, so the
+                                        ; limiting move never limits
+; formant 1: y = 2*b0*(dx/2) + 2*m1*y1 - a2*y2; then y2 <- y1 <- y
         move    x:(r7+$1b),x0
         move    x:(r7+$17),y1           ; b0
         mpy     x0,y1,a
@@ -720,6 +784,10 @@ fs_vowl:
         move    #$40,y1                 ; the formant's gain, halved
         mpy     x0,y1,a
         move    a,y0                    ; the sum so far (halved), kept in y0:
+                                        ; free on this path and in fs_bmix, and
+                                        ; |sum| <= 0.5 + 0.25 + 0.15 < 1, so the
+                                        ; limiting move never limits
+; formant 1: y = 2*b0*(dx/2) + 2*m1*y1 - a2*y2; then y2 <- y1 <- y
         move    x:(r7+$1b),x0
         move    x:(r7+$17),y1           ; b0
         mpy     x0,y1,a
@@ -778,6 +846,8 @@ fs_vowl:
         bra     fs_join
 ; MODEFORK_MID -- alternative 3: LADR, the linear zero-delay Moog ladder
 fs_ladr:
+; the per-sample ramp: Grun += dG (the ladder's g2run; found missing by the
+; float comparison rendering silence -- G' was 0 every sample)
         move    x:(r7+$16),a
         move    x:(r7+$15),x0
         add     x0,a
@@ -785,6 +855,9 @@ fs_ladr:
 ; ===================== channel L =====================
         move    x:(r0),x0
         move    x0,x:(r7+$1d)           ; park x
+; the ladder core (fs_lcore, one straight-line callee per channel, 13 Sep
+; 2026: inline it overran payload A by 20 words): x0 = B_prev, r3 -> the
+; four states; wetA lands in $1b
         move    #>$0,x0                 ; B_prev (FM went with filter B, 14 Sep 2026)
         move    r7,r3                   ; states s0..s3 at $00
         bsr     fs_lcore
@@ -836,6 +909,7 @@ fs_cap:
         move    a,x:(r0+n0)
 ; MODEFORK_END
 fs_join:
+; ---- WDTH: mid stays, side scales (Character's width) --------
         move    x:(r0),a                ; L
         move    x:(r0+n0),x0            ; R
         add     x0,a
@@ -861,6 +935,16 @@ fs_end:
         nop
         rts
 
+; ---------------------------------------------------------------------------
+; fs_ccore -- Capacitor2 for one channel (Airwindows, MIT;).
+; In: a = x, r3 -> the channel's twelve states (hp A..F at +0..5, lp A..F at
+; +6..11), x:(r7+$2a) = o2 (3/4/5), x:(r7+$2b) = o1 (1/2) this sample.
+; Out: a = x through pole A, the o1 pair and the o2 pair, times trim.
+; scale/2 = |1/2 - x/(2 nl)|; amt/2 = base * scale/2; each pole is
+; s' = s (1 - amt) + x amt (the second mac doubles the halved amount), a
+; highpass takes x - s', a lowpass takes s'. STRAIGHT-LINE. Clobbers x0,
+; x1, y0, y1, b, n3; $1d = the running x, $1f/$23/$24 = this sample's amounts.
+; ---------------------------------------------------------------------------
 fs_ccore:
         move    a,x:(r7+$1d)            ; x (the dry drives the dielectric)
         move    a,x0
@@ -991,6 +1075,11 @@ fs_ccore:
         add     x0,a
         rts
 
+; ---- fs_lcore: the ladder's per-channel core (LADR) ----------
+; In: x0 = B_prev, r3 -> the channel's four halved states, x parked at $1d,
+; the block's G powers at $10..$12, k/4 at $13, d/2 at $14, Grun at $16.
+; Out: wetA = y4 at $1b (and in a). Straight-line, no control transfer
+; (cycle_count.py's rule for a loop callee); clobbers x0 x1 y0 y1 a b r3 n3.
 fs_lcore:
 ; G' = clamp(Grun * (1 + kFM * B_prev)): FM as the SEM does it, d frozen
         move    x:(r7+$2c),y1           ; kFM (0 unless ROUT = FM)
@@ -1062,6 +1151,7 @@ fs_lcore:
         add     x0,a
         move    a,x1                    ; v/2 (limited: u within +-2)
         move    x:(r7+$1c),y1           ; G' for the four stages
+; stage 0: y/2 = G'(v-s)/2 + s/2 ; s'/2 = y - s/2  (x1 = v/2 in, y/2 out)
         move    x:(r3),y0               ; s/2
         move    x1,a                    ; v/2
         sub     y0,a                    ; (v - s)/2
@@ -1074,6 +1164,7 @@ fs_lcore:
         asl     #$1,a,a                 ; y
         sub     y0,a                    ; s'/2 = y - s/2
         move    a,x:(r3)+               ; limited: s' within +-2
+; stage 1: y/2 = G'(v-s)/2 + s/2 ; s'/2 = y - s/2  (x1 = v/2 in, y/2 out)
         move    x:(r3),y0               ; s/2
         move    x1,a                    ; v/2
         sub     y0,a                    ; (v - s)/2
@@ -1086,6 +1177,7 @@ fs_lcore:
         asl     #$1,a,a                 ; y
         sub     y0,a                    ; s'/2 = y - s/2
         move    a,x:(r3)+               ; limited: s' within +-2
+; stage 2: y/2 = G'(v-s)/2 + s/2 ; s'/2 = y - s/2  (x1 = v/2 in, y/2 out)
         move    x:(r3),y0               ; s/2
         move    x1,a                    ; v/2
         sub     y0,a                    ; (v - s)/2
@@ -1098,6 +1190,7 @@ fs_lcore:
         asl     #$1,a,a                 ; y
         sub     y0,a                    ; s'/2 = y - s/2
         move    a,x:(r3)+               ; limited: s' within +-2
+; stage 3: y/2 = G'(v-s)/2 + s/2 ; s'/2 = y - s/2  (x1 = v/2 in, y/2 out)
         move    x:(r3),y0               ; s/2
         move    x1,a                    ; v/2
         sub     y0,a                    ; (v - s)/2
@@ -1122,6 +1215,13 @@ fs_lcore:
 fs_bypass:
         rts
 
+;  ---------------------------------------------------------------------------
+; fs_sat -- TAME's saturation for one value. In: a = v (any
+; accumulator value; the first store limits it). Out: a = v + m (sc(clamp(v g))
+; / g - v), sc(x) = x - x^3/3, with m, g/8, 1/g at $39/$3a/$3b per block.
+; STRAIGHT-LINE, LAST in the file: every bsr to it is forward (dsp_asm has no
+; backward short bsr). Clobbers x0, y1; parks at $3c (v) and $3d (clamp(v g)).
+; ---------------------------------------------------------------------------
 fs_sat:
         move    a,x:(r7+$3c)            ; v (limited)
         move    a,x0

@@ -151,13 +151,6 @@ def check(selected) -> list[str]:
                 hooks[c.hook_addr] = m.name
 
     # ---- emit() pokes of PINNED caves ---------------------------------------
-    # A cave with an emit callable and a fixed address can be asked for its
-    # pokes without a build: those are fixed-address byte claims exactly
-    # like a hook site, and until 9 Sep 2026 the ledger could not see them
-    # -- midi-scenes' 35 redirects and lofi-amf-fix's two DSP words were
-    # invisible, and midi-scenes + octakit (both rewrite the apply_part
-    # entry 0x40009094) passed as clean. A FLOATING emit cave (cave_addr
-    # None) cannot be evaluated before placement and is still skipped.
     # ---- linker-backed units, detours, grown tables, plain pokes -----------
     # A PINNED Linked unit is a cave whose length is only known after the
     # link, so it is claimed here as a 6-byte marker at its address (the
@@ -208,7 +201,7 @@ def check(selected) -> list[str]:
             pokes.append((p.addr, len(p.expect), m.name, f"poke {p.note or hex(p.addr)}"))
     # A FLOATING emit cave's poke ADDRESSES do not depend on where the cave
     # lands -- only the values written do -- so it is evaluated at a probe
-    # address purely to learn its sites. Until 10 Sep 2026 it was skipped,
+    # address purely to learn its sites. Until it was skipped,
     # and the matrix said Octakit and CC PAGE 2 compose while the build
     # refused them: both rewrite the MIDI control-parameter dispatch entry
     # at 0x400d64a0 (her seven midi-control-parameter writes, its repoint).
@@ -303,7 +296,7 @@ def check(selected) -> list[str]:
 
     # ---- stock effects that allocate an instance buffer -------------------
     # The allocator's bases are per TRACK SLOT, and this is MEASURED -- read
-    # from X:0x255 in BOTH payloads of the pristine image, 2 Sep 2026 (the
+    # from X:0x255 in BOTH payloads of the pristine image (the
     # words are little-endian, which only shows above 0x10000, and reading
     # them big-endian gives a plausible 0x00003 instead of 0x30000):
     #
@@ -353,7 +346,7 @@ def check(selected) -> list[str]:
                   "is refused: on FX1 it keeps working, out of reach")
 
     # ---- the stock curve bank, X:0x4840 (4,096 words) ----------------------
-    # Since 14 Sep 2026 the build parks the modules' P tables (a
+    # Since the build parks the modules' P tables (a
     # DspSection.ptable, the reverb's LFOTAB) in this stock data record
     # instead of the donor region, whenever no stock effect that reads it
     # survives in the image (stock.curve_bank_readers; the build keeps the

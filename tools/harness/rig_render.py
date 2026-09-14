@@ -63,24 +63,10 @@ from remix import registry             # noqa: E402
 
 SR = 44100
 FRAMES = 16                            # the firmware's frame; the harness's own cap is 15
-                                       # (dsp_host -frames overrides it, COLDFIRE_PORT.md O12).
-                                       # Voicing renders run whole blocks since 12 Sep 2026;
-                                       # the bit-identity gates (send_probe) stay at 15.
 NTRACKS = 8
-# Track -> core. Measured 10 Aug 2026 (marker flash): payload A serves 5-8.
+# Track -> core. Measured (marker flash): payload A serves 5-8.
 CORE_OF = {t: (0 if t >= 5 else 1) for t in range(1, NTRACKS + 1)}
 POS_OF = {t: (t - 1) % 4 for t in range(1, NTRACKS + 1)}    # dispatch position on its core
-# r7 (the state block) is 0x6100 + 0x300*pos + 0x100*(fx-1): the stock
-# dispatcher bumps its counter THREE times per track (an unconditional third
-# bump at P:0x51e after FX2). Measured 8 Sep 2026 on both payloads under the
-# firmware (COLDFIRE_PORT.md O11); the old 1 + 2*pos + (fx-1) put every
-# position >= 1 one or more blocks low, and the one-aux return's pin on
-# position 3 matched only here -- never on the unit.
-# Where the per-track audio buffers go in the harness. Hardware runs every
-# track's block at X:0 (the dispatcher copies it in and out); the harness
-# gives each track its own buffer, and puts them ABOVE the loaded modules so
-# a stock effect scratching X:0x20-0xff (the FLANGER lesson, 2 Sep 2026)
-# cannot reach another track's audio.
 AUDIO_BASE = 0x9000
 
 
@@ -328,13 +314,6 @@ def main():
     send_id = send_probe.SERVER_ID["S"]
     send_ep = {c: send_probe.entry_points(mems[c], send_id) for c in (0, 1)}
 
-    # instances, in dispatch order: core 0 (tracks 5-8) then core 1 (1-4),
-    # each track FX1 then FX2 on ONE audio buffer
-    # An EMPTY FX2 slot is not empty on the unit: a fresh or unassigned track
-    # dispatches to the fallback, SEND (id 0 aliases to it), which houskeeps
-    # like any bus participant and costs its cycles. Model it, or a layout
-    # with nothing on core 0's position 0 has no housekeeper at all and the
-    # bus never rotates (found 7 Sep 2026: a delay-only render was silent).
     send_mod = registry.modules().get("SEND")
     r_ = registry.remix(a.remix)
     if send_mod is not None and "SEND" in r_.modules:

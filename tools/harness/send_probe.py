@@ -86,12 +86,6 @@ SERVER_ID = {m.harness.layout_char: m.menu.fx2_id
              for m in registry.modules().values()
              if m.harness is not None and m.harness.layout_char
              and m.menu is not None}
-# The layout ALPHABET, derived. It used to be the literal "RDS." in two
-# places, so a module could declare a layout_char, have it resolved into
-# SERVER_ID above, and still be silently dropped from every layout string --
-# which is what happened to all six inserts: they had to be driven through
-# dsp_host by hand. `.` means a track running neither (NONE, or a stock
-# effect): our code never runs there, so the slot is simply skipped.
 LAYOUT_CHARS = set(SERVER_ID) | {"."}
 # Which of them own a bus accumulator and can therefore be MEASURED as the
 # target of a send. An insert has no bus role, so a layout of nothing but
@@ -110,23 +104,6 @@ REVERB_ID = SERVER_ID.get("R")
 SEND_ID = SERVER_ID.get("S")
 DELAY_ID = SERVER_ID.get("D")
 
-# CLI flag -> the module's own knob NAME, and the SLOT then comes from the
-# manifest. The flag names are historical and several no longer match the
-# panel -- --dwow drives DPTH, --dmix drives IN, --dspray drives the host's
-# -DEL send (slot 10, DRV until 5 Sep 2026),
-# --width drives SHFT -- so they are kept as aliases for existing invocations
-# and docs while the index they resolve to stays honest.
-#
-# This indirection is the point. The slot numbers used to be written out here
-# by hand, and twice they were wrong: SPRAY sat on slot 9 until it was found
-# to be retuning the pitch select, and --din drove -VRB for five days after
-# the IN/-VRB swap, which made a delay makeup test measure +0.0 dB. Both were
-# a wrapper that had not been audited after a slot moved. There is now
-# nothing to audit.
-# THE ONE-AUX LAYOUT (7 Sep 2026): AUX at slot 0 on both engines (the
-# host's own send into the one aux bus), MIX at 5 (the stage crossfade);
-# IN, -DEL and -VRB are gone. Flag names are historical; the SLOT comes from
-# the manifest, so a stale name here dies instead of driving the wrong knob.
 REV_FLAGS = {"time": "TIME", "mod": "MOD", "mix": "MIX", "raux": "AUX",
              "shmr": "SHMR",
              "rmode": "MODE", "width": "SHFT", "gate": "GATE", "rrate": "RATE",
@@ -190,23 +167,6 @@ def entry_points(mem_path, fxid):
     init, proc = found.get(INIT_TAB + fxid), found.get(PROC_TAB + fxid)
     if init is None or proc is None:
         die(f"no dispatch entry for fx id 0x{fxid:02x} in {pathlib.Path(mem_path).name}")
-    # ⚠️ THIS BOUND HAS BEEN WRONG TWICE, BOTH TIMES BY BEING FITTED TO THE
-    # EFFECTS THAT HAPPENED TO HAVE BEEN RENDERED. `proc == init + 1` was the
-    # first test, an accident of every init being a bare `rts`; it broke on
-    # 17 Aug 2026 when the bus clients gained a rotation seed. `init + 64`
-    # was the second, and it broke on 2 Sep 2026 the moment the three stock
-    # reverbs became renderable -- they seed a tank, so their init is real
-    # code. Both failed as "implausible entry points", which reads like a
-    # stale dispatch table rather than a tool assumption.
-    #
-    # MEASURED, every effect in the pristine image (payload A) plus ours:
-    #   ours, and stock DELAY        1
-    #   the other ten stock effects  5..32   (max CHORUS 32)
-    #   PLATE / SPRING / DARK REV    85 / 108 / 162
-    # So 256: comfortably past the real maximum, and still tight enough that
-    # a wrong table -- which gives a wild address or proc before init -- is
-    # caught. The invariant itself is unchanged: proc follows init, and init
-    # seeds per-instance state rather than processing audio.
     _MAX_INIT = 256
     if not 0 < init < 0x20000 or not init < proc <= init + _MAX_INIT:
         die(f"implausible entry points for 0x{fxid:02x}: init 0x{init:05x} "
@@ -257,14 +217,6 @@ def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
     def entry(c):
         if c not in ep:
             ep[c] = entry_points(mem, SERVER_ID[c])
-            # A SPEC build has NO delay in payload A -- build_bus.py aliases id
-            # 0x06 to the SEND client so a wrong chooser pick becomes a send.
-            # Locally that alias resolves to a perfectly plausible entry point
-            # and renders a dry passthrough: silence over the bus, dry in a
-            # --direct control. That cost a session on 12 Aug 2026 ("BusDelay
-            # outputs nothing in any config" -- it was never instantiated).
-            # The dispatch table cannot distinguish the alias from real code,
-            # but DELAY == SEND can never be legitimate: die, don't measure.
             if c == "D" and ep["D"] == entry_points(mem, SERVER_ID["S"]):
                 die("this dump's DELAY entry is the SEND alias -- a SPEC build "
                     "(payload A carries no delay). Build the delay hatch:\n"
@@ -273,7 +225,7 @@ def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
             # The same trap generalizes to every module: an id absent from
             # the image dispatches to the fallback (SPEC aliases it to SEND),
             # which renders a PLAUSIBLE DRY PASSTHROUGH -- peak == amp, THD at
-            # the noise floor, no error anywhere. Reproduced 31 Aug 2026 with
+            # the noise floor, no error anywhere. Reproduced with
             # --pick B against a `bus` image (no BodeShift in it). Check
             # which code the entry actually points at before running it.
             if c != "S" and ep[c] == entry_points(mem, SERVER_ID["S"]):
@@ -292,10 +244,6 @@ def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
     tgt = pick or ("R" if "R" in layout.upper() else
                    "D" if "D" in layout.upper() else
                    (_present[0] if _present else None))
-    # ⚠️ NO SILENT FALLBACK TO "R". It used to default to the reverb when it
-    # could not work out a target, which meant `--direct` on an insert
-    # rendered BusVerb and said so in the wrong words. If we cannot tell what
-    # to run, say so.
     if tgt is None or tgt not in SERVER_ID:
         die(f"cannot tell which module to render from layout {layout!r}. "
             f"Pass --pick <letter> -- one of {''.join(sorted(SERVER_ID))} "
@@ -309,14 +257,6 @@ def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
         _par = (rev_params if tgt == "R" else dpar if tgt == "D"
                 else insert_params if insert_params is not None
                 else MODULE_DEFAULTS.get(tgt, [0] * 12))
-        # THE AUDIO BLOCK IS AT X:0 ON HARDWARE (the dispatcher's `move #$0,r0`,
-        # P:0x42e) and the STOCK effects use the X memory right after it as
-        # scratch -- the flanger writes X:0x20-0xff every block. dsp_host's
-        # default puts the audio at X:0x80, inside that scratch, which turned
-        # the flanger's output into a Nyquist-rate alternation (+0.94/-0.02)
-        # and cost a false "not credible" verdict (2 Sep 2026). None of our
-        # own modules touch low X, so the default never mattered for them;
-        # a stock render gets the hardware address.
         _tm = registry.by_id(SERVER_ID[tgt])
         # An FX1-ONLY module (Claims.fx1_only) passes dry on an FX2 slot,
         # so its render is an FX1 instance: state block 0x6100 and the
@@ -361,16 +301,6 @@ def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
                 f"render an insert with --direct instead")
         r7s = ",".join(str(2 + 3 * k) for k, _ in live)   # FX2 at position k: 0x6200 + 0x300*k (three r7 bumps per track, COLDFIRE_PORT.md O11)
         als = ",".join(str(1 + 2 * k) for k, _ in live)
-        # The tone normally reaches the SENDs only, so a SERVER's own track
-        # is SILENT and its dry path is never exercised -- MIX=0 renders
-        # digital silence. That is fine for measuring an engine and useless
-        # for measuring a DRY/WET BLEND, which is a hardware-only behaviour
-        # every local render was blind to until 12 Aug 2026. --inall feeds
-        # every live slot, so the delay's own dry is real and MIX can be
-        # measured for what it does on the unit.
-        # `feed` names the letters whose tracks receive the tone (3 Sep
-        # 2026: a station sends from its OWN track, so the tone has to reach
-        # it and NOT the server, whose own dry would swamp the measurement).
         inmask = sum(1 << i for i, (_, c) in enumerate(live)
                      if c == "S" or inall or (feed and c in feed))
         # The three the CLI has flags for keep their flag-driven values;
@@ -389,7 +319,7 @@ def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
         for _, c in live:
             cmd += ["-params", ",".join(map(str, par[c]))]
     if tempo:
-        # what the ColdFire tempo cave publishes (r6+$6/$7); 24 Aug 2026
+        # what the ColdFire tempo cave publishes (r6+$6/$7);
         cmd += ["-tempo", str(tempo)]
     r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
     if r.returncode != 0:
@@ -518,48 +448,9 @@ def write_wav(path, L, R):
         w.writeframes(bytes(b))
 
 
-# reverb: MOD and SPEED forced to 0 (modulation makes legitimate sidebands and
-# would swamp the metric), MIX full wet, LP wide open.
-# 12 entries: page 1 (0..5), then the REAL page-2 slot map (6..11) --
-# docs/firmware/PARAM_PAGES.md, settled 17 Aug 2026. Slots 7/9/11 are COMPANION fields
-# (written to bits 8-15 of the same word as the preceding knob), drivable
-# locally since dsp_host learned the map the same day; before that, no
-# companion select was ever exercisable in the emulator and DMODE=/DINT=/DFRZ=
-# build overrides were the only way in. Those overrides remain valid and are
-# proven equivalent (param-driven MODE renders bit-identical to a MODE= build).
-# idx5 is IN since the v4 RETURN (was MIX): 0, or every render registers a
-# silent host client and dilutes the senders by 1/sqrt(N+1) -- exactly the
-# phantom-client defect the DSP side just spent a day removing.
-# idx11 is the RATE select (0.5/1/2/4x MOD speed) since 18 Aug 2026 -- 1 = 1x,
-# the hardware boot default. 0 halved the MOD speed of every render between
-# RATE's birth and this default catching up (both 18 Aug 2026).
-# Slots 3/4 are TONE (64 = the old HP 0 / LP 127) and -DEL (0) since v8,
-# 5 Sep 2026. The old `0, 127` here read as TONE 0 / -DEL 127 for one build:
-# every verify-bus case went dark and the reverb host sent full-tilt into the
-# delay bus -- the harness-knob-drift trap, again.
-# ONE AUX (7 Sep 2026): slot 0 AUX (the host's own send, 0 = not a client),
-# 1 TIME, 2 MOD, 3 SIZE, 4 TONE (64 = flat), 5 MIX (127 = wet-only stage
-# output, the old return level), then page 2 as before.
 REV_PARAMS  = [0, 64, 0, 127, 64, 127, 0, 0, 64, 0, 0, 1]
 # send: x:(r6+0) = AUX, the one send; main() sets it from --level
 SEND_PARAMS = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-# delay: build_bus.py's DEFAULTS for DELAY SERVER, which are the knob positions
-# a fresh part boots with -- TIME FDBK TONE PING MIX, then VRBW, then index 8 =
-# VRBD ($d's knob field). MIX 90 so a render is audibly wet without argument.
-# TIME FDBK TONE PING IN ... -- slot 4 is IN, this track's own send level into
-# the delay, NOT the old MIX crossfade (v3 stage 1). It defaults to 0 here for
-# the same reason it defaults to 0 in build_bus.py: IN>0 registers the host as
-# a bus client and the 1/N auto-gain then gives it a share it does not use,
-# quietly halving every real sender. The old 90 sitting here would have done
-# exactly that to every measurement taken from now on -- the SHMR/SPEED=0
-# lesson, which polluted every render until Round 12 caught it.
-# idx8 = RATE, and 64 IS LOAD-BEARING (build_bus.py's own words): exactly 1x
-# LFO speed, the pre-knob law. The 0 that sat here from RATE's birth (18 Aug
-# 2026) until later the same day froze both drift LFOs, so every DPTH
-# render between was wobble-free.
-# ONE AUX (7 Sep 2026): 0 AUX, 1 TIME, 2 FDBK, 3 TONE, 4 PING, 5 MIX (127 =
-# repeats only, the old behaviour), 6 MODE, 7 MDEP, 8 MRAT (64 = 1x), 9 SIZE,
-# 10 PTCH (64 = unison), 11 FRZE.
 DELAY_PARAMS = [0, 40, 60, 100, 64, 127, 0, 0, 64, 0, 64, 0]
 
 
@@ -679,12 +570,6 @@ def main():
                          "e.g. SR, .RS, SSR, DS. D needs a DEV=1 image. "
                          "Only R/D own a bus accumulator and can be ANALYSED; "
                          "render an insert with --direct --pick <letter>.")
-    # ⚠️ NOT hard-coded to R/D. This was choices=["R","D"] until 30 Aug 2026,
-    # which made the documented insert-render command
-    # (`--direct --pick W`) die in argparse -- and dropping --pick was worse:
-    # the target fell back to "R", so it instantiated BusVerb and LABELLED
-    # the output "DELAY". Six documents described that command as the way to
-    # render an insert. Derive the choices, like everything else here.
     ap.add_argument("--pick",
                     help="which module's output to analyse: its layout letter "
                          f"({''.join(sorted(SERVER_ID))}), or its module key/"
@@ -738,7 +623,7 @@ def main():
     if a.pick is not None:
         # Every layout letter here is an FX2 instance (alloc 1 + 2k). An
         # FX1-ONLY module renders as a dry pass there by its own design
-        # (Claims.fx1_only, 12 Sep 2026: the stations decide from the
+        # (Claims.fx1_only: the stations decide from the
         # allocator base at init), so a --pick of one would measure silence
         # and call it the effect. Render it on FX1 with rig_render instead.
         _fm = next((m for m in registry.modules().values()
@@ -786,16 +671,6 @@ def main():
                                    a.dtone, a.dping, a.dspray, a.dmode,
                                    a.drate, a.dptch, a.dfrz)):
         dpar = list(DELAY_PARAMS)
-        # ⚠️ SPRAY is slot 10 ($e KNOB). It sat at index 9 until 17 Aug 2026,
-        # which under the OLD dsp_host map happened to hit $e's knob field --
-        # right answer, wrong reasoning. Under the real map index 9 is PTCH's
-        # companion, so leaving it would have silently retuned the pitch
-        # select instead of the scatter depth.
-        # ⚠️ IN is slot 5 and -VRB is slot 4 since the 18 Aug 2026 swap.
-        # This table carried the PRE-swap mapping until 23 Aug -- --din was
-        # silently driving -VRB (caught when a delay IN-makeup test measured
-        # +0.0 dB lift; verify_bus.py had the swap right all along). The
-        # harness-knob-drift rule again: audit EVERY wrapper on a slot swap.
         _ds = _slots("DELAY SERVER", DELAY_FLAGS)
         for _f, val in (("dtime", a.dtime), ("dfdbk", a.dfdbk),
                         ("dtone", a.dtone), ("dping", a.dping),
@@ -888,10 +763,6 @@ def main():
             print(f'  -> {a.wav}')
         return 0
 
-    # Name the module that ACTUALLY ran. This used to be a two-way guess
-    # between REVERB and DELAY, so an insert render was labelled "DELAY" while
-    # executing the reverb -- a mislabel of exactly the kind this project has
-    # lost sessions to.
     _tgt = a.pick or ("R" if "R" in a.layout.upper() else
                       "D" if "D" in a.layout.upper() else None)
     _m = registry.by_id(SERVER_ID[_tgt]) if _tgt in SERVER_ID else None

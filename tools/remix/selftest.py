@@ -103,7 +103,7 @@ CASES = [
      [_stock("comb", 0x13, True), _effect("beta", 0x07, ybase=YBase.ALWAYS)],
      "stock instance buffer"),
     # The build parks a module's P table in the stock curve bank X:0x4840
-    # (14 Sep 2026); a module that addresses that record itself would find
+    #; a module that addresses that record itself would find
     # the table written under its reference.
     ("a table module beside a module addressing the stock curve bank",
      [_effect("alpha", 0x07, ptable=(1, 2, 3)),
@@ -204,9 +204,6 @@ def main():
         else:
             print(f"  [PASS] {label} are left alone")
 
-    # A module on a STOCK id would hijack that effect on BOTH menus (the
-    # dispatch tables are shared with FX1). Rungs shipped on EQUALIZER's
-    # 0x0c and Nimbus on DJ EQ's 0x0d before this line existed (2 Sep 2026).
     try:
         _effect("hijack", 0x0c)
         bad += 1
@@ -216,7 +213,7 @@ def main():
 
     # ---- the rig's derivations (tools/remix/rig.py) ---------------------
     # The track model is DERIVED, so hold the derivation to the measured
-    # facts: payload A serves TRACKS 5-8, B serves 1-4 (10 Aug 2026), an
+    # facts: payload A serves TRACKS 5-8, B serves 1-4, an
     # insert runs anywhere, SYSTEM modules never sit on a track.
     from remix import rig
     for mod in registry.modules().values():
@@ -365,7 +362,7 @@ def main():
     # X:0x20-0xff every block). dsp_host's default of X:0x80 sat inside that
     # scratch and turned FLANGER into a Nyquist-rate alternation while EQ,
     # DJ EQ, PHASER, SPATIALIZER and COMB were quietly 5-17 dB dirtier than
-    # they should be (2 Sep 2026). Hold the line with the sharpest of them:
+    # they should be. Hold the line with the sharpest of them:
     # FLANGER at MIX=0 is a BIT-EXACT dry passthrough at the right address.
     _host = ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_host"
     _dump = ROOT / "out/dsp/_stock_A.mem"
@@ -528,7 +525,7 @@ def main():
         if tuple(_hv) != tuple(_exp):
             bad += 1
             print(f"  [FAIL] remix {_n!r} gives up {_hv}, expected {_exp}")
-        # ⚠️ RUNS, NOT ONE RUN. Since 3 Sep 2026 a gap is two placeable
+        # ⚠️ RUNS, NOT ONE RUN. Since a gap is two placeable
         # openings rather than a refusal, so what has to hold is that the
         # grouping is sound: every run internally contiguous, and the runs
         # together covering exactly the harvested set.

@@ -190,11 +190,6 @@ def check_image(name, img, pristine, fails):
                 want = rdw(pristine, xtab + slot * 3)
                 if got == want:
                     continue
-                # ⚠️ ANY EFFECT ON NEITHER CHOOSER MAY HAVE BEEN HARVESTED,
-                # not just the three reverbs. Which a remix gives up is
-                # derived from its two choosers (stock.harvested), so the
-                # null stub is legitimate for any of them -- and DONOR_IDS
-                # was the last place this file assumed the fixed three.
                 if got == nul and eff.key in _given_up:
                     continue               # its words were taken; see above
                 fails.append(

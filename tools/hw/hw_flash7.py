@@ -70,7 +70,7 @@ MIX = CC_FX2 + 5     # both engines: slot 5
 RET = CC_FX1 + 2     # Character BUS: the CRSH knob is RET
 LEVEL_HOME = 108
 # T1 LEVEL per part: the pattern-change signature (OT LEVEL taper, measured
-# on T8 24 Aug 2026: 108 = 0 dB, 84 = -3.6, 64 = -8.3, 48 = -13.3)
+# on T8: 108 = 0 dB, 84 = -3.6, 64 = -8.3, 48 = -13.3)
 SIGNATURE = {0: 108, 1: 64, 2: 84, 3: 48}
 SIG_DB = {0: 0.0, 1: -8.3, 2: -3.6, 3: -13.3}
 
@@ -151,7 +151,7 @@ def stage(src=BASE, dest=TEST):
 
     # project.work / .strd: play from A01 part 1, T8 the master track (the rig).
     # BYTES, not text: the file is CRLF and text mode strips every \r, which
-    # the unit rejects with "SOME ERRORS OCCURED / PARSE ERROR" (9 Sep 2026).
+    # the unit rejects with "SOME ERRORS OCCURED / PARSE ERROR".
     for suffix in ("work", "strd"):
         f = dest / f"project.{suffix}"
         if not f.is_file():
@@ -221,8 +221,6 @@ def card(image=IMAGE, project=TEST, vol="/Volumes/OCTATRACK", set_name="PRESETS"
     if dst.read_bytes() != image.read_bytes():
         sys.exit("image copy does not compare")
     for p in vol.iterdir():
-        # only OUR previous builds go; the stock `OCTATRACK_OS1.40B.bin.bak`
-        # that has sat at the root since 2023 is Sam's and stays
         if p.is_file() and p.name != image.name and p.name.startswith("OCTATRACK_OCTABAM") \
                 and p.suffix.lower() == ".bin":
             print(f"  removing our previous build at the root: {p.name} ({p.stat().st_size} bytes)")

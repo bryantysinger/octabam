@@ -80,37 +80,10 @@ import send_probe
 SCRATCH = ROOT / "out" / "delayverify"
 SR = 44100
 
-# send_probe.DELAY_PARAMS order, which since the 18 Aug 2026 swap is:
-#   0 TIME  1 FDBK  2 TONE  3 PING  4 -VRB  5 PTCH  6 MODE  7 MDEP  8 MRAT
-#   9 SIZE  10 -DEL 11 FRZE     (v6, 4 Sep 2026: MODE and MDEP swapped so
-#   MODE sits on an even slot the panel's page-2 knob editor is proven to write)
-# ⚠️ Slot 6 is the KNOB field of r6+$c, NOT $b -- the old "$b/$c/$d/$e"
-# reading is the exact error PARAM_PAGES.md names as why the delay's WOW
-# worked locally and never on hardware. Odd slots (7/9/11) are companion
-# fields; dsp_host drives them via -params too since 17 Aug 2026.
-#
-# ⚠️ The 90 was on index 4 until 30 Aug 2026, described as "MIX 90 so a render
-# is audibly wet". After the swap index 4 is -VRB, so every run pinned the
-# REVERB SEND to 90 and left the delay's own IN at 0. Harmless for the
-# bit-compare (both sides got the same wrong knob) and wrong as a description
-# of what was exercised -- the same shape as the SLOT fix below, which landed
-# on 23 Aug and did not reach this line.
-# v5.1: slot 5 is PTCH (IN retired). 0 here so a pre-v5 REFERENCE gets
-# IN=0 and stays comparable; the GRAIN cases set PTCH explicitly.
-# ONE AUX (7 Sep 2026): 0 AUX, 1 TIME, 2 FDBK, 3 TONE, 4 PING, 5 MIX, 6 MODE,
-# 7 MDEP, 8 MRAT, 9 SIZE, 10 PTCH, 11 FRZE. MRAT 0 freezes the wobble on
-# purpose (the bit-compare wants a deterministic line); PTCH 64 = unison.
 BASE = [0, 40, 60, 100, 64, 127, 0, 0, 0, 0, 64, 0]
 
 SLOT = {"AUX": 0, "TIME": 1, "FDBK": 2, "TONE": 3, "PING": 4, "MIX": 5,
         "MDEP": 7, "MRAT": 8, "PTCH": 10}
-# v5.1 (3 Sep 2026): slot 5 is PTCH (IN retired), MDEP = wow depth / GRAIN
-# scatter, MRAT = wow rate / GRAIN density. v7 (5 Sep 2026): slot 10 is the
-# host's -DEL send (was DRV; the drive is pinned to 0 = bypass).
-# ⚠️ MIX (= IN since v3) moved to slot 5 in the 18 Aug 2026 IN/-VRB swap;
-# this map said 4 until 23 Aug, so the "MIX=0" case was actually pinning
-# -VRB -- harmless for its bit-compare purpose (both sides got the same
-# wrong knob), but wrong as documentation of what it exercised.
 
 
 def dp(**kw):
@@ -270,7 +243,7 @@ def main():
         ("TIME=127 (16320 max)", dp(TIME=127), 0),
         ("FDBK=127 TONE=127 (long recirculation)", dp(FDBK=127, TONE=127), 0),
         ("defaults, split=7 (a=0/a=1 sub-block path)", dp(), 7),
-        # THE WOBBLE (14 Sep 2026). BASE pins MDEP=0 and MRAT=0, so until
+        # THE WOBBLE. BASE pins MDEP=0 and MRAT=0, so until
         # this case modtap's modulated lerp (mod_int != 0, frac != 0), the
         # LFO pair and satdrv's DPTH-keyed saturation were rendered only
         # through GRAIN's fixed wow. A rewrite of those paths could pass
@@ -304,7 +277,7 @@ def main():
     if "; DMODE_OVERRIDE" in cand_src:
         clean_ref = render(ref_mem, dp(), source=source)
         MODES = [
-            # v5 numbering (3 Sep 2026): 1 = GRAIN, 2 = REVERSE; PITCH mode is
+            # v5 numbering: 1 = GRAIN, 2 = REVERSE; PITCH mode is
             # retired and its harmoniser lives in GRAIN's continuous pitch.
             # DINT drives the SIZE select (the PTCH slot until v5).
             ("GRAIN unison SPRAY=0 (every grain on the same read)", 1, 1, dp(MDEP=0, PTCH=64)),
@@ -341,7 +314,7 @@ def main():
                 detail = f"  (first differing sample {first}, {n} of {len(fa)} differ)"
             check(f"bit-identical: {label}", a == b, detail)
 
-        # ---- FREEZE (14 Sep 2026): DFRZ=1 on both engines -----------------
+        # ---- FREEZE: DFRZ=1 on both engines -----------------
         # The hold and its engage crossfade live in satdrv's tail and were
         # never rendered by this gate (slot 11 is a companion field; the
         # override is the local way in). Frozen defaults must DIFFER from

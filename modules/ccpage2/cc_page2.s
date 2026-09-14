@@ -150,6 +150,10 @@ wpos:   | d2 = clamped value (>=0 by construction)
         addal   %d1,%a0                | (page*6 already in the base)
         addal   %d4,%a0
         moveb   %d2,%a0@               | displayed value <- value
+        | live = LIVEB + track*72 + 0x38 + slot2 -- the FX2 page-2 lane the per-frame
+        | copier 0x4000cae8 delivers to the DSP record (measured under the port 13 Sep
+        | 2026: +0x2c AMP, +0x32 FX1, +0x38 FX2; +0x20 is PLAYBACK's and never reaches
+        | the DSP -- the FX2 editor writes 0x80000848+track*72+slot2 at 0x4003ab00)
         movel   %d6,%d1
         moveq   #72,%d3
         mulu.l  %d3,%d1
@@ -192,6 +196,10 @@ wpos:   | d2 = clamped value (>=0 by construction)
         movel   %d1,GCHG               | 0x100f8598 = 1 -- the GLOBAL changed flag
         rts
 
+| ---- wtrk1: FX1 page-2 slot (d4-6) = value d5 for track d6 --
+| The FX1 PAGE-2 EDITOR 0x4003abe4, store for store, minus the refresher
+| call and the redraw marker (see the header). Reads d4/d5/d6, preserves
+| d4/d5/d6/d7/a2; scratches d0-d3/a0/a1.
 wtrk1:  movel   DBPTR,%d0
         moveq   #0,%d1
         moveb   PARTB,%d1

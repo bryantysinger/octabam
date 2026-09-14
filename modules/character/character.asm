@@ -81,7 +81,7 @@
 
 init:
 ; ROTINIT
-; ---- FX1 ONLY (12 Sep 2026): the allocator base decides, at init --------
+; ---- FX1 ONLY: the allocator base decides, at init --------
 ; Modulation's idiom (modules/modulation/modulation.asm): X:0x213 points at
 ; this instance's entry in the base table, valid HERE and nowhere else. FX1
 ; slots are below 0x4000, FX2 slots at or above it. An FX2 instance runs as
@@ -242,6 +242,15 @@ ch_cset:
         move    a0,x0
         move    x0,x:(r7+$27)           ; m/4 = 0.25/den: makeup/4
 ch_cdone:
+; SAT character (slot 7 select of r6+$c) -> a MODE FLAG and per-mode words,
+; so the sample loop's SAT stage is a MODEFORK: TAPE (0) = TapeHead, TUBE (1)
+; = DaTube, INFL (2) = OInflator (all JClones, MIT;). The tanh
+; curve, its P table, FUZZ and the drive-keyed low-pass are gone. A stored 3
+; (the old BUS) lands on TAPE. Per-mode words, all from DRV = d (0..0.992):
+;   TUBE  $37 = d/2 (the positive half's scale)  $38 = d (the negative half's)
+;         ($4c = (0.5 + d)/2 input gain and $39 = comp/2 below, every mode)
+;         (the DC blocker's k = 1, R = 0.999 are chtube's own immediates)
+;   INFL  $3a = e/2 with e = d            $3b = 1 - e
         clr     a
         move    a,x:(r7+$3e)            ; return level: 0 until RET is read below
         move    a,x:(r7+$29)            ; sat mode: 0 = TAPE
@@ -275,6 +284,7 @@ ch_sinfd:
         sub     x0,a
         move    a,x:(r7+$3b)            ; 1 - e (DRV 0 never gets here: the skip)
 ch_sdone:
+; ---- RET: the return level, BY POSITION ---------------------
         move    x:(r6+$4),x0
         move    x0,x:(r7+$3e)           ; RET level (slot 4)
 ; ... on PAYLOAD A ONLY: the mirror position on core 1 is track 4. An insert
@@ -371,6 +381,7 @@ ch_pos3:
         mpy     x0,y1,a
         asl     #$1,a,a
         move    a,x:(r7+$31)            ; k3mag (< 0.98)
+; ---- TXTR: Airwindows Pockey (Chris Johnson, MIT, 2022) -------
         move    x:(r6+$2),a             ; t
         clr     b                       ; b = 0 BEFORE the tst (the flag trap)
         move    #>$1,x0
@@ -448,6 +459,7 @@ ch_pos3:
         move    a,r5                    ; DELAY output [read]
         move    #>$ffffff,m4
         move    #>$ffffff,m5
+; ---- ONLY THE RETURN READS THE STAMPS --
         move    x:(r7+$3e),a
         tst     a
         beq     ch_ndl                  ; no return level: touch nothing
@@ -745,6 +757,11 @@ ch_noret:
         move    x:(r7+$59),x0
         move    x0,x:(r7+$1c)
 ch_notx:
+; ---- SATURATE: the character. TAPE is
+; TapeHead, TUBE is DaTube, INFL is OInflator: one straight-line callee per
+; mode per channel (a = the sample in, b = out; the caller's store is the
+; hard clip). Skipped whole when DRV is 0 ($4d, per block). The three
+; alternatives are a MODEFORK so the pricer charges the worst, not all.
         move    x:(r7+$4d),a
         tst     a
         bne     ch_nosat
@@ -796,6 +813,9 @@ ch_sinfl:
         move    b,x:(r7+$36)
 ; MODEFORK_END
 ch_nosat:
+; ---- TONE: a tilt after the saturator, every mode ----------
+; One-pole low-pass at 1.2 kHz per channel (k = 0.157), y = x + (t/2)(x - 2lp):
+; TONE 127 = +3.5 dB above / -6 dB below, 0 the mirror, 64 bit-exact.
         move    x:(r7+$35),a            ; L
         move    x:(r7+$3f),x0           ; lp
         sub     x0,a
@@ -834,6 +854,11 @@ ch_nosat:
         move    x:(r7+$36),b
         add     b,a
         move    a,x:(r7+$36)
+; ---- COMPRESS: COMP 0 skips the stage
+; (bit-exact); else |key| smoothed by the flavour's attack / release, Lv =
+; K * level_s, gr = (Lv^2/2 - 1)^2 + a*Lv, <= 1 by the limiting store --
+; a dip around Lv = 1 -- then x *= gr * makeup on both channels. Lv is
+; carried halved (Lv/2, so Lv up to 2 fits a word; the dip is over by 1.5).
         move    x:(r7+$26),a            ; COMP
         tst     a
         beq     ch_capd                 ; COMP 0: the stage is skipped
@@ -926,15 +951,39 @@ ch_capd:
         asl     #$1,a,a
         add     b,a
         move    a,x:(r0+n0)
+; (the send taps left with the sends: the stations have had no
+; send since the one-aux rig; the returns below still need the bus)
+; (the return moved to the top of the loop)
         move    (r0)+n0                 ; the frame advance: n0 is 1 for the
         move    (r0)+n0                 ; whole loop, so two steps, no reload
 ch_end:
         nop
         rts
 
+; ===========================================================================
+; BYPASS: frames untouched -- nothing to do at all (Spectrum's shape)
+; The loop that sat here added the returns at a level it had
+; just tested to be 0: ch_bypass is reached only through the RET test
+; above, so its per-sample gate was always taken and it only walked r0.
+; ===========================================================================
 ch_bypass:
         rts
 
+; ---------------------------------------------------------------------------
+; chtube -- DaTube per channel (JClones_DaTube.jsfx, MIT;).
+; In: a = x, r3 -> the DC blocker's x1 (x:(r3)) and y1 (x:(r3+$1)). Out: b.
+;   xin = x*(0.5 + d)                           ($4c = (0.5+d)/2, halved)
+;   u   = 1 - |xin|      (may go negative: the JSFX's linear extension past
+;                         +-1 is exactly the curve with u^P dropped, so the
+;                         table lookup clamps u to 0 and the rest is linear)
+;   T   = u - u^P, P = ln(10) + 1 = 3.3026     (TUBE_UP: 17 pairs of u^P/2)
+;   y   = xin + (d/2)*T for xin > 0, xin - d*T for xin < 0   (asymmetric: the
+;                         negative half is driven twice as hard -- the tube)
+;   out = 2 * y * comp(d), then the DC blocker (k 1, R 0.999).
+; Everything runs HALVED (xin/2 <= 0.75, u/2, T/2, y/2) and the post gain is
+; comp/4 doubled back twice. STRAIGHT-LINE: no branch. Every mpy x0,y1 (the
+; audited-signed order; the one Tcc reads the tst right before it). Clobbers
+; x0, x1, y0, y1, a, b, n1, n2; $49 parks u/2.
 chtube:
         move    a,x0                    ; x
         move    x:(r7+$4c),y1           ; (0.5 + d)/2
@@ -991,6 +1040,17 @@ chtube:
         move    a,b
         rts
 
+; ---------------------------------------------------------------------------
+; chinfl -- OInflator per channel (JClones_OInflator.jsfx, MIT;),
+; single band, Curve at the JSFX default 0 (c = 0.25), Clip on (the +-0.5
+; threshold on the halved signal IS the input's full scale). In: a = x. Out: b.
+;   x2 = x/2                      (the JSFX's 0.5 input headroom)
+;   g  = 0.75 + 0.5*|x2|          (2c|x2| + (1 - c), in [0.75, 1])
+;   gx = g*x2                     (|gx| <= 0.5)
+;   y  = 2e*gx*(1 - |gx|) + (1 - e)*x2
+;   out = 2*y                     (the JSFX's x2 output gain; |out| <= 1)
+; e = DRV/128 ($3a = e/2, $3b = 1 - e). g and t = 1 - |gx| live halved.
+; STRAIGHT-LINE, stateless; every mpy/mac x0,y1. Clobbers x0, x1, y1, a, b.
 chinfl:
         asr     #$1,a,a                 ; x2
         move    a,x1
@@ -1021,6 +1081,14 @@ chinfl:
         move    a,b
         rts
 
+; ---------------------------------------------------------------------------
+; chtxc -- Pockey's codec on a MAGNITUDE: a = |x| in, a = out.
+; mu-law encode by the 257-point ENC table (r3 = t, idx = the top 8 bits,
+; frac = the 15 under them, the second point through (r3)+ and back),
+; quantise to rez in that domain -- the reference rounds UP: ceil(y/rez) rez
+; = floor(y q4096 + 2^-12 - lsb) on the 2^-12 grid, back by 4 rez x 1024,
+; exact multiples and zero unchanged -- scale by 1 - rez, decode by the DEC
+; table (r5). STRAIGHT-LINE. Clobbers x0, x1, y0, y1, b, n3, n5.
 chtxc:
         move    a,x1                    ; u
         asr     #$f,a,a                 ; idx = u >> 15  (0..255)
@@ -1068,6 +1136,16 @@ chtxc:
         add     y0,a                    ; dec(...)
         rts
 
+; chtape -- TapeHead per channel (JClones_TapeHead.jsfx, MIT;).
+; In: a = x, r3 -> y1 (x:(r3)) and y2 (x:(r3+$1)), both kept at /4 (the
+; port's headroom: |y1| <= 1.46, |y2| <= 1.95 true). Out: b = (g3*clip(y3)
+; + ss(d*y1) + ss(d*y2)) * trim, up to 2.2, CLIPPED (the JSFX's own output
+; clip) and then scaled by the block's unity trim x:(r7+$22) = (1/11)/d8. STRAIGHT-LINE: no branch of any kind
+; (cycle_count.py charges the span at each call). Every mpy is x0,y1 (the
+; audited-signed order); every clip is a LIMITING move into x0. Clobbers
+; x0, x1, y1, a, b.
+;   y1 += k2*y2 ; y3 = k1*y1 + y2 - x ; y2 -= k3mag*y3      (k3 = -1.4 k2)
+;   ss(v) = 1.5v - 0.5v^3 on v = clip(d*y1), clip(d*y2)      (v = 32*(y1/4*d/8))
 chtape:
         asr     #$2,a,a                 ; Xs = x/4
         move    a,x1

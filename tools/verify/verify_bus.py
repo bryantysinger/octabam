@@ -100,7 +100,7 @@ CASES = [
      dict(layout=".RS")),
     # ⚠️ NO SENDER AT POSITION 3 in any single-core case: that is track 8
     # on payload A (the DEV hatch IS payload A), where the SEND is refused
-    # by design (the one-aux rig, 7 Sep 2026) -- a `..DS` layout rendered
+    # by design (the one-aux rig) -- a `..DS` layout rendered
     # digital silence and the gate rightly refused to stamp it.
     (".DS     election takeover with the delay as the server",
      dict(layout=".DS", pick="D")),
@@ -145,7 +145,7 @@ CASES = [
      dict(layout="RDS", pick="D", split=5, raux=64)),
 
     # --- the hosts' own sends: paths every DEFAULT render leaves at zero ----
-    # ⚠️ Added 18 Aug 2026 after the delay's IN decode was silently DELETED by
+    # ⚠️ Added after the delay's IN decode was silently DELETED by
     # a splice (6d2690b) and 17/17 still passed -- every case had IN at 0, so
     # "IN multiplies garbage" rendered identically to "IN works". A knob whose
     # default is 0 is INVISIBLE to this gate unless a case drives it.
@@ -164,11 +164,6 @@ CASES = [
 # nothing about the accumulator it never reads.
 BASE = dict(dur=0.12, tail=0.25, amp=0.5, level=100, dlevel=100,
             mix=127, dtime=20, dfdbk=70, din=40, dmix=127, raux=0)
-# dmix 127 -> 40 (23 Aug 2026, with the delay's IN-keyed wet makeup): at 127
-# the x3 makeup pinned every D-layout render at the rail, and a clipped
-# fixture is a BLIND fixture -- rail-pinned samples compare equal no matter
-# what the code did. 40 keeps IN exercised (the 18 Aug lesson above) with
-# the makeup active and the peak well off the clamp.
 
 
 def render(mem, case, bump_level=0, extra_send=""):

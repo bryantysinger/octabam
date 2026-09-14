@@ -446,7 +446,7 @@ class AtaCard:
         elif cmd == 0x30:
             # the count byte is SECTORS REMAINING: the handler already streamed
             # the first sector and decremented it (a 1-sector write reads 0
-            # here — treating that as 256 wiped a whole card, 5 Sep 2026)
+            # here — treating that as 256 wiped a whole card)
             rem = uc.mem_read(FW_COUNT, 1)[0]
             if rem and self.wremaining:
                 rem = min(rem, self.wremaining)

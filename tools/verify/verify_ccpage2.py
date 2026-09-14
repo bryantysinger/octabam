@@ -103,7 +103,7 @@ def _addrs1(uc, track, slot2):
 
 
 FX1_ID_OFF = 0x8ed80                                    # Part: +track, the FX1 id (0x4003ac1e)
-    # Until 13 Sep 2026 these were 0x8ef5a / +0x20 / 0x100a50a8 -- the PLAYBACK
+    # Until these were 0x8ef5a / +0x20 / 0x100a50a8 -- the PLAYBACK
     # page-2 editor's arrays (0x4003a474; its "staged index" is the machine type).
 
 
@@ -199,7 +199,7 @@ def main():
     ok &= good
     print(f"  stock={reached['stock']} page2-live={l}  {'ok' if good else 'FAIL'}")
 
-    # 4. FX1 page 2 via CC 68-73 (13 Sep 2026): every track, Character (0x1c)
+    # 4. FX1 page 2 via CC 68-73: every track, Character (0x1c)
     #    on FX1, CC 69 (page-2 slot 7 = SAT, count 3) value 1 -> lands as 1
     print("CC 69 (FX1 page-2 slot 7) on each track's own channel, FX1 = Character:")
     CHAR = 0x1c

@@ -1015,6 +1015,14 @@ mo_para:
         add     b,a
         rts
 
+; ---------------------------------------------------------------------------
+; mo_tap -- a = the delay in Q11.12 (8 .. 1,015), y0 = the line offset (0 or
+; $400) -> a = the tap, the fraction blended toward the OLDER neighbour (a
+; delay of i + f between the samples at i and i + 1; blending toward the
+; newer one made it i - f and clicked at every integer crossing -- 12 Sep
+; 2026). Uses x0 x1 y1 b r5 and $3f. Straight-line. AGU settle: r5 is
+; written at least two instructions before it addresses.
+; ---------------------------------------------------------------------------
 mo_tap:
         move    a,x:(r7+$3f)            ; the total
         asr     #$c,a,a

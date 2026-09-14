@@ -653,10 +653,6 @@ def reanalyse(args):
 
 
 # ---------------------------------------------------------------------------
-# stress: drive every page-1 knob MIDI can reach through its extremes while
-# the rung plays (Sam, 13 Sep 2026: the errors "were happening constantly",
-# so a static soak has little value; the knobs are what a set does)
-# ---------------------------------------------------------------------------
 def _cc_for(mods, layout, t, fx, name):
     spec = layout[t][0 if fx == "fx1" else 1]
     if spec is None:

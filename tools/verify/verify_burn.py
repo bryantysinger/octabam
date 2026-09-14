@@ -103,10 +103,6 @@ def main():
         print(f"  SKIPPED: the rig burn needs {sorted(need - mods)}, which remix "
               f"{remix!r} does not carry -- nothing to burn")
         return 0
-    # `make test-audio` is not a target: the generator is the script itself
-    # (13 Sep 2026 -- this call broke `make check` on every remix carrying the
-    # rig from the morning the burn landed until it was run on a tree without
-    # out/test_audio already built).
     if not (ROOT / "out/test_audio/loop.wav").is_file():
         run([sys.executable, "scripts/make_test_audio.py"])
     SCRATCH.mkdir(parents=True, exist_ok=True)
