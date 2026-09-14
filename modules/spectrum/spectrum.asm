@@ -794,7 +794,10 @@ fs_vowl:
         move    a,x0                    ; y, limited
         move    #$40,y1                 ; the formant's gain, halved
         mpy     x0,y1,a
-        move    a,x:(r7+$1c)            ; the sum so far (halved)
+        move    a,y0                    ; the sum so far (halved), kept in y0:
+                                        ; free on this path and in fs_bmix, and
+                                        ; |sum| <= 0.5 + 0.25 + 0.15 < 1, so the
+                                        ; limiting move never limits (14 Sep 2026)
 ; formant 1: y = 2*b0*(dx/2) + 2*m1*y1 - a2*y2; then y2 <- y1 <- y
         move    x:(r7+$1b),x0
         move    x:(r7+$17),y1           ; b0
@@ -814,10 +817,9 @@ fs_vowl:
         move    a,x:(r7+$04)            ; y1 <- y (limited)
         move    a,x0                    ; y, limited
         move    #$20,y1                 ; the formant's gain, halved
-        mpy     x0,y1,b
-        move    x:(r7+$1c),a
-        add     b,a
-        move    a,x:(r7+$1c)
+        mpy     x0,y1,a
+        add     y0,a
+        move    a,y0                    ; the sum so far (halved)
 ; formant 2: y = 2*b0*(dx/2) + 2*m1*y1 - a2*y2; then y2 <- y1 <- y
         move    x:(r7+$1b),x0
         move    x:(r7+$18),y1           ; b0
@@ -837,13 +839,14 @@ fs_vowl:
         move    a,x:(r7+$06)            ; y1 <- y (limited)
         move    a,x0                    ; y, limited
         move    #>$133333,y1          ; the formant's gain, halved
-        mpy     x0,y1,b
-        move    x:(r7+$1c),a
-        add     b,a
-        move    a,x:(r7+$1c)
-; wetA = 2 * the halved sum (= y0 + 0.5*y1 + 0.3*y2), limited
-        move    x:(r7+$1c),a
-        asl     #$1,a,a
+        mpy     x0,y1,a
+        add     y0,a
+        move    a,y0                    ; the halved sum (never limits, above)
+; wetA = 2 * the halved sum (= y0 + 0.5*y1 + 0.3*y2), limited -- as sum + sum,
+; NOT an asl: a0 still holds the last product's low bits and a shift would
+; carry its top bit into a1; the add leaves a2:a1 exactly as the shift of the
+; reloaded sum did
+        add     y0,a
         move    a,x:(r7+$1b)            ; wetA
         move    r7,r3
         move    #$38,n3
@@ -884,7 +887,10 @@ fs_vowl:
         move    a,x0                    ; y, limited
         move    #$40,y1                 ; the formant's gain, halved
         mpy     x0,y1,a
-        move    a,x:(r7+$1c)            ; the sum so far (halved)
+        move    a,y0                    ; the sum so far (halved), kept in y0:
+                                        ; free on this path and in fs_bmix, and
+                                        ; |sum| <= 0.5 + 0.25 + 0.15 < 1, so the
+                                        ; limiting move never limits (14 Sep 2026)
 ; formant 1: y = 2*b0*(dx/2) + 2*m1*y1 - a2*y2; then y2 <- y1 <- y
         move    x:(r7+$1b),x0
         move    x:(r7+$17),y1           ; b0
@@ -904,10 +910,9 @@ fs_vowl:
         move    a,x:(r7+$0c)            ; y1 <- y (limited)
         move    a,x0                    ; y, limited
         move    #$20,y1                 ; the formant's gain, halved
-        mpy     x0,y1,b
-        move    x:(r7+$1c),a
-        add     b,a
-        move    a,x:(r7+$1c)
+        mpy     x0,y1,a
+        add     y0,a
+        move    a,y0                    ; the sum so far (halved)
 ; formant 2: y = 2*b0*(dx/2) + 2*m1*y1 - a2*y2; then y2 <- y1 <- y
         move    x:(r7+$1b),x0
         move    x:(r7+$18),y1           ; b0
@@ -927,13 +932,14 @@ fs_vowl:
         move    a,x:(r7+$0e)            ; y1 <- y (limited)
         move    a,x0                    ; y, limited
         move    #>$133333,y1          ; the formant's gain, halved
-        mpy     x0,y1,b
-        move    x:(r7+$1c),a
-        add     b,a
-        move    a,x:(r7+$1c)
-; wetA = 2 * the halved sum (= y0 + 0.5*y1 + 0.3*y2), limited
-        move    x:(r7+$1c),a
-        asl     #$1,a,a
+        mpy     x0,y1,a
+        add     y0,a
+        move    a,y0                    ; the halved sum (never limits, above)
+; wetA = 2 * the halved sum (= y0 + 0.5*y1 + 0.3*y2), limited -- as sum + sum,
+; NOT an asl: a0 still holds the last product's low bits and a shift would
+; carry its top bit into a1; the add leaves a2:a1 exactly as the shift of the
+; reloaded sum did
+        add     y0,a
         move    a,x:(r7+$1b)            ; wetA
         move    r7,r3
         move    #$3c,n3
