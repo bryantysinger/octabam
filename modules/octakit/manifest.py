@@ -31,6 +31,11 @@ ok-ms, her 92cf70b / ot-26914 + midisc 1.40MIDISC8), confirmed by midisc's
 author -- and a Part Reload then trapped in her caller check
 (modules/kits-reload; `pinned_returns` below is how the ledger sees that
 class).
+15 Sep 2026: pinned at her 7ba0ad6 (ot-26914-152100: an empty Kit slot's
+payload is initialised through the stock part initialiser on load; 48 B
+of runtime, one internal pointer literal, the stamp). abi.inc and the
+reload routine unchanged, so the bridge and the pinned returns stand;
+verify_octakit byte-exact, ok-ms green.
 
 Her recipe rewrites the apply_part entry 0x40009094 and the scene-parameter
 writer 0x40052ae8; the ledger refuses any other module on those sites. CC
