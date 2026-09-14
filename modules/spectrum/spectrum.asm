@@ -85,7 +85,6 @@ init:
         move    #>$1,x0
         tst     a
         tpl     x0,b                    ; base >= 0x4000: an FX2 slot
-        move    b,x:(r7+$30)          ; 1 = dry pass
 ; ⚠️ INIT MUST PRESERVE r1: the stock FX1 dispatcher keeps the effect id in
 ; r1 across `jsr init` and indexes PROC_TABLE with it afterwards (P:0x4c8..
 ; 0x4d7, disassembled 13 Sep 2026 under the ColdFire port). Zeroing through
@@ -95,14 +94,27 @@ init:
 ; itself and never reads r1 between them, which is why no gate saw it. r5 is
 ; free at init (the tables load it later); tools/verify/verify_initregs.py
 ; now refuses any module init that writes r1.
-        clr     a                       ; the VOWL bank's states ($00..$0f) and
-        move    r7,r5                   ; the coefficient slots after them
+; ---- EVERY PERSISTENT SLOT IS ZEROED HERE (14 Sep 2026) -------------------
+; $00..$3f in one loop: the VOWL bank's states and coefficient slots
+; ($00..$17), B_prev ($19/$1a), the parks, the peak ($1e), the LFO phase
+; ($31), the env ($32), the SVF states ($34..$37) and FILTER B's poles
+; ($38..$3f). The loop used to stop at $17, and a block holds whatever the
+; effect before it left there: on the unit (never under the port, which
+; boots zeroed RAM) filter B's two HP poles at cHP = 0 are FROZEN, so
+; hp2 = yB - h2 subtracted a stale h2 from every sample forever -- a DC
+; offset of up to full scale on a station's output, invisible in an
+; AC-coupled capture, that the master's compressor makeup then clipped on
+; one channel ("R collapses above COMP 40", 13-14 Sep 2026;
+; docs/remixer/FAILURE_MODES.md). tools/verify/verify_dirtystate.py renders
+; every module from a garbage block and refuses any output from silence.
+        clr     a
+        move    r7,r5
         move    #>$ffffff,m5
-        do      #>24,>fs_iz            ; $00..$17: the VOWL bank's states, the
-                                        ; coefficient slots, LADR's ramp ($16)
+        do      #>64,>fs_iz            ; $00..$3f
         move    a,x:(r5)+
 fs_iz:
         nop
+        move    b,x:(r7+$30)            ; the FX2 flag (1 = dry pass), after the clear
         move    a,x:(r7+$2e)            ; g2run and dg: the ramp starts from 0
         move    a,x:(r7+$2f)
         rts

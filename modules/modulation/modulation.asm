@@ -106,6 +106,8 @@ monoclr:
         move    a,x:(r7+$1c)            ; LFO phase
         move    a,x:(r7+$32)            ; feedback tone states
         move    a,x:(r7+$33)
+        move    a,x:(r7+$1d)            ; the LFO values L/R: read before written
+        move    a,x:(r7+$1e)            ; each sample (14 Sep 2026, verify_dirtystate)
         rts
 
 proc:
