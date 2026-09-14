@@ -137,7 +137,7 @@ scripts/           toolchain setup, OS fetch and recon, the bit-identity gate
 dsp/               shared DSP infrastructure: the null stub and the probes
 docs/remixer/      using and extending the remixer: MODULES, PLACEMENT, REMIXER, TOOLING, FLASHING
 docs/firmware/     the firmware, reverse-engineered: ARCHITECTURE, DSP, CHIP, PARAM_PAGES, MAINMENU, the port
-docs/effects/      the effects: REVERB, BUS, XBUS, VOICING, CAPTURE, PORTS
+docs/effects/      the effects: REVERB, BUS, XBUS, VOICING, CAPTURE, MASTER, PORTS
 docs/history/      closed records, kept for provenance
 ```
 

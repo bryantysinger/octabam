@@ -2685,7 +2685,7 @@ were diffed word for word).
 The whole point of O11/O12 was to fix on the unit what the lock-step
 harness could not see. Flash 7 is that image (`REMIX=bamsep27 make bus`,
 byte-identical to the O12/O13 test image bar the build tag), flashed and
-measured on Sam's Octatrack over MIDI (`docs/effects/FLASHPLAN.md` "Flash 7"; a
+measured on Sam's Octatrack over MIDI (`docs/history/FLASHPLAN.md` "Flash 7"; a
 Mac-generated 1 kHz burst into inputs A/B, the main outs captured, the Mac
 the clock master, `tools/hw/hw_flash7.py` + `hw_flash7_liveclaim.py`). **Every
 one-aux bus claim passed**, and the two things the port found are now
@@ -2945,7 +2945,7 @@ created, 11 ran, first switch boot → main, gate at 204.95 ms** ✅.
 `tools/emu/ot_emu/oracle.py A B` diffs two such files field by field with no
 tolerance except one PIT period on dispatch times, and reports a field the
 port does not produce yet as MISSING rather than as a failure, so the port's
-report can grow milestone by milestone. `docs/firmware/COLDFIRE_WORKORDER.md` is the
+report can grow milestone by milestone. `docs/history/COLDFIRE_WORKORDER.md` is the
 queue that uses it.
 
 ## The order to do it in

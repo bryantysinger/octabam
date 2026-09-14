@@ -759,7 +759,7 @@ MDEP, SIZE, FRZE), still on the track page. Proven locally: all six
 engine-modes render bit-identically through the new fields. ✅ **Confirmed
 on hardware, tag 84, the same day:** MODE draws and steps as a select on
 slot 6; SHMR / MDEP sweep smoothly from slot 7. (The first play stalled the
-sequencer on a project saved under the old layout — `docs/effects/FLASHPLAN.md`.)
+sequencer on a project saved under the old layout — `docs/history/FLASHPLAN.md`.)
 
 **The SELECT PROBE line is closed.** Four builds (80–83) and no signal on
 the fourth either: after the re-slot nothing depends on the select array

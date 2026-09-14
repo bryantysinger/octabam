@@ -808,7 +808,7 @@ with its decider:
 One session per milestone, in a terminal left open:
 
 ```
-/loop Take the next milestone in docs/firmware/COLDFIRE_WORKORDER.md that is not done and not BLOCKED. Work on a branch named for it. Follow the standing rules. Open a PR when its gate passes, or a draft PR titled BLOCKED with the measurement. Then stop.
+/loop Take the next milestone in docs/history/COLDFIRE_WORKORDER.md that is not done and not BLOCKED. Work on a branch named for it. Follow the standing rules. Open a PR when its gate passes, or a draft PR titled BLOCKED with the measurement. Then stop.
 ```
 
 **Model routing (8 Sep 2026, after the Fable credit ran out mid-session):**
