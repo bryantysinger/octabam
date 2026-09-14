@@ -43,7 +43,7 @@ TMP.mkdir(parents=True, exist_ok=True)
 
 # ⚠️ REBUILD THE DUMP, ALWAYS. The audition caches its scratch image against
 # the newest mtime under modules/, and a stale hit here does not fail -- it
-# silently measures the STOCK effect whose id this module replaces (3 Sep 2026).
+# silently measures the STOCK effect whose id this module replaces.
 pathlib.Path(MEM).unlink(missing_ok=True)
 subprocess.run([sys.executable, "tools/remix/audition.py", MOD.name,
                 "out/dry/drums_110.wav"], capture_output=True)

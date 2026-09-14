@@ -20,7 +20,7 @@ contains this insert:
 GAIN slot come from the manifest, and the resolved entry points are checked
 against SEND's, because an id this image does not implement ALIASES TO THE
 FALLBACK and dsp_host then renders a perfectly plausible dry passthrough
-(CLAUDE.md, 12 Aug 2026). That is not hypothetical here: this file shipped
+(CLAUDE.md). That is not hypothetical here: this file shipped
 with `FXID = 0x17` after hello moved to 0x1b, ran SEND for all six gains,
 and the GAIN=127 bit-exact gate PASSED -- because a dry passthrough is
 exactly what unity gain looks like. Only the gain-law gates dissented.

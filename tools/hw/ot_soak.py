@@ -4,8 +4,7 @@
     python3 tools/hw/ot_soak.py <label> <minutes> [--bpm 121] [--idle 30]
                                [--device MicroBook] [--port UM-ONE]
 
-Built 13 Sep 2026, when the freeze finally reproduced under measurement
-rather than by ear. Three answers per run, none of them a listening call:
+Three answers per run, none of them a listening call:
 
   FREEZE   the audio engine wedges: output goes to the noise floor and never
            comes back while the transport still runs. Reported with the
@@ -14,15 +13,7 @@ rather than by ear. Three answers per run, none of them a listening call:
            the transport STOPPED -- under material every note attack trips a
            first-difference threshold -- so the soak plays, then stops and
            measures a quiet tail.
-  LEVEL    rms/peak, to catch a rung whose audio never started.
-
-⚠️ ASSERT THE RIG BEFORE EVERY RUN. Re-selecting an effect on the panel
-loads its MANIFEST DEFAULTS, and two of those are zero: BusVerb's AUX (0 is
-load-bearing -- a non-zero default registers every idle host as a bus client
-and dilutes the real senders) and Character's return level. A rung soaked
-after a re-select is a rung soaked with the bus disconnected, which is how
-two rungs passed spuriously before this was noticed.
-"""
+  LEVEL    rms/peak, to catch a rung whose audio never started."""
 import argparse, pathlib, subprocess, sys, threading, time, wave
 
 import numpy as np

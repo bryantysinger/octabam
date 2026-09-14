@@ -22,7 +22,7 @@ curl -fL --retry 3 --max-time 120 -o "$DL/OCTATRACK_OS${OS_VER}_readme.pdf" "$RE
 echo "[fetch] ZIP hash (record this -- it pins reproducibility):"
 shasum -a 256 "$ZIP"
 
-# The hash of the copy every result in this repo was derived from (1 Aug 2026).
+# The hash of the copy every result in this repo was derived from.
 # A mismatch is not necessarily wrong -- Elektron may reissue the zip -- but it
 # means your base image may differ from the one the patches were verified on.
 KNOWN_SHA256="370c55a3dad3996b8e4b46400a205066fdaf185ad4d0255a3a3f835060573ff0"

@@ -1,17 +1,15 @@
-"""Rungs -- a Mutable-Instruments-Rings-flavoured modal resonator.
+"""Rungs -- a Rings-flavoured modal resonator.
 
-A per-track INSERT (no bus role, both payloads, any track): the track's own
-audio excites a bank of EIGHT two-pole resonators tuned to a partial series,
-Rings-as-an-effect -- drums become struck metal, melodies ring through a
-bell. MODE picks the partial series (STRING harmonic / BELL / GLASS
+A per-track insert (no bus role, both payloads, any track): the track's own
+audio excites a bank of eight two-pole resonators tuned to a partial
+series. MODE picks the partial series (STRING harmonic / BELL / GLASS
 stretched-inharmonic), STRUCT stretches it further, DAMP is the ring time
 (T60 ~0.1-9 s), FREQ places the fundamental (~55 Hz .. ~1.25 kHz).
 
-Mode frequencies are computed per block from the knobs -- sin/cos by a
-half-angle polynomial, tuning error ~0.2% at the extremes 🟡 (measured in the
-render pass; a resonator a few cents off is character, not a defect).
+Mode frequencies are computed per block from the knobs, sin/cos by a
+half-angle polynomial; tuning error ~0.2% at the extremes (measured).
 
-MIX=0 is an exact passthrough, the standing null gate.
+MIX=0 is an exact passthrough.
 """
 
 from remix.schema import (BusRole, DspSection, Formatter, Harness, Kind,
@@ -27,10 +25,6 @@ MODULE = Module(
     doc="Rings-style insert: 8-mode modal resonator, STRING/BELL/GLASS.",
     menu=MenuEntry(
         fx2_id=0x17,
-        # ⚠️ was 0x0c/0x0d until 2 Sep 2026: STOCK ids (EQUALIZER /
-        # DJ EQ). The dispatch tables are shared with FX1, so the old
-        # id hijacked that effect on both menus. schema.STOCK_FX2_IDS
-        # now rejects it at construction.
         donor_desc=0x400d58b8,        # DARK REV, the standing donor
         abbr=b"RNGS",
         fullname=b"Rungs",

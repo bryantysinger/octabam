@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Gate for the two-core harness and for PAYLOAD B's placement.
 
-Until 7 Sep 2026 payload B -- the shipping image's half that carries BusDelay
+Until payload B -- the shipping image's half that carries BusDelay
 and serves tracks 1-4 -- had never run anywhere but on the unit. dsp_host now
 boots both payloads with the shared window Y/X:0x30000-0x3FFFF really shared,
 and this gate pins two things at once:
@@ -12,12 +12,6 @@ and this gate pins two things at once:
      through the DEV hatch. The bus arithmetic is core-agnostic under
      lock-step, so any difference is a harness defect (a window not shared, a
      context address wrong, a buffer misplaced).
-
-  2. THE IMAGE: payload B's copy of the delay is assembled with its own base
-     literal substituted ($30000 -> $38000, docs/effects/BUS.md) and placed by the
-     SPEC build. Identity with the DEV copy proves that substitution and
-     that placement produce the same audio, which until now was checked
-     statically only.
 
 Plus the fuzz: the same two-core layouts under several -skew interleavings
 must still match. That is NOT a proof of the cross-core race fix (the
@@ -76,7 +70,7 @@ CASES = {
     "RDS  delay on B -> reverb on A (series)":  [("R", 0, R), ("D", 1, D), ("S", 1, S_DEL)],
     # NOT four instances: on one core the fourth sits at position 3, which is
     # track 8 on payload A, where the SEND is refused by design (the one-aux
-    # rig, 7 Sep 2026) -- so a four-instance one-core control is not the same
+    # rig) -- so a four-instance one-core control is not the same
     # layout. tools/verify/verify_onebus.py pins the refusal itself.
     "SSR  a sender on each core":               [("R", 0, R), ("S", 0, S_VRB), ("S", 1, S_VRB)],
 }

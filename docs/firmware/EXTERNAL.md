@@ -1044,7 +1044,7 @@ Read at commit `40ffa53`. Status key as above, with one addition: ❌ on
   table, the FX2 chooser rebuilt with the fourteen stock effects (15 rows
   at `0x400d7bbc`) — ran on a MKI on 11 Sep 2026 and is in daily use. Our
   own record until now: nothing flashed from the DRAM pipeline, and every
-  test ever on a MKII (`docs/effects/FLASHPLAN.md`, memory). This is the
+  test ever on a MKII (`docs/history/FLASHPLAN.md`, memory). This is the
   first hardware confirmation of the platform, and it is on the model we
   cannot test.
 - ❌ (ours) **`FLASHPLAN.md` claim 2 is falsified**: we predicted "PROJECT ›

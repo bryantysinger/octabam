@@ -1,30 +1,12 @@
 #!/usr/bin/env python3
 """The unit's gain chain around the DSP -- measured under the ColdFire port.
 
-Every curve here was fitted on the port's own taps (`tools/scratch/mixer_sweep.py`,
-12 Sep 2026, COLDFIRE_PORT.md O14): T1 THRU with FX1 = SEND and FX2 = EQUALIZER
-flat on Sam's RIG, master track off, one byte of the part changed per run,
-the chain INPUT (the 84-word track record's audio), the chain OUTPUT (the
-core's read-back slot) and TX0 (the ESAI's main pair) fitted against each
-other per 200-sample window with a lag, the median taken. Residuals are
--100 dB and better on every point, so a curve that misses a point by more
-than a few thousandths of a dB is the wrong curve, not noise.
-
     stem (the voice, or the THRU input)
       x (VOL/127)^2                 AMP VOL, pre-FX, on the DSP  (9 points)
       x bal(BAL)                    AMP BAL, pre-FX, on the DSP  (11 points)
       -> FX1 -> FX2                 the chain `dsp_host` runs
       x (LEVEL/128)^2               track LEVEL, post-FX, at the mix (5 points)
-      -> sum                        the main out (TX0)
-
-Measured on a THRU track. That the same AMP stage sits in front of a FLEX or
-STATIC voice's chain is INFERRED from the DSP receiving the AMP page in the
-same per-instance words for every machine (O9d, `00 7f 7f 40 40 7f` at +0..5)
--- falsifier: the O10 kick fixture with AMP VOL 32, expecting -12.0 dB at the
-read-back. The main level (SET MAIN LEVEL, the `0x80003c60` table) scales
-trigged voices and not THRUs (O9c); it is not modelled -- unity, which O10's
-sample-exact kick at `--main-level 64` supports and does not prove.
-"""
+      -> sum                        the main out (TX0)"""
 
 VOL_DEFAULT, BAL_DEFAULT, LEVEL_DEFAULT = 64, 64, 108   # the part's own defaults
 

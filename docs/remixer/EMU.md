@@ -596,7 +596,7 @@ the task-table correction.
 
 **M6e, first pass (same day): the recorder project now exists — the arm
 path still doesn't, and the pass's own headline claim is retracted.**
-`ot_project.py machine-type` (and the `tools/scratch/` wrapper) patches
+`ot_project.py machine-type` patches
 track 1's machine-type byte to 4 in a copy of the real project, verified
 by RAM readback after a real load (`[4, 2, 0, 0, 0, 0, 0, 1]` where the
 source reads `[2, 2, 0, 0, 0, 0, 0, 1]`). With it, track 1 stops writing

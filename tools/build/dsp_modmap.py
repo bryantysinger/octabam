@@ -1,23 +1,19 @@
 #!/usr/bin/env python3
-"""
-Recover the DSP56300 module load map from the MAIN OS image.
+"""Recover the DSP56300 module load map from the MAIN OS image: which bytes
+load to which DSP address in which memory space.
 
-Step 1 of the DSP project. Without knowing which bytes load to which DSP address
-and in which memory space, any disassembly is at the wrong PC and is worthless.
-
-The ColdFire boots the DSP twice (GPIO 0xfc0a400c selects 0 then 1 -- apparently
-two DSPs or two banks), each time uploading a small bootstrap to P memory and
-then a large self-describing payload:
+The ColdFire boots the DSP twice (GPIO 0xfc0a400c selects 0 then 1), each
+time uploading a small bootstrap to P memory and then a self-describing
+payload:
 
     FUN_40001d4c(0x400e21e0, 0x96,  0x31000)   bootstrap A -> P:0x31000
     FUN_40001b18(0x400e2324)                   payload A   (self-describing)
     FUN_40001d4c(0x400e2276, 0xae,  0x32000)   bootstrap B -> P:0x32000
     FUN_40001b18(0x400f59ef)                   payload B   (self-describing)
 
-FUN_40001b18 takes only a pointer, so the payload carries its own addresses.
-Decompiled, it walks 24-bit LITTLE-endian words: an optional 3-header and an
-optional 4-header (6 bytes each), then records whose leading word is the memory
-space (0/1/2), terminated by a word > 3.
+FUN_40001b18 walks 24-bit little-endian words: an optional 3-header and an
+optional 4-header (6 bytes each), then records whose leading word is the
+memory space (0/1/2), terminated by a word > 3.
 
     python3 tools/build/dsp_modmap.py
 """

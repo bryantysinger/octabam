@@ -1,13 +1,9 @@
-"""nimbus -- the granular texture card: Nimbus alone.
+"""nimbus -- the granular texture insert, alone.
 
-Nimbus owns the core-private FX2 buffer region Y:0x4000-0xBFFF, which is
-only free because every other module in an insert remix has no Y footprint
-at all. That makes it a deliberately narrow selection: ONE Nimbus per core
-(two instances would share one buffer), and no server, since BusVerb's tank
-lives in exactly that region.
-
-`mutables` carries the three zero-footprint inserts together; this remix is
-the one that needs a buffer, so it stands alone.
+Nimbus owns the core-private FX2 buffer region Y:0x4000-0xBFFF, so it is one
+instance per core and cannot share an image with a server (BusVerb's tank
+is in that region) or with the seven stock effects that allocate a buffer.
+Unflashed.
 """
 
 from remix.schema import Remix

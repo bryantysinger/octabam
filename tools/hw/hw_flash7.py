@@ -9,10 +9,10 @@ and the project load -- and nothing else.
     python3 tools/hw/hw_flash7.py run [--only ii,iv]    # the test (~6 min), verdict per claim
     python3 tools/hw/hw_flash7.py analyse               # re-read out/hw/flash7/*.wav, re-print
 
-WHAT THE MANUAL ALLOWS (OT MKII 1.40C, Appendix C, read 9 Sep 2026): every
+WHAT THE MANUAL ALLOWS (OT MKII 1.40C, Appendix C, read): every
 MAIN-page knob has a CC on the track's trig channel (FX1 slots 0-5 = CC 34-39,
 FX2 = CC 40-45, level 46, mute 49, solo 50), program change selects the
-pattern (PROG CH RECEIVE on; PC n = bank A pattern n+1, measured 24 Aug 2026),
+pattern (PROG CH RECEIVE on; PC n = bank A pattern n+1),
 and notes 24-31 play tracks 1-8. NOT reachable: an effect TYPE, a PART, any
 page-2 knob. So the claims that need a different effect on a track live in
 PARTS 2-4 of the test project's bank A, reached by program change -- and each
@@ -70,7 +70,7 @@ MIX = CC_FX2 + 5     # both engines: slot 5
 RET = CC_FX1 + 2     # Character BUS: the CRSH knob is RET
 LEVEL_HOME = 108
 # T1 LEVEL per part: the pattern-change signature (OT LEVEL taper, measured
-# on T8 24 Aug 2026: 108 = 0 dB, 84 = -3.6, 64 = -8.3, 48 = -13.3)
+# on T8: 108 = 0 dB, 84 = -3.6, 64 = -8.3, 48 = -13.3)
 SIGNATURE = {0: 108, 1: 64, 2: 84, 3: 48}
 SIG_DB = {0: 0.0, 1: -8.3, 2: -3.6, 3: -13.3}
 
@@ -101,7 +101,7 @@ BASE = ROOT / "out/projects/F7CLEAN_BASE"   # a project the UNIT created on THIS
 def stage(src=BASE, dest=TEST):
     """Build the bus test onto a UNIT-CREATED project (F7CLEAN), not a
     synthesized one. The synthesized project would not take a program change
-    on the unit (9 Sep 2026): it was saved under an earlier build
+    on the unit: it was saved under an earlier build
     (OS_VERSION OCTABAM18) and carried the RIG backup's arrangement, MIDI
     mute mask and MIDI_MODE; a project the unit wrote on THIS build takes PC
     at once. So: copy F7CLEAN, stamp the RIG bus layout into every part
@@ -119,7 +119,7 @@ def stage(src=BASE, dest=TEST):
         sys.exit(f"{src} was not saved under this build (OCTABAM21) -- re-save F7CLEAN on the unit")
     if dest.exists():
         shutil.rmtree(dest)
-    op.make_rig_project(str(src), str(dest), "bamsep27")     # RIG FX layout in every part, verified
+    op.make_rig_project(str(src), str(dest), "bamsep26")     # RIG FX layout in every part, verified
 
     op.thru_track(dest, 1, guard=False)                      # T1 = THRU (type 2) + page + trig in pattern 1
 
@@ -151,7 +151,7 @@ def stage(src=BASE, dest=TEST):
 
     # project.work / .strd: play from A01 part 1, T8 the master track (the rig).
     # BYTES, not text: the file is CRLF and text mode strips every \r, which
-    # the unit rejects with "SOME ERRORS OCCURED / PARSE ERROR" (9 Sep 2026).
+    # the unit rejects with "SOME ERRORS OCCURED / PARSE ERROR".
     for suffix in ("work", "strd"):
         f = dest / f"project.{suffix}"
         if not f.is_file():
@@ -210,7 +210,7 @@ def card(image=IMAGE, project=TEST, vol="/Volumes/OCTATRACK", set_name="PRESETS"
         sys.exit(f"{vol} is not mounted: put the unit in USB DISK MODE (PROJECT menu) "
                  f"and re-run; `ls /Volumes` shows it")
     if not image.is_file():
-        sys.exit(f"{image} missing -- REMIX=bamsep27 BUILD=21 make image")
+        sys.exit(f"{image} missing -- REMIX=bamsep26 BUILD=21 make image")
     setdir = vol / set_name
     if not setdir.is_dir():
         sets = [p.name for p in vol.iterdir() if p.is_dir() and (p / "AUDIO").is_dir()]
@@ -221,8 +221,6 @@ def card(image=IMAGE, project=TEST, vol="/Volumes/OCTATRACK", set_name="PRESETS"
     if dst.read_bytes() != image.read_bytes():
         sys.exit("image copy does not compare")
     for p in vol.iterdir():
-        # only OUR previous builds go; the stock `OCTATRACK_OS1.40B.bin.bak`
-        # that has sat at the root since 2023 is Sam's and stays
         if p.is_file() and p.name != image.name and p.name.startswith("OCTATRACK_OCTABAM") \
                 and p.suffix.lower() == ".bin":
             print(f"  removing our previous build at the root: {p.name} ({p.stat().st_size} bytes)")
@@ -319,7 +317,7 @@ class Rig:
     def toggle(self, ch, cc, va, vb, tag, home=None):
         """A/B/A/B on `cc`; afterwards the knob goes back to `home` (default
         the A value) -- a toggle that left its last value ran the next test
-        with the return at 0 (9 Sep 2026)."""
+        with the return at 0."""
         total = PERIOD * CYCLES * 2 + 1.0
         schedule = []
 
@@ -443,7 +441,7 @@ def run(args):
 
 
 def run_claims(args, rig):
-    """T8 is the MASTER track in the rig (measured 9 Sep 2026): soloing it
+    """T8 is the MASTER track in the rig (measured): soloing it
     mutes nothing, and every other solo still leaves through it -- so the
     return is in every capture and no track can be isolated by solo. Each
     claim is therefore a DIFFERENCE under MUTE and knob toggles in the full

@@ -13,7 +13,7 @@ Gates:
   RING at DC  -> A*B*2 with A = B = DC: 2*DC^2, to 1 LSB after settling
   VOWEL       -> renders, and differs across FREQ (A vs I)
   every knob  -> renders without dsp_host dying
-  SEM core (13 Sep 2026, the zero-delay SVF):
+  SEM core:
   four modes  -> LP/BP/HP/NTCH are four different responses at one FREQ/RES
   BP tracks   -> the BP peak sits on the FREQ taper (108 / 600 / 2983 Hz at
                  FREQ 32 / 64 / 96), tones a third of an octave either side lower
@@ -58,7 +58,7 @@ TMP.mkdir(parents=True, exist_ok=True)
 # ⚠️ REBUILD THE DUMP, ALWAYS. The audition caches its scratch image against
 # the newest mtime under modules/, and a stale hit here does not fail -- it
 # silently measures the STOCK effect whose id this module replaces. That cost
-# an hour on 3 Sep 2026: every mode read as a dry pass, because the dump's
+# an hour: every mode read as a dry pass, because the dump's
 # dispatch still pointed at stock CHORUS, and the emulator eventually died on
 # a stock instruction it does not implement.
 pathlib.Path(MEM).unlink(missing_ok=True)
@@ -94,7 +94,7 @@ def render(samples, slot="fx1", guard=False, **kw):
 
     slot="fx1" (alloc 0, r7 1) is the station's own slot; "fx2" (alloc 1,
     r7 2) is an FX2 instance, which the station runs as a DRY PASS since
-    12 Sep 2026 (Claims.fx1_only) -- the gate below proves it. Until then
+    (Claims.fx1_only) -- the gate below proves it. Until then
     every gate here rendered on alloc 1 and would now read dry."""
     kw.setdefault("MODE", LP)
     kw.setdefault("TAME", 0)   # the linear filters are what the gates predict; TAME's own gates set it
@@ -164,7 +164,7 @@ dcv = int(0.25 * 8388607)
 check("BP at DC -> 0", abs(d_bp) < 64, f"{d_bp:.0f} LSB")
 check("LP at DC -> DC", abs(d_lp - dcv) < 256, f"{d_lp:.0f} vs {dcv}")
 
-# ---- 4. ISO: Airwindows Capacitor2 (14 Sep 2026) ------------------------------
+# ---- 4. ISO: Airwindows Capacitor2 ------------------------------
 # LOW = FREQ (127 open), COLR = RES (the dielectric); no HIGH cut (option B). Against the
 # transcription modules/spectrum/capacitor2_ref.py after its chase settles.
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "modules/spectrum"))
@@ -182,7 +182,7 @@ for _f, _c in ((127, 0), (60, 64), (90, 127)):
     check(f"ISO LOW {_f} COLR {_c} tracks Capacitor2 (mean |err| < 0.02, level within 1 dB)",
           _me < 0.02 and abs(_lv) < 1.0, f"mean |err| {_me:.4f}, level {_lv:+.2f} dB")
 
-# ---- 5. ENV and LFO onto the cutoff (14 Sep 2026: two bipolar depths) ---------
+# ---- 5. ENV and LFO onto the cutoff ---------
 _quiet = rms_db(render(tone(3000, 0.02), FREQ=80, ENV=0)[0]) - rms_db(tone(3000, 0.02))
 _loud = rms_db(render(tone(3000, 0.4), FREQ=80, ENV=0)[0]) - rms_db(tone(3000, 0.4))
 check("ENV -64 closes the LP on a loud tone more than a quiet one (3 kHz at FREQ 80)", _loud < _quiet - 6, f"loud {_loud:.1f}, quiet {_quiet:.1f} dB")
@@ -274,11 +274,11 @@ for name, freq, f1, f2 in VOWELS:
     check(f"VOWL {name} is loudest at its own F1 among the five", own[name] > max(others),
           f"own {own[name]:.1f}, best other {max(others):.1f} dBFS")
 
-# ---- 6g. LADR: the linear zero-delay Moog ladder (13 Sep 2026) ----------------
+# ---- 6g. LADR: the linear zero-delay Moog ladder ----------------
 # MODE 5 is the 4-pole (audiojs/filter moogLadder without its tanh): 24 dB/oct
 # where LP is 12, resonance k = 4 * 0.975 * RES/128 (the linear ladder
 # oscillates at k = 4), bounded at RES 127 by the limiting stores. Proven
-# against a float reference of the same equations on 13 Sep 2026 (levels to
+# against a float reference of the same equations (levels to
 # 0.01 dB, peak error < 0.01 FS at the self-oscillating edge); these gates pin
 # the shape so a regression shows.
 # Measured at FREQ 64 (fc 949 Hz since the 60 Hz floor), not the LP gate's FREQ 30: four poles put
@@ -307,9 +307,6 @@ bounded("RES 127 LADR at fc, 0.5 FS in: below full scale, never on the rails",
         render(tone(600, 0.5), FREQ=64, RES=127, MODE=0)[0])
 
 # ---- 6h. LADR at the top of the dial stays bounded with resonance ------------
-# The feedback sum carries each stage's (1-G) feed-through (14 Sep 2026);
-# without it the ladder diverged above ~4 kHz with any RES (the float model
-# of the old sum went to inf at 15 kHz RES 64) -- Sam's "spike high pitched".
 import random as _rnd
 _rnd.seed(7)
 _wn = [int(_rnd.uniform(-0.3, 0.3) * 8388607) for _ in range(N)]
@@ -326,7 +323,7 @@ _lr = rms_db(_y); _rail = sum(1 for v in _y[N // 2:] if abs(v) >= 0x7ffff0) / (N
 check("LADR FREQ 64 RES 100 under LDP 127 LSP 127: bounded (no rail, < RES 0 + 6 dB)",
       _rail == 0 and _lr < _l0 + 6, f"{_lr:.1f} dBFS, rail {_rail*100:.1f}%")
 
-# ---- 6i. TAME: the filters' state saturation (14 Sep 2026) ------------------------------
+# ---- 6i. TAME: the filters' state saturation ------------------------------
 # BP at FREQ 70 RES 110 on a tone at fc (~1.2 kHz, Q ~ 12) is the "shrill
 # peak"; TAME 127 saturates the SVF states: > 3 dB off the peak, a -34 dBFS
 # signal at unity.
@@ -349,7 +346,7 @@ for name in K:
         render(tone(438, n=600), **{name: v})
 check("every knob at both extremes renders", True)
 
-# ---- THE FX1-ONLY PROMISE (12 Sep 2026): an FX2 instance is dry -------------
+# ---- THE FX1-ONLY PROMISE: an FX2 instance is dry -------------
 # Claims.fx1_only says an FX2-slot instance touches nothing; the rig's cycle
 # envelope (tools/harness/pressure.py) and the FX2 chooser both take it at
 # its word, so it is proven here at every extreme, and the guard sees no

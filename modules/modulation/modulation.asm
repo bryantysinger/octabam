@@ -1,101 +1,15 @@
 ; ---------------------------------------------------------------------------
-; MODULATION v2 -- a modulation pedal, six modes, FX1 only (14 Sep 2026).
-;
-; The modes are transcriptions of published, permissively licensed sources
-; (docs/effects/PORTS.md, the modulation survey; the float reference is
-; modules/modulation/modulation_ref.py and tools/verify/verify_modulation.py
-; proves this code against it):
-;
-;   JUNO  the Juno-60 chorus (jpcima's HeraChorus.dsp, ISC; pendragon-andyh's
-;         measurements): two BBD lines on ONE triangle LFO, the right line's
-;         inverted; I 0.513 Hz / II 0.863 Hz over 1.5..5.4 ms; I+II 9.75 Hz
-;         mono over 3.2..3.6 ms; the BBD's ~10 kHz in/out filters as one-poles.
-;   DIM   the Roland SDD-320 Dimension D: two lines in ANTIPHASE on one
-;         triangle LFO (0.25 / 0.5 Hz, 5..12 ms), each side = the dry + a
-;         bass lift + a little same-side wet - the OTHER side's wet through a
-;         highpass. The amounts are unpublished: OURS (0.25 / -1 / 0.5).
-;   ENS   the Solina string ensemble (jpcima string-machine, BSL-1.0): three
-;         taps on ONE mono line, delay = 5 ms + 1 ms * (0.5 sin(slow + i/3)
-;         + 0.5 sin(fast + i/3)), fast = 10 x slow; L = t1 + t2 - t3,
-;         R = t1 - t2 - t3.
-;   FLNG  Dattorro's flanger (Effect Design Part 2, JAES 1997, Table 6):
-;         blend 0.7071 of the dry read from a FIXED tap at the sweep's centre,
-;         feedforward -0.7071 of the swept tap, so the sweep crosses the dry
-;         (through-zero) and nulls at the crossing; feedback -0.7071.
-;   PHSR  ChowPhaser (BSD-3), the Schulte Compact Phasing A: two RC allpasses
-;         (15 nF) with feedback around them, then up to eight first-order
-;         allpasses (25 nF) on ONE coefficient; the LDR's law (light = 20.1 -
-;         20 lfo, R = 100k (light/0.1)^-0.75, bilinear K = 2 fs) is two
-;         33-word tables on the LFO value, read per BLOCK and ramped per
-;         sample. The feedback closes through one sample (ChowPhaser solves
-;         the delay-free loop as a warped biquad); no tanh stages.
-;   COMB  Rings' string loop (Mutable Instruments, MIT): a Hermite-read loop
-;         tuned by DLY (8..1,000 samples, exponential), a 3-tap FIR damping
-;         filter whose brightness is TONE, and the per-pass gain from a DECAY
-;         TIME (rt60 = 0.07 s * 2^(8 lf), lf = d(2-d)) so every pitch rings
-;         for the same time. No IIR damping (the MIC_W build's omission), no
-;         dispersion. FDBK's sign is ours: negative = odd harmonics.
-;
-; Every mode outputs the WET only; MIX does the blending, so MIX 0 is an
-; exact passthrough in every mode and 127 is the wet outright.
-;
-; The knobs (page 1: RATE DPTH FDBK MIX TONE WDTH; page 2: DLY MODE):
-;   RATE  the LFO, (k/128)^2 * $780 + $10 per sample in 2^23rds of a cycle:
-;         0.08 .. 10.0 Hz (the Juno's I+II is 9.75)
-;   DPTH  the sweep, 480 * k/128 samples either side of the centre (line
-;         modes); the LFO's reach into the LDR's law (PHSR)
-;   FDBK  bipolar: (k - 64)/64. Feedback from the swept tap into the line;
-;         the phaser's feedback (clamped 0.95); the comb's decay time (its
-;         magnitude) and polarity (its sign)
-;   MIX   dry .. wet
-;   TONE  the BBD proxy: the one-pole in and out of every line, 0.25 (2 kHz)
-;         .. 1.0 (open) -- inert in PHSR; the FIR's brightness in COMB
-;   WDTH  the right channel's LFO lag, 0 .. half a cycle (127 = antiphase,
-;         the Juno's and the Dimension's; 64 = quadrature); inert in ENS
-;         (the three phases fix the stereo) and COMB
-;   DLY   the centre, 8 + 992 * k/128 samples; the pitch in COMB (a table);
-;         the stage count in PHSR (2 / 4 / 6 / 8 by quarters)
-;
-; ---- FX1 ONLY, ENFORCED HERE ---------------------------------------------
-; The base comes from the host's bump allocator, read in INIT and only there
-; (docs/firmware/DSP.md section 10: X:0x213 is per-instance during init and
-; garbage in proc). FX1 slots are 0x1000 0x1c00 0x2800 0x3400; FX2 slots are
-; 0x4000 and up, and every one of those is a server's ground. So a base >=
-; 0x4000 sets a flag that sends proc down the DRY path, which writes NOTHING
-; to Y. That promise is what Claims(fx1_only=True) declares to the ledger,
-; and tools/verify/verify_modulation.py is what proves it.
-;
-; Two lines of 1,024 words, L at base+0 and R at base+1024 (ENS uses L alone,
-; mono): 23 ms each, out of the 3,072 an FX1 slot gives. The read offset is
-; MASKED (& $3ff), not the address, so nothing depends on where the allocator
-; put us.
-;
-; ---- r7 slots -------------------------------------------------------------
-;   ⚠️ EVERY SLOT THE SAMPLE LOOPS TOUCH IS BELOW $40: an r7 displacement past
-;   63 assembles to the two-word long form.
-;   per block:
-;   $00 m (MIX)          $01 LFO increment     $02 centre Q11.12   $03 depth Q11.12
-;   $04 feedback         $05 tone coefficient  $06 WID phase offset
-;   $07 bl  $08 bd  $09 ff  $0a kc  $0b kb    (the LINE loop's mix weights)
-;   $0c mode (0..5: JUNO DIM ENS FLNG COMB PHSR)   $0d dry flag: 1 = FX2 slot or MIX 0
-;   $0e line base (per instance)              $0f the P table base
-;   $10 scratch (block)  $1a COMB gain  $1b h0  $1c h1  $1d sign  $1e period Q11.12
-;   $19 lfo L this sample   $1f lfo R this sample
-;   PHSR ramps (PERSISTENT): $11 bm run L  $12 dbm L  $13 bf run L  $14 dbf L
-;                            $15 bm run R  $16 dbm R  $17 bf run R  $18 dbf R
-;   PERSISTENT: $20 write phase   $21 LFO phase   $22 fast phase (ENS)
-;   one-poles: $23 lpi L  $24 lpi R  $25 lpo L  $26 lpo R  $27 hp L  $28 hp R
-;              $29 lpb L  $2a lpb R      (ENS: lpi mono $23, lpo 1/2/3 $25..$27)
-;   PHSR: $2b/$2c feedback stages L  $2d/$2e R   $2f/$30 y previous L/R
-;         mod stages L $23..$2a (the one-poles' slots: never in one block)
-;         mod stages R $31..$38
-;   COMB: $39/$3a FIR x1/x2 L   $3b/$3c R
-;   $3d wet L   $3e wet R   $3f scratch (mo_tap / mo_herm park)
-;   $40 the last block's MODE select (per block only: the two-word form is fine)
-;
-; Every mpy is `mpy x0,y1` (the audited-signed encoding). Every Tcc reads the
-; ONE compare above it with nothing but moves between (the flag-clobber
-; trap). No label here is a PREFIX of another -- dsp_asm resolves by prefix.
+; MODULATION -- a modulation pedal: JUNO, DIM, ENS, FLNG, COMB, PHSR, each a
+; transcription of the source modules/modulation/modulation_ref.py names
+; (docs/effects/PORTS.md), proven against that float reference. Four sample
+; loops, one chosen per block: LINE (JUNO, DIM and FLNG differ only in five
+; per-block mix weights bl bd ff kc kb), ENS, PHSR, COMB. Insert contract
+; (modules/ripple/ripple_svf.asm). FX1 only: init reads the allocator base
+; (X:0x213 -> this instance's entry, valid at init and nowhere else); a base
+; >= 0x4000 is an FX2 slot and proc runs the dry path, which writes nothing
+; to Y. Two 1,024-word lines (L, R) out of the FX1 slot's 3,072; the read
+; offset is masked, not the address. MIX 0 is an exact passthrough; a
+; change of MODE clears every state slot.
 ; ---------------------------------------------------------------------------
 
 init:

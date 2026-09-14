@@ -1,69 +1,38 @@
 """OCTAKIT -- Em's Octakit: 256 Kits per Project in place of 64 bank-tied
-Parts, built from her repo (emuyia/ems-octakit) as a git submodule.
+Parts, built from her repository (emuyia/ems-octakit, submodule `upstream/`).
 
-THE MODULE IS A POINTER, ON PURPOSE. `upstream/` is her repository at a
-pinned commit; `runtime/firmware.json` there is the recipe and `runtime/`
-the sources, and octabam's build compiles, links, packs and appends them
-itself (`tools/remix/runtime_build.py`) -- re-deriving every identity her
-recipe pins and refusing on any mismatch. She keeps developing in her own
-repo and her README explicitly invites this ("use this repo as a submodule
-to combine with other efforts"); an update here is a submodule bump plus
-the identity checks passing. Nothing of hers is vendored or rewritten, and
-nothing of Elektron's is stored: the 411 stock routines her runtime
-carries are sliced out of YOUR 1.40C at build time.
+`upstream/runtime/firmware.json` is the recipe; the build compiles, links,
+packs and appends her runtime itself (tools/remix/runtime_build.py),
+re-deriving every identity the recipe pins and refusing on a mismatch.
+Nothing of hers is vendored or rewritten; the 411 stock routines her runtime
+carries are sliced out of the user's 1.40C at build time.
 
-WHAT IT CHANGES (her README, 9 Sep 2026 commit ec70dda): 64 Parts become
-256 Kits untethered from Banks -- which costs 3.6% of the flex pool,
-18.4 s at 16-bit / 12.3 s at 24-bit, her own note; old Projects migrate their Parts into the
-first 64 Kit slots on load (downgrading to stock may lose Kit data); on
-MKII PART opens LOAD KIT and FUNC+PART opens SAVE KIT (MKI: FUNC+MIDI /
-FUNC+BANK); FUNC+CUE reloads the assigned Kit; Kits have 7-char names;
-LOAD/SAVE KIT menus copy/paste/clear/undo; the OS version becomes a date
-stamp and the splash animation is removed. The Parts->Kits migration is
-RUNTIME behaviour on the unit -- this module writes only the OS image
-(598 guarded sparse writes plus a 73,111-byte append), never a project
-file. Back up projects before flashing; do not work on anything critical.
+What it changes on the unit (her README): 64 Parts become 256 Kits
+untethered from Banks (3.6 % of the flex pool); old Projects migrate their
+Parts into the first 64 Kit slots on load, and downgrading may lose Kit
+data; MKII PART = LOAD KIT, FUNC+PART = SAVE KIT (MKI FUNC+MIDI / FUNC+BANK);
+FUNC+CUE reloads the assigned Kit; 7-character Kit names; copy/paste/clear/
+undo in the LOAD/SAVE KIT menus; the splash animation is removed. This
+module writes only the OS image; the migration is runtime behaviour.
 
-WHERE IT LIVES. Not in the free zero runs every other ColdFire mod fights
-over: a 73 KB append at the end of the OS image (0x4010fdf0 -- early loader
-+ stage + the packed runtime) that one boot-path write detours into; the
-loader depacks the 149,653-byte runtime with the firmware's OWN aPLib
-routine into the reserved recorder pages at 0x45d0dde0 and runs it from
-DRAM. That is the design octabam adopted as its "appended runtime"
-placement class (schema.Runtime) -- the only one with tens of KB to give.
+Placement: her packed runtime is a payload of octabam's loader
+(tools/remix/loader.S, derived from hers), staged at her own stage address
+so her post-clear relocation finds it; her guarded sparse writes are kept;
+her own append is replaced. Her runtime, Kit store and backup are the top
+528 pages of the audio page arena, declared as an ArenaReserve so the build
+stacks her pages with the platform's and computes the arena geometry once.
 
-MEASURED (9 Sep 2026): with Homebrew's m68k-elf-gcc 16.2.0 the runtime,
-the packed runtime and the append all rebuild BYTE-IDENTICAL to the
-identities her recipe pins for gcc 16.1.0 (sha256 dda11aca...), and
-`tools/verify/verify_octakit.py` shows stock + her writes + her append == her
-own combined OS (`output.os`). In an octabam IMAGE her runtime is a
-PAYLOAD of octabam's loader (tools/remix/loader.S, derived from hers):
-her append is replaced, her 650 writes kept, her packed runtime staged at
-her own stage address so her post-clear relocation finds it. Booted under
-the ColdFire port (`tools/verify/verify_dram_boot.py`): her wrapper calls our
-loader, her gate and post-load entry run with her hash, the boot reaches
-the handoff, and her window reads back byte-identical (149,653 B). The
-image is never identical to hers -- the build adds its own FX2 chooser and
-DSP null-stub edits, and now its own loader -- and the build says so.
-`elektron-firmware-tool` packs the grown section without changes.
-MEASURED ON HARDWARE 14 Sep 2026: `OKMS1` (remix ok-ms, her 92cf70b +
-midisc 1.40MIDISC8) confirmed working by midisc's author on his unit --
-her runtime carried by our loader, on silicon. Extent: his word.
+Measured: the runtime, packed runtime and append rebuild byte-identical to
+her pinned identities with Homebrew m68k-elf-gcc 16.2.0 (recipe pins
+16.1.0); tools/verify/verify_octakit.py reproduces her combined OS image from
+stock + her writes + her append; under the ColdFire port her window reads
+back byte-identical after boot. On hardware as OKMS1 (remix
+ok-ms, her 92cf70b / ot-26914 + midisc 1.40MIDISC8), confirmed by midisc's
+author.
 
-COLLISIONS. Her recipe rewrites the apply_part entry 0x40009094, which
-midi-scenes (STOCK_APPLY) and octamax (scene_stub) also detour, and the
-scene-parameter writer 0x40052ae8 (octamax too). The ledger refuses those
-combinations until detour chaining exists; nothing else of hers overlaps
-anything. `lofi-amf-fix` composes with it freely (`remixes/octakit-fix.py`).
-
-14 Sep 2026: bumped to her 92cf70b (ot-26914): duplicate Patterns and Kits
-(PTN+FUNC+RIGHT), held-key inactive Pattern editing, save queued clone Kits
-without relinking source Patterns, fixes for spill-backed kit state during
-pattern changes / STOP handoff / held Recording Edit and LOAD KIT
-assignment, fuller crash reports, a license. 730 writes (was 645), runtime
-154,718 B; verify_octakit reproduces her combined OS byte-exact; mods
-composes with midisc 1.40MIDISC8 and boots under the port; on silicon as
-OKMS1 (above).
+Her recipe rewrites the apply_part entry 0x40009094 and the scene-parameter
+writer 0x40052ae8; the ledger refuses any other module on those sites. CC
+PAGE 2 shares her MIDI CC dispatch entry through the SCENES KITS bridge.
 """
 
 from remix import arena
@@ -81,13 +50,10 @@ MODULE = Module(
         report_note=" -- Em's Octakit (emuyia/ems-octakit), submodule "
                     "modules/octakit/upstream",
     ),
-    # Her runtime, Kit store and backup are the TOP 528 pages of stock's
-    # audio page arena (0x45d0dde0..0x46025de0 = her RUNTIME_START..END):
-    # her four recipe writes shrink the arena by exactly that. Declared
-    # here so the build stacks her pages with everyone else's (the
-    # platform's own reserve at the arena's bottom) and computes the four
-    # geometry literals from the total -- for her alone, her own bytes.
-    # Costs the unit 3,244,032 B of sample/recorder memory; her design.
+    # Her runtime, Kit store and backup: the top 528 pages of the audio page
+    # arena (0x45d0dde0..0x46025de0). Her four recipe writes shrink the arena
+    # by exactly that; declared so the build stacks every reservation and
+    # computes the geometry literals from the total (for her alone, her bytes).
     arena=ArenaReserve(pages=528, where="top",
                        recipe_writes=arena.OCTAKIT_RECIPE_WRITES),
 )

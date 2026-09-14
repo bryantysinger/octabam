@@ -406,7 +406,7 @@ instance" were all this one fixture, and the last was `stamp-slot` landing in
 the track's FX1 (it stamps both slots). Write fixtures into EVERY part of
 EVERY bank (`ot_project.py set-fx`, `stamp-slot`), and before believing a
 DSP-side "byte-identical" between two cards, run both with `--block-dump`
-and `tools/scratch/blockdump.py diff`: if no host-port block differs, the
+and `tools/harness/blockdump.py diff`: if no host-port block differs, the
 cards did not differ where it matters.
 
 **THE HARNESS'S MODEL OF THE DISPATCHER IS NOT THE DISPATCHER.** `dsp_host`

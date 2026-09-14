@@ -51,7 +51,7 @@ def _manifest():
 
 
 def check_source_matches(m):
-    """The source is the truth since 9 Sep 2026 (its count tables are labels,
+    """The source is the truth (its count tables are labels,
     linked wherever the cave lands); the hand-patched CODE+tables it replaced
     is kept in the manifest as legacy_bytes(addr) and is the ORACLE here:
     linked at any address, the two must be byte-identical."""
@@ -95,7 +95,7 @@ def _addrs(uc, track, slot2):
 
 
 def _addrs1(uc, track, slot2):
-    """The FX1 page-2 editor's stores (0x4003abe4, disassembled 13 Sep 2026)."""
+    """The FX1 page-2 editor's stores (0x4003abe4, disassembled)."""
     base = _part_base(uc)
     return (base + 0x8f07e + track * 30 + slot2,        # Part (0x4003acb2)
             0x80000810 + track * 72 + 0x32 + slot2,       # live lane +0x32 (0x4003ad08)
@@ -103,7 +103,7 @@ def _addrs1(uc, track, slot2):
 
 
 FX1_ID_OFF = 0x8ed80                                    # Part: +track, the FX1 id (0x4003ac1e)
-    # Until 13 Sep 2026 these were 0x8ef5a / +0x20 / 0x100a50a8 -- the PLAYBACK
+    # Until these were 0x8ef5a / +0x20 / 0x100a50a8 -- the PLAYBACK
     # page-2 editor's arrays (0x4003a474; its "staged index" is the machine type).
 
 
@@ -199,7 +199,7 @@ def main():
     ok &= good
     print(f"  stock={reached['stock']} page2-live={l}  {'ok' if good else 'FAIL'}")
 
-    # 4. FX1 page 2 via CC 68-73 (13 Sep 2026): every track, Character (0x1c)
+    # 4. FX1 page 2 via CC 68-73: every track, Character (0x1c)
     #    on FX1, CC 69 (page-2 slot 7 = SAT, count 3) value 1 -> lands as 1
     print("CC 69 (FX1 page-2 slot 7) on each track's own channel, FX1 = Character:")
     CHAR = 0x1c

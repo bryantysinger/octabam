@@ -22,12 +22,9 @@ echo "== 1) System tools (via Homebrew) =="
 need_brew=()
 command -v binwalk  >/dev/null 2>&1 || need_brew+=(binwalk)
 command -v radare2  >/dev/null 2>&1 || need_brew+=(radare2)
-# The m68k/ColdFire cross-toolchain (bottled, minutes to install). Since
-# 9 Sep 2026 a first-class dependency: loader-appended runtimes
-# (schema.Runtime -- modules/octakit) are COMPILED from source at build
-# time, and every pinned ColdFire cave with a `.s` source is re-assembled
-# and compared against its bytes when this is present. The build refuses
-# with a clear message, not a traceback, when it is missing.
+# The m68k/ColdFire cross-toolchain (bottled): DRAM runtimes and units are
+# compiled from source at build time, and every pinned ColdFire cave with a
+# `.s` source is re-assembled and compared against its bytes.
 command -v m68k-elf-gcc >/dev/null 2>&1 || need_brew+=(m68k-elf-gcc)
 if [ "${#need_brew[@]}" -gt 0 ]; then
   echo "   installing: ${need_brew[*]}"
@@ -42,9 +39,8 @@ echo "== 1b) mc68k (ColdFire core for the headless machine) =="
 # peripheral scaffolding -- the CPU half of tools/emu/ot_emu. Vendored, GPLv3, the
 # same posture as vendor/dsp56300: tooling and patches are shared, built
 # binaries never are. `docs/firmware/COLDFIRE_PORT.md`.
-# PINNED, like the two below: a `git pull` on every setup moves a
-# contributor's tree to whatever upstream is that day, and the port was
-# measured against this commit (docs/firmware/COLDFIRE_PORT.md).
+# Pinned: the port was measured against this commit
+# (docs/firmware/COLDFIRE_PORT.md).
 MC68K_PIN=4a6d0d17a1f2b30077ab726c27fe9bb770fa0456
 pin_checkout() {  # dir url sha
   [ -d "$1" ] || git clone --no-checkout "$2" "$1"
@@ -54,11 +50,8 @@ pin_checkout() {  # dir url sha
   fi
   echo "   $1 at $(git -C "$1" rev-parse --short HEAD) (pinned)"
 }
-# apply_patch dir patch: apply, or accept already-applied, or FAIL LOUDLY.
-# The old "already applied (or upstream changed)" line covered both a
-# patched tree and a tree the patch REJECTED on, and a contributor's fresh
-# clone hit the second twice on 12 Sep 2026 (dsp_host would not compile;
-# make image found no container) before the message said which.
+# apply_patch dir patch: apply, or accept already-applied, or fail loudly
+# (a rejected patch reads as "already applied" otherwise).
 apply_patch() {
   if git -C "$1" apply --check "$2" 2>/dev/null; then
     git -C "$1" apply "$2" && echo "   local patch applied: $(basename "$2")"
@@ -87,8 +80,8 @@ apply_patch vendor/elektron-firmware-tool "$(pwd)/tools/patches/elektron-firmwar
 echo "   building ..."
 if [ -f vendor/elektron-firmware-tool/Makefile ]; then
   make -C vendor/elektron-firmware-tool || { echo "   [!] elektron-firmware-tool build FAILED -- make image needs it"; exit 1; }
-  # The binary must carry OUR container dump, or make image has nothing to
-  # wrap; a build from an unpatched tree is silent about it until then.
+  # The binary must carry the container dump, or make image has nothing to
+  # wrap.
   grep -a -q EFT_EMIT_CONTAINER vendor/elektron-firmware-tool/elektron-firmware-tool \
     || { echo "   [!] elektron-firmware-tool was built WITHOUT the local patch (no EFT_EMIT_CONTAINER)."; \
          echo "       Fix: rm -rf vendor/elektron-firmware-tool; make setup"; exit 1; }
@@ -123,23 +116,16 @@ echo "== 4) dsp56300 -- assembler, disassembler and emulator for the audio DSP =
 DIS=vendor/dsp56300/build/source/disassemble/dsp56kDisassemble
 ASM=vendor/dsp56300/build/source/dsp_host/dsp_asm
 HOST=vendor/dsp56300/build/source/dsp_host/dsp_host
-# All three, not just the disassembler: a build that got the disassembler
-# and then failed on dsp_host used to read as "already built" on every
-# re-run, and the failure only surfaced later as a traceback in make check
-# (12 Sep 2026, a contributor's fresh clone).
+# All three: a build that got the disassembler and failed on dsp_host must
+# not read as "already built".
 if [ ! -x "$DIS" ] || [ ! -x "$ASM" ] || [ ! -x "$HOST" ]; then
   if ! command -v cmake >/dev/null 2>&1; then
     echo "   [!] cmake not found — brew install cmake — then re-run make setup (make check needs dsp_asm and dsp_host)"
     exit 1
   else
-    # PINNED. The patch below is against this commit; upstream moved 105
-    # commits past it by 12 Sep 2026 and the patch no longer applies there
-    # (dsp.h, dsp_ops_alu.inl, jitops.h reject). A contributor's fresh
-    # clone took that day's HEAD, the "already applied (or upstream
-    # changed)" line below hid which, and dsp_host.cpp failed to compile
-    # against an unpatched emulator (no setSharedWindow). Moving the pin
-    # means re-basing the patch and re-running make check's bit-identity
-    # gates -- dsp_host renders every effect on this emulator.
+    # Pinned: the patch below is against this commit and does not apply to
+    # upstream's later HEAD. Moving the pin means re-basing the patch and
+    # re-running make check's bit-identity gates.
     DSP56300_PIN=c051afad31612c2d2c7a81a7ab23e1c5ac9e61af
     if [ ! -d vendor/dsp56300 ]; then
       git clone --no-checkout https://github.com/dsp56300/dsp56300.git vendor/dsp56300
@@ -149,13 +135,13 @@ if [ ! -x "$DIS" ] || [ ! -x "$ASM" ] || [ ! -x "$HOST" ]; then
       git -C vendor/dsp56300 checkout -q "$DSP56300_PIN"
     fi
     git -C vendor/dsp56300 submodule update --init --depth 1 --recursive
-    # The patch carries: MPYRI (unimplemented upstream in interpreter and
-    # JIT; stock LO-FI uses it, 2 Sep 2026); the shared window, two-way for
-    # dsp_host (X with X, Y with Y) and three-way for the ColdFire port's DSP
-    # pair (P, X and Y one memory, as the chip has it); and the host-stepped
-    # mode the port drives the cores in (DO loops stepped, interrupts
-    # interpreted, peripherals serviced under a masked interrupt, an idle
-    # step) plus hooks for Y-side registers it does not map (8 Sep 2026, O8).
+    # The patch carries: MPYRI (unimplemented upstream; stock LO-FI uses it);
+    # the one-word displaced move; the AGU pre-decrement fix; the shared
+    # window, two-way for dsp_host (X with X, Y with Y) and three-way for the
+    # ColdFire port's DSP pair (P, X and Y one memory, as the chip has it);
+    # and the host-stepped mode the port drives the cores in (DO loops
+    # stepped, interrupts interpreted, peripherals serviced under a masked
+    # interrupt, an idle step) plus hooks for Y-side registers it does not map.
     EMUPATCH=$(pwd)/tools/patches/dsp56300.patch
     apply_patch vendor/dsp56300 "$EMUPATCH"
     stage_dsp_host

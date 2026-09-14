@@ -142,7 +142,7 @@ names, **not** in the clone/label region — the BamSep26 rig leaves 84 bytes
 there and this cave is 300. `build_bus.py` allows a cave outside that window;
 it still refuses one whose target is not free.
 
-`tools/verify/verify_menushortcut.py` (in `make check`) checks the table statically,
+`tools/verify/verify_menushortcut.py` (with the module, in git history; the shortcut was broken on the unit and retired 13 Sep 2026) checked the table statically,
 boots the image and walks the menu out of RAM with the firmware's own layout
 — both rows resolve with their labels, id 0 (the action path) and actions in
 the cave — and calls the REVERB action with MIDI mode set, where it must
@@ -759,7 +759,7 @@ MDEP, SIZE, FRZE), still on the track page. Proven locally: all six
 engine-modes render bit-identically through the new fields. ✅ **Confirmed
 on hardware, tag 84, the same day:** MODE draws and steps as a select on
 slot 6; SHMR / MDEP sweep smoothly from slot 7. (The first play stalled the
-sequencer on a project saved under the old layout — `docs/effects/FLASHPLAN.md`.)
+sequencer on a project saved under the old layout — `docs/history/FLASHPLAN.md`.)
 
 **The SELECT PROBE line is closed.** Four builds (80–83) and no signal on
 the fourth either: after the re-slot nothing depends on the select array
@@ -778,8 +778,7 @@ path, not for this one.
 ### 9e. The twelve-row bus screen — SHIPPED (4 Sep 2026, `modules/busscreen`, tags 85–90)
 
 ✅ **Built, emulator-proven, and walked on the unit across six flashes.**
-`modules/busscreen` (remix `busscreen` = `bus` + this; `tools/verify/verify_busscreen.py`
-in `make check`) grows the menu-state table to a 17th state and fills its
+`modules/busscreen` (in git history since 14 Sep 2026 with its remix and `verify_busscreen.py`; out of the rig since tag 17) grows the menu-state table to a 17th state and fills its
 draw / key / encoder members. As shipped on tag 90:
 
 - **Two CONTROL rows, REVERB and DELAY.** Each scans the per-track FX2 ids

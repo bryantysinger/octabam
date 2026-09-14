@@ -3,12 +3,6 @@
 
     python3 tools/verify/verify_labels.py [remix]        (default: bus)
 
-PLAN §6's gate. `Param.labels` used to be authored, schema-checked and then
-never read -- the panel drew `1 2 3` where the manifest said FOLD RING BOTH.
-The build now plants a small ColdFire formatter per labelled select
-(tools/build/label_fmt.py) and registers it as that slot's "A" callback, so this
-asks the FIRMWARE what each one prints and compares it with the manifest.
-
 It is the same method tools/build/stock_labels.py uses for the stock selects: the
 words are PRINTED, not stored, so the only honest way to read them back is to
 call the formatter. Everything here runs on the emulated ColdFire -- no flash.
@@ -56,7 +50,7 @@ def main():
         m = mods[key]
         P = CLONE_BASE + ci * CLONE_STRIDE
         # A BLANKED module (hidden, nowhere on FX1) draws no knobs, and the
-        # build gives it no label formatters (5 Sep 2026); the firmware
+        # build gives it no label formatters; the firmware
         # printing plain numbers for its selects is correct, not a failure.
         # (Keep `cloned` unfiltered: ci is the clone's position.)
         if key in remix.blanked:

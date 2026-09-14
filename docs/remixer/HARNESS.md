@@ -128,7 +128,7 @@ The setup routine masks the frame count with `& 0xf`, so dsp_host's own
 block is 15 frames where hardware runs 16; `-frames 16` overrides it and
 runs whole frames (O12). `send_probe` and every bit-identity gate built on
 it are pinned at 15 (the bus latency there is exactly 2 blocks — **30
-samples, 32 on hardware**, `docs/remixer/TESTPASS.md`); `rig_render` and
+samples, 32 on hardware**, `docs/history/TESTPASS.md`); `rig_render` and
 `render_reverb` run 16 since 12 Sep 2026 so a voicing render's rates and
 latencies are the unit's. Their warm-up pad is 256 CALLS, i.e. in blocks
 of the chosen length — at 16 it is 4,096 samples, and until 12 Sep the pad
@@ -442,7 +442,7 @@ mean hardware-clean; when the two disagree, believe the hardware.
   listening protocol in `docs/effects/VOICING.md` is part of the harness, not an
   afterthought.
 
-The functional baseline for "what the sim can prove" is `docs/remixer/TESTPASS.md`
+The functional baseline for "what the sim can prove" is `docs/history/TESTPASS.md`
 (24 checks, plus the instrument bugs found before any code was blamed). The
 protocol for the measurements that *do* need hardware is `docs/effects/CAPTURE.md` —
 predictions committed before measuring. The bring-up history of dsp_host,

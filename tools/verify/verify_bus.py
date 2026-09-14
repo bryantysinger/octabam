@@ -7,58 +7,21 @@ The same shape as tools/verify/verify_roll.py (reverb engine) and tools/verify/v
 the three copies of the housekeeping block that must stay identical across
 modules/send/send_client.asm, modules/busverb/reverb_server.asm and modules/busdelay/delay_server.asm.
 
-WHY THIS EXISTS. The bus is the one piece of this project whose defining
-property cannot be measured locally at all: dsp_host runs the cores in
-lockstep (or under a guessed -skew interleave since 7 Sep 2026 -- a fuzz, not
-the hardware's timing) and so can never show the cross-core race ABSENT
-(CLAUDE.md's "a measurement can be structurally blind" entry -- this is the
-instance that cost months). tools/verify/verify_twocore.py is the two-core gate. What CAN be checked locally is the other half: that a change to
-the bus layout does not alter what the bus DOES. A single core writes the
-current buffer and reads the previous one whatever the rotation length is, so
-going from two buffers to three is invisible here -- and that invisibility is
-exactly what makes it a usable gate rather than a weak one.
-
-So: this proves behaviour-preservation, and says nothing about the race. Both
-halves of that sentence matter. Do not quote a green run here as evidence that
-a timing fix works.
+It proves behaviour-preservation and says nothing about the cross-core
+race: a green run is not evidence a timing fix works.
 
     make verify-bus SAVE=1     # on the tree you trust, BEFORE the edit
     ...make the bus change...
     make verify-bus            # must come back 19/19 bit-identical
 
-⚠️ THIS IS AN ON-DEMAND GATE AROUND ONE EDIT, NOT A MEMBER OF `make check` --
-and the reason is worth stating so nobody "fixes" it by adding it. The hashes
-cover the WHOLE render: reverb engine, delay engine and bus together, because
-the only way to see the bus is through a server that consumes it. So any
-voicing change to either engine fails this gate for a reason that has nothing
-to do with the bus. Stamp, edit, compare, and let the reference go stale --
-exactly how verify_roll is used. The reference lives under out/ (gitignored)
-for the same reason: it is scaffolding for one change, not a committed
-baseline that some later engine edit would be pressured to match.
+An on-demand gate around one edit, not a member of `make check`: the
+hashes cover the whole render (reverb engine, delay engine and bus
+together, because the bus is only visible through a server), so any
+voicing change to either engine fails it. Stamp, edit, compare, let the
+reference go stale; it lives under out/ (gitignored).
 
-THE CONTROLS, without which a passing run means nothing (verify_roll's lesson:
-a blind harness passes everything). --selftest perturbs the inputs in two ways
-that MUST both fail:
-  * a knob nudge -- proves the cases reach the engine at all
-  * one extra SEND in the layout -- proves the cases reach the BUS, i.e. that
-    the per-buffer counts and the auto-gain are actually in the signal path
-A harness that passes its own selftest is not measuring the bus.
-
-⚠️ A BLOCK IS 15 SAMPLES HERE, NOT 16. dsp_host caps a block at 15 frames
-(send_probe.FRAMES) while the bus accumulators are 16 words wide for the
-hardware's 16. A deliberate one-block latency change therefore shows up as a
-15-sample shift, and expecting 16 cost a detour chasing an off-by-one in the
-addressing that did not exist. The way that was settled is worth copying: point
-the candidate's read at the SAME buffer generation as the reference, and the
-whole restructure must come back bit-identical at lag 0 -- which separates
-"the layout changed" from "the latency changed" completely.
-
-⚠️ The nudged knob has to be one EVERY case carries, and the obvious choice is
-wrong: the first version nudged the delay's FDBK, which left all seven
-reverb-only cases matching because those layouts contain no delay at all. The
-selftest reported it as seven blind cases, which is what it is for. The SEND
-level is the only knob on every path here -- every case has a sender, by
-construction, because the bus is what is being measured.
+The sensitivity nudge is the SEND level, the one knob every case carries
+(a nudge on a delay knob leaves the seven reverb-only cases blind).
 """
 import argparse
 import hashlib
@@ -100,7 +63,7 @@ CASES = [
      dict(layout=".RS")),
     # ⚠️ NO SENDER AT POSITION 3 in any single-core case: that is track 8
     # on payload A (the DEV hatch IS payload A), where the SEND is refused
-    # by design (the one-aux rig, 7 Sep 2026) -- a `..DS` layout rendered
+    # by design (the one-aux rig) -- a `..DS` layout rendered
     # digital silence and the gate rightly refused to stamp it.
     (".DS     election takeover with the delay as the server",
      dict(layout=".DS", pick="D")),
@@ -145,7 +108,7 @@ CASES = [
      dict(layout="RDS", pick="D", split=5, raux=64)),
 
     # --- the hosts' own sends: paths every DEFAULT render leaves at zero ----
-    # ⚠️ Added 18 Aug 2026 after the delay's IN decode was silently DELETED by
+    # ⚠️ Added after the delay's IN decode was silently DELETED by
     # a splice (6d2690b) and 17/17 still passed -- every case had IN at 0, so
     # "IN multiplies garbage" rendered identically to "IN works". A knob whose
     # default is 0 is INVISIBLE to this gate unless a case drives it.
@@ -164,11 +127,6 @@ CASES = [
 # nothing about the accumulator it never reads.
 BASE = dict(dur=0.12, tail=0.25, amp=0.5, level=100, dlevel=100,
             mix=127, dtime=20, dfdbk=70, din=40, dmix=127, raux=0)
-# dmix 127 -> 40 (23 Aug 2026, with the delay's IN-keyed wet makeup): at 127
-# the x3 makeup pinned every D-layout render at the rail, and a clipped
-# fixture is a BLIND fixture -- rail-pinned samples compare equal no matter
-# what the code did. 40 keeps IN exercised (the 18 Aug lesson above) with
-# the makeup active and the peak well off the clamp.
 
 
 def render(mem, case, bump_level=0, extra_send=""):

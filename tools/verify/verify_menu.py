@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-BUS.md task 11: verify tools/build/build_menu.py's ColdFire edits against the REAL
-chooser mechanism, decompiled straight out of the firmware (Ghidra 12.1.2,
-tools/GhidraMenuFuncs.java against out/ghidra_fx's project):
+Verify the built image's FX2/FX1 chooser tables against the chooser
+mechanism as decompiled from the firmware:
 
   FUN_40052474 (id-store, fires when the cursor is confirmed on a new
   position):
@@ -24,14 +23,12 @@ tools/GhidraMenuFuncs.java against out/ghidra_fx's project):
       FUN_4007edb0(..., *(int*)(ID2POS + fx2_id*4))               ; cursor seed
       FUN_400326d4(FX2_IDS[fx2_id], ...)                          ; stage page
 
-Both are DATA computations over the five tables; this script replicates that
-exact logic in Python against the built image rather than driving Unicorn
-through the real function, because the init branch also calls several
-indirect widget-setup function pointers (PTR_FUN_400bb7f0 etc.) that draw the
-real menu UI -- stubbing those convincingly is its own project and orthogonal
-to what task 11 needs to prove (the five tables agree with each other and
-with what the two real functions read). This is "measure, don't guess" in the
-form the ColdFire side allows without a full UI emulation harness.
+Both are data computations over the five tables; this script replicates
+that logic in Python against the built image rather than driving the
+emulator through the real function (the init branch also calls the widget
+setup pointers that draw the menu UI). It also checks every cloned
+descriptor's formatter against its value count and the strings the build
+writes against their fields.
 """
 import hashlib
 import os, pathlib, sys
@@ -60,12 +57,6 @@ FX1_LIST_REFS = [0x40037990, 0x40052706, 0x40059bd2]
 FX1_NONE = 0x400d4618
 FX1_ROWCOUNT_AT = 0x40059be6            # FX1's viewport literal
 
-# name -> (effect id, chooser position), derived from the SELECTED REMIX
-# (REMIX=<name> env, same default as the build) -- the image being verified
-# is whatever remix was built last, so the expectations must come from the
-# same selection or every check below compares against the wrong menu. This
-# table was hand-written for the shipping trio until the first outsider
-# module made a per-remix hand copy impossible (29 Aug 2026).
 REMIX = _reg.remix(os.environ.get("REMIX") or _reg.DEFAULT_REMIX)
 _MODS = _reg.modules()
 # A HIDDEN module (schema.Remix.hidden) is carried but takes no chooser row,
@@ -95,16 +86,6 @@ NONE_ID = 0x00                          # aliased to SEND
 P_PARAM_NAMES = 0x16
 P_PENABLE_LO = 0x18e                    # params 0..7, one nibble each
 P_PENABLE_HI = 0x18a                    # params 8..11
-# Which knobs each effect draws -- from the manifests, the same statement the
-# build reads. This USED to be a deliberately independent hand copy of
-# build_bus.py's list (its old comment told the story of slots 6/11 shipping
-# undrawable because both hand copies were missing the same entries). Remixes
-# ended that arrangement: a per-remix hand table cannot be kept, and the
-# manifest is now the single declaration both sides read. What this check
-# still proves byte-for-byte is that the BUILD PASS wrote what the manifest
-# declares -- the R19 formatter-gate class of bug. What no static check can
-# see is a manifest that under-declares its own effect; that class rides the
-# standing on-unit reconfirm rule (docs/firmware/PARAM_PAGES.md).
 ACTIVE_PARAMS = {k: _MODS[k].active_params for k in _ORDER
                  if k not in STOCK_KEYS}
 
@@ -126,17 +107,7 @@ STEPPED_FMT = (0x4003c718, 0x40047254)
 # The ColdFire cave region (docs/firmware/PARAM_PAGES.md section 7): clones, the tempo
 # caves and PLAN §6's label formatters all live in here and nowhere else.
 CAVE_LO, CAVE_HI = 0x400d6b20, 0x400d7c3c
-# ... and, since 3 Sep 2026, the second zero run docs/firmware/MAINMENU.md section 5
-# names: label formatters (and the FX1 list) overflow into it when the clone
-# window is full -- the Character station's BUS-mode renames tipped the rig
-# over. build_bus.py's OVERFLOW_RUN / OVERFLOW_RUN_END.
 OVF_LO, OVF_HI = 0x400d24d0, 0x400d2ce0
-# A cave may register itself as some module's per-slot label formatter:
-# the tempo-sync cave draws DELAY SERVER's TIME as `1/8`, and the cfprobe
-# cave draws its readout on HELLO WORLD's GAIN from an entry 0x100 inside
-# itself (schema.FormatterReg.offset). Cave addresses FLOAT since 3 Sep
-# 2026, so a registration is recognised by the cave's pinned bytes in the
-# image at the entry minus its offset, not by a constant.
 REG_FMT = {(_c.registers_formatter.module, _c.registers_formatter.slot):
            (_c.pinned, _c.registers_formatter.offset)
            for _k in REMIX.modules for _c in _MODS[_k].cf_patches
@@ -220,7 +191,7 @@ def main():
     # and gets the firmware's own NONE instead, restored at list row 0. This
     # script assumed a module every time and died with a KeyError on `warped`
     # and every other no-bus remix -- a traceback, not a failed check, so
-    # `REMIX=warped make verify` reported nothing at all. Found 3 Sep 2026.
+    # `REMIX=warped make verify` reported nothing at all. Found.
     # A HIDDEN fallback is not in EXPECT (it has no chooser row), and its
     # cursor parks at 0 because there is no row to point at. Its descriptor
     # is still cloned and its id still resolves to it, which is the half
@@ -304,28 +275,6 @@ def main():
                   f"{name}: p{i} default {dflt} is inside its value count "
                   f"{cnt}")
 
-        # THE FORMATTER MUST MATCH THE KIND OF CONTROL THE COUNT SAYS IT IS.
-        # This invariant did not exist and a build that violated it SHIPPED
-        # AND FLASHED (R19, tag 38): the formatter fix-up in build_bus.py was
-        # gated to the reverb, so BusDelay's page 2 inherited SPRING REV's
-        # renderers and three of six slots drew wrong on hardware --
-        #   WOW  (count 128) drew NOTHING, having inherited SPRING TYPE's
-        #        word-label renderer and its THREE-entry label table;
-        #   MODE (count 5)   drew as a BALANCE DIAL reading -64..-60,
-        #        having inherited SPRING BAL's bipolar pair;
-        #   PTCH (count 4)   drew as a plain 0..3 dial.
-        # Counts, defaults, names and enable bits were all correct in every
-        # case, which is exactly why every existing check above passed. Found
-        # by Sam's eyes on the first flash with delay page 2 enabled, 17 Aug
-        # 2026 -- one flash cycle, which is the expensive way to find it.
-        #
-        # The rule, from a survey of all 20 stepped params in stock FX2:
-        #   count < 128 (a SELECT) -> the enumerated pair, and 0x12a MUST be 0
-        #                             (a non-zero 0x12a forces plain-knob
-        #                             drawing even with the right pair)
-        #   count == 128 (a KNOB)  -> both formatters 0, i.e. stock's plain
-        #                             numeric. 0x12a is unconstrained here --
-        #                             working knobs carry several values.
         for i in sorted(got):
             cnt = rd32(img, P + P_COUNTS + i * 4)
             f1 = rd32(img, P + P_FMT1 + i * 4)
@@ -339,7 +288,7 @@ def main():
                 # select. So the invariant this check exists for is B and
                 # 0x12a, not A: B is the tick widget, and a non-zero 0x12a
                 # forces plain-knob drawing even with the right pair (which
-                # is the defect it was written for, 17 Aug 2026).
+                # is the defect it was written for).
                 #
                 # A is still constrained -- stock's enumerated formatter or
                 # an address inside the cave region, never anything else.
@@ -358,8 +307,8 @@ def main():
                           f1 - REG_FMT[(name, i)][1] - BASE
                           + len(REG_FMT[(name, i)][0])]
                   == REG_FMT[(name, i)][0]):
-                # A registered label formatter (time_fmt.s, 24 Aug 2026;
-                # cfprobe.s, 4 Sep 2026): a knob with A = our cave's entry
+                # A registered label formatter (time_fmt.s;
+                # cfprobe.s): a knob with A = our cave's entry
                 # and B = 0 -- stock DELAY TIME's own shape (A = 0x4003c718,
                 # B = 0). Without the cave (NOTEMPO=1) the slot falls through
                 # to the plain-knob rule below, as before.
@@ -367,7 +316,7 @@ def main():
                       f"{name}: p{i} carries a registered label formatter at "
                       f"0x{f1:08x}, so B is 0 (got 0x{f2:08x})")
             elif i in getattr(_MODS[name], "bipolar_slots", ()):
-                # A BIPOLAR knob (14 Sep 2026): SPRING BAL's dial, drawn
+                # A BIPOLAR knob: SPRING BAL's dial, drawn
                 # -64..+63 -- A = 0x4003c7a0, B = 0, 0x12a = the signed number
                 # renderer 0x400328e4, read from the stock descriptor at
                 # donor_desc + 0x38. Build-time bytes only until a flash shows
@@ -508,7 +457,7 @@ def main():
     # write stays the donor's -- and some of those fields outrank the ones it
     # does write. A slot can carry the right count, default, name and enable
     # bit and still draw as something else entirely, or as nothing at all:
-    # three of six page-2 slots drew wrong on the 17 Aug 2026 flash and every
+    # three of six page-2 slots drew wrong on the flash and every
     # check then in place passed, because every field they checked was right.
     #
     # So the built descriptor is read BACK and compared to the manifest that

@@ -615,7 +615,7 @@ a count-128 knob in a companion field works, so the 10 Aug "near-boolean
 companion" reading is retired (it was the inherited formatter). ⚠️ The
 first play stalled the sequencer until the project was refreshed: parts
 saved under the old layout hand the count-3 slot a 0–127 byte
-(`docs/effects/FLASHPLAN.md`, the MODE re-slot).
+(`docs/history/FLASHPLAN.md`, the MODE re-slot).
 
 | slot | word | field | example (since 4 Sep 2026) |
 |---|---|---|---|

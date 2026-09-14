@@ -1,29 +1,20 @@
 #!/usr/bin/env python3
-"""Static cycle count of each server's per-sample loop.
+"""Static cycle count of each module's per-sample loop.
 
-Why this exists: `tools/harness/dsp_host` CANNOT measure this. Its instructions/sample
-is g_lastCycles/procCalls/frames and g_lastCycles does not scale with the frame
-count, so the figure it prints is a constant divided by whatever you asked for.
-The count has to come from the code. It used to be done by hand, which is how
-REVERB.md ended up quoting 529 and BUS.md quoting ~700 for the same bank.
+Each sample loop is `do n7,>END` (n7 is the frame count; the init-time loops
+are `do y0,...` / `do #128,...`). A label is injected immediately after that
+`do` (labels emit no words, so codegen cannot change; --verify proves it),
+the source is assembled, and the word span from there to END is the count:
+on the 56300 a one-word instruction is one cycle and a two-word instruction
+(a `#>` long immediate, an absolute address) two, so for straight-line code
+the word span is the cycle count. That holds only with no branches and no
+nested `do`/`rep` in the body; both are checked and the count refused
+otherwise, except forward branches a module declares admissible with
+`; CYCLES_FORWARD_BRANCHES` in its header (a skip cannot cost more than the
+span). A mode fork (`; MODEFORK_*`) is priced as the worst of its arms.
 
-Method. Each server's sample loop is `do n7,>END` -- n7 is the frame count, and
-that is what distinguishes it from the init-time loops (`do y0,...`, `do #128,...`).
-We inject a label immediately after that `do` (labels emit no words, so this
-cannot change codegen -- --verify proves it), assemble, and take the word span
-from there to END.
-
-Words, not decoded instructions, is the cycle number here. On the 56300 a
-one-word instruction is one cycle and a two-word instruction (a `#>` long
-immediate, an absolute address) is two, so for straight-line code the word span
-IS the cycle count. That holds only because these loop bodies contain no
-branches and no nested `do`/`rep` -- both are checked below, and the count is
-refused if either appears, because then this arithmetic would be wrong.
-
-What it still does not model: memory-contention stalls (two accesses to the
-same bank in one cycle), which inflate the real figure, and the `do` hardware
-loop's own zero-overhead behaviour, which is already free. So treat the result
-as a floor. It is exact for the code and optimistic about the bus.
+Not modelled: memory-contention stalls, which inflate the real figure. The
+result is a floor: exact for the code, optimistic about the bus.
 
 Usage:  python3 tools/build/cycle_count.py [--verify] [--json]
 """
@@ -40,64 +31,12 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import too
 from remix import registry  # noqa: E402
 ASM = ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_asm"
 
-# Budget per CORE, MEASURED on hardware with dsp/burn_probe's cycle meter,
-# 7 Aug 2026. This replaces 1080, which was never a ceiling: it is the load
-# stageprobe5 happened to SURVIVE, written down as a budget and then priced
-# against by every design decision from the density pass onward. Retracted
-# twice in the docs and still printed here until 8 Aug.
-#
-#   FILTER on all four core-0 tracks   froze at BURN=87 on the 16x probe -> 1392
-#   FILTER disabled everywhere         froze at BURN=76 on the 32x probe -> 2432
-# (⚠️ the arithmetic here read "32*76 = 1392" until 30 Aug 2026, which is
-# neither row: it fused the two, used the filters-OFF freeze point, and got a
-# product of 2432 while printing 1392. CHIP.md section 2 has both rows.)
-#
-# 1392 spare was measured with the FULL BANK plus the heaviest FX1 config
-# already running, so the budget for OUR code is that spare plus what the bank
-# already costs. That makes it a WORST CASE that needs no further derating --
-# which is the opposite of how 1080 behaved.
-#
-# ⚠️ SPARE IS NOT INVARIANT TO THE BANK, and this tool used to print it as if
-# it were. `budget = bank + BURN_SPARE` against the CURRENT bank made "room for
-# new work" come out at 1392 no matter how much the bank grew -- which says
-# capacity grows with our own code. The dependency was backwards, and the
-# comment above it claimed the opposite ("tracks the bank rather than being a
-# fixed number that goes stale").
-#
-# It went stale immediately: the eight-line tank took the reverb from 763 to
-# 1145 cycles/sample (8 Aug 2026), ~382 more per bank, and the tool went on
-# reporting 1392 of headroom. (Real headroom at that point was ~1010;
-# the tool now subtracts bank growth itself -- its own output is the live
-# number, 819 as of 11 Aug 2026.)
-#
-# What is actually fixed is the FREEZE POINT. The 7 Aug run measured
-#   bank_then + 4x FX1 FILTER + 1392 = the load at which it froze
-# so spare for new work today is BURN_SPARE minus however much the bank has
-# grown since. Anything else prices FX1 against cycles we do not have -- and
-# FX1 spends them x4 per core, so the error is multiplied by four.
-# ⚠️ SUPERSEDED AS A HEADLINE, kept because the delta arithmetic below is
-# anchored to it. The 23 Aug 2026 sweeps re-measured this properly and
-# CHIP.md section 2 is the authority: spare 704 with the R46 reverb + 4x
-# FILTER, 1088 with 2x, one FILTER = 192 (not the old ~260 inference), total
-# DSP-usable budget ~3120, stock's own share ~1410. Those are what the
-# WORST-CORE line below prices against; this constant only feeds the legacy
-# 7 Aug comparison, which is labelled as such.
 BURN_SPARE = 1392       # measured, worst realistic FX1 load, 7 Aug 2026
-# 🟡 RECONSTRUCTED, not measured: the bank the 1392 was measured on top of.
-# Pre-roll four-line reverb 763 (PLAN records the roll as 763 -> 778) + delay
-# 163 + 2x send 19. Falsified by re-running the burn sweep, which is the only
-# thing that can re-measure BURN_SPARE itself -- see PLAN, the probe currently
-# does not build.
 BANK_AT_MEASURE = 763 + 163 + 2 * 19
 CORE_TOTAL = 4535       # 200 MIPS / 44100, arithmetic
-# ✅ hardware, 23 Aug 2026 (CHIP.md section 2), triangulated from three sweeps.
+# ✅ hardware (CHIP.md section 2), triangulated from three sweeps.
 USABLE = 3120           # what our code may actually spend, per core
 STOCK_SHARE = CORE_TOTAL - USABLE      # ~1410, by subtraction
-# ⚠️ THE PRICER IS KNOWN TO BE OFF, and by how much: CHIP.md measures the R46
-# reverb's true cost at ~1650 against the 1384 counted here (~270 LOW), and
-# the delay ~264 HIGH since the phead roll. The counts below are exact for the
-# code as written and blind to memory contention; treat them as a floor and
-# the hardware sweep as the authority.
 
 
 def room_for_new_work(bank):
@@ -108,10 +47,6 @@ def room_for_new_work(bank):
 # so a module moving its own source cannot leave this pointing at nothing.
 _ASM = registry.asm_by_stem()
 
-# The LEGACY bank composition -- one reverb, one delay, two sends. This is
-# the shape BANK_AT_MEASURE was measured with on 7 Aug 2026, so the headroom
-# arithmetic below is only comparable to that measurement while the bank is
-# counted the same way. It is NOT what a core actually runs (see bank_worst).
 BANK = {"reverb_server": 1, "delay_server": 1, "send_client": 2}
 
 FX2_SLOTS = 4           # per core: four tracks, one FX2 each
@@ -215,13 +150,6 @@ DO_SETUP = 5
 def prep(name):
     """Source text as the real build assembles it (build_bus.py)."""
     if name == "burn_probe":
-        # There is no dsp/burn_probe.asm any more. It was a verbatim COPY of
-        # reverb_server.asm plus two blocks, it silently went stale (forked
-        # before v121, so it carried no bus auto-gain), and a cycle meter that
-        # measures an engine we do not ship is worse than none. build_bus.py
-        # now SPLICES the two blocks into the live source under BURN=1, so
-        # "burn_probe" here means exactly that splice -- reproduced by the same
-        # anchors, so this cannot drift from what the build actually assembles.
         src = _ASM["reverb_server"].read_text()
         for inc, anchor in BURN_INJECT:
             if src.count(anchor) != 1:
@@ -348,12 +276,12 @@ def _measure_loop(name, src, lines, i):
     fork_lines = set(range(fork["begin"], fork["end"] + 1)) if fork else set()
     # A `bsr <label>` in the body is priced AS IF INLINED: the callee's word
     # span (label..rts, straight-line required) is charged at every call site,
-    # plus a small constant for the call/return pair. Added 18 Aug 2026 when
+    # plus a small constant for the call/return pair. Added when
     # satdrv rolled the two per-line sat+drive copies into one subroutine --
     # the roll is a WORD saving; the cycles are still paid per call, and this
     # keeps the tool honest about that instead of refusing the shape.
     # ⚠️ A CALL SITE INSIDE A MODEFORK ALTERNATIVE BELONGS TO THAT ALTERNATIVE
-    # (13 Sep 2026): the surcharge is attributed by the SITE's address, like a
+    #: the surcharge is attributed by the SITE's address, like a
     # roll, so a fork whose alternatives each call their own callee is priced
     # as dispatch + the worst alternative, not every callee at once. Character's
     # SAT fork (TAPE/TUBE/INFL, each calling its pair) read 685 cycles/sample
@@ -424,7 +352,7 @@ def _measure_loop(name, src, lines, i):
         inserts.append((k1 + 1, f"{mend}:"))     # after the rts
         inserts.append((j - 1, f"{msite}:"))     # BEFORE the bsr: the call site's address
         bsr_marks.append((lbl, mstart, mend, msite))
-    # ⚠️ A NESTED COUNTED LOOP RUNS ONCE PER ENCLOSING TRIP (14 Sep 2026).
+    # ⚠️ A NESTED COUNTED LOOP RUNS ONCE PER ENCLOSING TRIP.
     # Pricing each `do` as `(trips - 1) x its words` is right only when the
     # loops are sequential: `do #2 { do #4 {...} }` would charge the inner
     # loop's other three trips ONCE, not twice, and report a saving that
@@ -511,7 +439,7 @@ def _measure_loop(name, src, lines, i):
         alt_sur = [sum(s for at, s in rolls if bounds[k] <= at < bounds[k + 1])
                    for k in range(len(alt_w))]
         # ... and each bsr surcharge to the alternative whose range contains
-        # its CALL SITE (13 Sep 2026; a call outside the fork stays global).
+        # its CALL SITE.
         alt_call = [sum(s for at, s in calls if bounds[k] <= at < bounds[k + 1])
                     for k in range(len(alt_w))]
         alt_cyc = [w + s + c for w, s, c in zip(alt_w, alt_sur, alt_call)]
@@ -538,10 +466,6 @@ def main():
         sys.exit(f"missing {ASM} -- run 'make setup'")
     args = sys.argv[1:]
 
-    # The modules to price come from the SELECTED REMIX, not a hard-coded
-    # list -- a card of inserts and the shipping image are different loads,
-    # and until 29 Aug this tool priced `bus`'s engines whatever REMIX
-    # said, which made every insert's cost an inspection guess.
     import os
     from remix.schema import BusRole
     remix = registry.remix(os.environ.get("REMIX") or registry.DEFAULT_REMIX)
@@ -576,9 +500,6 @@ def main():
                 sys.exit("marker changed codegen -- the count is not trustworthy")
 
     worst, picks = bank_worst(rows, mods, remix.fx1, _stock_fx1)
-    # The legacy composition, and ONLY when the remix still carries the
-    # modules it was measured with -- otherwise the comparison to the 7 Aug
-    # hardware sweep is against a bank that shares nothing with it.
     legacy = ({m["name"]: m["cycles"] for m in rows}
               if all(k in {r["name"] for r in rows} for k in BANK) else None)
     bank = sum(legacy[k] * n for k, n in BANK.items()) if legacy else None
@@ -612,10 +533,6 @@ def main():
                               core_total=CORE_TOTAL), indent=2))
         return
 
-    # A remix with no DSP module at all (a solo ColdFire-only patch, e.g.
-    # midi-scenes) leaves `rows` empty -- max() over an empty generator
-    # raised ValueError here until this guard. Identical to the old
-    # expression whenever rows is non-empty.
     w = max([len(m["name"]) for m in rows] + [17])
     print(f"remix {remix.name!r}\n")
     print(f"{'':{w}}  cycles/sample")

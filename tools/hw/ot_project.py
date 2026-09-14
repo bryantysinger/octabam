@@ -1,32 +1,6 @@
 #!/usr/bin/env python3
 """Read (and carefully write) Octatrack project/bank files on the CF card.
 
-Format knowledge (reverse-engineered 25 Aug 2026 on ChongBongolo 26, OS 1.40B
-image R58; anchors verified against values we wrote over MIDI and Sam's own
-"A03 is part 3" statement):
-
-  project.work    plain text, CRLF, [SECTION] KEY=VALUE.
-                  [SAMPLE] sections: TYPE/SLOT/PATH/GAIN/... GAIN is 0..96,
-                  48 = 0 dB, 0.5 dB per step (so 72 = +12 dB).
-  bank##.work     FORM/DPS1BANK chunks: 16x PTRN (each 8 TRAC + 8 MTRA),
-                  then 8x PART (parts 1-4 current, then parts 1-4 saved),
-                  PART stride 0x18bb from 0x8eed6.
-                  PART+0x008: the record's OWN index 0-3 (mirrors 5-8 repeat
-                             0-3) -- a record copied whole must be re-indexed
-                             or the unit throws PARSE ERROR (13 Sep 2026)
-                  PART+0x009: FX1 effect id per track (8 bytes)
-                  PART+0x011: FX2 effect id per track (8 bytes)
-                             (BusDelay=0x06, BusVerb=0x07, SEND=0x09)
-                  PART+0x01b: 8 pairs (track LEVEL, cue level)
-                  PART+0x2d3 + 5*track: static slot, 0-based (5-byte/track blocks)
-                  PTRN tail byte at (next_chunk - 5): part assignment 0-3
-                             (NOT -6 -- that mistake cost a measurement pass)
-                  trailer: 4 part names, 7-byte NUL-terminated fields, at
-                             (end - 2 - 4*7); **last u16 BE = additive checksum
-                             sum(bytes[0x10:-2]) & 0xFFFF -- MUST recompute on
-                             any bank edit** (verified on 4 files, 28 Aug).
-                  AMP VOL: not located -- do not guess.
-
     python3 tools/hw/ot_project.py report PROJECT_DIR
     python3 tools/hw/ot_project.py set-gain PROJECT_DIR SLOT DB      # e.g. 12 -3.5
     python3 tools/hw/ot_project.py apply PROJECT_DIR PLAN.json       # {"12": -3.5, ...}
@@ -37,19 +11,6 @@ image R58; anchors verified against values we wrote over MIDI and Sam's own
     python3 tools/hw/ot_project.py stamp-slot PROJECT_DIR MODULE SLOT [VALUE] [--track N[,N]]
     python3 tools/hw/ot_project.py set-fx PROJECT_DIR fx1|fx2 TRACK MODULE [--page V,V,V,V,V,V] [--page2 V,...]
     python3 tools/hw/ot_project.py thru-track PROJECT_DIR TRACK [--page HEX14]
-        # a THRU machine that STARTS: machine type 2 in every part of every
-        # bank (+ mirrors), the THRU playback page (default 00017f00000000 =
-        # the pair that lands at the ColdFire's +0 capture, RX0 0/1 in the
-        # port; the RIG's other THRU uses 00004000000000), and a trig at
-        # step 1 in pattern 1 of every bank -- a THRU passes nothing until it
-        # is trigged (measured 9 Sep 2026, COLDFIRE_PORT.md O12).
-        # the effect id on ONE track in EVERY part of EVERY bank (all eight
-        # part records, both .work and .strd), with optional page bytes.
-        # ⚠️ Every part, because the emulated load applies bank 1 part 1 and
-        # the transport start then applies the SAVED bank's pattern part --
-        # a fixture edited in one part measures another (O9c, 8 Sep 2026).
-        # one knob byte on every part/track naming MODULE (key, name or id);
-        # SLOT by manifest name or index; VALUE defaults to the manifest's
 
 Writes edit GAIN= lines only, preserve CRLF and byte length discipline of the
 rest of the file, and refuse to run without a same-day backup directory
@@ -58,51 +19,14 @@ matching /Users/sambanks/octa/backups/*pregain*.
 import json, pathlib, re, sys, glob
 
 # ⚠️ EIGHT PART RECORDS, not four: 1-4 are the CURRENT parts and 5-8 are the
-# SAVED copies the unit restores on RELOAD PART. Verified 3 Sep 2026 against
+# SAVED copies the unit restores on RELOAD PART. Verified against
 # 80 bank files -- parts 5-8 are byte-identical to 1-4 in every one of them,
 # and part 9 lands in the name trailer (ASCII), so the count is exact. A tool
 # that writes only the first four leaves an effect assignment one RELOAD away
 # from coming back.
 PART_BASE, PART_STRIDE, NPARTS, NPARTS_ALL = 0x8eed6, 0x18bb, 4, 8
 FX1_OFF, FX2_OFF, NTRACKS = 0x009, 0x011, 8
-# THE KNOB VALUES a part stores for each track's two effects (found 3 Sep
-# 2026 by pattern, against the ChongBongolo26 backups: stock FILTER's page-1
-# defaults 00 7f 00 40 00 40 recur at a 24-byte stride on the tracks whose
-# FX1 id is 0x04, and BusVerb's stored page 2 reads back as EXACTLY its
-# manifest defaults 00 02 40 00 00 01). Two arrays of eight 24-byte blocks,
-# one per track: bytes 0-5 are FX1's six knobs, 6-11 FX2's, 12-23 belong to
-# two other pages. Page 1 at P1_OFF, page 2 (slots 6-11, a select stored as
-# its index) at P2_OFF. Both relative to the part record.
-#
-# ⚠️ WHY THIS MATTERS (plan item A6): the bytes are stored under the layout
-# of whatever effect the part chose. A station that REPLACES a stock effect
-# inherits them raw -- FILTER's DEC=64 on slot 5 becomes ->VRB 64 on every
-# melodic track, i.e. a part that never sent anything is suddenly a reverb
-# client after the flash. stamp_defaults() writes OUR defaults over them.
 P1_OFF, P2_OFF, TRACK_STRIDE = 0x12f, 0x331, 24     # RETRACTED for page 2, see below
-# ❌ 4 Sep 2026, found on the flash-4 unit: PAGE 2 IS NOT 24 BYTES PER TRACK.
-# Its per-track block is THIRTY bytes -- six FX1 page-2 bytes, six FX2, then
-# eighteen that belong to other pages -- and it starts at +0x325, not +0x331.
-# Measured on a part the UNIT had written (every track FILTER + DELAY, the
-# effects re-selected on the panel): under a 30-byte stride from 0x307, ALL
-# EIGHT tracks read FILTER's page-2 descriptor defaults (00 00 01 00 03 00)
-# then the DELAY's (00 01 7f 01 00 00), byte for byte; T1's BongDelay in the
-# live parts reads its manifest page 2 (30 00 40 01 00 00) and T8's ChonVerb
-# its own; and two on-unit re-selects of the DELAY (T4, T7, 4 Sep 2026) wrote
-# their rows at exactly 0x367 and 0x3c1 = 0x307 + 6 + 30 * track. Page 1 IS
-# 24 from 0x12f (the same part reads eight identical rows).
-#
-# ⚠️ TWO WRONG LAYOUTS SHIPPED IN ONE DAY. The 24-stride writes landed in
-# other tracks' rows (the stock DELAY's DIR, its dry level, read 0 on T2/T4/
-# T7: silent until re-selected). The first fix, 0x325 + 30 * track, was
-# ONE BLOCK LATE: it wrote every track's page 2 into the NEXT track's block,
-# so T4's DELAY row landed on T5's BusVerb (DIFF 127: the tank self-
-# oscillates and nothing but a reboot stops it) and T2's on T3's character
-# station (RING 127). Seven tracks decoding right under 0x325 was the trap:
-# a stride fits at any phase that lands on rows the unit happened to have
-# written the same way. What settled it was a write the unit made on a
-# NAMED track. Falsifier now: a unit re-select on track t whose row is not
-# at 0x307 + 30 * (t - 1) (+6 for FX2).
 P2_OFF, P2_STRIDE = 0x307, 30
 FX_NAMES = {0x06: "BusDelay", 0x07: "BusVerb", 0x09: "SEND", 0x00: "-"}
 
@@ -169,17 +93,11 @@ def _bank_write(pdir, banknum, mutate, guard=True):
 
     ⚠️ THE CHECKSUM IS NOT OPTIONAL. The last u16 BE is an additive sum over
     bytes[0x10:-2]; the unit rejects a bank whose sum does not match. Verified
-    again 3 Sep 2026 across all 80 bank files in the backup set -- every one
+    again across all 80 bank files in the backup set -- every one
     agrees, so a disagreement is this tool's bug and not a format surprise.
     """
     if guard:
         guard_backup()
-    # BOTH copies, 7 Sep 2026: `.work` is the working state and `.strd` the
-    # SAVED state, and PROJECT -> RELOAD on the unit restores `.strd`. An edit
-    # made only in `.work` vanished on the first reload of the SEAMTEST flash
-    # (a stale-part freeze on the first PLAY, reload, no trigs anywhere) and
-    # cost a card round-trip. The same mutation goes into both so the two
-    # states agree; the checksum is fixed up on each.
     for suffix in ("work", "strd"):
         path = pdir / f"bank{banknum:02d}.{suffix}"
         if suffix == "strd" and not path.is_file():
@@ -199,31 +117,8 @@ def set_part_name(pdir, banknum, part, name):
     _bank_write(pdir, banknum, mut)
     print(f"bank{banknum:02d} part{part} name -> {name}")
 
-# A track's sample-slot record is FIVE bytes, one per machine type, and the
-# firmware indexes it BY THE MACHINE-TYPE VALUE: `0x4000504e..0x4000507e`
-# adds the type byte to `blob + part*0x18b2 + track*5 + 0x8f04a` (34 literal
-# readers of that base; the PICKUP setter `0x400972fc` writes byte +4 =
-# 128+track, its own recorder buffer). So byte +0 is the type-0 machine's
-# slot, +1 the type-1 machine's, +4 PICKUP's. Slot bytes are 0-based (0 =
-# slot 1, 128 = R1 -- the file's SLOT=129). Measured 7 Sep 2026 on the RIG's
-# bank B: T2..T7 carry 128+ values in byte +1 and 1..128 values in byte +0,
-# and only a FLEX machine can play a recorder buffer -- so type 1 is FLEX and
-# type 0 STATIC (🟡 by that argument; PARAM_PAGES' 0/1 = FLEX/STATIC was an
-# inference and is contradicted by this). The earlier form of this function
-# wrote byte +0 only, i.e. the STATIC slot, for every caller.
 SLOT_KIND = {"static": 0, "flex": 1, "pickup": 4}
 
-# Measured on the unit 7 Sep 2026: the STATIC slot byte is 0-based like the
-# FLEX one (byte 1 shows as "static 002"); a STATIC [SAMPLE] entry's PATH is a
-# BARE filename ("PLUCK.wav"), and the ../AUDIO/<dir>/<file> form -- which the
-# FLEX entries of Sam's projects use -- loaded as an EMPTY slot for STATIC.
-# ⚠️ 13 Sep 2026: the path form is probably NOT the cause. On 1.40C the unit
-# itself writes nested STATIC paths and 32 host-written nested STATIC slots
-# play (octalab, docs/firmware/EXTERNAL.md 9.2/9.4). A slot with no
-# markers.work record (784-byte records, frame count at +10) looks exactly
-# like "empty": no error, 64-frame fallback, 30 BPM, will not trig. Nothing
-# in tools/hw/ writes markers.work. Falsifier: write one nested STATIC slot
-# WITH a marker record and trig it.
 def set_track_slot(pdir, banknum, part, track, slot_1based, kind="flex"):
     if not (1 <= part <= NPARTS_ALL and 1 <= track <= 8):
         sys.exit(f"track-slot: part {part} / track {track} must be 1-based")
@@ -233,20 +128,6 @@ def set_track_slot(pdir, banknum, part, track, slot_1based, kind="flex"):
     _bank_write(pdir, banknum, mut)
     print(f"bank{banknum:02d} part{part} T{track} {kind} slot -> {slot_1based}")
 
-# The machine-type byte, one per track per part. RAM offset (EMU.md /
-# EXTERNAL.md §6) is `PART_PTR + part*0x18b2 + 0x8eda2 + track`; the file
-# offset below is that plus the flat 9-byte IFF chunk header every PART
-# chunk carries -- the same +9 that FX1_OFF/FX2_OFF already carry over
-# their own RAM-relative 0 and 8. ✅ Verified 6 Sep 2026 by patching one
-# track and reading the byte back out of RAM after a real LOAD PROJECT.
-#
-# The VALUES (measured 7 Sep 2026, RTOS_FORK section 10.13): 0 = STATIC,
-# 1 = FLEX, 2 = THRU, 3 = NEIGHBOR, 4 = PICKUP. The trig-side slot lookup
-# (0x400050b8..) sends type 0 to the STATIC arena and types 1/4 to the FLEX
-# arena (which holds the recorder buffers), and the RIG's bank B carries
-# recorder-buffer ids in its type-1 slot bytes. PARAM_PAGES.md's inferred
-# 0/1 = FLEX/STATIC was the reverse. Also: the 6 Sep "file says 0, RAM says
-# 2" worry was bank A's file against bank B's RAM -- the offset is right.
 MTYPE_OFF, MTYPE_MIRROR = 0x02b, 4      # + track; part N's saved copy is part N+4
 
 def set_machine_type(pdir, banknum, part, track, mtype, mirror=True, guard=True):
@@ -263,35 +144,6 @@ def set_machine_type(pdir, banknum, part, track, mtype, mirror=True, guard=True)
     print(f"bank{banknum:02d} part{','.join(str(p) for p in parts)} "
           f"T{track} machine type -> {mtype}")
 
-# ---------------------------------------------------------------------------
-# PATTERN DATA: the sequencer's own records, and the step masks at their head
-#
-# A bank file is IFF: sixteen `PTRN` chunks (file stride 0x8eec), each holding
-# eight `TRAC` sub-chunks (file stride 0x922) for the audio tracks and then
-# eight `MTRA` for the MIDI ones. Every chunk is tag+len, so a record's DATA
-# starts 8 bytes past its tag -- which is why the RAM strides are 8 less
-# (0x8ed8 per pattern, 0x91a per track: `mulsl #0x91a,%d7` at 0x4009d376 and
-# its siblings, with d7 = track).
-#
-# A TRAC record begins with a run of 64-bit big-endian STEP MASKS at an
-# 8-byte stride: bit (step-1), so byte 7 bit 0 = step 1. Mask 0x00 is the
-# note/sample trig -- the one `emu_rtos.poke_trig` sets in RAM, and the one
-# whose bits you can read straight out of a real project (the rig project's
-# track 1 reads 0x0001000100010001: trigs on steps 1, 17, 33 and 49).
-# ✅ END TO END: setting step 2 here, on disk, with no RAM poke at all,
-# lands `0xd3` on track 0 at frame 344 -- byte, track and frame identical to
-# what `--poke-trig 2` produces, which is M6c's own fidelity gate.
-# The sequencer ORs
-# 0x00/0x08/0x10/0x18 for its "anything on this step" test (0x4009d382..9a)
-# and builds a per-track flag word from 0x20 -> bit 12, 0x28 -> bit 13,
-# 0x30 -> bit 14, 0x38 -> bits 5+8 (0x4009d93c..0x4009da12).
-#
-# The recorder trig is 0x20|0x28|0x30 at once (settled by pattern-diff,
-# RTOS_FORK.md). 0x40 is the SWING mask (default 0xaa.. = every even step,
-# which is why it once read as "a default-filled byte array, not a mask") and
-# 0x48 the SLIDE mask -- both settled on a MKI by placing one of each and
-# diffing (octalab, docs/firmware/EXTERNAL.md 9.2, 13 Sep 2026). 0x38 is
-# still unidentified.
 PTRN0, PTRN_FSTRIDE, TRAC_FSTRIDE, NMASKS = 0x16, 0x8eec, 0x922, 8
 
 def trac_off(pattern, track):
@@ -317,13 +169,13 @@ def set_pattern_trig(pdir, banknum, pattern, track, step, mask=0x00, guard=True)
           f"step {step} set")
 
 SCALE_NAMES = ["2X", "3/2X", "1X", "3/4X", "1/2X", "1/4X", "1/8X"]   # index order INFERRED from two
-                                                                     # values (2 = 1X, 5 = 1/4X), 7 Sep 2026
+                                                                     # values (2 = 1X, 5 = 1/4X)
 
 def set_pattern_scale(pdir, banknum, pattern, length, scale, guard=True):
     """Set a pattern's LEN (1-64) and SCALE (index into SCALE_NAMES, or a
     name) in the SECOND of the two length/scale pairs at the PTRN chunk's
     tail (bytes -9/-8 of the chunk; the tail is len1 sc1 len2 sc2 flag 0 0
-    0 0 tempo24). Measured 7 Sep 2026 (RTOS_FORK section 10.16.5): the
+    0 0 tempo24). Measured (RTOS_FORK section 10.16.5): the
     RIG's A01 carried (0x40, 5) there and stepped at quarter rate; (0x10, 2)
     steps at 1x. The first pair and the flag byte are not understood."""
     if isinstance(scale, str):
@@ -342,7 +194,7 @@ REC_SETUP_OFF = 0x60b   # part-relative file offset of track 0's 12 recorder-set
 def set_recorder_setup(pdir, banknum, part, track, field, value, guard=True):
     """Write one RECORDING SETUP byte for a track, in part `part` (1-4) AND
     its saved mirror (part+4). RLEN is stored raw: display 1..64 -> 0..63,
-    MAX -> 64. Measured 6 Sep 2026: the live page at 0x80000cf4 reads back
+    MAX -> 64. Measured: the live page at 0x80000cf4 reads back
     these bytes verbatim ([1,1,64,0,0,1 | 0,0,0,255,255,0] for the RIG)."""
     fi = REC_FIELDS.index(field.upper())
     def mut(data):
@@ -483,7 +335,7 @@ def module_defaults(m, knobs=None):
     then the ModeView defaults of the MODE those bytes (or `knobs`) select,
     then `knobs` again so an explicit value beats the view. This is what the
     remixer bench applies when MODE changes (schema.ModeView), so a stamped
-    part and the bench agree by construction (12 Sep 2026)."""
+    part and the bench agree by construction."""
     vals = [(p.default or 0) & 0x7f for p in m.params] + [0] * 12
     vals = vals[:12]
     kmap = m.knob_map_all() if not getattr(m, "is_stock", False) else {}
@@ -501,7 +353,7 @@ def module_defaults(m, knobs=None):
     # the manifest defaults are the stamped default, and for a station they
     # are the bit-exact passthrough. Applying the default mode's view stamped
     # Modulation's CHOR at MIX 64 -- a chorus on T5 in every RIG project since
-    # the mode-aware stamper (12 Sep 2026) -- measured on the 13 Sep ladder as
+    # the mode-aware stamper -- measured on the 13 Sep ladder as
     # T5 -2.5 dB against the same track with no station (rung E vs F).
     if getattr(m, "mode_slot", None) is not None and m.mode_slot in {idx(n) for n in knobs}:
         view = next((mv for mv in m.mode_views if mv.mode == vals[m.mode_slot]), None)
@@ -533,7 +385,7 @@ def _remix_defaults(remix_name, replaced_only):
         # replaced_only leaves them alone; a FRESH project (replaced_only=
         # False) writes the stock effect's descriptor defaults too, so the
         # stock DELAY never boots on a foreign layout's bytes (its TAPE/LOCK
-        # selects count 2 -- a stored 48 there is an index, 12 Sep 2026).
+        # selects count 2 -- a stored 48 there is an index).
         if getattr(m, "is_stock", False) and replaced_only:
             continue
         if replaced_only and not m.menu.replaces:
@@ -654,7 +506,7 @@ def thru_track(pdir, track, page_hex="017f0000400000", guard=True):
     pattern 1 of every bank.
 
     ⚠ The THRU page written here is NOT sufficient to make the track pass
-    input at load (9 Sep 2026, on the unit): the operative INAB byte the
+    input at load: the operative INAB byte the
     firmware reads is in the PART record at +0x3f (=1 for A+B), which this
     page-region write does not reach, and the amp gate must be held open too.
     The working recipe (tools/hw/hw_flash7.py) arms the THRU over CC, has the
@@ -688,7 +540,7 @@ def set_fx(pdir, which_slot, track, which, page=None, page2=None, guard=True):
     EVERY bank, optionally with its page-1 / page-2 bytes. Every part because
     the part that PLAYS is not the part the load applies: `ot_emu`'s load
     applies bank 1 part 1 and its transport start re-applies the saved bank's
-    pattern part (measured 8 Sep 2026, COLDFIRE_PORT.md O9d) -- O9c's whole
+    pattern part (measured, COLDFIRE_PORT.md O9d) -- O9c's whole
     fixture round edited part 1 and measured a track whose FX2 was still SEND."""
     pdir = pathlib.Path(pdir)
     fx_id, mod = _resolve_module(which)
@@ -860,13 +712,6 @@ def make_test_project(src, dest, remix_name):
 # bank gets the same layout, so any pattern is the rig. Knob bytes are the
 # manifest defaults with the few deliberate exceptions listed per track.
 RIG = (
-    # track, FX1 (key, {knob: val}),                FX2 (key, {knob: val})
-    # FX2 on the six ordinary tracks is SEND (the fallback: two send knobs,
-    # drawn blank because hidden). The stock DELAY row is gone after flash 4;
-    # the sends live on the FX1 stations. T1 hosts the delay engine, T5 the
-    # reverb, T8 (master) has no FX2.
-    # ONE AUX (7 Sep 2026): the stations have no sends; every track's one
-    # send is FX2's AUX at slot 0, the hosts' included; T8 returns (RET).
     (1, ("CHARACTER", {}),                  ("DELAY SERVER", {"AUX": 30})),
     (2, ("SPECTRUM", {}),                   ("SEND", {"AUX": 40})),
     (3, ("SPECTRUM", {}),                   ("SEND", {"AUX": 30})),
@@ -874,10 +719,6 @@ RIG = (
     (5, ("MODULATION", {}),                 ("REVERB SERVER", {"AUX": 40})),
     (6, ("SPECTRUM", {}),                   ("SEND", {"AUX": 50})),
     (7, ("SPECTRUM", {}),                   ("SEND", {"AUX": 40})),    # SPECTRUM, not
-    # Character: T5 Modulation + T8 Character are core 0's two heavy already;
-    # a third here (was CHARACTER) priced ~3106 of 3120 as a FLOOR and hung
-    # the sequencer on frame 1 (tag 91, step 1 solid). Character on T7 for a
-    # vocal set is a manual part swap that drops T5 to Spectrum -- design page.
     (8, ("CHARACTER", {"RET": 127, "COMP": 40}), (None, {})),   # the return by position (RET = slot 4, 13 Sep 2026); GLUE by position (14 Sep); no FX2 (no send from T8)
 )
 
@@ -887,7 +728,7 @@ RIG = (
 # file is +9): LFO page 1 = `+0x11a + track*24` = SPD1 SPD2 SPD3 DEP1 DEP2
 # DEP3; `+0x2f2 + track*30` = PMTR1 PMTR2 PMTR3 WAVE1 WAVE2 WAVE3, the
 # destination in the scene-byte numbering (16 = AMP BAL, 18..29 the effect
-# pages). Read back against the panel on 13 Sep 2026: T6 LFO2 = AMP BAL,
+# pages). Read back against the panel: T6 LFO2 = AMP BAL,
 # triangle, the bytes said pmtr 16 / wave 1 / spd 18 / dep 21.
 LFO_P1_OFF, LFO_PM_OFF = 0x123, 0x2fb
 
@@ -916,7 +757,7 @@ def lfo_report(pdir, banks=None):
 def lfo_clear(pdir, track, lfo, guard=True):
     """Zero LFO `lfo` (1-3) DEPTH on `track` (1-8) in every part record
     (current + saved) of every bank -- the bytes are the part's, so a free-
-    running LFO nobody meant (T6 LFO2 on AMP BAL, 13 Sep 2026: a DC thump
+    running LFO nobody meant (T6 LFO2 on AMP BAL: a DC thump
     every cycle at idle) goes everywhere it was copied."""
     pdir = pathlib.Path(pdir)
     every = str(track) == "all"
@@ -1050,11 +891,6 @@ if __name__ == "__main__":
     elif cmd == "lfo-clear":                                                # <project> <track> <lfo> | <project> all
         lfo_clear(pdir, sys.argv[3], sys.argv[4] if len(sys.argv) > 4 else 0, guard=False)
     elif cmd == "stamp-defaults":
-        # a REAL set, before its first load on a flashed image: only the ids
-        # a station replaced are touched; BusVerb/BusDelay keep Sam's knobs.
-        # --all stamps every module of ours (the engines' re-slot too -- what
-        # BUS.md's "stamp before play" needs after a slot layout change);
-        # --keep-mode keeps an in-range MODE byte and applies its view.
         args = sys.argv[4:]
         stamp_defaults(pdir, sys.argv[3], replaced_only="--all" not in args,
                        keep_mode="--keep-mode" in args)

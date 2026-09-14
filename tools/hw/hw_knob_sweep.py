@@ -29,8 +29,6 @@ VERB = [
     (62, "MODE", 0, 2),   (63, "SHMR", 0, 127), (64, "DIFF", 0, 127), (65, "SHFT", 0, 3),
     (66, "GATE", 0, 127), (67, "RATE", 0, 3),
 ]
-# CC 62-67 = page-2 slots 6-11 = MODE MDEP MRAT SIZE -DEL FRZE (the manifest's
-# order; this table was one slot off until 5 Sep 2026).
 DELAY = [
     (41, "TIME", 0, 127), (42, "FDBK", 0, 127), (43, "TONE", 0, 127), (44, "PING", 0, 127), (45, "MIX", 0, 127),
     (62, "MODE", 0, 2),   (63, "MDEP", 0, 127), (64, "MRAT", 0, 127), (65, "SIZE", 0, 3),

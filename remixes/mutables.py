@@ -1,14 +1,10 @@
-"""mutables -- the Mutable-Instruments-flavoured insert collection.
+"""mutables -- five Mutable-Instruments-flavoured inserts.
 
-Five inserts on one card: WarpFold (ring mod / wavefolder), Ripple (driven
-SVF filter), Rungs (8-mode modal resonator), Streamz (a vactrol lowpass
-gate) and BodeShift (a frequency shifter). Inserts stack, unlike the
-servers -- each is in both payloads, any track can host any of them, several
-at once -- so this remix carries the whole set where `warped` carries one.
-
-No bus and no SEND: both servers' ids degrade to the firmware's own NONE
-(schema.NO_FALLBACK), which is what an unassigned track shows on a stock
-unit and costs no words. No ColdFire caves.
+WarpFold (ring mod / wavefolder), Ripple (driven SVF), Rungs (8-mode modal
+resonator), Streamz (vactrol lowpass gate), BodeShift (frequency shifter).
+Inserts sit in both payloads and stack: any track can host any of them.
+No bus and no SEND: absent ids resolve to the firmware's own NONE. No
+ColdFire caves. Verified by local render; unflashed.
 """
 
 from remix.schema import Remix

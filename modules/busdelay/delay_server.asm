@@ -1,409 +1,134 @@
 ; ---------------------------------------------------------------------------
-; BusDelay v2, STAGE 1: CLEAN (PLAN.md 3.1, 12 Aug 2026).
+; BusDelay: a two-line ping-pong delay with feedback tone-shaped by a one-pole
+; low-pass inside the loop, and three engines on the same lines -- CLEAN,
+; GRAIN (four unity-rate grain readers per line, one continuous pitch) and
+; REVERSE (the two lines as one 32K mono ring, segments played backwards) --
+; with tape wow, a sticky tempo snap on TIME and a freeze hold in every mode.
+; CYCLES_FORWARD_BRANCHES -- the REVERSE skips of the R line are forward
+; branches the pricer admits.
 ;
-; This file is v1's engine carried bit-identically through the v2 spine --
-; the refactor-first gate (tools/verify/verify_delay.py, the verify_roll pattern):
-; prove equivalence, THEN add modes. Two spine changes, no behavior change:
+; The buffer base is one hardcoded literal (Y:0x30000, 32768 words) that
+; build_bus.py rewrites per payload with a blanket text replace over the whole
+; source, comments included, and censuses; shared-window addresses elsewhere
+; in this file are offsets from a register-held base. The lines are plain
+; circular buffers wrapped by hand (m1/m2 stay linear): the read address is
+; base + ((wr - TIME) & mask) and the post-write pointer folds back the same
+; way; both bases are 0x4000-aligned so the base falls out of the mask.
+;   LineL   base+0x0000 .. base+0x3fff   16384 words (max ~371 ms)
+;   LineR   base+0x4000 .. base+0x7fff   16384 words
 ;
-;   * MODE select read (page-2 slot 6, r6+$c bits 16-23 since v6 4 Sep 2026;
-;     slot 7 / bits 8-15 before that, BusVerb's exact
-;     idiom). Stage 1 has one engine, so every value runs CLEAN -- the
-;     dispatch grows compares when PITCH lands, and unknown values must
-;     keep degrading to CLEAN (the trad delay), never to silence.
-;   * NO AGU MODULO. m1/m2 stay at the global linear invariant ($ffffff);
-;     read addresses are computed and write pointers wrapped by hand
-;     (details at the sample loop). This is what frees later modes --
-;     grain readers at scattered offsets, reverse reads, a single full-
-;     window line -- from the aligned-modulo-per-rN constraint.
-;
-; Deliberately NOT in stage 1 (each is its own gated commit):
-; the Y state table (no new persistent state yet), PITCH/FREEZE/TAPE/GRAIN/
-; CYCLES_FORWARD_BRANCHES -- the REVERSE-32K skips of the R line (13 Sep 2026)
-; REVERSE, and the descriptor-side MODE select (a one-value select would
-; draw a dead knob; it lands with the second mode).
-;
-; BUS AUTO-GAIN LANDED as its own gated commit after stage 1 (the behavior
-; change stage 1 deliberately excluded -- measured like the reverb's $0c
-; fix, not bit-compared). Mechanism at the "bus auto-gain" block below:
-; every DELAY-bus writer registers per block in the DELAY count and writes asr #3;
-; this server multiplies the accumulator by 1/count and shifts back up 3.
-;
-; ---------------------------------------------------------------------------
-; BUS.md task 9: DELAY SERVER. An algorithm from scratch -- unlike REVERB
-; SERVER (task 8), there is no existing engine to reuse, so this file is the
-; first build of it. Same three structural pieces as modules/busverb/reverb_server.asm
-; (hardcoded base, shared bus plumbing duplicated verbatim, everything else
-; is this file's own new code):
-;
-; 1. HARDCODED BASE. Y:0x30000, 32768 words (BUS.md's Memory section 32K/32K
-;    split), same technique as dsp/probe_hardcoded_base.asm and REVERB
-;    SERVER: no x:0x213 read, no per-instance stash, every instance uses the
-;    same literal. At most one DELAY SERVER per bank is self-enforced
-;    convention, not something this file checks (BUS.md Known limitations).
-;
-;    ✅ SOLVED, and this comment was stale for longer than the bug existed.
-;    tools/build/build_bus.py substitutes the base literal per payload (`_sub`,
-;    PP[tag]["ybase"] = 0x30000 for A / 0x38000 for B). The old text here
-;    named tools/build/build_reverb.py, which does not build this file at all.
-;
-;    ✅ VERIFIED IN THE EMITTED IMAGE, 9 Aug 2026, not in the source: walking
-;    out/mainos_bus.bin's payload records and scanning the placed P words,
-;    payload B's region carries the immediate 0x38000 five times and the
-;    payload-A base ZERO times. Reading build_bus.py would not have been
-;    enough -- it is a blanket string replace, and what matters is what
-;    landed in the binary.
-;
-;    ⚠️ THE SUBSTITUTION IS A BLANKET TEXT REPLACE OVER THE WHOLE SOURCE,
-;    and it rewrites COMMENTS as well as code. Any file it is applied to
-;    (SEND and REVERB SERVER too, under XBUS) must not spell the payload-A
-;    base as a bare assembler literal anywhere it is not meant to move to
-;    0x38000 on payload B. Write shared-window addresses as offsets from a
-;    register-held base instead.
-;
-;    build_bus.py counts the occurrences and refuses to build if the total
-;    is not what the current flag combination expects. That guard is load-
-;    bearing: writing this very comment with the literal spelled out tripped
-;    it, which is the cheapest possible way to find out.
-;
-; 2. SHARED BUS PLUMBING. Every proc() call runs the same position-0
-;    rotation-flip-and-clear housekeeping as modules/send/send_client.asm and
-;    modules/busverb/reverb_server.asm, split-aware-offset fix included, copied
-;    byte-for-byte (BUS.md Known limitations: this duplication is mandatory,
-;    not stylistic -- a divergent copy desyncs the bus silently). The engine's
-;    own input additionally sums in the shared DELAY bus accumulator, and its
-;    clean mono wet (pre-mix, the algorithm's own output before this track's
-;    dry blend) is written to the shared DELAY WET buffer for a future
-;    cross-bus consumer (task 10 -- DELAY SERVER's own ->VERB send) to read.
-;
-; 3. THE ALGORITHM (new, this file): a two-line ping-pong delay, feedback
-;    tone-shaped by a one-pole low-pass inside the loop (the same "s +=
-;    c*(d-s)" idiom dsp/reverb89.asm's HI control uses -- a large c tracks
-;    the input and keeps highs, a small c is dark).
-;
-;    Both lines share one TIME (no independent stereo detune -- v1 scope).
-;    Input enters LINE L ONLY -- the classic ping-pong topology, and NOT an
-;    arbitrary choice: an earlier draft summed input into BOTH lines so
-;    PING=0 would behave as an ordinary independent stereo echo, but for a
-;    MONO source (L==R, which is also all this project's mono-only emulator
-;    test input can ever supply) that makes the two lines' state
-;    equations identical at every step, for ANY value of PING -- provably,
-;    by induction, since a symmetric system fed a symmetric input at a
-;    symmetric entry point never diverges. That version's PING knob would
-;    have done NOTHING audible on real hardware, and the bug was only
-;    visible once dsp_host's impulse response showed L and R bit-identical
-;    at every echo regardless of the PING param. Feeding L only breaks the
-;    symmetry at the entry point instead of relying on the source material,
-;    so the bounce is both real on a mono source AND the one topology this
-;    harness can actually verify (see the emulator test below).
-;
-;    PING controls a continuous 2x2 crossfeed matrix on the FEEDBACK path:
-;
+; Input enters LineL, and LineR scaled by 1-PING; PING is a continuous 2x2
+; crossfeed on the feedback path:
 ;        fbIntoL = fL*(1-PING) + fR*PING
 ;        fbIntoR = fR*(1-PING) + fL*PING
 ;        LineL[write] = x_in + fbIntoL*FDBK
-;        LineR[write] =        fbIntoR*FDBK
+;        LineR[write] = x_in*(1-PING) + fbIntoR*FDBK
+; The loop gain per line is a convex combination of fL/fR scaled by FDBK, so
+; stability does not depend on PING. (Summing the input into both lines
+; unscaled makes the two state equations identical for a mono source, and
+; PING does nothing.)
 ;
-;    ✅ PING=0's HOLE IS CLOSED (v3 stage 2). It used to leave LineR at
-;    digital silence for ever -- "R being silent at PING=0 is a real v1
-;    characteristic ... worth revisiting" is what this note said, and the
-;    revisit measured it: the wet was hard left at PING=0 and leaned
-;    +20.1/+14.7/+11.5/+9.2 dB at 32/64/96/127, with no centred setting
-;    anywhere on the knob. The input now enters LineR too, scaled by
-;    1-PING, so the knob sweeps CENTRED MONO -> FULL PING-PONG with no
-;    hole at either end. See the LineR write for why scaling by the knob
-;    is what keeps the knob alive on a mono input.
-;    PING=~1: full swap -- input enters on L, the first repeat
-;    comes back on R, the next on L, alternating. Total loop gain per line
-;    is a convex combination of fL/fR scaled by FDBK, so it never exceeds
-;    FDBK regardless of PING; stability doesn't depend on this knob, and
-;    the new input term is not in the loop at all.
+; Every proc() call runs the position-0 rotation-flip-and-clear housekeeping
+; modules/send/send_client.asm describes (copied byte for byte: a divergent
+; copy desyncs the bus silently), sums the shared DELAY accumulator into its
+; input, multiplies by the auto-gain 1/sqrt(N) and writes its stage output
+; to the chain buffer for the reverb and the return. The host track prints
+; the stage output (in*(1-MIX) + wet*MIX); its own audio reaches the engine
+; only through AUX.
 ;
-;    THE HOST TRACK IS A RETURN, NOT AN INSERT (v3 stage 1, 17 Aug 2026;
-;    dry passthrough added in v5, 23 Aug 2026).
-;    This is the architectural decision the rest of the file now assumes, so
-;    it is stated once, here. The track BusDelay sits on prints the delay's
-;    wet PLUS ITS OWN DRY AT UNITY (v5 -- v3..v4 printed the wet alone,
-;    which muted any audio living on the host track); its OT track fader is
-;    the output level; and its own audio reaches the ENGINE only through the
-;    IN knob, on exactly the terms every other track's ->DELAY knob gets --
-;    scaled, given the 3-bit headroom, summed into the accumulator's total
-;    and divided by a count that includes it. The unity dry is a passthrough,
-;    not a privilege: it never enters the engine and never touches the bus.
-;
-;    What it replaced, and why: the host track used to be privileged twice
-;    over. Its dry entered the engine at UNITY, after the bus had already
-;    been auto-gained, so it was immune to 1/N and therefore as loud into the
-;    delay as every sender combined -- with no knob to trim it (measured
-;    17 Aug: host -24.78 dB vs a full-knob send -24.85, identical). And that
-;    same dry was MIX's crossfade reference, so MIX did two unrelated jobs at
-;    once and walked the stereo image 0.00 -> 7.82 dB across its travel,
-;    purely from crossfading a centred mono dry against a wet that leans
-;    left. One asymmetry, two symptoms; removing the dry from the output
-;    removes both and frees the knob.
-;
-;    CROSS-BUS SEND (BUS.md task 10): ->VERB, HARDWIRED, no knob. It carries
-;    this delay's own processed output into the shared REVERB bus as an
-;    additive contribution alongside whatever SEND clients and REVERB
-;    SERVER's own dry sum add that block, and it registers in the REVERB
-;    count like any other writer. The DRY half and both knobs are gone: a
-;    return track has no pre-effect signal worth forwarding, and delay ->
-;    reverb is the designed topology rather than a routing option.
-;    Delay->reverb is allowed to carry WET;
-;    reverb->delay (modules/busverb/reverb_server.asm's ->DELAY send) is dry only -- see
-;    that file's header for why the wet direction only ever runs one way
-;    (closing it both ways reproduces the self-oscillation this project has
-;    already seen once).
-;
-;    Each line is a plain circular buffer, wrapped BY HAND (v2 spine): rN
-;    holds the write pointer as a plain linear address, the TIME-behind read
-;    address is computed per sample as base + ((wr - TIME) & $3fff), and the
-;    post-write pointer is folded back the same way. The AND is exact
-;    because both line bases are 0x4000-aligned, so the base falls out of
-;    the mask. v1 used AGU modulo (m1/m2 = $3fff) for the same addresses --
-;    proven bit-identical at the swap (tools/verify/verify_delay.py, 12 Aug 2026).
-;
-; Memory (base = Y:0x30000, aligned to 0x4000 as modulo addressing requires):
-;   LineL   base+0x0000 .. base+0x3fff   16384 words (max ~371 ms @ 44.1kHz)
-;   LineR   base+0x4000 .. base+0x7fff   16384 words
-;   total   0x8000 (32768) words -- BUS.md's 32K DELAY SERVER allocation
-;
-; State (all in the per-instance r7 block). ⚠️ THE NUMBERS BELOW ARE RAW
-; SLOTS, AND THE CODE FROM `bus_mine:` TO `dry:` SPELLS THEM REBASED: r7 is
-; moved $49 into the block there (14 Sep 2026, so every access is the
-; one-word displaced move), and slot NN reads as x:(r7+(NN-$49)) -- $14 is
-; x:(r7-$35), $49 is x:(r7+$0), $88 is x:(r7+$3f). Comments keep the raw
-; numbers; add $49 to a displacement in the code to find it here.
+; State in the per-instance r7 block. The numbers below are raw slots; the
+; code from `bus_mine:` to `dry:` spells them rebased -- r7 is moved $49
+; into the block there so every access is the one-word displaced move, and
+; slot NN reads as x:(r7+(NN-$49)): $14 is x:(r7-$35), $88 is x:(r7+$3f).
 ;   r7+$14              call flag stash (proc entry accumulator)
-;   r7+$15/$16/$17      per-sample scratch for the PITCH heads (age_fx /
-;                       phase then g^2 / t0 then tap). $15 doubles as the
-;                       warm-up count stash -- warm-up and the sample loop
-;                       are mutually exclusive by construction
-;   r7+$18              grain-jitter PRNG state, 23-bit xorshift (persistent,
-;                       seeded nonzero at warm-up: xorshift is dead at 0)
-;   r7+$19/$1a          previous ageL head 0 / head 1, for wrap detection
-;   r7+$1b/$1c          latched grain scatter, LineL head 0 / head 1, in
-;                       samples 0..1023 (persistent, held for a whole grain)
-;   r7+$1d/$1e          previous ageR head 0 / head 1
-;   r7+$1f/$20          latched grain scatter, LineR head 0 / head 1
-;   r7+$21              this sample's PRNG candidate offset (per-sample)
-;   r7+$22/$23          per-sample scratch for the wrap latches (parked age)
-;   r7+$27/$28          TAPE wow / flutter LFO phase (persistent, masked)
-;   r7+$29              TAPE mod: the summed offset, then its integer part
-;   r7+$2a/$2b/$2c      TAPE per-sample scratch (phase then smoothstep /
-;                       t0 / the Q23 lag fraction)
-;   r7+$2d/$2e          TAPE wow depth / flutter depth (per block, from the
-;                       WOW knob; their sum is bounded by TIME's floor)
-;   r7+$2f/$30          TAPE saturation per-sample scratch (the parked write
-;                       value w, and its soft-clipped form)
-;   r7+$26              FREEZE flag (per block, from the slot-11 select:
-;                       0 = running, nonzero = hold the lines)
-;   r7+$24/$25          PITCH shifted OUTPUT tap L / R (per sample). Kept
-;                       separate from the loop's taps ($79/$7a) so the shift
-;                       never re-enters the feedback -- the non-cascading
-;                       topology, v2 stage 2c
-;   r7+$31              LineL base (hardcoded literal, stashed for symmetry
-;                       with modules/busverb/reverb_server.asm's convention)
-;   r7+$32              GRAIN base age, Q11.12 (persistent, masked on load AND
-;                       save -- same discipline as $6c/$6d). ONE age serves
-;                       all four grains; each takes a fixed quarter-cycle
-;                       offset from it, so a single advance moves the cloud
-;   r7+$33              SHIFTED-OUTPUT flag (per block): nonzero when the wet
-;                       comes from $24/$25 -- PITCH or GRAIN. Replaces the
-;                       per-sample MODE compare at the substitution point, so
-;                       adding modes there costs nothing per sample
-;   r7+$34..$37         GRAIN v4 latched scatter s0..s3, integers 0..4095
-;                       (PERSISTENT, latched at each grain's own wrap; cleared
-;                       by the warm-up like the PITCH offsets)
-;   r7+$38              GRAIN v4 mask G-1 (per block, from the PTCH select
-;                       read as SIZE: G = 1024 << idx)
-;   r7+$39              GRAIN v4 G/4, the grain-to-grain phase offset (per block)
-;   r7+$3a              GRAIN v4 window multiplier 2^(23-k) (per block)
-;   r7+$3b              GRAIN v4 read distance base lag + G + 1, lag =
-;                       min(TIME, 12287 - mask) (per block; the cap is what
-;                       keeps lag + scatter + G inside the line)
-;   r7+$3c              GRAIN v4 dens3 = DPTH knob >> 4, 0..7 (per block)
-;   r7+$3d              GRAIN v4 makeup coeff 1/2 + (7-dens3)/14, Q23 (per block)
-;   r7+$40..$43         GRAIN v4 window multiplier w0..w3, 2^(23-k) or 0 when
-;                       the grain was drawn muted (PERSISTENT, latched at the
-;                       wrap; cleared by the warm-up)
-;   r7+$3e, $48..$53    free since v4 (the v2 grain table's other fields;
-;                       $3f is GRAIN's again)
-;   r7+$40..$4b         GRAIN v5 line-L records: s, w, acc x 4 grains ($4c..$57 line R).
-;                       ⚠️ The one-aux rig (7 Sep 2026) parked MIX / 1-MIX and two
-;                       per-sample scratch words in $44..$47 on the strength of the
-;                       v4 map above -- grain 1's w/acc and grain 2's s/w -- and GRAIN
-;                       crackled on every size and setting until 12 Sep 2026 (found by
-;                       a sine: 288 discontinuities a second; bisected to that commit).
-;   r7+$85/$87          MIX / 1-MIX (per block; the -VRB slots the one-aux rig freed)
-;   r7+$6e              scratch: x_in*(1-MIX), the passthrough term (per sample; PITCH's)
-;   r7+$6f              scratch: stage output L, for the chain's mono (per sample; PITCH's)
+;   r7+$15/$16/$17      per-sample scratch (age / phase then g^2 / t0 then
+;                       tap); $15 doubles as the warm-up count stash
+;   r7+$18              grain PRNG state, 23-bit xorshift (persistent, seeded
+;                       nonzero at warm-up)
+;   r7+$19..$1f         GRAIN per-sample parks: window, frac, t0, read phase,
+;                       s, wet L, wet R
+;   r7+$21..$23         per-sample scratch (PRNG candidate, parked age)
+;   r7+$24/$25          shifted OUTPUT tap L / R (per sample; kept apart from
+;                       the loop's taps so the shift never re-enters feedback)
+;   r7+$26              FREEZE flag (per block; nonzero = hold the lines)
+;   r7+$27/$28          wow / flutter LFO phase (persistent, masked)
+;   r7+$29..$2c         wow per-sample scratch (offset, phase, t0, fraction)
+;   r7+$2d/$2e          wow depth / flutter depth (per block)
+;   r7+$2f/$30          per-sample scratch (the parked write value, clipped)
+;   r7+$31              LineL base
+;   r7+$32              GRAIN base age, Q11.12 (persistent, masked on load
+;                       and save); each grain is a fixed quarter cycle off it
+;   r7+$33              SHIFTED-OUTPUT flag (per block): the wet comes from
+;                       $24/$25 (GRAIN)
+;   r7+$34..$37         GRAIN latched scatter s0..s3 (persistent, latched at
+;                       each grain's own wrap; cleared by the warm-up)
+;   r7+$38/$39/$3a      GRAIN mask G-1, G/4 (grain-to-grain phase offset),
+;                       window multiplier 2^(23-k) (per block, from SIZE)
+;   r7+$3b              GRAIN read distance base lag + G + 1 (per block; lag
+;                       capped so lag + scatter + G stays inside the line)
+;   r7+$3c/$3d          GRAIN density and makeup coefficient (per block)
+;   r7+$40..$4b         GRAIN line-L records: s, w, acc x 4 grains
+;   r7+$4c..$57         GRAIN line-R records
 ;   r7+$58/$59          this sample's scatter / window-multiplier candidates
-;   r7+$19..$1f         GRAIN v5 per-sample parks: window, frac, t0, read
-;                       phase, s, wet L, wet R (the PITCH jitter slots until v5)
-;   r7+$5d              GRAIN v5 phase cursor (the reader's running phase)
-;   r7+$56..$5b         REVERSE per-sample scratch (GRAIN v4 no longer uses
-;                       them; v2's builder/reader scratch lived here)
-;   r7+$5c              SPRAY depth, Q23 (per block, from the SPRAY knob)
-;   r7+$5d              GRAIN per-grain age cursor (the builder's running age)
+;   r7+$5d              GRAIN phase cursor
+;   r7+$56..$5b         REVERSE per-sample scratch (mode-exclusive with GRAIN)
 ;   r7+$5e              REVERSE segment phase, 23-bit (persistent, masked on
-;                       load AND save). ONE phase for both lines and both
-;                       heads -- head 1 is simply half a segment further on
-;   r7+$5f              PTCH/SIZE select index, raw 0..3 (per block). Stored
-;                       by the PTCH decode so REVERSE can read the SAME select
-;                       as a segment SIZE without a second override marker
-;   r7+$60/$61          REVERSE segment length S / phase step 2^23/S (per
-;                       block, from that index)
-;   r7+$62              REVERSE lag floor = min(TIME, 16320 - 2S) (per block)
-;                       -- ⚠️ THIS IS THE LAST FREE r7 SLOT. $32..$62 is now
-;                       fully allocated and $84+ hangs the unit, so a further
-;                       mode needs the Y state table, not this block.
-;                       REVERSE reuses GRAIN's $56..$5b as per-sample scratch,
-;                       which is safe because the mode alternatives are
-;                       mutually exclusive within a sample.
-;   r7+$63              this call's DELAY ACC read address (BUS.md bus)
-;   r7+$64              this call's DELAY WET write address (BUS.md bus)
+;                       load and save); one phase for both lines and heads
+;   r7+$5f              SIZE select index, raw 0..3 (per block)
+;   r7+$60/$61          REVERSE segment length S / phase step 2^23/S
+;   r7+$62              REVERSE lag floor (per block)
+;   r7+$63/$64          this call's DELAY ACC read / DELAY WET write address
 ;   r7+$65..$67         split-aware bus bookkeeping (shared mechanism)
-;   r7+$68              LineR base = LineL base + 0x4000 (per block, for the
-;                       per-sample manual wraps -- v2 spine)
+;   r7+$68              LineR base = LineL base + 0x4000 (per block)
 ;   r7+$69              MODE, MSB-aligned select (per block; 0 = CLEAN,
-;                       1 = GRAIN, 2 = REVERSE since v5; anything else = CLEAN)
+;                       1 = GRAIN, 2 = REVERSE; anything else = CLEAN)
 ;   r7+$6a              this block's MIDI note for GRAIN (0 = none)
-;   r7+$6b              the L ring's MASK: $3fff, or $7fff in REVERSE, where the
-;                       two 16K lines are ONE 32K mono ring (13 Sep 2026)
-;   r7+$6c              skipR: 1 in REVERSE -- the R line's read and write are
-;                       skipped per sample (they would land in the ring's upper
-;                       half); the reverse output is mono to both channels
-;   r7+$6c/$6d          PITCH head age L / R, Q11.12 (persistent, masked on
-;                       load AND save -- same discipline as $70/$71)
-;   r7+$6e              PITCH lag base = min(TIME, 13311) (per block; TIME +
-;                       window 2048 + jitter 1023 + the lerp's -1 must stay
-;                       inside the 16384-word line, or a head would read
-;                       data newer than this lap)
-;   r7+$6f              per-sample scratch for the PITCH heads (age_int)
-;   r7+$70/$71          LineL/LineR write-pointer phase, persistent, masked
-;                       on load AND save (same two-track-freeze discipline
-;                       as dsp/reverb89.asm's $83 -- garbage with bit 23 set
-;                       would saturate the AGU and hang the bus forever)
-;   r7+$72              TONE coefficient (per block)
-;   r7+$73              FDBK coefficient (per block)
-;   r7+$74              PING amount (per block)
-;   r7+$75              TIME, integer sample count (per block)
-;   r7+$76              IN -- pinned to 0 since v5.1 (3 Sep 2026): slot 5 is
-;                       PTCH now and the host's own send is its FX1 client.
-;                       The IN arithmetic is still in the loop (x0 = exactly
-;                       zero contribution); removing it is a cycle trim
+;   r7+$6b              the L ring's mask: $3fff, or $7fff in REVERSE
+;   r7+$6c              skipR: 1 in REVERSE (the R line's read and write are
+;                       skipped per sample; the output is mono to both)
+;   r7+$6e/$6f          scratch: x_in*(1-MIX), stage output L (per sample)
+;   r7+$70/$71          LineL/LineR write-pointer phase (persistent, masked
+;                       on load and save: garbage with bit 23 set saturates
+;                       the AGU and hangs the bus)
+;   r7+$72/$73/$74/$75  TONE coefficient, FDBK coefficient, PING, TIME (per block)
+;   r7+$76              IN, pinned to 0 (its arithmetic stays in the loop)
 ;   r7+$77/$78          TONE filter state, line L / R (persistent)
 ;   r7+$79/$7a          scratch: dL/dR, raw taps (per sample)
 ;   r7+$7b/$7c          scratch: fL/fR, damped taps == this sample's wet
-;                       outputs (per sample)
 ;   r7+$7d              scratch: x_in, own dry mono + bus (per sample)
 ;   r7+$7e/$81          scratch: fbIntoL/fbIntoR (per sample)
-;   r7+$7f              bus auto-gain 1/sqrt(N) (per block; read per sample). The
-;                       delay-bus mirror of the reverb's $0c -- kept in its
-;                       own slot with nothing else ever parked here (the $0c
-;                       collision lesson)
+;   r7+$7f              bus auto-gain 1/sqrt(N) (per block; read per sample)
 ;   r7+$80              1 - PING (per block)
-;   r7+$82              warm-up tagged counter (stock DARK's slot
-;                       convention, reused -- see dsp/reverb89.asm)
-;   r7+$83              DRIVE amount d (18 Aug 2026; was FREE since v3 --
-;                       ->VERB DRY send, which is gone with its knob
+;   r7+$82              warm-up tagged counter
+;   r7+$83              DRIVE amount d (pinned to 0)
 ;   r7+$84              this call's CHAIN write address ($901 + rotation +
-;                       frame offset; per-call, advances per sample -- same
-;                       shape as $63/$64). One-aux rig, 7 Sep 2026: was the
-;                       REVERB ACC write address of the -VRB send.
-;   r7+$86              this block's RESOLVED write offset (0/16/32/48).
-;                       Was FREE after v3 stage 1; taken 17 Aug 2026 by the
-;                       rotation-tracking fix (docs/effects/XBUS.md step 3). Every bus
-;                       address in this file derives from here rather than
-;                       from a fresh read of the shared rotation word.
-;                       Previously: FREE (v3 stage 1). Held the ->VERB DRY level
-;   r7+$87              this sample's own mono wet, stashed at the same point
-;                       it's written to the shared DELAY WET buffer (BUS.md
-;                       task 10 -- the ->VERB WET send taps that same value)
+;                       frame offset; advances per sample)
+;   r7+$85/$87          MIX / 1-MIX (per block)
+;   r7+$86              this block's resolved write offset (0/16/32/48);
+;                       every bus address derives from it
+;   r7+$88              last-seen rotation (the gated housekeeping block's)
+;   $84+ hangs the unit on a raw r7; nothing here is stored above $88.
 ;
-; Parameters (page 1, knob arrives as value<<16, value 0..127):
-;   p0 TIME  -> delay length, 64 .. 16320 samples (~1.5 .. 370 ms), a FREE
-;              dial that STICKY-SNAPS to a tempo division (24 Aug 2026):
-;              near 1/32T .. 1/4 of the tempo the ColdFire cave publishes at
-;              r6+$6/$7 it snaps, holds that division through tempo changes,
-;              and lets go when the knob moves; the panel prints the
-;              division name while held, ms otherwise (modules/tempo-sync/time_fmt.s). See
-;              the STICKY SNAP block in proc. floor +
-;              value*128 via the same and/asr trick dsp/reverb89.asm's PRE
-;              uses (asr #$9 == >>16 then <<7, i.e. *128 without an mpy).
-;   p1 FDBK  -> feedback gain, 0 .. ~0.87 (mpy by $700000, no floor: FDBK=0
-;              is a single echo, not silence).
-;   p2 TONE  -> one-pole coefficient, 0.125 (dark) .. 0.99 (bright). Exact
-;              same mapping as reverb89's HI control (proven-safe constants).
-;   p3 PING  -> crossfeed amount, 0 (parallel stereo) .. ~0.99 (full
-;              ping-pong swap). Used directly as a Q1.23 fraction -- knob<<16
-;              already IS value/128 in that format, no mpy needed.
-;   ❌ p4/p5 BELOW ARE STALE -- the 18 Aug 2026 swap made p4 = -VRB and
-;   p5 = IN. The code has it right (see 'IN (p5 since the 18 Aug swap)').
-;   Kept as history:
-;   p4 IN    -> THIS TRACK'S OWN SEND LEVEL into the delay, 0 .. ~0.99, same
-;              "raw knob as Q1.23 multiplier" trick as before. v3 stage 1:
-;              was MIX. The host track is a RETURN -- it prints the wet plus
-;              its own dry at unity (v5; v3..v4 printed wet alone) -- so the
-;              dry/wet crossfade had nothing left to
-;              cross-fade and the slot became the host's own ->DELAY knob,
-;              identical in range, headroom and 1/N share to the one every
-;              other track already has (modules/send/send_client.asm p0).
-;   p5       -> IN (see above). ❌ "FREE / the send is hardwired" is stale:
-;              -VRB is a KNOB again since 18 Aug 2026, on p4.
-;   p8       -> FREE. Was ->VERB DRY; the send is gone entirely.
-;   p6 MODE  -> engine select, page-2 slot 6 KNOB field (r6+$c bits 16-23;
-;              slot 7 companion until v6, 4 Sep 2026),
-;              count 5: 0 = CLEAN, 1 = PITCH, 2 = (was TAPE -- retired
-;              18 Aug 2026, falls through to CLEAN), 3 = GRAIN,
-;              4 = REVERSE. Landed with stage 2, per the stage-1 rule that a
-;              one-value select draws a dead knob; every unknown value still
-;              falls through to CLEAN.
-;   p10 -DEL -> the host's OWN dry send into this delay (v7, 5 Sep 2026),
-;              page-2 slot 10 KNOB field (r6+$e bits 16-23 -- the SAME WORD
-;              as FRZE, which is its low byte), 0..127. Decoded into r7+$76,
-;              the retired IN's slot, so it takes IN's whole path: headroomed,
-;              summed before the auto-gain, counted as a client while nonzero.
-;              Was DRV (drive, every mode) from 18 Aug to 5 Sep 2026; the
-;              drive's d is pinned to 0 now, bit-identical to DRV=0. (Before
-;              that, SPRAY: the GRAIN scatter, which is MDEP's job in GRAIN.)
-;   p7 MDEP  -> TAPE wow depth, PAGE-2 slot 7, the COMPANION field of r6+$c
-;               (v6, 4 Sep 2026: swapped with MODE, which is p6 / the KNOB field)
-;              (NOT page-1, NOT $b -- the $b reading is exactly why this
-;              knob worked locally and never on hardware; PARAM_PAGES.md).
-;              0..127.
-;              Scales flutter with it (wow/8). Only read in TAPE; harmless
-;              in the other modes.
-;   p11 FRZE -> FREEZE select, page-2 slot 11 companion (r6+$e low bits),
-;              count 2: 0 = running, 1 = hold. Orthogonal to MODE -- frozen
-;              + PITCH is shifted reads over held material; frozen while
-;              TIME is tempo-locked (always, see p0) is a tempo-locked loop.
-;              `DFRZ=n` is the local override (it forces the decoded VALUE;
-;              dsp_host also drives companions via -params 7/9/11).
-;   p9 PTCH  -> in REVERSE this same select is SIZE: 1 = 4096 samples (93 ms,
-;              the longest the line allows -- playing S samples backwards
-;              spans 2S of history, and 1 is the PANEL DEFAULT, R62),
-;              0 = 2048, 2 = 1024, 3 = 512. One select, two meanings,
-;              because MODE already says which is in force and page 2 has
-;              no spare slot.
-;   p9 PTCH  -> PITCH interval select, page-2 slot 9 companion (r6+$d low
-;              bits), count 4: 0 = +12, 1 = +7, 2 = -12, 3 = +-detune
-;              (~15 cents, L up / R down). Selects, not smooth knobs -- the
-;              WIDTH lesson: companion fields read near-boolean at count 128
-;              on hardware, small counts publish. DINT=n (build_bus.py) is
-;              the local override (dsp_host also drives companions through
-;              -params indices 7/9/11 since 17 Aug 2026).
-;   p6 ->VERB DRY -> this track's own pre-effect signal, parallel tap into the
-;              same REVERB ACC bus, same shape as modules/send/send_client.asm's knobs.
-;              Reads x:(r6+$d) -- BUS.md task 11 gave DELAY SERVER its own
-;              descriptor (cloned from SPRING REV's bytes, not SPRING's own
-;              id/slot -- tools/build/build_menu.py), and $d is the page-2 slot
-;              that class's real hardware wiring puts at the same "MONO"-
-;              equivalent position. (The reverb's ->DELAY send moved to its
-;              $e low bits in R16; the old "same $d" note is history. No
-;              conflict either way -- r6 is per-instance.) See DSP.md section 9 / REVERB.md
-;              for how $b/$c/$d/$e were measured, and tools/build/build_menu.py's
-;              docstring for why SPRING (not stock DELAY) was the donor.
+; Parameters (a knob arrives as value<<16, value 0..127):
+;   p0 AUX   -> this host's own dry send into the aux (headroomed, summed
+;               before the auto-gain, counted as a client while nonzero)
+;   p1 TIME  -> delay length, 64 .. 16320 samples (~1.5 .. 370 ms), a free
+;               dial that sticky-snaps to a tempo division (1/32T .. 1/4 of
+;               the tempo the ColdFire cave publishes at r6+$6/$7), holds it
+;               through tempo changes and lets go when the knob moves; the
+;               STICKY SNAP block in proc
+;   p2 FDBK  -> feedback gain, 0 .. ~0.87 (FDBK=0 is a single echo)
+;   p3 TONE  -> one-pole coefficient, 0.125 (dark) .. 0.99 (bright)
+;   p4 PING  -> crossfeed, 0 (centred) .. ~0.99 (full ping-pong), Q1.23
+;   p5 MIX   -> the stage crossfade
+;   p6 MODE  -> page-2 slot 6 KNOB field (r6+$c bits 16-23)
+;   p7 MDEP  -> wow depth (GRAIN: scatter), slot 7 companion (r6+$c bits 8-15)
+;   p8 MRAT  -> wow rate, 64 = 1x (GRAIN: density)
+;   p9 SIZE  -> slot 9 companion (r6+$d low bits): GRAIN grain length and
+;               REVERSE segment, one select for both
+;   p10 PTCH -> slot 10 KNOB field (r6+$e bits 16-23): GRAIN pitch, +-2 oct;
+;               a held MIDI note (r6+$9, latched) overrides
+;   p11 FRZE -> slot 11 companion (r6+$e low bits), count 2
 ; ---------------------------------------------------------------------------
 
 init:
@@ -544,7 +269,7 @@ bus_dohk:                               ; nobody did -- take over this block
         add     #>$10,a
         and     #>$30,a
         move    a,y:>$900               ; the new CURRENT rotation
-; ⚠️ CLEAR THE BUFFER WRITTEN **NEXT** BLOCK, NOT THIS ONE (17 Aug 2026).
+; ⚠️ CLEAR THE BUFFER WRITTEN **NEXT** BLOCK, NOT THIS ONE.
 ; Clearing the buffer we are about to write races the OTHER core's writers:
 ; core 0 clears at the start of its block and everyone fills it during that
 ; block, so a core-1 writer that gets there BEFORE core 0's housekeeper has
@@ -577,14 +302,6 @@ bus_zclr:
         move    a,y:>$9c1               ; DELAY SERVER role owner
         move    a,y:>$9c2               ; REVERB SERVER role owner
 ; ---- reset the new write buffer's SEND COUNTs, alongside its accumulators --
-; Kept in step with modules/send/send_client.asm / modules/busverb/reverb_server.asm (the standing
-; rule: the housekeeping copies must stay identical). NOTE this copy was
-; MISSING the REVERB count reset from v121 until the delay auto-gain landed -- dead
-; code in every live build, because the XBUS payload gate keeps this payload
-; from ever housekeeping, but a divergent copy is exactly the silent-desync
-; class the rule exists for. x1 holds the NEW OFFSET from the rotation above.
-; The counts are one word per buffer rather than sixteen, so the offset scales
-; back down to an index.
         move    x0,a                    ; the SAME buffer the clear loop just
         asr     #$4,a,a                 ; zeroed: count and accumulator move
         move    #>$9c7,x0               ; together (0..3); the AUX count
@@ -647,7 +364,7 @@ bus_mine:
         move    r7,a
         add     #>$49,a
         move    a,r7                    ; r7 = state block + $49
-; ---- the P table (14 Sep 2026): five SIZE rows, the snap divisions and the
+; ---- the P table: five SIZE rows, the snap divisions and the
 ; reciprocals live in a table the manifest declares (schema.DspSection.ptable)
 ; and the build parks in the stock curve bank (X:0x4840, `p:(` reads become
 ; `x:(`), or leaves in P in front of the code. Its base is held in n4 for the
@@ -702,14 +419,6 @@ bus_mine:
         add     #>$80,a                 ; the DELAY's page, after the reverb's
         move    a,x:(r7+$1b)            ; this call's WET write address (L; R at +1)
 
-; ---- this call's REVERB ACC write address (BUS.md task 10: ->VERB sends) --
-; x1 still holds the write offset and b the split-aware frame offset (the wet
-; address above touched neither).
-; ⚠️ THIS IS A CROSS-CORE WRITE. BusDelay runs on payload B and this line
-; writes payload A's reverb accumulator, so the race documented in
-; docs/effects/XBUS.md step 3 ran in BOTH directions -- the bus damaged what arrived
-; at the delay, and the delay's ->VERB damaged what arrived at the reverb.
-; The fourth buffer covers this direction too, for the same reason.
         move    x1,x0                   ; the full write offset, 0/16/32/48
         move    #>$901,a                ; the CHAIN buffer (one-aux rig, 7 Sep
         add     x0,a                    ; 2026): 4 x 16 mono words, the old
@@ -756,7 +465,7 @@ bus_mine:
 ; (asr #3); this block divides by the count and the per-sample read shifts
 ; back up by 3, so the send knob sets a track's SHARE of the delay rather
 ; than how hard the line is hit.
-; ⚠️ THE LAW IS 1/sqrt(N), NOT 1/N (17 Aug 2026) -- see the long note at the
+; ⚠️ THE LAW IS 1/sqrt(N), NOT 1/N -- see the long note at the
 ; reverb's copy of this table. N sources sum as N only when CORRELATED;
 ; uncorrelated ones (actual different tracks) sum as sqrt(N), so dividing by N
 ; over-corrects real material by 3 dB per doubling, 9 dB at eight senders.
@@ -767,13 +476,11 @@ bus_mine:
 ; lands there too -- harmless, the accumulator is zero then anyway.
 ;
 ; The eight reciprocals are the manifest's RECIP, in the P table at offset
-; 50 (14 Sep 2026). Until then they were rebuilt into the shared bus scratch
+; 50. Until then they were rebuilt into the shared bus scratch
 ; every block, 27 words a call, because this server has no free ground of
 ; its own; those eight bus-scratch words are free now. x1 (write_rotation)
 ; is still valid from the address block above.
         move    #>$ffffff,m5            ; r5 linear for the block (the
-                                        ; reciprocals are in the P table
-                                        ; since 14 Sep 2026: nothing to build)
 
         move    x1,a                    ; the count belongs to the buffer this
         add     #>$20,a                 ; block READS, which is two buffers back
@@ -782,27 +489,6 @@ bus_mine:
         move    #>$9c7,x0               ; word per buffer, not sixteen
         add     x0,a
         move    a,r5
-; ⚠️ THIS TRACK COUNTS AS A CLIENT TOO (v3 stage 1). IN feeds our own dry
-; into the same sum the bus arrives on, so N must include us or every other
-; sender is divided by one too few and we are effectively louder than all of
-; them -- which is exactly the asymmetry the return architecture exists to
-; remove (measured 17 Aug 2026: the host track drove the delay at -24.78 dB
-; against a full-knob send's -24.85, i.e. identically, while being immune to
-; the 1/N that scales everyone else).
-; Only when actually sending: at IN=0 we contribute nothing, and counting a
-; silent client would dilute the real ones by (N+1)/N -- 6 dB with one sender.
-; ⚠️ `clr` SETS THE CONDITION CODES, so it goes BEFORE the tst it must not
-; disturb (the flag-clobber trap in CLAUDE.md, and the reason 5d shipped a
-; noise wash on one channel). Tcc takes a register source, never an
-; accumulator, so the increment travels through x0.
-; (b used to hold the reciprocal table's scratch base across this block and
-; the Tcc below took it -- the base was re-loaded rather than trusted, after a
-; version that indexed the table at address 0 or 1, a wild Y read. The table
-; is in P now and its base is n4, which nothing here touches.)
-; ->DEL (5 Sep 2026): the host's own send into its delay is BACK, on page-2
-; slot 10 (DRV's slot; drive is retired). Same discipline as the -VRB gate
-; below: knob read from r6 DIRECTLY (the per-block decode runs later), masked
-; to the knob field, clr BEFORE the tst, the increment through x0.
         move    #>$1,x0                 ; the "one more client" increment
         clr     b                       ; b = 0 -- BEFORE the tst below
         move    x:(r6),a                ; AUX (slot 0): the host's own send
@@ -834,11 +520,6 @@ bus_mine:
 ; through the CHAIN buffer at unity, and it is not a client of anything.
 ; $9c3 is its liveness stamp now -- see dwarmdone.)
 
-; ---- hardcoded base (BUS.md task 9: DELAY SERVER) ------------------------
-; No x:0x213 read, no per-instance stash. The 0x30000 literal below is the
-; SOURCE default; build_bus.py substitutes the correct half-window base per
-; payload at build time (SOLVED -- see this file's header; BusDelay ships
-; on payload B, base 0x38000, serving tracks 1-4).
         move    #>$ffffff,m0            ; audio is read and written via r0
         move    #>$ffffff,m4            ; GRAIN walks its table with r4 -- the
                                         ; one free AGU pointer, held at the
@@ -902,17 +583,7 @@ dwarmz:
 ; PITCH jitter retired; $24/$25 are only ever LOADED into a Tcc source that
 ; does not fire outside GRAIN/REVERSE, which write them first; $6c is skipR,
 ; decoded every block before the loop; $6d had no reader at all.)
-; ---- ONE LOOP CLEARS RAW $27..$5e (14 Sep 2026): the TAPE LFO phases, GRAIN's
-; base age and its 24 record words, REVERSE's segment phase -- everything
-; persistent that a fresh instance must start from 0 for determinism (a
-; boot-garbage scatter subtracts straight into a read address; verify-delay
-; compares bit-exactly) -- and, between them, only per-block and per-sample
-; slots that are written before they are read once the delay runs ($31, the
-; line base, is rewritten every block before this test). 28 single stores
-; became 7 words. The bus bookkeeping ($63-$67, the split-call flags a
-; warm-up call still has to hand to its a=1 half) is ABOVE the span; the
-; write-pointer phases and TONE states ($70/$71/$77/$78) below it keep their
-; own stores.
+; ---- ONE LOOP CLEARS RAW $27..$5e: the TAPE LFO phases, GRAIN's
         move    r7,a
         sub     #>$22,a                 ; raw $27 (r7 is rebased by $49)
         move    a,r5
@@ -947,13 +618,6 @@ dwarmc:
 ; straight into a read address and a garbage multiplier is a garbage window
 ; for one grain-life, so both start at 0 like the PITCH offsets do.
         move    b,y:>$090a              ; the latched MIDI note starts at NONE.
-                                        ; ⚠️ Core-private Y is boot garbage in
-                                        ; dsp_host (measured 3 Sep 2026: every
-                                        ; local render ran GRAIN's pitch from a
-                                        ; garbage note, invisible until the knob
-                                        ; did nothing); the latch's HOLD semantics
-                                        ; survive a block, not a re-select, exactly
-                                        ; like every other persistent slot here
         move    #>$123456,a             ; PRNG seed: any nonzero word (xorshift
         move    a,x:(r7-$31)            ; is dead at 0), fixed for determinism
         move    x:(r7-$34),a            ; reload count
@@ -980,38 +644,14 @@ dwarmdone:
         add     x0,a                    ; floor 64 samples (~1.45 ms)
         move    a,x:(r7+$2c)            ; TIME, 64..16320 samples
 
-; ---- TIME: STICKY SNAP to a tempo division (24 Aug 2026, v3 of the day) --
-; TIME is a FREE dial that snaps to a tempo division when it lands near one,
-; and then HOLDS that division through tempo changes until the knob moves --
-; Sam's "sticky snap" (a free-with-labels dial in the style of newer boxes,
-; plus tempo-following once snapped). The ColdFire never told the DSP the
-; tempo (docs/firmware/DSP.md 6c), so the tempo cave (modules/tempo-sync/tempo_cave.s) publishes two
-; dead halfwords of this track's record:  r6+$6 = tempo24 (BPM*24) and
-; r6+$7 = samples per MIDI clock (1/24 beat) in Q12.4 -- both <<8 like every
-; published word. One signed mpy per candidate: x0 = ticks*16 << 8,
-; y0 = M << 11  ->  a1 = (x0*y0*2) >> 24 = ticks*M.
-; RULE (modules/tempo-sync/time_fmt.s, the panel formatter, uses the SAME integers):
-;   free = knob*128 + 64;  tol = free/16 (+-6%)
-;   candidate = the LAST M in {2,3,4,6,8,9,12,16,18,24} with |ticks*M-free| < tol
-;   knob moved since last block -> held = candidate;  else held stays
-;   TIME = held ? min(ticks*held, 16320) : free      (0 ticks -> free)
-; 1/2T and 1/4. are not candidates: they never fit the 370 ms line below
-; ~170 BPM. Neighbours 8 and 9 clocks are 11% apart, so +-6% windows
-; barely touch; last-match-wins on both sides keeps them consistent.
-; State: Y 0908h (last knob) and 0909h (held M<<11), core-private, ABSOLUTE
-; addressing beside the proven 0901h-0907h words -- NEVER (r)+ (R48-R50,
-; docs/firmware/DSP.md 6c-i). Per CORE, not per instance: two delays on one core
-; would re-evaluate every block (correct, just not sticky); one server per
-; core is the design. Branch-free; unpublished ticks read 0, every product
-; is 0, nothing is within tolerance, the teq falls back to free -- the
-; emulator without -tempo, or a NOTEMPO build, behaves as before.
+; ---- TIME: STICKY SNAP to a tempo division --
         move    x:(r7+$2c),a            ; free-running TIME, from the knob
         move    a,y1
         asr     #$4,a,a
         move    a,x1                    ; tolerance = free/16
         move    x:(r6+$7),x0            ; ticks Q12.4 << 8 (0 = not published)
         clr     b                       ; candidate: 0 = nothing near
-; THE TEN DIVISIONS ARE A TABLE (14 Sep 2026): M << 11 for M in {2, 3, 4,
+; THE TEN DIVISIONS ARE A TABLE: M << 11 for M in {2, 3, 4,
 ; 6, 8, 9, 12, 16, 18, 24}, the manifest's SNAP_DIVS, appended to the P
 ; table after the SIZE rows. One `do` over them; the table read leads the
 ; body so each trip's cmp and tlt stay adjacent (the shared-flag idiom), and
@@ -1051,19 +691,7 @@ snapz:
         teq     x1,a                    ; free
         move    a,x:(r7+$2c)
 
-; ---- TIME SLEW (24 Aug 2026): glide, don't jump ---------------------------
-; TIME is applied once per block, so turning the knob (or the tempo moving a
-; synced TIME between zones) stepped the read head and crackled -- Sam heard
-; it on the unit. A one-pole per block, coefficient 1/1024 in Q8, makes the
-; head GLIDE instead: the worst case (a full-range jump, 16,256 samples) moves
-; ~16 samples per 15-sample block -- about an octave, gone in a few blocks;
-; a one-zone synced step (~1,800 samples) bends ~2 semitones and settles in
-; ~1 s. Tape-delay behaviour, which is the character this delay already has.
-; Truncation (asr) parks the glide up to 4 samples short from below and lands
-; exactly from above -- inaudible. State at Y 0907h, core-private, ABSOLUTE
-; addressing beside the proven 0901h-0904h words (R48-R50 died to an
-; init-built table written through (r1)+ -- docs/firmware/DSP.md 6c-i). Zero at boot
-; seeds from the target, so an instantiate does not swoop up from 0.
+; ---- TIME SLEW: glide, don't jump ---------------------------
         move    x:(r7+$2c),a            ; target, integer samples
         asl     #$8,a,a                 ; Q8
         move    a,x0
@@ -1096,13 +724,6 @@ snapz:
         sub     x0,a
         move    a,x:(r7+$37)            ; 1 - PING
 
-; ---- MIX: the STAGE crossfade (one-aux rig, 7 Sep 2026; -VRB until then) --
-; The delay is chain stage 1 of the one aux bus: its output goes on to the
-; reverb and to the return, and out = in*(1-MIX) + wet*MIX, so MIX 0 passes
-; the aux through untouched (a clean reverb send with the delay still in
-; the chain) and 127 is the old wet-only behaviour. The knob field itself is
-; the multiplier (val<<16 == val/128 Q1.23, the PING trick); 1-MIX is
-; computed here once. (-VRB is gone: the chain is hardwired and unscaled.)
         move    x:(r6+$5),x0            ; MIX, slot 5
         move    x0,x:(r7+$3c)           ; MIX
         move    #>$7fffff,a
@@ -1110,26 +731,6 @@ snapz:
         move    a,x:(r7+$3e)            ; 1 - MIX
 
 ; ---- IN: this track's OWN send level into the delay (v3 stage 1) ---------
-; The exact counterpart of every other track's ->DELAY knob (send_client p0):
-; same range, same scaling, same 3-bit headroom, same auto-gain share. See
-; the input block for the arithmetic.
-; ⚠️ p5, NOT p4, since 18 Aug 2026: IN and -VRB swapped slots so that IN sits
-; BOTTOM-RIGHT on BOTH effects (the reverb's IN is p5). Old projects: stored
-; p4/p5 values swap meaning -- covered by FLASHING.md's first-load step.
-; ⚠️ THIS DECODE WAS SILENTLY DELETED for one day (6d2690b's -VRB splice ate
-; it; caught 18 Aug during this swap): $76 went entirely unwritten, so IN
-; multiplied warm-up garbage. It reached two wrapped images (R30/R31),
-; NEITHER FLASHED. The matrix now has an IN-nonzero render so a dead IN can
-; never again pass silently -- verify_bus alone cannot see it because every
-; default render has IN at 0.
-; v5.1 (3 Sep 2026): IN IS RETIRED from p5. Slot 5 is PTCH, GRAIN's pitch.
-; ->DEL (5 Sep 2026, Sam's call: "delay drive"): the host's own send into its
-; delay RETURNS on page-2 slot 10 -- DRV's slot, drive retired -- so the host
-; page carries a real send knob like every station's. It feeds the SAME $76
-; machinery (scaled, headroomed, summed, counted), read from $e's knob field
-; (bits 16-23; the low bits are FRZE). knob<<16 IS val/128 in Q1.23, the
-; MIX/PING trick, used directly as the per-sample multiplier. Default 0 is
-; load-bearing: a nonzero default would register every idle host as a client.
         move    x:(r6),a                ; AUX, slot 0 (one-aux rig, 7 Sep 2026:
                                         ; every track's one send, this host's
                                         ; included; was ->DEL on p10)
@@ -1179,7 +780,7 @@ snapz:
         move    #>$1,x0
         teq     x0,a
         move    a,x:(r7-$16)            ; nonzero = the wet comes from $24/$25
-; REVERSE-32K (13 Sep 2026): in REVERSE the two 16K lines are ONE 32K MONO
+; REVERSE-32K: in REVERSE the two 16K lines are ONE 32K MONO
 ; ring, so a segment can be 371 ms (2S = 32768 fits, the read preceding the
 ; write each sample). The L ring's mask goes $7fff, the R line's read and
 ; write are skipped per sample (they would land in the upper half), PING is
@@ -1239,19 +840,6 @@ snapz:
         move    b,x:(r7+$21)            ; this block's note for GRAIN (0 = none)
 
 ; ---- TAPE depths from the WOW knob (v2 stage 4) --------------------------
-; MDEP is page-2 slot 7 since v6 (4 Sep 2026): the COMPANION half of r6+$c,
-; bits 8-15, 0..127 -- it swapped places with MODE, which now owns the knob
-; half. (Slot 6 / the knob half before that; and "page-1 ... r6+$b" until
-; 30 Aug 2026, directly above a line that correctly read x:(r6+$c).):
-; wow depth is a continuous voicing control unlike MODE/PTCH/FRZE.
-;   wow depth = knob << 10  -> up to 31.75 samples, Q11.12
-;   flutter   = wow >> 3    -> up to  3.97 samples
-; The CEILING IS LOAD-BEARING, not taste: the modulated read sits at lag
-; TIME + mod, TIME's floor is 64 samples (knob 0 -> 0*128+64), and the two
-; depths sum to at most 35.7 -- so the lag can never reach 0 and wrap onto
-; the sample about to be written, which is a whole lap old (a full-scale
-; discontinuity every LFO cycle). Any future depth increase must re-check
-; that sum against TIME's floor.
         move    x:(r6+$c),a             ; $c: slot 7 is its COMPANION field
         and     #>$7f00,a               ; (bits 8-15); knob<<8, so <<5 more
         asl     #$5,a,a         ; = knob<<13, the x8 RELAW (18 Aug 2026): the old law's
@@ -1266,11 +854,6 @@ snapz:
                                         ; 8-15; on $b nothing shared the word
         move    a1,x0
         move    x0,a                    ; A2-clean
-; ---- v5.1: GRAIN carries a FIXED GENTLE wow (Sam, 3 Sep 2026) ------------
-; MDEP is scatter there, so the depth cannot come from the knob; and the
-; grains read the same lines the repeats recirculate through, so DPTH 127
-; had them wobbling by +-254 samples ("modulating heavily"). Knob 12's worth,
-; ~+-24 samples at 1x: a tape's breath rather than a wobble.
         move    x:(r7+$20),b            ; MODE
         move    #$1,x0               ; 1 << 16 = GRAIN
         cmp     x0,b
@@ -1325,16 +908,6 @@ wowlive:
         mpy     x0,y1,a                 ; flutter inc = $56d * val/64
         move    a,y:>$0902
 
-; ---- DRIVE: RETIRED (5 Sep 2026) -- p10 is ->DEL now, see the IN block. ----
-; From 5 Sep to 14 Sep 2026 the drive stage stayed in the loop with d pinned
-; to 0 here ("a cycle trim for later"): satdrv's blend w + d*(hot - w) and the
-; output stage's makeup wet*(1 + d/2) both ran on that 0 every sample, 66
-; cycles a sample for an exact identity. They are gone (bit-identical by
-; construction: mpy by 0 is a clean 0 and adding it changes nothing) and
-; r7+$83, the slot d lived in, is free. The stage's history is in git: the
-; v5.1 block read $e's knob field into $83, and the 18 Aug 2026 V0/V127 probes
-; measured d dead when read from Y inside the callee but live from r7.
-
 ; ---- FREEZE select (v2 stage 3) ------------------------------------------
 ; Page-2 slot 11's companion field, r6+$e LOW bits -- the same low-byte
 ; select idiom as PTCH ($d low) and BusVerb's WIDTH/->DEL, count 2. Any
@@ -1359,21 +932,15 @@ wowlive:
         move    a1,x0
         move    x0,a                    ; A2-clean before the store
         move    a,x:(r7-$23)            ; 0 = running, nonzero = frozen
-; v6: while RUNNING, keep the engage-crossfade ramp armed at ~1 (satdrv's
-; tail decays it only while frozen, so the fade always starts exactly here,
-; at the engage edge). teq off the flag's own tst; the moves between do not
-; disturb the condition codes.
         tst     a
         move    y:>$0904,b              ; r (core-private, like RATE/DRV's
-                                        ; 0901h-0903h -- 0x360d3-5 is dead
-                                        ; on hardware, R36)
         move    #>$7fffff,x0
         teq     x0,b                    ; running -> re-arm
         move    b,y:>$0904
 
 ; ---- SPRAY: GRAIN scatter depth (v2 stage 5; on MDEP since v5.1) ----------
 ; Page-2 slot 7's COMPANION field (r6+$c bits 8-15, the word MODE's knob
-; field shares; slot 6 / the knob field until v6, 4 Sep 2026). Shifted up
+; field shares; slot 6 / the knob field until v6). Shifted up
 ; to knob<<16, which already IS value/128 in Q1.23, so it is used directly
 ; as a multiplier with no mpy to build it (the MIX/PING trick).
 ; SPRAY=0 puts every grain on the same read position -- four heads in a
@@ -1386,33 +953,8 @@ wowlive:
         move    x0,a                    ; A2-clean (AND cleans A1 only)
         asl     #$8,a,a                 ; -> knob<<16
         move    a,x:(r7+$13)            ; SPRAY, 0 .. ~0.992 as Q23
-; (a `move #>4,n4` sat here until 14 Sep 2026 for a reader stride nothing
-; used: the rolled readers advance r4 a word at a time)
 
 ; ---- REVERSE: segment size, phase step, and the lag floor (v2 stage 6) ----
-; The PTCH select read as a SIZE. S must be a POWER OF TWO, and that is not
-; taste: the phase step is 2^23/S, so only a power of two makes it an exact
-; integer -- and exactness is what makes the segment-local sample index
-; p = phase*S/2^23 land on WHOLE SAMPLES, which is why REVERSE needs no lerp
-; at all while PITCH and TAPE do.
-;
-; ⚠️ THE SIZE CEILING IS THE LINE, NOT TASTE. Playing S samples backwards
-; takes S samples, during which the write pointer advances S -- so the head
-; reaches a lag of LAG0 + 2S and the buffer must hold 2S of history. With a
-; 16384-word line that capped S at 4096 (93 ms). REVERSE-32K (13 Sep 2026):
-; in REVERSE the two lines are ONE 32K MONO ring (mask $6b, the R line
-; skipped), so 2S <= 32768 and S reaches 16384 (371 ms) with the lag floor
-; pinned to 0 -- the read precedes the write each sample, so lag 32,768 is
-; still the ring. Caps: 32704 - 2S. Any future size increase must re-check
-; LAG0 + 2S <= 32768.
-; ONE TABLE READ FOR BOTH MODES (14 Sep 2026, replacing two ladders of
-; compares and immediates, 120 words): the manifest's SIZE_ROWS, eight words
-; a row -- REVERSE's S / 2^23/S / cap on the left, GRAIN's G-1 / G/4 /
-; 2^(23-k) / 2^(32-k) on the right -- for indices 0..3, and a FIFTH row for
-; anything from 4 up (a stale part byte can hold 0..127): the ladders sent
-; REVERSE to row 0 and GRAIN to row 3 for those, so the garbage row is exactly
-; that pairing and the change is bit-identical for garbage too. The clamp is
-; a Tcc off one compare with only a move between.
         move    x:(r7+$16),a            ; select index, 0..127
         move    #>$4,x0
         cmp     x0,a
@@ -1446,7 +988,7 @@ rlagok:
         add     x0,a                    ; min(TIME, cap)
         move    a,x:(r7+$19)            ; RLAG0, the reversed chunk's lag floor
 
-; ---- GRAIN v5 per-block decode (BusDelay v5, 3 Sep 2026) ----------------
+; ---- GRAIN v5 per-block decode (BusDelay v5) ----------------
 ; Nimbus's grain family from the SIZE select ($5f), in REVERSE's index order
 ; so one select reads the same way in both modes: 0 = 46 ms (G 2048),
 ; 1 = 93 ms (4096, the default), 2 = 23 ms (1024), 3 = 186 ms (8192). Per
@@ -1535,7 +1077,7 @@ gvn0:
 gvknob:
 ; knob path: e = RATE - 64 (-64..63); oct = e >> 5; f = (e & 31) << 18
         move    x:(r6+$e),a             ; PTCH: page-2 slot 10's KNOB field
-                                        ; (one-aux re-slot, 7 Sep 2026; was
+                                        ; (one-aux re-slot; was
                                         ; page-1 slot 5, which is MIX now),
         and     #>$7f0000,a             ; a plain knob, val << 16
         move    a1,x0
@@ -1622,10 +1164,6 @@ gvrdone:
         cmp     x0,a
         tgt     x0,a                    ; rstep = min(rstep, rmax)
         move    a,x:(r7-$b)
-; density: dens3 = knob >> 4 (0..7) from the DPTH word ($2d = knob << 13),
-; the R61 full-dial law; and the level MAKEUP coeff = 1/2 + (7-dens3)/14 in
-; Q23 (R61, verbatim: flattens the gate's energy loss within ~1.2 dB; the top
-; of the ramp is $7FFFFF by construction, so the sum cannot wrap).
         move    x:(r6+$d),a             ; MRAT's knob field: DENSITY in GRAIN
         and     #>$7f0000,a             ; (v5.1 -- the mod rate is fixed there)
         asr     #$14,a,a                ; knob >> 4 = dens3, 0..7
@@ -1650,7 +1188,7 @@ gvrdone:
 ; Same A2-clean discipline as dsp/reverb89.asm's phase reload: garbage with
 ; bit 23 set would sign-extend and saturate the following move a,rN to
 ; $800000, which hangs the bus forever (the two-track-freeze mechanism).
-; THE LINE BASES LIVE IN n1 / n2 FOR THE BLOCK (14 Sep 2026): a base add is
+; THE LINE BASES LIVE IN n1 / n2 FOR THE BLOCK: a base add is
 ; `move a1,rN / move (rN)+nN` (a1 straight into the pointer: no limiter, so
 ; no A2 to clean), a line read is `move a1,r5 / move y:(r5+n5),a` with n5
 ; staged from n1 or n2 at the site. The $68 stash and modtap's $30 staging
@@ -1687,17 +1225,6 @@ gvrdone:
         add     x0,a
         asr     #$1,a,a
 ; ---- v3 stage 1: OUR OWN DRY IS JUST ANOTHER CLIENT ----------------------
-; It used to be added at UNITY, after the bus had already been auto-gained --
-; which made the host track immune to 1/N and therefore as loud into the
-; delay as every sender combined, with no knob to trim it. Now it goes
-; through the identical path a SEND client's contribution takes: scaled by
-; its own level knob, given the same 3 bits of headroom, summed with the
-; others, and divided by a count that includes it.
-;
-; mpy x0,y1 is the SIGNED order (2000c0) -- x0 is audio and goes negative,
-; y1 is a knob and never does. Disassembled from the emitted image; the
-; assembler silently downgrades unknown operand orders to mpysu, which would
-; corrupt every negative sample here.
         move    a,x0                    ; own dry mono
         move    x:(r7+$2d),y1           ; IN, this track's send level
         mpy     x0,y1,a                 ; our contribution to the bus
@@ -1743,7 +1270,7 @@ gvrdone:
 ; is ever wanted back it belongs on a select, not as the only topology.
 ;
 ; ---- LOOP taps: lerped read at lag TIME + wow/flutter, EVERY mode ---------
-; (18 Aug 2026.) This is TAPE's machinery promoted to the common path -- the
+; This is TAPE's machinery promoted to the common path -- the
 ; loop's recirculating tap is the same in every mode since stage 2c, so the
 ; drift belongs to the INSTRUMENT, not to a mode. DPTH (p6, was WOW) sets the
 ; summed depth; RATE (p8) scales BOTH LFO increments by one factor, val/64
@@ -1803,7 +1330,7 @@ gvrdone:
         move    a1,x0
         move    x0,a                    ; move-to-accumulator sign-extends
         move    a,x:(r7-$20)            ; mod_int
-; ---- lag clamp (18 Aug 2026, with the x8 relaw): keep TIME+mod inside the
+; ---- lag clamp: keep TIME+mod inside the
 ; line. Replaces the old static bound (sum < TIME's floor), which is what had
 ; capped the depth at inaudibility. Low side: lag >= 8 (never reads the write
 ; head); high side: lag <= 16376 (never wraps the $3fff mask at max TIME).
@@ -1833,7 +1360,7 @@ gvrdone:
 
 ; ---- TAPE Line L: lerped read at lag TIME + mod ---------------------------
         move    r1,a
-; lerp read rolled into modtap (18 Aug 2026): line base staged in n5, the
+; lerp read rolled into modtap: line base staged in n5, the
 ; pointer arrives in a, the tap returns in a. Same word-saving move as satdrv.
         move    n1,n5
         bsr     modtap
@@ -1865,51 +1392,6 @@ rskipr:
         bra     pdone                   ; CLEAN, and every unknown value
 ; MODEFORK_MID -- alternative 1: GRAIN
 
-; ---- GRAIN v5: Nimbus's grain readers over the delay lines, PITCHED -------
-; (v4 the same day was unity-rate and two per line; v5 is four per line with
-; a continuous pitch on RATE, and PITCH mode is retired -- Sam, 3 Sep 2026.)
-; The v2 stage-5 GRAIN was the delay's cost centre: eight lerped heads with
-; per-grain rate accumulators, a Tcc-chained interval draw and a rolled
-; builder priced at 548 words + 837 of roll surcharge -- 1,385 cycles, the
-; worst path of the whole engine, on the core that also has to fit the
-; BamSep26 stations. This is modules/nimbus/nimbus_grain.asm's engine
-; instead: four UNITY-RATE grains, two per line at a half-period offset so
-; each line's two triangle windows sum to exactly 1, integer reads (no
-; lerp -- unity rate has no sub-sample position), one multiply per window
-; and a branch-over-two-moves latch at each grain's own wrap. ~200 cycles.
-;
-; What it keeps from v2: the density gate (a grain drawn muted at its wrap
-; stays silent for its life) and the R61 makeup law, the SPRAY scatter on
-; DRV, the PRNG (BusDelay's xorshift, which Nimbus copied verbatim), the
-; shifted-output substitution via $24/$25 and the $33 flag, and TIME as the
-; read-back distance -- so this is still a granular DELAY, reading TIME
-; behind the write head, not a Clouds on the input.
-;
-; What changed against v2: the per-grain interval SET is gone -- every grain
-; runs at the one pitch RATE (or the MIDI note) says, continuously, +-2
-; octaves -- and PITCH mode is retired with it: GRAIN at full density, scatter
-; 0 IS a granular pitch shifter on the same non-cascading topology. The
-; select is the grain SIZE (46/93/23/186 ms, REVERSE's own index order).
-;
-; Knobs in GRAIN: TIME = position (lag), SIZE = grain length, RATE = pitch
-; (64 = unison), DRV = scatter depth (SPRAY, up to 4095 samples), DPTH =
-; density. FREEZE holds the lines and the grains keep grazing them behind the
-; frozen head.
-;
-; ⚠️ THE WINDOW READS a0: phase * 2^(23-k) into the LOW word, sign-extended
-; back and folded with abs, is a triangle peaking at G/2 -- and the
-; multiplier is 2^(23-k), NOT 2^(24-k), because a0 exposes the fractional
-; left shift a1 hides (CLAUDE.md; found by Nimbus's DC gate). The gate that
-; pins it here: DC in must come back flat, because two triangles a half
-; period apart sum to exactly 1.
-;
-; A grain's window multiplier is latched AT ITS WRAP as either 2^(23-k) or 0
-; (muted), so the density gate costs nothing per sample: a muted grain's
-; window is identically zero.
-;
-; mpy orientation: the signed operand (the line sample) is always x0, the
-; audited `mpy x0,y1` form; y1 only ever carries a window gain or a
-; multiplier, both non-negative.
 gmode:
 ; ---- PRNG advance: BusDelay's 23-bit xorshift 15/15/8 -------------------
         move    x:(r7-$31),a            ; state
@@ -1939,8 +1421,6 @@ gmode:
         move    x0,a
         move    a,x:(r7+$f)
 ; ---- this sample's window-multiplier candidate: 2^(23-k), or 0 if muted --
-; three PRNG bits against dens3 (the R61 law): muted when bits > dens3, so
-; dens3 = 7 never mutes and dens3 = 0 mutes seven grains in eight.
         move    x:(r7-$31),b
         asr     #$5,b,b
         and     #>$7,b
@@ -2020,7 +1500,7 @@ gmode:
                                         ; one sample per sample, so a distance
                                         ; that does not grow with the phase
                                         ; reads at 1 + r, an octave up at
-                                        ; "unity" (measured 3 Sep 2026: 955 Hz
+                                        ; "unity" (measured: 955 Hz
                                         ; for 438 in). Nimbus's geometry has the
                                         ; same term missing -- see its README.
         move    #>$2,x0
@@ -2141,7 +1621,7 @@ gvlz:
                                         ; one sample per sample, so a distance
                                         ; that does not grow with the phase
                                         ; reads at 1 + r, an octave up at
-                                        ; "unity" (measured 3 Sep 2026: 955 Hz
+                                        ; "unity" (measured: 955 Hz
                                         ; for 438 in). Nimbus's geometry has the
                                         ; same term missing -- see its README.
         move    #>$2,x0
@@ -2406,44 +1886,6 @@ pdone:
         move    x:(r7+$2a),y1
         mpy     x0,y1,a
 ; ---- LineR ALSO takes the input now, scaled by 1-PING (v3 stage 2) -------
-; LineR used to receive NOTHING but crossfeed, which made PING=0 a hole: with
-; no path in, LineR stayed at digital silence for ever and the whole wet was
-; hard left. Measured 17 Aug 2026 across the knob (CLEAN, TIME 40, FDBK 60):
-; PING 0 left R at -999 dB; 32/64/96/127 leaned +20.1/+14.7/+11.5/+9.2 dB.
-; There was no setting anywhere on the knob that produced a centred image.
-;
-; Scaling the new term by 1-PING rather than a fixed fraction is what keeps
-; the knob meaningful, and it is why the obvious "just feed both lines" fix
-; was rejected when this file was written: x_in is a MONO scalar by
-; construction (the input block sums L+R), so a symmetric entry would make
-; the two lines' state equations identical at every step for ANY value of
-; PING -- provably, by induction -- and the knob would do nothing at all.
-; Tying the asymmetry TO the knob dodges that: the lines are identical only
-; at PING=0, and diverge everywhere above it.
-;
-; Measured after the change, same conditions: lean 0.00/2.26/4.90/7.76/7.83 dB
-; and correlation +1.000/+0.998/+0.964/+0.714/-0.078 at PING 0/32/64/96/127 --
-; a monotonic sweep from a perfectly centred mono delay to a decorrelated
-; ping-pong, with no hole at either end.
-;
-;   PING   0 -> both lines fed equally -> a CENTRED MONO delay (corr +1.000)
-;   PING  64 -> R fed at half -> partial bounce
-;   PING 127 -> R fed 1/128 -> the classic ping-pong
-;
-; ⚠️ NOT quite "127 is unchanged": the knob's top is 127/128, so 1-PING is
-; 0.008 rather than 0, and R keeps 0.8% of the direct input. That is enough to
-; move the top of the knob measurably -- lean 9.17 -> 7.83 dB -- so PING=127
-; is NOT bit-identical to the old engine and should not be described as such.
-;
-; ⚠️ The lean that REMAINS at PING=127 is not a defect and must not be
-; "fixed": it is exactly one repeat's decay, because R's train IS L's train
-; one repeat later. Verified across a 6:1 FDBK range -- lean 18.72/12.69/
-; 9.17/5.60/2.96 dB against a per-repeat decay of 19.20/13.18/9.65/6.13/3.63
-; at FDBK 20/40/60/90/120, a constant -0.5 dB residual. It is the arithmetic
-; identity of any ping-pong fed on one side, and it shrinks as FDBK rises.
-;
-; mac, not a second mpy: the product accumulates onto fbIntoR*FDBK already in
-; a. Same signed x0,y1 operand order as every other multiply in this file.
         move    x:(r7+$34),x0           ; x_in
         move    x:(r7+$37),y1           ; 1 - PING
         mac     x0,y1,a                 ; + the direct input's share
@@ -2456,10 +1898,6 @@ pdone:
         move    a,y:(r2)+                ; LineR write, advance -- no x_in term
 rskipw:
 
-; ---- wrap both write pointers by hand (the modulo this engine no longer
-; asks the AGU for). After the +1 a pointer is base .. base+0x4000 inclusive;
-; masking the phase and re-adding the base folds base+0x4000 back to base
-; and leaves every other value alone. L's mask is $6b: $7fff in REVERSE.
         move    r1,a
         move    x:(r7+$22),x0
         and     x0,a
@@ -2496,59 +1934,8 @@ rskipw:
         tne     x0,b
         move    b,x:(r7+$33)
 
-; ---- own track: DRY AT UNITY + WET (v5, 23 Aug 2026) ----------------------
-; The host track is still a RETURN in every bus-arithmetic sense -- its audio
-; reaches the ENGINE only through IN, it is counted as a client only while
-; IN>0, and its OT track fader scales the whole output -- but its own dry now
-; passes through at unity underneath the wet. v3 stage 1's wet-alone output
-; meant a sample on the delay's track with IN=0 was SILENT ("the effect
-; deleted my audio"); Sam hit exactly that in the field, 23 Aug 2026, and
-; called it: a return should not mute its host.
-;
-; Why unity and not a knob: the control story is already complete. Dry level
-; is the track fader; the host's own wet amount is IN; everyone else's wet
-; amount is their ->DELAY send. A DRY knob would duplicate the fader and cost
-; a cloned descriptor (the formatter-inheritance trap family) for nothing.
-;
-; What v3 stage 1 fixed STAYS FIXED: the MIX image-walk cannot recur (the dry
-; is added at unity, never crossfaded against the wet's different stereo
-; geometry), and the host still gets no privileged engine drive -- IN puts it
-; through the same 3-bit headroom and 1/N auto-gain as every sender. With
-; a silent host track the added dry is zero and the output is bit-identical
-; to v3's wet-alone, so pure-return usage is unchanged. The sum saturates on
-; store like any dry+wet mixer; that is accepted, not guarded.
-;
-; (v3's history, kept short: v1 was `dry + wet*MIX`, v2 stage 5c a crossfade,
-; both retired 17 Aug 2026 because they privileged the host's dry as the
-; crossfade reference and its engine drive was immune to the 1/N -- measured
-; as a 0.00 -> 7.82 dB image walk across MIX's travel. IN defaults to 0 --
-; load-bearing, see build_bus.py's DEFAULTS: a nonzero default registers an
-; audio-less client and dilutes every real sender.)
-; ---- DRIVE MAKEUP (18 Aug 2026): out = wet * (1 + d/2), OUTPUT STAGE ONLY --
-; (gone 14 Sep 2026 with d pinned to 0 since 5 Sep -- the wet is taken as is;
-; the note stays for the day a drive comes back)
-; The V0b/V127b captures proved the drive WORKS (peak -4.2 dB, crest -2.5,
-; harmonics +5.3) and also why it reads as "not much": flat-top without
-; makeup is quieter-and-harsher, not driven. +3.5 dB at full d matches the
-; measured loss. ⚠️ OUTPUT STAGE ONLY, never inside satdrv: makeup on the
-; recirculating write is loop gain, and the drive curve's whole safety
-; argument is that it adds none.
-;
-; The dry is read STRAIGHT FROM THE BUFFER at the store site -- x:(r0) still
-; holds this frame's input because nothing between the input read and here
-; writes the audio buffer (n0 stays 1 throughout the loop). No stash slot,
-; no r7 pressure. The old `move a,b / move x0,a / add b,a` dance collapsed
-; to `add x0,a` (same a1 result: the dance truncated d*wet/2's low word via
-; the limiting a->b move, but those bits sit below the stored a1 either way
-; and the unity add cannot carry up from a0) -- the two words that freed per
-; channel are exactly what the dry add costs, so v5 is net ZERO program
-; words on payload B, which had 1 free.
-; IN-KEYED WET MAKEUP (v8, 23 Aug 2026 -- the reverb's law, ported on Sam's
-; "delay wet is quiet"): out gains + 2*IN*wet, so full IN lifts the wet
-; +9.5 dB while IN=0 adds EXACTLY zero -- every send-fed return level stays
-; bit-identical, drive included (additive term from the PRE-drive wet, so
-; the drive path's store-clamp behaviour is untouched). y0 is free across
-; this whole block; the mpy is the audited-signed y0,x0 form.
+; ---- own track: DRY AT UNITY + WET ----------------------
+; ---- DRIVE MAKEUP: out = wet * (1 + d/2), OUTPUT STAGE ONLY --
 ; ---- OUTPUT STAGE (one-aux rig, 7 Sep 2026) --------------------------------
 ; The stage output is out = in*(1-MIX) + wet*MIX per channel, where `in` is
 ; this sample's chain input x_in ($7d: the auto-gained aux, this host's AUX
@@ -2649,11 +2036,11 @@ dry:
         move    #>$ffffff,m2            ; two pointers this file never sets
                                         ; (m0/m4/m5 are set linear every block
                                         ; above and never changed: their
-                                        ; restores here were no-ops, 14 Sep 2026)
+                                        ; restores here were no-ops)
         rts
 
 ; ---- modtap: the modulated lerped line read, shared by both lines ---------
-; (18 Aug 2026, rolled with the x8 relaw.) In: a = line write pointer, n5 =
+; In: a = line write pointer, n5 =
 ; the line's base. Out: a = the lerped tap at lag TIME + mod. Clobbers
 ; x0/y1/r5 and $2a/$2b (scratch); $2c (frac) is read-only here.
 modtap:
@@ -2706,57 +2093,14 @@ satdrv:
         move    b,x0
         sub     x0,a                    ; sat = w - w^3/3
         move    a,x:(r7-$19)
-; SATURATION KEYS ON DPTH now, not MODE (18 Aug 2026, with TAPE's retirement):
-; drift and tape-glue arrive together, which is exactly what selecting TAPE
-; used to mean -- old TAPE at WOW=w>0 is bit-identical to CLEAN at DPTH=w
-; INCLUDING this. The one retired corner: saturation with ZERO wobble (old
-; TAPE at WOW=0), never voiced. A standalone DRIVE can decouple them later.
-; tne, not teq: NONZERO depth takes the saturated write.
         move    x:(r7-$1c),b            ; DPTH (wow depth; zero iff knob is 0)
         tst     b
         move    x:(r7-$1a),a            ; w back (DPTH=0 keeps it)
         move    x:(r7-$19),x0           ; sat
         tne     x0,a
-; ---- DRIVE (18 Aug 2026 - 14 Sep 2026): the blend toward the 4x-driven ----
-; curve, out = w + d*(hot - w), lived here. d has been pinned to 0 by the
-; per-block decode since 5 Sep 2026 (DRIVE retired for ->DEL), so the block
-; returned its input to the bit -- `a` arrives from a 24-bit load or a Tcc
-; register, the limiting park and reload were the identity, and adding a
-; product by 0 changes nothing. 29 words, 58 cycles a sample (two calls).
-; Its text is in git; the safety argument (unity small-signal, monotonic,
-; bounded, no loop gain) still applies to any drive that comes back.
+; ---- DRIVE: the blend toward the 4x-driven ----
 
-; ---- FREEZE crossfaded hold (v6, 23 Aug 2026) -----------------------------
-; THE SEAM CLICK FIX. v2 stage 3's hold switched the write from the live
-; chain to the raw tap in ONE SAMPLE, so the captured loop carried a step
-; between its newest and oldest sample -- and the copy-forward hold replays
-; that step bit-exactly once per lap. Measured (DFRZAT repro, 23 Aug): one
-; ~33x-local-slope spike every TIME+64 samples, forever; the hold itself
-; was perfect (lap-to-lap identical), the capture boundary was the defect.
-;
-; Fix: write v = tap + r*(live - tap), with r armed at ~1 every RUNNING
-; block (the decode's re-arm) and decaying by g per call -- two calls a
-; sample, ~1.5 ms to silence -- ONLY while frozen. The first frozen writes
-; are ~the live chain (continuous with what precedes them), morphing
-; smoothly into the pure copy, so the loop content never contains a step.
-; The heal happens once; after r reaches 0 the write is the tap EXACTLY
-; (r == 0 makes v == tap to the bit), so the hold stays a bit-exact copy
-; and neither decays nor grows -- stage 3's invariant survives.
-;
-; Lives HERE, not at the two call sites, for the same reason satdrv itself
-; does: the transform is identical for both lines. The caller stages this
-; line's raw tap in x1 (satdrv never touches x1) and the whole select moved
-; in with it -- the sites shrank from six words to three. r lives in
-; core-private Y 0904h, after the delay's RATE/DRV state at 0901h-0903h
-; (the h spelling in prose keeps the census exact): the shared-window words
-; at 0x360d3-5 are DEAD ON HARDWARE (R36), which is why none of this state
-; goes there. r >= 0 always, and both mpy's below are the audited-signed
-; x0,y1 form regardless.
-;
-; The running path is BIT-IDENTICAL to v5: the select takes the live value
-; (the same limited store), r holds its armed value, and v is computed and
-; discarded. One tst feeds BOTH Tcc pairs -- only moves and Tcc sit between
-; them, the documented flag-sharing idiom, with nothing else allowed in.
+; ---- FREEZE crossfaded hold -----------------------------
         move    a,y0                    ; live (the limiting copy applies the
                                         ; same clamp the line store would)
         move    y:>$0904,y1             ; r

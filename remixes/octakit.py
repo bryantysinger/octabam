@@ -1,13 +1,10 @@
-"""OCTAKIT -- Em's Octakit, alone: the reference minimal build.
+"""octakit -- Em's Octakit alone.
 
-One module, no menu rows, no DSP. Her runtime, her 650 writes and her
-73 KB append each rebuild byte-identical to the identities her recipe
-pins, and the build prints that. The COMBINED image is not identical to
-hers even here, and the build says so too: octabam always writes its own
-FX2 chooser (NONE row + terminator, row count, list refs, id aliases) and
-the DSP null stubs, none of which her build has. The pure statement --
-stock + her writes + her append == her `output.os`, with nothing of ours
-in the way -- is `tools/verify/verify_octakit.py`, in `make verify`.
+One module, no menu rows, no DSP. Her runtime, writes and append rebuild
+byte-identical to the identities her recipe pins (the build prints each).
+The image is not identical to hers: octabam writes its own FX2 chooser and
+DSP null stubs. tools/verify/verify_octakit.py is the pure statement
+(stock + her writes + her append == her output.os).
 """
 
 from remix.schema import Remix

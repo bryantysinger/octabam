@@ -1,47 +1,43 @@
 """Cross-module resource collisions, caught before a byte is written.
 
-Nearly every expensive failure in this project's history was two things
-quietly sharing one resource: a delay based where the reverb's buffers lived,
-a scratch slot used twice, a literal rewritten by a substitution meant for
-something else. With one author and two effects that is survivable, because
-one person holds the whole map. With contributed modules it is not, and the
-symptom is never "your module is wrong" -- it is somebody else's effect
-sounding broken.
-
-So the build refuses to start when two selected modules claim the same
+The build refuses to start when two selected modules claim the same
 resource, and says which two.
 
-WHAT IS CHECKED, and how it knows:
+Checked, and how it knows:
 
-  fx2 ids            declared. Two modules answering to one id would
-                     overwrite each other's descriptor and dispatch.
+  fx2 ids            declared. Two modules on one id would overwrite each
+                     other's descriptor and dispatch.
   ColdFire caves     declared. Overlapping machine code is silent and fatal.
   hook sites         declared. Two modules hooking one instruction: the
-                     second overwrites the first's jsr, and the first module
-                     simply never runs.
-  core-private Y     DERIVED by scanning the module's own source for
-                     `y:>$09xx`. Low Y is per CORE, not per instance, so
-                     every effect sharing a core shares these words.
-  stock buffers      declared (Claims.stock_instance_buffer, from a scan
-                     of the payload disassembly). A stock effect that takes
-                     an instance buffer from the host's bump allocator gets
-                     a PER-TRACK base -- the very addresses BusVerb,
-                     Nimbus and BusDelay hardcode -- and the chooser is
-                     one list for all eight tracks, so the build cannot
-                     know which track it lands on. Refused beside any
-                     module with fixed Y buffers.
+                     second overwrites the first's jsr and the first never
+                     runs.
+  detours, pokes,    declared. Fixed-address rewrites, checked against every
+  table refs,        cave, hook site and emit poke; a runtime's recipe
+  runtime writes     writes are claims of the same kind.
+  overrides          a bridge's claim stands in for the overridden module's
+                     at that site; a bridge naming a module the remix does
+                     not carry is refused.
+  core-private Y     derived by scanning the module's source for `y:>$09xx`.
+                     Low Y is per core, not per instance, so every effect
+                     sharing a core shares these words.
+  stock buffers      declared (Claims.stock_instance_buffer). A stock effect
+                     that takes an instance buffer from the host's bump
+                     allocator gets a per-track base -- the addresses
+                     BusVerb, Nimbus and BusDelay hardcode -- and the chooser
+                     is one list for all eight tracks, so the build cannot
+                     know which track it lands on. Refused beside any module
+                     with fixed Y buffers.
+  appended runtimes  one per image (the end of the OS and the loader's
+                     window).
+  arena reserves     the total must leave the unit sample memory.
 
-Derived beats declared wherever it is possible: a scan cannot go stale. Its
-limit is that it only sees what the code actually references, so a word a
-module means to RESERVE but does not yet touch has to be declared -- that is
-what Claims.reserved_private_y is for.
+Derived beats declared where possible: a scan cannot go stale. Its limit is
+that it sees only what the code references, so a word a module means to
+reserve but does not yet touch is declared (Claims.reserved_private_y).
 
-WHAT IS NOT CHECKED YET, and why not. The shared 64K window (Y:0x30000-
-0x3FFFF) is the biggest genuine hazard and is absent here on purpose: the
-exact extents of the two servers' buffers are not established well enough to
-write down, and a claim that is merely plausible is worse than none, because
-it reads like a guarantee. The P donor region is not here either -- placement
-already refuses to overrun it, and that check is exact.
+Not checked: the shared 64K window (Y:0x30000-0x3FFFF); the two servers'
+buffer extents there are not established well enough to write down. The P
+donor region is not here either: placement refuses to overrun it, exactly.
 """
 
 from __future__ import annotations
@@ -151,13 +147,6 @@ def check(selected) -> list[str]:
                 hooks[c.hook_addr] = m.name
 
     # ---- emit() pokes of PINNED caves ---------------------------------------
-    # A cave with an emit callable and a fixed address can be asked for its
-    # pokes without a build: those are fixed-address byte claims exactly
-    # like a hook site, and until 9 Sep 2026 the ledger could not see them
-    # -- midi-scenes' 35 redirects and lofi-amf-fix's two DSP words were
-    # invisible, and midi-scenes + octakit (both rewrite the apply_part
-    # entry 0x40009094) passed as clean. A FLOATING emit cave (cave_addr
-    # None) cannot be evaluated before placement and is still skipped.
     # ---- linker-backed units, detours, grown tables, plain pokes -----------
     # A PINNED Linked unit is a cave whose length is only known after the
     # link, so it is claimed here as a 6-byte marker at its address (the
@@ -208,7 +197,7 @@ def check(selected) -> list[str]:
             pokes.append((p.addr, len(p.expect), m.name, f"poke {p.note or hex(p.addr)}"))
     # A FLOATING emit cave's poke ADDRESSES do not depend on where the cave
     # lands -- only the values written do -- so it is evaluated at a probe
-    # address purely to learn its sites. Until 10 Sep 2026 it was skipped,
+    # address purely to learn its sites. Until it was skipped,
     # and the matrix said Octakit and CC PAGE 2 compose while the build
     # refused them: both rewrite the MIDI control-parameter dispatch entry
     # at 0x400d64a0 (her seven midi-control-parameter writes, its repoint).
@@ -244,11 +233,6 @@ def check(selected) -> list[str]:
     # midi-scenes, octamax and octakit, and this is where it is refused.
     runtimes = [m for m in selected if getattr(m, "runtime", None) is not None]
     hosts = {m.key for m in runtimes}
-    for m in selected:
-        x = getattr(m, "runtime_ext", None)
-        if x is not None and x.host not in hosts:
-            clash("runtime extension", m.name, f"(no {x.host})",
-                  f"a DRAM host it extends -- {x.host} is not in this remix")
     for i, a in enumerate(runtimes):
         for b in runtimes[i + 1:]:
             clash("appended runtime", a.name, b.name,
@@ -308,7 +292,7 @@ def check(selected) -> list[str]:
 
     # ---- stock effects that allocate an instance buffer -------------------
     # The allocator's bases are per TRACK SLOT, and this is MEASURED -- read
-    # from X:0x255 in BOTH payloads of the pristine image, 2 Sep 2026 (the
+    # from X:0x255 in BOTH payloads of the pristine image (the
     # words are little-endian, which only shows above 0x10000, and reading
     # them big-endian gives a plausible 0x00003 instead of 0x30000):
     #
@@ -358,7 +342,7 @@ def check(selected) -> list[str]:
                   "is refused: on FX1 it keeps working, out of reach")
 
     # ---- the stock curve bank, X:0x4840 (4,096 words) ----------------------
-    # Since 14 Sep 2026 the build parks the modules' P tables (a
+    # Since the build parks the modules' P tables (a
     # DspSection.ptable, the reverb's LFOTAB) in this stock data record
     # instead of the donor region, whenever no stock effect that reads it
     # survives in the image (stock.curve_bank_readers; the build keeps the

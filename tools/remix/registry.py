@@ -1,18 +1,14 @@
 """Discovery of remix modules: the index.
 
 Every directory under `modules/` holding a `manifest.py` that exports a
-`MODULE` is a contribution. Nothing else registers a module -- there is no
-central list to edit, so adding one is adding a directory, and two modules
-cannot silently disagree about which of them is "the" delay because the
-registry refuses duplicate keys and ids.
+`MODULE` is a contribution; there is no central list. The registry refuses
+duplicate keys and ids. Directories whose name starts with `_` or `.` are
+skipped (`modules/_template/`).
 
-Directories whose name starts with `_` or `.` are skipped, which is what
-keeps `modules/_template/` out of every build.
-
-The STOCK FX2 effects (tools/remix/stock.py) are registered alongside, under
-their own keys ("FILTER", "CHORUS", ...), so a remix keeps one in the chooser
-by listing it exactly as it lists a module. They are Kind.STOCK: no code, no
-clone, no words -- the build writes only their chooser row.
+The stock FX2 effects (tools/remix/stock.py) are registered alongside under
+their own keys ("FILTER", "CHORUS", ...), so a remix keeps one in the
+chooser by listing it as it lists a module. They are Kind.STOCK: no code,
+no clone, no words; the build writes only their chooser row.
 """
 
 from __future__ import annotations
@@ -206,7 +202,7 @@ def remix(name: str = DEFAULT_REMIX):
                 f"{', '.join(sorted(on_bus))} -- an unassigned track would run "
                 f"nothing, so nobody would flip the rotation or clear the "
                 f"accumulators. Use fallback=\"SEND\".")
-    # AN FX1-ONLY MODULE ON THE FX1 CHOOSER TAKES NO FX2 ROW (12 Sep 2026).
+    # AN FX1-ONLY MODULE ON THE FX1 CHOOSER TAKES NO FX2 ROW.
     # Claims.fx1_only is the module's promise that an FX2 instance runs dry,
     # so an FX2 row for it would be a row that does nothing; the build's
     # `hidden` mechanism already removes a row while keeping the names of a

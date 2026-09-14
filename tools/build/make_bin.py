@@ -1,32 +1,24 @@
 #!/usr/bin/env python3
-"""
-Wrap a patched ELEK container into an ELUP `.bin` for the CF-card OS UPGRADE path.
-
-Flashing over MIDI SysEx takes several minutes. The manual (8.5.2 OS UPGRADE) describes
-the fast alternative: drop a `.bin` in the ROOT of the Compact Flash card, then
-PROJECT -> OS UPGRADE -> [YES].
-
-The format was already reversed in Phase 1 (FUN_4007f748) and `tools/build/bin_decode.py`
-decodes the official file and validates its checksum, which proves the algorithm. This is
-the forward direction. Decoding showed the payload is simply:
+"""Wrap a patched ELEK container into an ELUP `.bin` for the CF-card OS UPGRADE
+path (manual 8.5.2: the `.bin` in the root of the card, PROJECT -> OS
+UPGRADE). `tools/build/bin_decode.py` decodes the official file and validates
+its checksum; this is the forward direction. The payload is
 
     [4-byte BE length][ELEK container]
-
-i.e. exactly the container elektron-firmware-tool already builds — no new format work.
 
     word[0]        magic 0x454C5550 "ELUP"
     word[1]        feedback seed
     word[2..n-2]   obfuscated payload
     word[n-1]      obfuscated additive checksum of the plain payload
 
-The cipher is XOR-with-feedback; the per-word variant is chosen by bit 0x800000 of the
-PREVIOUS CIPHER word. rot16 and bswap are involutions, so inverting it is direct:
+The cipher is XOR-with-feedback; the per-word variant is chosen by bit
+0x800000 of the previous cipher word. rot16 and bswap are involutions:
 
     encode:  x = k ^ mixer ^ p ;  c = rot16(x) ^ XOR_A   (variant 0)
                                   c = bswap(x) ^ XOR_B   (variant 1)
 
 Usage:
-    EFT_EMIT_CONTAINER=elek.bin elektron-firmware-tool -i stock.syx -c 3 mainos.bin \\
+    EFT_EMIT_CONTAINER=elek.bin elektron-firmware-tool -i stock.syx -c 3 mainos.bin \
         -V OCTABAM001 -o out.syx
     python3 tools/build/make_bin.py elek.bin -o OCTATRACK_OCTABAM001.bin
 

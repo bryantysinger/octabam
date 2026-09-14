@@ -1,17 +1,14 @@
-"""Ripple -- a Mutable-Instruments-Ripples-flavoured resonant filter.
+"""Ripple -- a Ripples-flavoured resonant filter.
 
-A per-track INSERT (no bus role, both payloads, any track): a Chamberlin
-state-variable filter with a drive stage in front, LP/BP/HP select, and the
-resonance allowed to sing. The drive clip and the in-loop limiter on the HP
-node are the character, the way Ripples' OTA clip is -- this is a filter to
-push, not a surgical EQ.
+A per-track insert (no bus role, both payloads, any track): a Chamberlin
+state-variable filter with a drive stage in front, LP/BP/HP select. The
+drive clip and the in-loop limiter on the HP node are the character.
 
 Cutoff spans ~24 Hz..7.2 kHz on a squared taper (the SVF's stable region at
 44.1 kHz -- f = 2sin(pi*fc/fs) capped below 1.0). RES=127 reaches Q ~ 30:
 a screaming peak, deliberately short of self-oscillation.
 
-DRV=0 is unity into the filter and MIX=0 is an exact passthrough, the same
-null gates as WarpFold.
+DRV=0 is unity into the filter and MIX=0 is an exact passthrough.
 """
 
 from remix.schema import (BusRole, DspSection, Formatter, Harness, Kind,

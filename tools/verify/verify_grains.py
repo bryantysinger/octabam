@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The GRAIN cycle lever changes GRAIN and nothing else.
 
-    python3 tools/verify/verify_grains.py [remix]      (default: bamsep27)
+    python3 tools/verify/verify_grains.py [remix]      (default: bamsep26)
 
 `schema.Remix.grains = 2` rolls BusDelay's reader from four grains per line
 to two, for the cycles: the delay's core cannot carry four active stations
@@ -37,7 +37,7 @@ SRC = pathlib.Path("modules/busdelay/delay_server.asm")
 
 def main():
     from remix import grains, registry
-    name = sys.argv[1] if len(sys.argv) > 1 else "bamsep27"
+    name = sys.argv[1] if len(sys.argv) > 1 else "bamsep26"
     remix = registry.remix(name)
     if remix.grains == 4:
         print(f"  [ -- ] {name} runs four grains -- no lever to check")

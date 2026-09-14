@@ -4,20 +4,6 @@
     python3 tools/verify/verify_delay.py modules/busdelay/delay_server2.asm
     python3 tools/verify/verify_delay.py cand.asm --ref modules/busdelay/delay_server.asm
 
-The verify_roll pattern applied to the delay (PLAN.md 3.1, stage 1 CLEAN:
-refactor first, prove equivalence, THEN add modes). Both engines are built
-into the DELAY HATCH -- DEV=1 XBUS=1, the `make render-delay` configuration,
-delay at its shipping Y base 0x38000 and, since the 12 Aug placement change,
-at P:0x04000 outside the donor region (build_bus.py's DEV_DELAY_P; the
-record lives in the .mem dump) -- and rendered through the real send path
-(--layout DS: a DELAY SERVER at position 0 plus a SEND feeding it over the
-shared bus). NOT SPEC: a SPEC dump has no delay at all (id 0x06 -> SEND
-alias), the 12 Aug mislabel send_probe now dies on.
-
-THE CONTROLS ARE THE POINT (verify_roll's lesson, verbatim): a bit-identical
-claim is worthless without a companion check proving the comparison can see
-a difference at all.
-
   * sensitivity: the REFERENCE rendered at TONE=100 vs TONE=10 must DIFFER.
     If not, the harness is blind and every PASS below it means nothing.
   * nop: ONE nop inserted inside the reference's sample loop must move the
@@ -35,33 +21,22 @@ sub-block path, whose bus bookkeeping never runs at split 0). Unlike
 verify_roll these are RUNTIME knob values, not per-build overrides, so one
 build of each engine serves every case.
 
-MODE COVERAGE (added 12 Aug 2026, before GRAIN). Until then this gate proved
-CLEAN only, which was enough while each new mode was a leaf hung off the
-dispatch -- but GRAIN rolls machinery the other modes share (the PRNG, the
-window, the shifted-output substitution), so PITCH and TAPE have to be
-bit-compared too or a refactor can break them invisibly. Each mode case
-builds BOTH engines with the same DMODE/DINT overrides and compares:
-
-  * DMODE=1 PITCH, DINT=0 (+12) and DINT=3 (detune -- the one select where
-    the two lines' steps differ, so it is the case that catches an L/R mixup)
-  * DMODE=2 TAPE at WOW=100, and at WOW=127 FDBK=127 (deep wobble through
-    the loop saturation, the two stage-4 mechanisms at once)
-  * DMODE=3 GRAIN at SPRAY=0 (every grain reads the same place -- the
-    degenerate, most easily-broken case) and SPRAY=127 (full scatter)
-  * DMODE=4 REVERSE at its longest segment and at its shortest with TIME
-    maxed (the case where the lag floor is clamped, i.e. the bound that
-    keeps LAG0 + 2S inside the line)
+  * DMODE=1 GRAIN at scatter 0 (every grain reads the same place) and at
+    full scatter; DINT drives the SIZE select
+  * DMODE=2 REVERSE at its longest segment and at its shortest with TIME
+    maxed (the lag floor clamped: the bound that keeps LAG0 + 2S inside the
+    line)
 
 and each is guarded by its OWN sensitivity control: the reference in that
 mode must DIFFER from the reference in CLEAN. Without it a mode case passes
 vacuously whenever the override silently fails to reach the engine, which is
 exactly what the DMODE machinery exists to prevent (`$30000` census trap).
 
-UNKNOWN MODE: the candidate is additionally built with DMODE=7 -- above every
-implemented engine -- and must render identically to the reference: an unknown
-MODE select must degrade to CLEAN, the trad delay, never to silence. (This was
-DMODE=3 until GRAIN took mode 3, then 5 until REVERSE took 4; a fallback case
-aimed at a mode that EXISTS proves nothing, so it moves up with the engines.)
+UNKNOWN MODE: the candidate is additionally built with DMODE=7, above every
+implemented engine, and must render identically to the reference: an
+unknown MODE select degrades to CLEAN, never to silence. A fallback case
+aimed at a mode that exists proves nothing, so it moves up with the
+engines.
 """
 import argparse
 import os
@@ -80,37 +55,10 @@ import send_probe
 SCRATCH = ROOT / "out" / "delayverify"
 SR = 44100
 
-# send_probe.DELAY_PARAMS order, which since the 18 Aug 2026 swap is:
-#   0 TIME  1 FDBK  2 TONE  3 PING  4 -VRB  5 PTCH  6 MODE  7 MDEP  8 MRAT
-#   9 SIZE  10 -DEL 11 FRZE     (v6, 4 Sep 2026: MODE and MDEP swapped so
-#   MODE sits on an even slot the panel's page-2 knob editor is proven to write)
-# ⚠️ Slot 6 is the KNOB field of r6+$c, NOT $b -- the old "$b/$c/$d/$e"
-# reading is the exact error PARAM_PAGES.md names as why the delay's WOW
-# worked locally and never on hardware. Odd slots (7/9/11) are companion
-# fields; dsp_host drives them via -params too since 17 Aug 2026.
-#
-# ⚠️ The 90 was on index 4 until 30 Aug 2026, described as "MIX 90 so a render
-# is audibly wet". After the swap index 4 is -VRB, so every run pinned the
-# REVERB SEND to 90 and left the delay's own IN at 0. Harmless for the
-# bit-compare (both sides got the same wrong knob) and wrong as a description
-# of what was exercised -- the same shape as the SLOT fix below, which landed
-# on 23 Aug and did not reach this line.
-# v5.1: slot 5 is PTCH (IN retired). 0 here so a pre-v5 REFERENCE gets
-# IN=0 and stays comparable; the GRAIN cases set PTCH explicitly.
-# ONE AUX (7 Sep 2026): 0 AUX, 1 TIME, 2 FDBK, 3 TONE, 4 PING, 5 MIX, 6 MODE,
-# 7 MDEP, 8 MRAT, 9 SIZE, 10 PTCH, 11 FRZE. MRAT 0 freezes the wobble on
-# purpose (the bit-compare wants a deterministic line); PTCH 64 = unison.
 BASE = [0, 40, 60, 100, 64, 127, 0, 0, 0, 0, 64, 0]
 
 SLOT = {"AUX": 0, "TIME": 1, "FDBK": 2, "TONE": 3, "PING": 4, "MIX": 5,
         "MDEP": 7, "MRAT": 8, "PTCH": 10}
-# v5.1 (3 Sep 2026): slot 5 is PTCH (IN retired), MDEP = wow depth / GRAIN
-# scatter, MRAT = wow rate / GRAIN density. v7 (5 Sep 2026): slot 10 is the
-# host's -DEL send (was DRV; the drive is pinned to 0 = bypass).
-# ⚠️ MIX (= IN since v3) moved to slot 5 in the 18 Aug 2026 IN/-VRB swap;
-# this map said 4 until 23 Aug, so the "MIX=0" case was actually pinning
-# -VRB -- harmless for its bit-compare purpose (both sides got the same
-# wrong knob), but wrong as documentation of what it exercised.
 
 
 def dp(**kw):
@@ -174,7 +122,7 @@ def build(src, tag, dmode=None, dint=None, dfrz=None):
 def mode_count(src):
     """How many engine SELECT POSITIONS a delay source carries, read from the
     mode fork's own markers. Counted from the alternative NUMBERS, not the
-    marker count: TAPE's retirement (18 Aug 2026) left the alternatives
+    marker count: TAPE's retirement left the alternatives
     numbered 1/3/4, and `1 + count` said 4 -- so REVERSE (DMODE=4) was
     SILENTLY SKIPPED by every run since, the harness-drift family again
     (caught 23 Aug when the v6 roll touched REVERSE and its cases skipped).
@@ -270,7 +218,7 @@ def main():
         ("TIME=127 (16320 max)", dp(TIME=127), 0),
         ("FDBK=127 TONE=127 (long recirculation)", dp(FDBK=127, TONE=127), 0),
         ("defaults, split=7 (a=0/a=1 sub-block path)", dp(), 7),
-        # THE WOBBLE (14 Sep 2026). BASE pins MDEP=0 and MRAT=0, so until
+        # THE WOBBLE. BASE pins MDEP=0 and MRAT=0, so until
         # this case modtap's modulated lerp (mod_int != 0, frac != 0), the
         # LFO pair and satdrv's DPTH-keyed saturation were rendered only
         # through GRAIN's fixed wow. A rewrite of those paths could pass
@@ -304,7 +252,7 @@ def main():
     if "; DMODE_OVERRIDE" in cand_src:
         clean_ref = render(ref_mem, dp(), source=source)
         MODES = [
-            # v5 numbering (3 Sep 2026): 1 = GRAIN, 2 = REVERSE; PITCH mode is
+            # v5 numbering: 1 = GRAIN, 2 = REVERSE; PITCH mode is
             # retired and its harmoniser lives in GRAIN's continuous pitch.
             # DINT drives the SIZE select (the PTCH slot until v5).
             ("GRAIN unison SPRAY=0 (every grain on the same read)", 1, 1, dp(MDEP=0, PTCH=64)),
@@ -341,7 +289,7 @@ def main():
                 detail = f"  (first differing sample {first}, {n} of {len(fa)} differ)"
             check(f"bit-identical: {label}", a == b, detail)
 
-        # ---- FREEZE (14 Sep 2026): DFRZ=1 on both engines -----------------
+        # ---- FREEZE: DFRZ=1 on both engines -----------------
         # The hold and its engage crossfade live in satdrv's tail and were
         # never rendered by this gate (slot 11 is a companion field; the
         # override is the local way in). Frozen defaults must DIFFER from

@@ -1,11 +1,6 @@
-"""LOFI AMF FIX -- the minimal build: the LO-FI AMF correctness fix, alone.
+"""lofi-amf-fix -- the LO-FI AMF fix alone.
 
-Two DSP-word pokes, no cave, no menu, no FX2 id -- the smallest image the
-module system can produce with it. Unlike `midi-scenes`, this one has no
-known address conflicts with anything else in the repo (it claims no free
-ColdFire space at all), so it is expected to compose freely into bigger
-remixes too -- this solo build is the reference/pipeline-canary shape,
-matching `remixes/hello.py`.
+Two DSP-word pokes, no cave, no menu, no FX2 id, no free-space claim.
 """
 
 from remix.schema import Remix

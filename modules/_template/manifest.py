@@ -3,19 +3,14 @@
 Copy this directory to modules/<yourname>/ and edit. Directories starting
 with `_` are skipped by the registry, so this file is never built.
 
-Say here what the module IS, what it sounds like or changes, and what is
-still open about it. Then delete every comment below that you have answered
--- a template's leftovers read as fact to the next person.
+Say what the module is, what it changes, what is measured and what is
+open. Delete every comment below once answered.
 
-Read docs/remixer/MODULES.md first, and tools/remix/schema.py for the full field
-list; both carry the reasoning that these comments only summarise.
-
-This file is the SKELETON OF A DSP EFFECT -- every field, commented, and
-no engine. For a finished module small enough to read in one sitting, see
-modules/hello/: one knob, 27 words of DSP, its own remix and its own
-render gates. A module that changes what the FIRMWARE does (parts, kits,
-menus, MIDI) rather than adding an effect starts from modules/_template_cf/
-instead, and reads modules/hello-dram/ then modules/midi-scenes/.
+docs/remixer/MODULES.md is the guide; tools/remix/schema.py the field list.
+This is the skeleton of a DSP effect. modules/hello/ is a finished one
+(one knob, its own remix and render gates). A module that changes what the
+firmware does starts from modules/_template_cf/ (then modules/hello-dram/,
+modules/midi-scenes/).
 """
 
 from remix.schema import (BusRole, DspSection, Formatter, Harness, Kind,
@@ -37,11 +32,9 @@ MODULE = Module(
         # WRITE STAYS THE DONOR'S -- including formatters, which override the
         # value counts you do write.
         donor_desc=0x400d58b8,     # DARK REV
-        # BOTH FIELDS ARE NUL-TERMINATED, so the usable length is one less
-        # than the field: abbr is 5 bytes = FOUR characters, fullname 13
-        # bytes = TWELVE. Filling one exactly leaves no terminator; a 5-char
-        # abbr drew fine and crashed the unit on LFO modulation. The schema
-        # rejects both over-lengths -- see modules/hello/README.md.
+        # Both fields are NUL-terminated: abbr is 5 bytes = four characters,
+        # fullname 13 bytes = twelve (a 5-char abbr crashes the unit on LFO
+        # modulation). The schema rejects both over-lengths.
         abbr=b"TMPL",              # <=4 chars
         fullname=b"Template",      # <=12 chars, before any build tag
         build_tag=False,           # append the image's build tag to the name

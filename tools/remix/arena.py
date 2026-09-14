@@ -1,29 +1,27 @@
 """The audio page arena, and how a remix takes pages of it for DRAM.
 
 Stock keeps one arena of 6,144-byte pages for Flex samples and the track
-recorders -- 14,602 pages plus an unused index 0, 89,720,832 B, Elektron's
+recorders: 14,602 pages plus an unused index 0, 89,720,832 B, Elektron's
 "85.5 MB available to a project":
 
     0x40a955e0 .. 0x46025de0     base + (14,602 + 1) x 6,144
 
-Its geometry is four literals in the pool's cold init (`0x40096f24`,
-run at main init and again inside LOAD PROJECT) and one base address in
-24 instructions across the engine. Every DRAM mod with a hardware record
-lives here by shrinking it: Octakit takes the TOP 528 pages (her four
-recipe writes cut the count to 14,074 and the clear to match -- her
-RUNTIME_START..END exactly), octamax 2.0 takes the BOTTOM 64 pages by
-moving the base. This module does both, for any number of reservations
-at once: bottom reservations stack upward from the stock base (the base
-literal moves past them), top reservations stack downward from the end
+Its geometry is four literals in the pool's cold init (`0x40096f24`, run at
+main init and again inside LOAD PROJECT) and one base address in 24
+instructions across the engine. Every DRAM mod with a hardware record lives
+here by shrinking it: Octakit takes the top 528 pages (her four recipe
+writes cut the count to 14,074 and the clear to match), octamax 2.0 takes
+the bottom 64 by moving the base. This module does both for any number of
+reservations: bottom reservations stack upward from the stock base (the
+base literal moves past them), top reservations stack downward from the end
 (the count shrinks), and the four geometry literals are computed from the
 total. With Octakit alone the result is byte-identical to her own writes.
 
-The cost is linear and honest: N pages = N x 6 KB of sample/recorder
-memory, off the recorder share by default (Flex keeps its 64 MB cap).
-Nothing else changes. The region a reservation yields is never touched by
-the OS again: the arena clear starts at the new base, the boot-time
-copies at the base follow the literal, and the page allocator can only
-hand out indexes below the new count (docs/remixer/PLACEMENT.md).
+N pages = N x 6 KB of sample/recorder memory, off the recorder share by
+default (Flex keeps its 64 MB cap). The region a reservation yields is
+never touched by the OS again: the arena clear starts at the new base, the
+boot-time copies follow the literal, and the page allocator hands out only
+indexes below the new count (docs/remixer/PLACEMENT.md).
 """
 
 from __future__ import annotations
@@ -58,8 +56,6 @@ OCTAKIT_RECIPE_WRITES = ("reserve-audio-page-free-list-tail",
                          "shorten-audio-page-free-list-initializer",
                          "shorten-audio-page-arena-clear",
                          "cap-recorder-page-allocation")
-# The platform's own reservation when a remix carries DRAM units: 1,707
-# pages = 10,487,808 B (10 MiB + 2 KB), Sam's call, 10 Sep 2026.
 PLATFORM_PAGES = 1707
 MIN_PAGES_LEFT = 2048                 # 12 MB for the unit; below this, refuse
 

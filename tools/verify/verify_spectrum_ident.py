@@ -23,7 +23,7 @@ TMP.mkdir(parents=True, exist_ok=True)
 # ⚠️ REBUILD THE DUMP, ALWAYS. The audition caches its scratch image against
 # the newest mtime under modules/, and a stale hit here does not fail -- it
 # silently measures the STOCK effect whose id this module replaces. That cost
-# an hour on 3 Sep 2026: every mode read as a dry pass, because the dump's
+# an hour: every mode read as a dry pass, because the dump's
 # dispatch still pointed at stock CHORUS, and the emulator eventually died on
 # a stock instruction it does not implement.
 pathlib.Path(MEM).unlink(missing_ok=True)
@@ -87,9 +87,8 @@ def tail_mean(x, start=N * 3 // 4):
     return sum(seg) / len(seg)
 
 
-
 # ============================================================================
-# BIT-IDENTITY across a knob matrix -- the gate for a cycle pass (4 Sep 2026)
+# BIT-IDENTITY across a knob matrix -- the gate for a cycle pass
 #   python3 tools/verify/verify_spectrum_ident.py ref     # capture from the current build
 #   python3 tools/verify/verify_spectrum_ident.py check   # compare the current build
 # ============================================================================

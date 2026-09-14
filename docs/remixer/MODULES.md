@@ -6,52 +6,41 @@ combination. A **remix** is a named selection of modules composed into one
 image. `make modules` prints what exists; `make bus REMIX=<name>` builds a
 selection.
 
-This document is for adding one. Read `PLAN.md` for where the project stands
-and `CLAUDE.md` for the traps that have already cost real work — several of
-them are traps a new module can walk straight into, and they are repeated
-here where they apply.
+This document is for adding one. `CLAUDE.md` lists the traps; the ones a
+new module can walk into are repeated here where they apply.
 
-**Decide first which kind you are writing, because it decides most of what
-follows.**
+Decide first which kind you are writing.
 
 An **insert** processes its own track's frames in place: no bus role, no
 shared-window claim, placed in both payloads, runnable on any track and
-several at once. Nothing negotiates with anything. `bus_role=BusRole.NONE`,
-`ybase=YBase.NEVER`, and most of the hazards below simply do not apply.
-**Start here** — seven of the eleven shipping modules are inserts, and each
-was built against this document alone. `modules/hello/` is the worked example
-below.
+several at once. `bus_role=BusRole.NONE`, `ybase=YBase.NEVER`, and most of
+the hazards below do not apply. `modules/hello/` is the worked example.
 
-A **server** owns a bus accumulator, is bank-bound to one core, and has to
-take part in the rotation, the housekeeping election and the auto-gain. It
-buys a whole donor region's worth of program space with that complexity.
-There are two, they are documented in `docs/effects/XBUS.md`, and you should have a
-reason before writing a third.
+A **server** owns a bus accumulator, is bank-bound to one core, and takes
+part in the rotation, the housekeeping election and the auto-gain. There
+are two, documented in `docs/effects/XBUS.md`.
 
-A module can also be neither: a **bus client** (`send`), or a **ColdFire
-module** that changes what the firmware *does* — parts, kits, menus, MIDI,
-bug fixes — and touches no audio. Since 9 Sep 2026 that is the shape the
-community's mods take (`modules/midi-scenes`, `modules/octakit`), and it
-has its own skeleton, `modules/_template_cf/`, its own minimal example,
-`modules/hello-dram/`, and its own section below, **"Declaring a ColdFire
-module"**. If that is what you are writing, skip the DSP material and go
-there; `docs/remixer/PLACEMENT.md` says where the bytes land.
+A **bus client** (`send`) taps its track into the bus. A **ColdFire
+module** changes what the firmware does — parts, kits, menus, MIDI, bug
+fixes — and touches no audio; the community's mods (`modules/midi-scenes`,
+`modules/octakit`) are this shape. Its skeleton is `modules/_template_cf/`,
+its minimal example `modules/hello-dram/`, its section **"Declaring a
+ColdFire module"** below; `docs/remixer/PLACEMENT.md` says where the bytes
+land.
 
 ---
 
 ## Your first module: read HELLO WORLD
 
-`modules/hello/` is a linear volume knob and the **complete worked example**:
-one page-1 knob, 27 words of DSP, no state, no bus role, no shared window. It
-is the smallest thing the contract can express, and every piece a real module
-needs is there and no piece it does not:
+`modules/hello/` is a linear volume knob and the complete worked example:
+one page-1 knob, 27 words of DSP, no state, no bus role, no shared window.
 
 ```
 modules/hello/manifest.py    the declaration -- one knob, one donor, one id
 modules/hello/gain.asm       the engine -- init, proc, in place, 27 words
 modules/hello/README.md      status, measured vs inferred, what is open
-remixes/hello.py             a two-module remix: HELLO WORLD + SEND
-tools/verify/verify_hello.py        render gates with exactly predictable arithmetic
+remixes/hello.py             the remix: HELLO WORLD alone
+tools/verify/verify_hello.py render gates with exactly predictable arithmetic
 ```
 
 Build and hear it in three commands:
@@ -66,22 +55,18 @@ python3 tools/verify/verify_hello.py            # ALL GATES PASSED, 0 LSB
 commented and nothing else. Read `hello` for what a finished one looks like;
 copy `_template` when you start typing.
 
-**Its gates are the part worth stealing.** `verify_hello.py` drives the effect
-with a full-scale bipolar ramp and asserts the output *exactly*: unity at
-GAIN=127 is bit-identical, GAIN=0 is all zero, and every intermediate gain is
-`(in × g) >> 23` to 0 LSB. Arithmetic you can predict to the bit is what turns
-"it rendered and sounded plausible" into a measurement — and the negative half
-of that ramp is what proves the `mpy` did not silently become an `mpysu`.
-Nimbus's double-rate window (`CLAUDE.md`) got through *ear* review and every
-existing check; a DC gate caught it. Give your module one gate whose answer
-you can compute by hand.
+`verify_hello.py` drives the effect with a full-scale bipolar ramp and
+asserts the output exactly: unity at GAIN=127 is bit-identical, GAIN=0 is
+all zero, every intermediate gain is `(in × g) >> 23` to 0 LSB; the
+negative half of the ramp proves the `mpy` did not become an `mpysu`. Give
+your module one gate whose answer you can compute by hand (a DC gate caught
+Nimbus's double-rate window that ear review and every other check passed).
 
-⚠️ And make it name the effect it thinks it is measuring. An id the image does
-not implement **aliases to the fallback**, and dsp_host renders a perfectly
-plausible dry passthrough — `verify_hello.py` shipped with a hardcoded id,
-measured SEND after the module moved, and its unity gate *passed*. It now
-reads the id and the knob slot out of the manifest and refuses if they
-resolve to SEND's entry points. Do the same.
+Make the gate name the effect it measures: an id the image does not
+implement aliases to the fallback, and dsp_host renders a plausible dry
+passthrough that a unity gate passes. `verify_hello.py` reads the id and
+the knob slot out of the manifest and refuses if they resolve to SEND's
+entry points.
 
 ---
 
@@ -100,24 +85,21 @@ discovers every `modules/*/manifest.py` that exports a `MODULE`, so adding one
 is adding a directory. Directories starting with `_` are skipped, which is
 what keeps `modules/_template/` out of every build.
 
-`tools/remix/schema.py` is the vocabulary and is worth reading in full — it is
-short, and its comments carry the reasoning behind each field.
+`tools/remix/schema.py` is the vocabulary; its comments carry the reasoning
+behind each field.
 
-Copy `modules/_template/` to start (and read `modules/hello/` for a
-finished one), and `make remix` opens the remixer
-(`tools/remix/app.py`, Textual — provisioned by `make emu-setup`; the full
-manual is `docs/remixer/REMIXER.md`). Its home
-view is a RIG of eight tracks: assign effects, dial their manifest-named
-knobs, render and hear them. Its REMIX view is the composer: collisions, the
-FX2 menu your selection produces, its word cost against the donor region,
-save/load, build and check.
+Copy `modules/_template/` to start. `make remix` opens the remixer
+(`tools/remix/app.py`, Textual, provisioned by `make emu-setup`; manual in
+`docs/remixer/REMIXER.md`): AVAILABLE, LOADED and UNIT panes, the FX2 menu
+your selection produces, its word cost against the donor region, build and
+check.
 
 The remixer derives a **category** and a **track range** for every module
 (`tools/remix/rig.py`) rather than asking for new declarations:
 
 - **bus effect** (`harness.is_server`) — lives in ONE payload, which the
   manifest declares (`dsp.payloads`); payload A serves tracks 5-8, payload B
-  serves tracks 1-4 (the measured 10 Aug 2026 inversion). A server that does
+  serves tracks 1-4 (measured). A server that does
   not declare a single payload is refused, not guessed at.
 - **insert** (a `DSP_EFFECT` with a menu, no server role) — both payloads,
   any track.
@@ -353,8 +335,9 @@ build writes is its list row and its cursor position; `verify_menu` checks
 that its descriptor and id entry are byte-identical to stock. A stock
 effect a remix leaves *out* is left alone entirely — an old project that
 selects it still runs it, it just has no row — which is what keeps FX1
-whole. `remixes/restored.py` is `bus` plus the seven that can sit
-beside the servers.
+whole. `bus` plus FILTER, EQUALIZER, DJ EQ, PHASER, COMPRESSOR, LO-FI and
+DELAY is the selection that keeps every stock effect that can sit beside
+the servers.
 
 `remixes/restock.py` is all fourteen and nothing else: zero words placed,
 all three reverbs alive — the unit's own chooser, rebuilt from our tables.
@@ -377,8 +360,7 @@ Two rules, both enforced:
   capped at the screen's seven, so it scrolls as stock's fifteen-row list
   does. Seven or fewer stays where it was, byte for byte. ⚠️ Scrolling our
   relocated list on the real panel is inferred from stock behaviour, not
-  yet measured — `restored` is the first image with more than seven rows
-  and is unflashed.
+  yet measured; no image with more than seven rows has been flashed.
 
 Stock rows appear in the remixer (a STOCK FX2 group in the composer, any
 track in the rig) **with their real knobs**: `stock.py` reads each
@@ -965,7 +947,7 @@ and the build writes not one byte, which is what keeps every remix that
 predates this byte-identical.
 
 ```python
-REMIX = Remix(name="bothslots", doc="…",
+REMIX = Remix(name="warped-fx1", doc="…",
               modules=("WARPFOLD",), fallback="NONE",
               # FX1's chooser, in its own row order. Six of stock's ten,
               # WarpFold among them; FLANGER, CHORUS, SPATIALIZER and COMB
@@ -1019,9 +1001,9 @@ classes are refused:
 
 ⚠️ **The first is measured, not reasoned.** It is `docs/firmware/DSP.md`'s "wrong
 claim 1", bisected on hardware: a 16K layout placed at an FX1 base "runs to
-`0x53ff`, through the other FX1 buffers and into FX2 slot 0". **NIMBUS LITE
-reads the allocator and is exposed** — the first draft of the schema comment
-claimed nothing of ours was, having checked only the fixed-base modules.
+`0x53ff`, through the other FX1 buffers and into FX2 slot 0". A module that
+sizes its buffer from the allocator (`Claims.stock_instance_buffer`) is
+exposed to it; `state.fx1_hazard` classifies every module.
 
 The second is not a *new* hazard: Nimbus is already documented "one per
 core" because its buffers are fixed rather than per-instance. An FX1 row
@@ -1066,7 +1048,7 @@ a promise the module's render gate must prove: an FX2-slot render
 seeing no write above `0x3fff` on every FX1 base. ⚠️ FX1 bases are
 `0x1000 0x1c00 0x2800 0x3400` — only 1,024-aligned on two of the four — so
 modulo addressing over more than 1,024 words needs the linear-plus-mask
-idiom (`modules/nimbuslite/`), not an `m` register.
+idiom (`modules/modulation/`), not an `m` register.
 
 #### What is actually different about FX1
 
@@ -1119,7 +1101,7 @@ module is packed into a run it fits.
 ⚠️ **A module must fit inside ONE run.** It is a single code stream, so
 3,880 words spread over three runs will not take a 3,500-word module — the
 remixer names the largest opening beside the total for that reason, and
-harvesting an effect that sits *between* two runs joins them. Until 3 Sep
-2026 the build wrote one contiguous stream and only the largest run was
-placeable at all; every other run was given up and then left empty.
-`remixes/scattered.py` is the worked example.
+harvesting an effect that sits *between* two runs joins them.
+`tools/remix/selftest.py`'s placer probe (STREAMZ + WARPFOLD with an FX1
+list that drops SPATIALIZER and COMB) builds the three-run case and
+requires both modules to land in different runs.

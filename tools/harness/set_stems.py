@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Stems for one part of a real project: each track's STATIC sample, at the
 slot's gain, cut to --seconds -- what rig_render --project needs to render
-the rig on the set (Stage D, 13 Sep 2026).
+the rig on the set (Stage D).
 
     python3 tools/harness/set_stems.py ~/octa/backups/OCTABAM_RIG --bank 1 --part 1 \\
         --audio ~/octa/backups/ChongBongolo26_20260904_preflash4 --out out/set/A1/stems

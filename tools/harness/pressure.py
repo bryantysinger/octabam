@@ -89,11 +89,6 @@ def price(a):
     filter_listed = "FILTER" in set(remix.modules) | set(remix.fx1)
     filter_replaced = any(_all[k].menu is not None and _all[k].menu.replaces == "FILTER" for k in mods)
     credit = 0 if (filter_listed and not filter_replaced) else 4 * 192
-    # ⚠️ TWO LINES, because the credit is arithmetic and the hang is measured:
-    # tag 91 (4 Sep 2026) hung the sequencer with three stations beside the
-    # reverb at a STATIC 3,106 -- under USABLE, let alone USABLE + credit --
-    # so on core 0 the credited line is optimistic and the flat line is the
-    # one to design against until the burn sweep says otherwise.
     wall = a.wall or cc.USABLE
     wall_credit = cc.USABLE + credit
     OUT.mkdir(parents=True, exist_ok=True)

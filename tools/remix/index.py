@@ -3,8 +3,7 @@
 
     python3 tools/remix/index.py
 
-This is the authoritative list. Anything written in a README is a copy, and
-copies go stale -- so when the two disagree, this is right.
+The authoritative list; a README's table is a copy.
 """
 
 import pathlib
@@ -20,8 +19,7 @@ def touches_coldfire(m) -> bool:
     """Does this module change the OS image outside its own chooser row --
     caves, linked units, detours, pokes, grown tables or a runtime?"""
     return bool(m.cf_patches or m.linked or m.detours or m.pokes
-                or m.tables or m.runtime is not None
-                or m.runtime_ext is not None)
+                or m.tables or m.runtime is not None)
 
 
 def matrix(mods):

@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
-"""Decodificador offline del OS `.bin` (ELUP) del Octatrack.
+"""Offline decoder for the Octatrack's OS `.bin` (ELUP).
 
-Reimplementa FUN_4007f748 (reversado en Ghidra): quita la cabecera, desofusca el
-payload con el cifrado XOR-con-realimentacion y verifica el checksum aditivo — el
-MISMO que el firmware comprueba antes de aplicar la actualizacion. Si el checksum
-cuadra, la desofuscacion es demostrablemente correcta.
+Reimplements FUN_4007f748: strips the header, de-obfuscates the payload with
+the XOR-with-feedback cipher and verifies the additive checksum the firmware
+checks before applying an update.
 
-Formato ELUP (big-endian, words de 32 bits):
+ELUP (big-endian, 32-bit words):
   word[0]      = magic 0x454C5550 ("ELUP")
-  word[1]      = semilla de realimentacion (k inicial)
-  word[2..N-2] = payload ofuscado
-  word[N-1]    = checksum ofuscado
+  word[1]      = feedback seed (initial k)
+  word[2..N-2] = obfuscated payload
+  word[N-1]    = obfuscated checksum
 
-Constantes (extraidas de la imagen del OS):
-  XOR A = 0x9E3B16A2 (variante rotate16)   mezcla C3 = 0x360FA955
-  XOR B = 0x764E28CA (variante byteswap)   mezcla C7 = 0xEF4A9AB6
-La variante por-word la elige el bit 0x800000 de k (el word cifrado anterior).
+Constants (from the OS image):
+  XOR A = 0x9E3B16A2 (rotate16 variant)   mixer C3 = 0x360FA955
+  XOR B = 0x764E28CA (byteswap variant)   mixer C7 = 0xEF4A9AB6
+The per-word variant is chosen by bit 0x800000 of k (the previous cipher
+word).
 
-Uso: python3 bin_decode.py <os.bin> [-o payload_desofuscado.bin]
+Usage: python3 bin_decode.py <os.bin> [-o payload.bin]
 """
 import argparse
 import struct
@@ -55,7 +55,7 @@ def main():
 
     data = Path(args.file).read_bytes()
     if len(data) % 4:
-        print(f"[!] tamaño no múltiplo de 4 ({len(data)}); trunco al último word")
+        print(f"[!] size not a multiple of 4 ({len(data)}); truncating to the last word")
         data = data[: len(data) // 4 * 4]
     words = list(struct.unpack(f">{len(data)//4}I", data))
     n = len(words)
@@ -79,7 +79,7 @@ def main():
     ok = acc == expected
     print(f"\nchecksum calculado (Σ payload) = 0x{acc:08x}")
     print(f"checksum esperado (word final)  = 0x{expected:08x}")
-    print(f"VALIDACIÓN: {'✓ COINCIDE — desofuscación correcta' if ok else '✗ no coincide'}")
+    print(f"CHECKSUM: {'matches -- de-obfuscation correct' if ok else 'does not match'}")
 
     if args.out:
         Path(args.out).write_bytes(struct.pack(f">{len(plain)}I", *plain))

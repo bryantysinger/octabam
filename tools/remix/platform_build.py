@@ -2,21 +2,6 @@
 image, packed, and appended after the OS behind the loader (loader.S)
 together with any other payload -- Em's Kit runtime -- as equals.
 
-Placement (docs/remixer/PLACEMENT.md): the runtime and its stage live in
-a RESERVE carved off the bottom of stock's audio page arena
-(tools/remix/arena.py) -- the one DRAM placement with a hardware record
-(Octakit's top 528 pages, octamax's bottom 64), 1,707 pages = 10 MiB by
-default. The build hands `build()` the reserve; the runtime is linked at
-its base and the stage (signature + packed stream) sits after the
-runtime image, page-aligned. Two earlier homes are RETRACTED: "8.8 MB
-free at 0x47700000" (the delay rings, cleared through the uncached alias
-~38 M instructions after the boot detour returns) and the ~101 KB above
-the rings (stock's engine task keeps its sector bounce buffers there and
-fills 0x47fc8fe4.. at project load when static samples are present).
-Octakit's stage stays at HER address (0x47fc7410) because her post-clear
-relocation re-depacks from exactly there -- her call. The uncached alias
-(+0x08000000) is what the loader writes through, as hers does.
-
 One link for all DRAM units means cross-unit symbols resolve without any
 --defsym; other payloads' symbols (her gk_*) are offered as defsyms so a
 unit may call into them. The loader itself is assembled here with the

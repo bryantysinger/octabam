@@ -1,65 +1,15 @@
-| Recorder spacing -- ColdFire code cave (12 Sep 2026, RTOS_FORK 10.56)
-|
-| Hooked from 0x40006e0c in the per-frame recorder function (0x400068e4),
-| at the tail of the fixed-RLEN length converter: the three displaced
-| instructions turn the EMAC product into the length and are replayed
-| first.  The converter's length is CONSTANT for a whole loop while the
-| sequencer arms at floor(k x period) -- an alternating spacing -- so on
-| the passes where they disagree the buffer's wrap splices two input
-| moments two samples apart instead of one.  That is the -26 dB scuff on
-| alternate bars measured on OCTABAM82 (RTOS_FORK 10.53), and it vanishes
-| when the recording is exactly as long as the gap to the next arm.
-|
-| recorder-seam asked the LANE for the next event and was falsified: on a
-| one-trig-per-bar lane the event resolves to the past, L' came out 0 and
-| its guard refused all 1,200 calls (10.55).  This cave never asks.  The
-| sequencer arms at floor(k x N/D) with N = RLEN x 15,876,000 and
-| D = tempo24, so with q, r = divmod(N, D) every spacing is q plus a
-| Bresenham overflow, and the residue is recoverable from the CURRENT arm
-| alone because arm_k = k x q + floor(k x r/D) with floor(k x r/D) < q,
-| which makes k = arm/q exact (past 165,000 passes at RLEN 16 / 128).
-| RLEN comes back out of the stock length -- RLEN = round(L x D / K) --
-| which is what lets this be state-free: no scratch word, no residue kept
-| across passes, no ledger claim but the hook itself.
-|
-|     RLEN = (L x D + K/2) / K                 K = 15,876,000
-|     N    = RLEN x K                          <= 1,016,064,000, fits in 32
-|     q    = N / D  ;  r = N - q x D           (V4e has no remu.l)
-|     r == 0  ->  L' = q                       clean tempo: q == L, a no-op
-|     k    = arm / q                           arm = 0x46c7fa84[track]
-|     L'   = q + floor((k+1)r/D) - floor(k x r/D)
-|
-| The last line replaces the model's explicit residue: the overflow test
-| acc + r >= D is exactly floor((k+1)r/D) > floor(k x r/D), so two divides
-| do it and no remainder is ever formed.  Validated against the
-| sequencer's own grid on 115,200 (tempo, RLEN, pass) triples, and over
-| all 11,208 (tempo, RLEN) pairs in 60.0..200.0 the result stays within
-| one sample of the stock length -- so the +/-1 guard is kept, and at
-| every tempo whose period is an integer q equals the stock length and
-| this cave writes back the value that was already there.
-|
-| Reads:  0x80001814 (tempo24), 0x46c7fa84[track] (the arm sample the
-|         firmware stores at the state-1 commit), 164(%sp) (the track).
-| Writes: nothing but d4, the length.
-| Position-independent: no reference to itself.
-|
-| Every divide is guarded: D == 0, RLEN == 0 and q == 0 all fall through
-| to the stock length rather than trapping in a boot-critical path.  The
-| divides also set Z from the QUOTIENT (Musashi's divl handler, and the
-| CFPRM), which is what each `beq` after one tests.
-|
-| ⚠️ DO NOT "FIX" THE DISASSEMBLY.  objdump prints every `divu.l %dN,%dM`
-| here as `remul %dN,%dM,%dM` -- 0x4c4x is one encoding family and GNU
-| names it after the remainder form.  On ColdFire the extension word's
-| bits 12-14 are the dividend/quotient register Dq and bits 0-2 the
-| remainder register Dr, and the QUOTIENT is written only when Dr == Dq
-| (`vendor/mc68k/Musashi/m68kops.c` m68k_op_divl_32_d, and the CFPRM's
-| DIVU.L <ea>,Dx, whose extension is exactly that).  `divu.l %d1,%d0`
-| assembles to 4c41 0000 -- Dq = Dr = d0 -- so d0 gets the quotient, which
-| is what this cave wants.  The distinct-register spelling
-| `remu.l %d1,%d3:%d0` is a remainder-ONLY instruction and leaves the
-| quotient unwritten, so there is no way to get both from one divide here:
-| that is why r is formed as N - q x D.
+| RECORDER SPACING -- hooked at 0x40006e0c, the length converter's last three
+| instructions (replayed). Makes a fixed-RLEN recording exactly as long as
+| the gap to the next arm, from the current arm alone:
+|     q, r = divmod(RLEN x 15,876,000, tempo24)      RLEN recovered from L
+|     k    = arm / q                                  arm = 0x46c7fa84[track]
+|     L'   = q + floor((k+1)r/D) - floor(k r/D)
+| Reads 0x80001814 (tempo24), 0x46c7fa84[track], 164(%sp) (the track).
+| Writes nothing but d4, the length; every other path keeps RLEN's L. The
+| +/-1 guard refuses an L' further than one sample from L.
+| objdump prints every divu.l here as remul (0x4c4x is one encoding family);
+| with the extension word's Dq and Dr equal, ColdFire writes the quotient.
+| Assemble: m68k-elf-as -mcpu=5475 -o spacing.o spacing_cave.s
 
         .text
 cave:

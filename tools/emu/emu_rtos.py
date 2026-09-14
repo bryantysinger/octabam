@@ -9,31 +9,6 @@ intno 256 instead of executing it), PIT0 is modelled as a timer counted in
 SAMPLES, and the two interrupt controllers are register-level models whose
 asserted sources are injected between bursts.
 
-M6a (done 6 Sep 2026): boot, dispatch the handoff, run until every task has
-been created and each has run at least once. The exit gate compares what the
-emulator observes against EXPECTED_TASKS below -- eleven tasks, measured
-here and written back into docs/firmware/RTOS_FORK.md §2 (the scope's eight came from
-a literal scan that missed the create sites called through a register).
-
-Three facts from the 6 Sep 2026 idle read that shape the loop (byte-exact,
-scripts/disasm.sh emac):
-  * the main task parks in `bras .` at 0x4001fc9c and never blocks, so
-    level 0 is never empty: no idle task exists, and a PC parked there means
-    "skip to the next timer event";
-  * a reschedule IS a forced PIT0 interrupt -- signal/post set INTFRCH bit 11
-    of INTC1 (source 43, vector 171 = the scheduler entry), which lands only
-    once the primitive restores the caller's SR; so an INTFRC write ends the
-    burst at once and a pending-but-masked interrupt is re-checked at a fine
-    grain until the IPL drops;
-  * make-ready (0x4000063c) does NOT force: after main creates the seven
-    tasks nothing switches until the first real tick.
-
-Time accounting: a burst is charged its full instruction quantum even when
-an exception or a hook stopped it early (Unicorn does not report how far it
-got); the error is bounded by one quantum per event and the clock runs
-slightly FAST, never slow. `--ips` (instructions per sample) is a knob with
-a default, not a measurement -- RTOS_FORK.md §6.
-
     .venv/bin/python3 tools/emu/emu_rtos.py --project <dir> --set OCTABAM --name RIG --ms 100
 """
 import argparse
@@ -48,7 +23,6 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import too
 import emu_bringup as eb           # noqa: E402
 import emu_card as ec              # noqa: E402
 
-# --- the kernel, byte-exact (docs/firmware/RTOS_FORK.md §2) --------------------------
 VBR = 0x40000000                   # [0x400b9668]; the image's own first KB
 SCHED = 0x40000550                 # one handler for trap #0 (vec 32) and PIT0 (vec 171)
 SCHED_RTE = 0x400005a6             # the scheduler's rte: a task is being (re)entered
@@ -68,15 +42,6 @@ KERNEL_POST = 0x40000c3c           # post(queue, msg) -- non-blocking, see Rtos.
 SYS_TCB = 0x46c7bed8
 SYS_QUEUE = 0x460d17ae             # the sys task's own command queue
 SYS_MSG_SCRATCH = 0x46c00000       # scratch for a hand-built message -- see request_card_mount;
-                                   # inside the boot's 0x46000000+32MB map, far from any named global
-# The bank blobs in RAM: PART_PTR (ec.PART_PTR, 0x46c82456) = BANK_BLOB +
-# bank * BANK_STRIDE, i.e. the CURRENT BANK's data; 0x400e21e0 is bank A,
-# 0x4017d520 bank B. 0x80000002 is the current BANK (emu_card.FW_CUR_BANK),
-# 0x80000004 the current pattern. Read 6 Sep 2026 from the engine's LOAD
-# PROJECT handler, which parses the project file's BANK= and PATTERN= keys
-# (0x40087d0e..0x40087d44) -- correcting an earlier reading of this module
-# that called 0x400e21e0 an "empty sentinel" and 0x80000002 the current
-# track (docs/firmware/RTOS_FORK.md section 7 has the retraction).
 BANK_BLOB = 0x400e21e0
 BANK_STRIDE = 635712
 CUR_BANK = 0x80000002
@@ -84,18 +49,6 @@ CUR_PATTERN = 0x80000004
 ENGINE_BANK_WRITE = 0x40087d44     # LOAD PROJECT writes PART_PTR from the file's BANK= here
 SELECT_BANK_CASE = 0x40062288      # sys table[20]: "select bank msg[1]" -- switch the working bank
 
-# M6d: the real key-press path. UI_QUEUE (0x460d1664) is what FW_TRANSPORT
-# posts to (EMU.md, "a post to the UI queue"); its ring buffer sits at
-# 0x460d4fd4 (queue_init site 0x40040b70), 0x54 bytes past the TCB this
-# module used to call "ui" -- which is why that TCB was misnamed (see the
-# TASK_NAMES retraction below). The keys themselves are found in a jump
-# table at 0x400d2d54 (8 track-key entries, a gap, then a function-key run);
-# REC/PLAY/STOP sit at consecutive indices 24/25/26. All three call chains
-# (checked by disassembly, 6 Sep 2026: 0x400a013c, 0x400a030c, 0x400a14a4,
-# 0x400a10c8, 0x40033968, 0x4009b290 -- everything PLAY and REC reach) are
-# free of the blocking primitives (0x40000818/0x400007a4/0x40000d00), so
-# call_as_main is safe for both, the same way it already was for
-# FW_TRANSPORT/FW_START_TRACK.
 UI_QUEUE = 0x460d1664
 KEY_REC = 0x4000a274
 KEY_PLAY = 0x4000a200               # gated on 0x80000029 (nonzero from boot in the test project);
@@ -104,20 +57,13 @@ KEY_STOP = 0x4000a1e0
 REC_ARM = 0x800066a0                 # the record-arm state REC's own handler tests
 TRANSPORT = 0x800065b8               # 0 -> 1 when the transport starts (§9.4)
 # ⚠️ BOTH ARE LONGWORDS, NOT BYTES. The transport start is a 4-byte store of
-# 1 at 0x800065b8 (measured 6 Sep 2026: `[0x800065b8] <- 0x1 (4)` at pc
+# 1 at 0x800065b8 (measured: `[0x800065b8] <- 0x1 (4)` at pc
 # 0x4009c3d4 in main), so the byte AT 0x800065b8 stays 0 and the 1 lands in
 # 0x800065bb. Reading either of these a byte at a time reports "never
 # changed" no matter what the firmware does -- read the word.
 def _word(rt, addr):
     return int.from_bytes(rt.uc.mem_read(addr, 4), "big")
 
-# The tasks, as MEASURED under the real scheduler on 6 Sep 2026 (the create
-# hook below): (tcb, entry, prio, stack, size, creator). Main is created by
-# the boot before our hooks exist. RTOS_FORK.md §2's table of eight was read
-# from the five `jsr` create sites the literal scan finds; the other five
-# sites call through a register and were missed. Ten are created: seven by
-# main's init list, three by the prio-1 task at 0x40061a94 once its own
-# start-up traffic (serial link, SPI) is done.
 EXPECTED_TASKS = (
     (0x46c7fb0c, 0x40005540, 6, 0x46c7ea20, 0x1000, MAIN_TCB),     # voice / DSP mailbox
     (0x460fab80, 0x40091d18, 2, 0x460fabd4, 0x2000, MAIN_TCB),
@@ -131,14 +77,6 @@ EXPECTED_TASKS = (
     (0x460d59d4, 0x40056c40, 3, 0x460d51d4, 0x0800, 0x46c7bed8),   # ui -- the real UI_QUEUE receiver (M6d)
 )
 ALL_TCBS = frozenset(t[0] for t in EXPECTED_TASKS) | {MAIN_TCB}
-# M6d retraction: 0x460d4f80 (entry 0x4005593c) was named "ui" by
-# neighbourhood -- its ring buffer (0x460d4fd4) sits just past this TCB, but
-# the task itself waits on an unrelated counting semaphore (0x46c7e0e2) and
-# spends its life decrementing a 136-slot key-repeat timer array
-# (0x4001387c). The task that actually calls queue_receive(UI_QUEUE)
-# (0x40000d00, confirmed by disassembly 6 Sep 2026) is 0x460d59d4, entry
-# 0x40056c40 -- previously the unidentified "p3". Names swapped here to
-# match; RTOS_FORK.md's table carries the same correction.
 TASK_NAMES = {0x46c7fb0c: "voice", 0x460bcc2c: "storage", 0x460d4f80: "keyrepeat",
               0x460fab80: "p2a", 0x460ffd44: "p2b", 0x460e0e38: "p2c",
               0x460ddde4: "engine", 0x46105508: "p1b", 0x46c7bed8: "sys",
@@ -153,13 +91,6 @@ PLL_REG, PLL_VAL = 0xfc0c4000, 0x16000000       # emu_bringup's one load-bearing
 
 SAMPLE_HZ = 44100.0
 
-# M6c: the DSP audio-frame interrupt (INTC0 source 1, vector 0x41) is a
-# free-running hardware clock, unlike PIT0/PIT1 -- fixed period, no enable
-# bit, no registers (RTOS_FORK.md §4: "a frame interrupt every 16 samples").
-# Its ICR level and CIMR unmask are programmed by main's own boot tail
-# (0x4001fc2e..0x4001fc3e, byte-exact from the M6a scan) and its handler
-# installed on the vector by main's own init (0x4001fbf8) -- both run for
-# real under our scheduler, so nothing needs seeding here, only the source.
 FRAME_PERIOD = 16.0                # samples per DSP-frame interrupt
 FW_FRAME_ISR = 0x4000aad0          # the frame builder (emu_frames.FW_FRAME_ISR)
 FW_TRANSPORT = 0x4009b964          # (arg) transport start/stop; start posts to the UI queue
@@ -248,7 +179,7 @@ class Pit:
 
 class Intc:
     """MCF5445x interrupt controller (MCF54455RM rev 5 ch. 17; "MCF547x" here
-    until 6 Sep 2026 was wrong -- same register map, different chip): IMRH/L
+    until was wrong -- same register map, different chip): IMRH/L
     +0x08/+0x0c, INTFRCH/L +0x10/+0x14,
     SIMR/CIMR bytes at +0x1c/+0x1d (value = source, 0x40 = all), ICRn at
     +0x40+n. IPRH/L (+0x00/+0x04) read back the asserted sources. Vector =
@@ -274,7 +205,7 @@ class Intc:
 
         A FORCED request ignores the mask: "The assertion of an interrupt
         request via the interrupt force register is not affected by the
-        interrupt mask register" (MCF54455RM rev 5, 17.2.3, read 6 Sep 2026).
+        interrupt mask register" (MCF54455RM rev 5, 17.2.3, read).
         The firmware depends on it -- the sequencer tick (INTFRCH0 bit 0,
         source 32) is installed with ICR 3 at 0x400a10a4 and never unmasked
         anywhere in the image (15 CIMR sites, none names 32; no IMRH/IMRL
@@ -317,7 +248,7 @@ class Intc:
             self.imr = 0xffffffff_ffffffff if val & 0x40 else self.imr | (1 << (val & 0x3f))
         elif off == 0x1d and size == 1:      # CIMR: clear mask
             # ...and MASKALL (IMRL bit 0) with it: nothing in the image ever
-            # writes IMRH/IMRL (literal scan, 6 Sep 2026), the firmware unmasks
+            # writes IMRH/IMRL (literal scan), the firmware unmasks
             # only through CIMR, and the unit takes interrupts. Inferred.
             self.imr = 0 if val & 0x40 else self.imr & ~((1 << (val & 0x3f)) | 1)
         elif 0x40 <= off < 0x80 and size == 1:
@@ -327,7 +258,7 @@ class Intc:
 class Uart:
     """One of the serial blocks at 0xfc064000/0xfc068000, modelled from the
     firmware's own use of it (handler 0x400109bc, ring writer 0x40010b1c,
-    polled sender 0x40010a4c; read 6 Sep 2026):
+    polled sender 0x40010a4c; read):
       +0x04 status: bit 0 = receive ready (must read 0 with nothing queued,
             or the handler's receive loop never ends), bit 2 = transmit ready
             (the code loads the byte into CCR and tests Z);
@@ -373,7 +304,7 @@ class Dspi:
     """The DSPI at 0xfc05c000 as a loopback: every frame pushed (PUSHR +0x34)
     yields one received frame (POPR +0x38, value 0), and the status register
     (+0x2c) reports the receive count in bits 4-7 with TCF (31) and TFFF (25)
-    set. Sites read 6 Sep 2026: 0x4001c398 pushes three and waits for three;
+    set. Sites read: 0x4001c398 pushes three and waits for three;
     0x40040b94 waits for two (the card boot's fixed reply of 2, which can
     never satisfy the first). What sits on the far end is not modelled: the
     reply is 0 and the config registers are stored and read back.
@@ -408,7 +339,7 @@ MEDIA_KICK_VAL = 0x00020002
 # and spins reading it back until bits 0/16 (the ones the busy mask 0x10001
 # tests) clear -- a start/busy register for a block nothing else in this
 # trace touches (not the ATA task-file window; a card-presence debounce or a
-# small DMA channel, address range unidentified further, 6 Sep 2026). Once
+# small DMA channel, address range unidentified further). Once
 # clear, the SAME handler re-reads the register and tests bits 1/17
 # separately, gating the two posts to the storage queue (0x4001e844,
 # 0x4001e8fc) that a fully all-ones or fully-zero reply both defeat: all-ones
@@ -428,7 +359,7 @@ EDMA_TCD = 0xfc045000              # 16 channels x 32 bytes: SADDR +0, ATTR/SOFF
 
 class Edma:
     """The MCF5445x eDMA, as far as the DSP frame exchange and the ColdFire's
-    per-frame EMAC work use it (read 6 Sep 2026, Fable review of M6c).
+    per-frame EMAC work use it (read, Fable review of M6c).
 
     Registers: TCDs at 0xfc045000, 32 bytes per channel (SADDR +0, NBYTES
     +8, DADDR +0x10, CITER +0x14, BITER +0x1c, CSR +0x1e); control bytes at
@@ -448,7 +379,7 @@ class Edma:
     thing that has to be right, because the exchange is a two-frame
     pipeline with ~64k+ instructions of EMAC work (0x400031a0) inside it.
     Three kinds of transfer, told apart by how they start and what they
-    touch (TCDs read 6 Sep 2026: ch0 RAM->0x2000001c, ch1/6/7 0x2000001c->RAM,
+    touch (TCDs read: ch0 RAM->0x2000001c, ch1/6/7 0x2000001c->RAM,
     ch2/3 0x4f502c10->RAM, i.e. the delay ring the stock-delay finding
     named):
     - a CSR.START of a host-port channel is the frame's audio stream; the
@@ -605,14 +536,6 @@ class Rtos:
         self.uart64, self.uart68 = Uart("UART@fc064000", 0xfc064000), Uart("UART@fc068000", 0xfc068000)
         self.dspi = Dspi()
         self.edma = Edma()
-        # M6c: the DSP frame clock (source 1, FRAME_PERIOD above). A latch:
-        # set at every 16-sample boundary, cleared when delivered. Not a
-        # count -- while the source is masked (boot, and the handler's own
-        # self-mask for the whole DSP exchange) a real edge source remembers
-        # one edge, not how many it missed; a count here delivered ~540
-        # phantom frames back to back after main's unmask (measured 6 Sep
-        # 2026). The handler re-arms itself only through the eDMA exchange
-        # (RTOS_FORK.md section 8); the ISR's `rte` is not the ack.
         self.next_frame = FRAME_PERIOD
         self.frame_pending = False
         self.frame_count = 0
@@ -621,11 +544,6 @@ class Rtos:
         # report can state it instead of leaving it to be inferred from the
         # trig log; the C++ port counts the same vector's acknowledgements.
         self.tick_count = 0
-        # INTC0 sources: 1 = DSP frame (vector 0x41); 27/28 -> vectors
-        # 0x5b/0x5c -> handlers 0x400109bc/0x40010b88 (vector-install scan,
-        # 6 Sep 2026); INTC1 source 43 = PIT0.
-        # INTC0 sources 8..23 = eDMA channels 0..15 (MCF5445x); 8, 9 and 15
-        # are the ones the frame exchange raises (RTOS_FORK.md section 8).
         edma_lines = {8 + c: (lambda c=c: self.edma.irq[c]) for c in range(16)}
         self.intc0 = Intc("INTC0", 64, {1: lambda: self.frame and bool(self.frame_pending),
                                         27: lambda: self.uart64.irq, 28: lambda: self.uart68.irq,
@@ -641,7 +559,7 @@ class Rtos:
     # -- attach --------------------------------------------------------------
     def attach_card(self, card):
         """Interpose on the card's task-file window so the card raises INTRQ
-        the way ATA does (handler 0x40015304, read 6 Sep 2026: one sector per
+        the way ATA does (handler 0x40015304, read: one sector per
         interrupt, completion signalled when the count reaches zero):
         asserted when a command completes or a sector is ready, after each
         sector consumed with more to come, and after each sector absorbed by
@@ -710,7 +628,7 @@ class Rtos:
                 ("sr", eb.UC_M68K_REG_SR)]
 
         # Kept in a list AND traced: the trace-only form printed nothing
-        # without --trace -- the third silent instrument of 6 Sep 2026
+        # without --trace -- the third silent instrument of
         # (after --watch-calls and --watch-mem). The CLI prints the list.
         self.pc_hits = getattr(self, "pc_hits", [])
 
@@ -767,7 +685,7 @@ class Rtos:
         uc.mem_write(SR_TRAMP, bytes.fromhex("40c0" "4e71"))     # movew %sr,%d0 ; nop
         # MAC-with-load words the core would run natively and wrongly: stop
         # BEFORE them (a code hook's emu_stop lands before the instruction,
-        # measured 8 Sep 2026) and hand them to the shim as if they had
+        #) and hand them to the shim as if they had
         # trapped. See emu_bringup.native_macload_sites.
         self.native_macload = eb.native_macload_sites(uc)
         for site in self.native_macload:
@@ -790,7 +708,7 @@ class Rtos:
                 # An all-ones value is a read-modify-write of the stub's
                 # all-ones reply (PIT0's `PCSR |= 9` arrives as 0xffff), not a
                 # value the firmware chose: skip it. Nothing in the boot writes
-                # all-ones on purpose (7,886 writes, stock image, 6 Sep 2026).
+                # all-ones on purpose (7,886 writes, stock image).
                 if val == (1 << (size * 8)) - 1:
                     continue
                 self._pwrite(a, size, val, replay=True)
@@ -889,7 +807,7 @@ class Rtos:
         # force taken under IPL 7 that was harmless (the bit was already set,
         # nothing re-fired). For a force taken at IPL 0 it is a LIVELOCK: the
         # interrupt is delivered at once, its handler clears the bit and
-        # returns to the same `orl`, which forces again -- measured 8 Sep 2026
+        # returns to the same `orl`, which forces again --
         # on SET MAIN LEVEL (0x40033ece -> vector 0x62 -> 0x40033ece, for
         # ever, main never ran). The chip completes the instruction first.
         # Every INTFRC writer in the image is a 6-byte `orl/andl Dn,abs.l` or
@@ -909,7 +827,7 @@ class Rtos:
         """The true SR. NOT `reg_read(SR)`: at a burst boundary Unicorn
         2.1.4's m68k SR read computes the condition codes wrong AND installs
         them, so the next conditional branch goes the wrong way (measured
-        6 Sep 2026 with a cmpl/bne pair split across a burst: Z lost, branch
+        with a cmpl/bne pair split across a burst: Z lost, branch
         taken; reading D2 instead is harmless). Executing `movew %sr,%d0`
         from a trampoline flushes the flags through the translator's own
         path and returns them intact. Cached until the next burst."""
@@ -1081,7 +999,7 @@ class Rtos:
         self.pc_samples[(self._cur(), self.pc)] += 1
         self._tick_timers()
 
-    # -- THE TAPE (tier 2 of the emulator uplift, 7 Sep 2026) ----------------
+    # -- THE TAPE (tier 2 of the emulator uplift) ----------------
     # Everything the ColdFire pushes towards the DSPs, in order, with the frame
     # it happened in: every eDMA transfer whose source or destination is the
     # host-port window (the TCD's fields and the source bytes, read at the
@@ -1156,12 +1074,12 @@ class Rtos:
             self.step(); n += 1
 
     def arm_phase_fix(self):
-        """RETIRED 7 Sep 2026 (RTOS_FORK section 10.16): the negative timing
+        """RETIRED (RTOS_FORK section 10.16): the negative timing
         byte this lever cleared was an artefact of stock Unicorn's halved
         fractional EMAC; with the fixed library (scripts/build_unicorn.sh)
         the trig arms on its own at every tempo tried. Kept, logged, harmless.
 
-        COMPENSATION, not fidelity (RTOS_FORK section 10.14, 7 Sep 2026):
+        COMPENSATION, not fidelity (RTOS_FORK section 10.14):
         at the recorder arm caller's entry (0x40005ff0) clear bit 7 of the
         trig word when the track has NO recorder record yet (state byte +2
         zero in both banks of 0x80004f1c). Bit 7 is the sign of the frame
@@ -1211,7 +1129,7 @@ class Rtos:
         on hardware -- Fact 1, RTOS_FORK.md -- so it is the kernel's de facto
         idle backstop: main being non-ready is a state the block path never
         expects. Borrowing main to call FW_CARD_INIT (which waits on a real
-        timer) proved this the hard way (6 Sep 2026): main blocked, nothing
+        timer) proved this the hard way: main blocked, nothing
         else was ready either, and the scheduler dispatched a garbage TCB
         (`rte ... would return to user mode`). A call that can block belongs
         to a real task instead -- post it a message and let it run for real
@@ -1239,7 +1157,7 @@ class Rtos:
 
     def request_card_mount(self):
         """Post to the SYS task's own queue (0x460d17ae) the message its
-        dispatch table (decoded 6 Sep 2026: table at 0x40061cfa, 78 entries,
+        dispatch table (decoded: table at 0x40061cfa, 78 entries,
         index = msg[0]-1) sends to table[15] = 0x40061f7c -- the case that
         checks `0x460d1cb8` (card ready) and, if clear, calls FW_CARD_INIT
         for real from SYS's own task context (priority 1, safe to block).
@@ -1268,7 +1186,7 @@ class Rtos:
         voice's level is multiplied by that table in the per-frame mixer
         (0x40004444). Neither emulator's load ever posts it, so until now
         every voice rendered at gain 0 and no track ever "started" (the
-        ColdFire port's O9b, 8 Sep 2026; route A showed 0 writes to the
+        ColdFire port's O9b; route A showed 0 writes to the
         table too). Post it after the load, as select-bank is. Returns the
         table's first longword."""
         self.run(until=lambda r: r.pc == MAIN_SPIN)
@@ -1288,7 +1206,7 @@ class Rtos:
         bank byte at its end, and by then `sys` has applied the engine's
         own reset-time "select bank 0" (it runs in the handler's real card
         waits, RTOS_FORK.md section 7), so the sequencer is left on bank A
-        with the pattern record of an empty bank (measured 6 Sep 2026: the
+        with the pattern record of an empty bank (measured: the
         step handler scheduled every track 3 frames out and never came
         back; cold, with no waits, gets the parsed bank). Non-blocking
         (plain stores + 0x40009e00), safe under call_as_main. Returns the
@@ -1301,7 +1219,7 @@ class Rtos:
         """Clear the project's CLOCK RECEIVE bit (0x80000028 bit 0) so the
         sequencer runs on its own clock -- with it set, as Sam's projects
         save it (the Rytm is master), the engine waits for MIDI clock that
-        never comes: 400 frames, zero ticks, no trig (measured 6 Sep 2026).
+        never comes: 400 frames, zero ticks, no trig (measured).
         The same switch as emu_frames.py's --internal-clock."""
         midi = self.uc.mem_read(FW_MIDI_SETTINGS, 1)[0]
         self.uc.mem_write(FW_MIDI_SETTINGS, bytes([midi & ~1]))
@@ -1324,7 +1242,7 @@ class Rtos:
         that far); `final_bank` is the current bank at the end of the run.
 
         THE TWO CAN DIFFER, and that is a real cross-task ordering, not a
-        load failure (root-caused 6 Sep 2026, correcting an earlier reading
+        load failure (root-caused, correcting an earlier reading
         of this code that mistook the bank byte for the current track and
         bank A's blob for an "empty" sentinel). The engine's LOAD PROJECT
         handler starts with a reset to bank A / pattern 1 that, among other
@@ -1346,21 +1264,12 @@ class Rtos:
         why it looked call_as_main-safe at first), but once a card IS
         present it does real FAT lookups (`0x40025230`) and blocks -- the
         same main-blocks-and-nothing-else-is-ready crash `FW_CARD_INIT` hit,
-        found the same way (6 Sep 2026). It is a pure diagnostic in route B
+        found the same way. It is a pure diagnostic in route B
         (its result is never used to gate the load); dropping it costs
         nothing here."""
         start = self.sample
         self.run(until=lambda r: r.pc == MAIN_SPIN)
         if names_early:
-            # ⚠️ AN EXPERIMENT, NOT A FIX, and it is off by default. `sys`'s
-            # media case (0x4006203a) reloads the current project when
-            # `strlen(0x100f8378)` is non-zero -- so whether the mount
-            # triggers a SECOND load depends only on whether the name has
-            # been written by the time `sys` gets the CPU. Route A writes it
-            # after; the C++ port writes it before, and loads twice
-            # (COLDFIRE_PORT.md O7b). Setting it early here makes route A do
-            # the same, which is what turns that account from a story into a
-            # measurement.
             ec.set_names(self, set_name, project_name)
         self.request_card_mount()
         self.run(ms=mount_ms, until=lambda r: int.from_bytes(
@@ -1386,7 +1295,7 @@ class Rtos:
         only sets state and posts to the UI queue (`0x460d1664`, EMU.md
         M5) -- no wait primitive on that path -- and `FW_START_TRACK(t)`
         writes a per-track state byte directly, no queue at all. Both
-        confirmed safe under `call_as_main` (6 Sep 2026): unlike
+        confirmed safe under `call_as_main`: unlike
         `FW_CARD_INIT`, neither ever blocked in testing. This is the "M5
         detour" route RTOS_FORK.md §5 explicitly allows for M6c -- real key
         injection into the UI queue is M6d's job, not required here."""
@@ -1434,7 +1343,7 @@ class Rtos:
         return d0
 
     def press_rec_live(self):
-        """REC, through its own firmware handler. Measured 6 Sep 2026 against
+        """REC, through its own firmware handler. Measured against
         `out/_testproj` (no track configured as a recorder): starts the
         transport exactly like PLAY (`0x800065b8` 0->1) and leaves
         `0x800066a0` (the record-arm state byte its own code tests) at 0 --
@@ -1453,7 +1362,7 @@ class Rtos:
         bit 0 = step 1) against whichever bank PART_PTR currently names."""
         # 64 steps: byte 7 - (step-1)//8, bit (step-1)%8 -- the same layout
         # ot_project.set_pattern_trig writes on disk. The 1-8 form threw
-        # "bytes must be in range" at step 9 (6 Sep 2026).
+        # "bytes must be in range" at step 9.
         blob = int.from_bytes(self.uc.mem_read(ec.PART_PTR, 4), "big")
         at = blob + 7 - (step - 1) // 8
         v = self.uc.mem_read(at, 1)[0] | (1 << ((step - 1) % 8))
@@ -1669,15 +1578,6 @@ def attach(image=None, card_image=None, log=None, **kw):
     if r.trap != (32, HANDOFF):
         raise RtosFault(f"handoff trap is {r.trap}, expected (32, {HANDOFF:#x})")
     r.rtos_boot_writes = boot_writes
-    # The region set the BOOT ends with, captured rather than written down.
-    # ⚠️ It grows on its own from here: `_prime_menu` (emu_bringup) installs
-    # an unmapped-access hook that maps a zero page and returns True -- a
-    # workaround for a stale formatter pointer in the menu render -- and it
-    # stays installed, so route A does not fault on unmapped memory on any
-    # path that has primed the menu. Measured 8 Sep 2026: the card attach and
-    # main's own init grow FOUR spans this way before the M6a gate, and they
-    # are exactly the four the C++ port was answering all-ones for
-    # (COLDFIRE_PORT.md, O5).
     _boot_regions = {(b, e) for b, e, _ in r.uc.mem_regions()}
     rt = Rtos(r, **kw)
     if card_image is not None:
@@ -1845,7 +1745,7 @@ def _cli():
         rt.arm_phase_fix()
     if a.tape:
         # From the handoff on, not from transport start: the FX knob values
-        # were nowhere in 400 frames of steady-state traffic (7 Sep 2026), so
+        # were nowhere in 400 frames of steady-state traffic, so
         # they travel as EVENTS -- at the load, at an effect select, at a
         # knob move -- and a tape that misses the load misses them all.
         pathlib.Path(a.tape).parent.mkdir(parents=True, exist_ok=True)
@@ -1862,7 +1762,7 @@ def _cli():
         printed NEITHER unless --trace was also on, so a watched address
         that never fired and one that fired every frame looked exactly the
         same from the command line: silence. Anything concluded from "the
-        watch printed nothing" is worthless without this (M6e, 6 Sep 2026).
+        watch printed nothing" is worthless without this (M6e).
         """
         calls = getattr(rt, "calls", None)
         if calls is not None:
@@ -1886,10 +1786,6 @@ def _cli():
             # -- the addresses below say which is which.
             print(f"watch-mem  : {len(writes)} write(s) logged "
                   f"(the load's own watch shares this list)")
-            # Print them ALL (capped only against a flood): the first
-            # version showed 12 and "... 111 more", and the 111 were the
-            # only writes that mattered -- a watch that hides its hits is
-            # the silent-instrument trap again (RTOS_FORK section 10.3b).
             cap = 4000
             for sample, task, pc, addr_, size, val in writes[:cap]:
                 print(f"   [{sample:10.1f}] [{addr_:#x}] <- {val:#x} ({size}) "
@@ -1930,20 +1826,8 @@ def _cli():
                 rt.run(ms=1000, until=lambda x: x.gate_m6a()[0])
             mounted, posted, saved_bank, final_bank, elapsed = rt.load_project_live(
                 a.set, staged_name, run_ms=a.ms)
-            # The frame clock and the exact instruction clock come on here,
-            # after the boot and the load: both are ~10x slower and neither
-            # matters to the sequencer until it runs (on hardware the frame
-            # exchange runs from boot; nothing the trig test reads depends
-            # on it having done so). Rtos(frame=True) still gives the
-            # from-boot form for Python callers.
             bank = a.bank if a.bank is not None else saved_bank
             if bank is not None and final_bank != bank:
-                # The load ends on bank A here (sys applies the engine's own
-                # reset-time "select bank 0" after the BANK= parse). The UNIT
-                # does not: it comes up on the saved bank and plays it
-                # (measured 6 Sep 2026, RTOS_FORK section 7), so this switch
-                # and seq_select_live below compensate for an emulator timing
-                # defect; both go once the load's timing is made faithful.
                 final_bank = rt.select_bank_live(bank)
             pattern = rt.uc.mem_read(CUR_PATTERN, 1)[0]
             seq_bank, seq_pattern = rt.seq_select_live(final_bank, pattern)
@@ -1962,22 +1846,6 @@ def _cli():
                 rt.watch_reads(pbase, a.watch_pattern)
             rec_arm = None
             if a.via_rec:
-                # RTOS_FORK §9.4's falsifier, on a project whose track 1 IS
-                # configured as a recorder machine: does REC through its own
-                # handler move the record-arm byte? Read `0x800066a0` and the
-                # transport byte either side of the press.
-                #
-                # ⚠️ ORDER IS LOAD-BEARING, and two orders are already known
-                # bad (measured 6 Sep 2026, BOTH on the plain project too, so
-                # neither is a recorder finding): REC then PLAY delivers 400
-                # frames with ZERO FW_LIVE_NIBBLE writes -- REC starts the
-                # transport itself (§9.4), so PLAY toggles it back off -- and
-                # REC alone, with the tracks started by hand the way
-                # press_play_live does, ALSO gives zero. Only PLAY first,
-                # then REC, keeps M6c's gate intact, which is what makes the
-                # arm reading here mean anything: if the trig still lands at
-                # frame 344, the run is faithful and the arm byte was
-                # genuinely watched over a working transport.
                 rt.press_play_live()
                 before = (_word(rt, TRANSPORT), _word(rt, REC_ARM))
                 rt.press_rec_live()
@@ -2094,12 +1962,6 @@ def _cli():
             print(f"card       : {len(rt.card.log)} commands, {rt.card.reads} sectors read, "
                   f"{rt.card.writes} written; last: {rt.card.log[-8:]}")
         _cmd_log(a.cmd_log, rt)
-        # ⚠️ THE SILENT-INSTRUMENT TRAP, IN A THIRD BRANCH. `_watch_report`
-        # was called from the M6c path and (since 8 Sep) from the plain one,
-        # and NOT from here -- so `--watch-pc` on a `--load-project` run
-        # printed nothing whether the address fired twice or never. Found
-        # 8 Sep 2026 by O7b, whose whole question is "how many times".
-        # Section 10.3b records this trap; this is its third instance.
         _watch_report()
         ok = bool(mounted) and saved_bank is not None
         if not ok:
@@ -2120,23 +1982,7 @@ def _cli():
     print("M6a gate   :", "PASS" if ok else "FAIL")
     for p in problems:
         print("   -", p)
-    # ⚠️ --watch-pc / --watch-calls / --watch-mem printed NOTHING on this
-    # path: `_watch_report` was only called from the M6c branch, so a watched
-    # address that never fired and one that fired constantly looked identical
-    # here -- silence. That is the same silent-instrument trap section 10.3b
-    # records for --trace, surviving in a second branch; found 8 Sep 2026
-    # while asking whether route A ever executes the two large clear loops the
-    # C++ port runs (COLDFIRE_PORT.md, O5). Nothing concluded from a silent
-    # watch on this path before today is worth anything.
     _watch_report()
-    # ⚠️ HOW MANY REGIONS ARE MAPPED, and it is not a constant. `_prime_menu`
-    # (emu_bringup) installs an unmapped-access hook that MAPS A ZERO PAGE and
-    # returns True -- a menu-render workaround for a stale formatter pointer --
-    # and it stays installed for the rest of the run. So on any path that has
-    # primed the menu, route A does NOT fault on unmapped memory: it silently
-    # grows a zero page. Printed because the C++ port answers ALL-ONES and
-    # drops the write instead, which is a different machine (COLDFIRE_PORT.md,
-    # O5, 8 Sep 2026).
     _now = {(b, e) for b, e, _ in rt.uc.mem_regions()}
     _grew = sorted(_now - getattr(rt, "_base_regions", _now))
     print(f"regions    : {len(_now)} mapped at the stop, {len(_grew)} GREW after the boot"
@@ -2163,7 +2009,7 @@ def _cli():
             # artefact and the bytes are not: the transmit ring is drained in
             # bursts, so whether the last ~900-byte drain lands before or
             # after the gate depends on the instruction budget per sample.
-            # Measured 8 Sep 2026 on the C++ port, same image, same
+            # Measured on the C++ port, same image, same
             # everything else: ips 3900 and 3990 stop with 5731 bytes sent,
             # ips 4100, 4200 and 4300 with 4831 -- and every one of those
             # streams has this one as an exact prefix. So the oracle compares

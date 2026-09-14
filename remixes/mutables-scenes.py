@@ -1,9 +1,7 @@
-"""MUTABLES-SCENES -- the insert card plus the MIDI SCENES family.
+"""mutables-scenes -- the five inserts + the MIDI SCENES family.
 
-The five MI-flavoured inserts (WarpFold, Ripple, Rungs, Streamz, BodeShift)
-with MIDI scene locks, the LO-FI AMF fix and CC to page 2. No bus, so
-unimplemented ids fall back to the firmware's own NONE. The inserts are
-verified by local render and never flashed; so are the mods. Unflashed.
+WarpFold, Ripple, Rungs, Streamz, BodeShift with MIDI SCENES, the LO-FI AMF
+fix and CC PAGE 2. No bus: absent ids resolve to NONE. Unflashed.
 """
 
 from remix.schema import Remix

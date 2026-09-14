@@ -1,7 +1,4 @@
-"""Frame-phase-band model of the Octatrack recorder "click" (5 Sep 2026).
-
-A MODEL, not the firmware: it says what the hypothesis in docs/firmware/EXTERNAL.md §6
-(Sessions 2-4) predicts, so Bryan T's hardware test has numbers to hit or miss.
+"""Frame-phase-band model of the Octatrack recorder "click".
 
 Recorder: free-running LOOP=ON writer over a buffer of L samples, in 16-sample
 frames (the write path is 0x400068e4, called per frame by 0x4000d2a0).  Flex:
@@ -69,7 +66,6 @@ def summarise(name, L, P, eps, order, mode="rec-free/play-retrig"):
 
 rows = [(199, 4), (298.2, 2), (286.2, 2), (251, 16), (198, 16), (229, 16), (120, 16), (120, 4), (300, 2),
         (261.3, 2), (128, 16), (128, 4), (128, 32)]
-# Bryan T's hardware log (sessions 4-5). NOTE his epsilon is L - P; ours below is P - L.
 obs = {(199, 4): "clicks", (298.2, 2): "clicks", (286.2, 2): "clicks", (251, 16): "clicks",
        (120, 16): "clean", (120, 4): "clean", (300, 2): "clean",
        (261.3, 2): "clicks (session 5)", (128, 16): "clicks (session 5, predicted)"}
@@ -84,7 +80,7 @@ def firmware_length(steps, t24):
     """The converter that feeds arm(), 0x40006dfc-0x40006e10, exactly:
     Q = trunc(2^31 / tempo24) (0x4000cab8, biased low), A = steps x 31752000,
     the EMAC multiply truncates (MACSR = 0x20 at 0x4000cf62: fractional,
-    round/truncate bit clear -- Bryan T, 6 Sep 2026), then (x + 1) >> 1.
+    round/truncate bit clear -- Bryan T), then (x + 1) >> 1.
     Differs from round-half-up on ~1 in 8 grid cells, never on exact ones."""
     Q = (1 << 31) // t24
     return (((steps * 31752000 * Q) >> 31) + 1) >> 1

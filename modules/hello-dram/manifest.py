@@ -16,9 +16,9 @@ depacks it at boot; nothing in the OS calls it. What it proves, every
     redirect into the loader (`0x4000050c`).
 
 A real ColdFire module is this plus `Detour`s naming the unit's symbols at
-stock sites (`modules/midi-scenes` is the worked example: seven units, 35
-detours, two pokes) -- see `modules/_template_cf/` for the skeleton and
-docs/remixer/MODULES.md, "Declaring a ColdFire module".
+stock sites (`modules/midi-scenes` is the worked example); see
+`modules/_template_cf/` for the skeleton and docs/remixer/MODULES.md,
+"Declaring a ColdFire module".
 """
 
 from remix.schema import Kind, Linked, Module

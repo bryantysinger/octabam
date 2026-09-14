@@ -11,7 +11,7 @@ Each track is what the unit makes of it: its FX1 and FX2 effects, chained on
 the track's own audio, on the CORE that track lives on -- tracks 5-8 on
 payload A (core 0), 1-4 on payload B (core 1), in dispatch order, with the
 shared window Y:0x30000-0x3FFFF really shared between the two emulated cores
-(tools/harness/dsp_host, 7 Sep 2026). So a SEND on T2 reaches BusVerb on T5 the way
+(tools/harness/dsp_host). So a SEND on T2 reaches BusVerb on T5 the way
 it does on hardware: across the core boundary, through the bus scratch.
 
 What comes out: T1.wav .. T8.wav (each track's stereo output, dry + wet as
@@ -20,7 +20,7 @@ every track through its LEVEL, summed, saturated the way a 24-bit sum is),
 and meter.txt (per-block instruction counts per core: the cycle floor of
 THIS layout).
 
-THE MIXER MODEL (12 Sep 2026, tools/harness/mixer.py). The unit's gain
+THE MIXER MODEL. The unit's gain
 chain around the DSP, measured under the ColdFire port: AMP VOL (v/127)^2
 and AMP BAL (a balance: the far side falls to zero, the near side stays)
 are applied to the stem BEFORE the FX chain, exactly as the DSP's own AMP
@@ -43,7 +43,7 @@ IMAGE. --image is a BUILT image (default out/mainos_bus.bin, i.e. `make bus`
 for the remix you want); both payloads are dumped from it into out/dsp/. An
 effect the image does not carry on a track's core dispatches to the SEND
 alias there, exactly as the unit would -- reported, never silently rendered
-as a passthrough (the 12 Aug 2026 trap).
+as a passthrough (the trap).
 """
 import argparse
 import array
@@ -63,24 +63,10 @@ from remix import registry             # noqa: E402
 
 SR = 44100
 FRAMES = 16                            # the firmware's frame; the harness's own cap is 15
-                                       # (dsp_host -frames overrides it, COLDFIRE_PORT.md O12).
-                                       # Voicing renders run whole blocks since 12 Sep 2026;
-                                       # the bit-identity gates (send_probe) stay at 15.
 NTRACKS = 8
-# Track -> core. Measured 10 Aug 2026 (marker flash): payload A serves 5-8.
+# Track -> core. Measured (marker flash): payload A serves 5-8.
 CORE_OF = {t: (0 if t >= 5 else 1) for t in range(1, NTRACKS + 1)}
 POS_OF = {t: (t - 1) % 4 for t in range(1, NTRACKS + 1)}    # dispatch position on its core
-# r7 (the state block) is 0x6100 + 0x300*pos + 0x100*(fx-1): the stock
-# dispatcher bumps its counter THREE times per track (an unconditional third
-# bump at P:0x51e after FX2). Measured 8 Sep 2026 on both payloads under the
-# firmware (COLDFIRE_PORT.md O11); the old 1 + 2*pos + (fx-1) put every
-# position >= 1 one or more blocks low, and the one-aux return's pin on
-# position 3 matched only here -- never on the unit.
-# Where the per-track audio buffers go in the harness. Hardware runs every
-# track's block at X:0 (the dispatcher copies it in and out); the harness
-# gives each track its own buffer, and puts them ABOVE the loaded modules so
-# a stock effect scratching X:0x20-0xff (the FLANGER lesson, 2 Sep 2026)
-# cannot reach another track's audio.
 AUDIO_BASE = 0x9000
 
 
@@ -221,7 +207,7 @@ def apply_sets(tracks, sets):
     ModeView.defaults to every knob NOT set explicitly -- what the TUI bench
     does, and what per-mode defaults on the unit will do (Stage B). Without
     it a phaser kit rendered at the manifest's passthrough MIX 0 and was
-    judged dry (12 Sep 2026)."""
+    judged dry."""
     explicit = {}                       # (track, fx) -> {slot index}
     for spec in sets:
         try:
@@ -328,13 +314,6 @@ def main():
     send_id = send_probe.SERVER_ID["S"]
     send_ep = {c: send_probe.entry_points(mems[c], send_id) for c in (0, 1)}
 
-    # instances, in dispatch order: core 0 (tracks 5-8) then core 1 (1-4),
-    # each track FX1 then FX2 on ONE audio buffer
-    # An EMPTY FX2 slot is not empty on the unit: a fresh or unassigned track
-    # dispatches to the fallback, SEND (id 0 aliases to it), which houskeeps
-    # like any bus participant and costs its cycles. Model it, or a layout
-    # with nothing on core 0's position 0 has no housekeeper at all and the
-    # bus never rotates (found 7 Sep 2026: a delay-only render was silent).
     send_mod = registry.modules().get("SEND")
     r_ = registry.remix(a.remix)
     if send_mod is not None and "SEND" in r_.modules:

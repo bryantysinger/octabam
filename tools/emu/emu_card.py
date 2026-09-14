@@ -446,7 +446,7 @@ class AtaCard:
         elif cmd == 0x30:
             # the count byte is SECTORS REMAINING: the handler already streamed
             # the first sector and decremented it (a 1-sector write reads 0
-            # here — treating that as 256 wiped a whole card, 5 Sep 2026)
+            # here — treating that as 256 wiped a whole card)
             rem = uc.mem_read(FW_COUNT, 1)[0]
             if rem and self.wremaining:
                 rem = min(rem, self.wremaining)
@@ -685,7 +685,7 @@ def set_names(s, set_name, project_name):
 def reload_bank(s, bank):
     """Post RELOAD BANK for `bank` (0-based) and run the engine command: this
     is what pulls bank%02d.work into the bank blob. LOAD PROJECT alone reads
-    project.work, markers.work and the arrangements (measured 5 Sep 2026).
+    project.work, markers.work and the arrangements (measured).
     The command's word argument is a BITMASK of banks (the loader
     `0x4008f0b0` loops over set bits and formats bank%02d for each, 1-based),
     so bank 0 is mask 1."""

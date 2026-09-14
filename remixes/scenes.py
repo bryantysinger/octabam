@@ -1,12 +1,7 @@
-"""SCENES -- every firmware mod that composes with MIDI SCENES, no effects.
+"""scenes -- the MIDI SCENES family, no effects of ours.
 
-The "just the mods" image for someone who wants the unit's own effects and
-the community's firmware changes: MIDI-driven scene locks (bkkbrls-del),
-the LO-FI AMF fix (Bryan T) and MIDI CC reaching page-2 knobs (octabam).
-Octakit is the one mod that cannot join -- it hooks the same stock routine
-and replaces the Part window his code addresses -- so its family is
-`kits`. Nothing of octabam's DSP is placed: every stock effect stays, the
-chooser is stock's. Unflashed.
+MIDI SCENES + the LO-FI AMF fix + CC PAGE 2. No octabam DSP; every stock
+effect stays and the chooser is stock's. Unflashed.
 """
 
 from remix.schema import Remix

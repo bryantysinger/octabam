@@ -1,18 +1,14 @@
-"""SEND -- the bus client every other track uses to feed the two servers.
+"""SEND -- the bus client every other track runs: one AUX knob into the bus.
 
-Two knobs, one per bus. It never writes the audio buffer, only taps it, so a
-SEND with both levels at zero is indistinguishable from "no effect" -- which
-is why a fresh, unassigned track (FX2 id 0) is aliased to this rather than to
-NONE. Unlike NONE it performs the per-block bus housekeeping, so making every
-unassigned track a SEND removes the "first track set to NONE stalls the bus"
-hazard by construction instead of patching around it.
+It taps the audio buffer and never writes it, so a SEND at AUX 0 is
+indistinguishable from no effect; a fresh, unassigned track (FX2 id 0) is
+aliased to it rather than to NONE because, unlike NONE, it performs the
+per-block bus housekeeping, so no track can stall the bus.
 
-Clones FILTER's descriptor. Slots 2-11 are blanked (they would otherwise draw
-FILTER's names) but deliberately keep FILTER's DEFAULTS and value counts: the
-slots are not drawn, and writing them would change bytes for no reason. This
-module declares no formatter for any slot, so the formatter pass skips it
-entirely and its two knobs keep FILTER's plain-numeric zeros -- which is what
-they want and what hardware confirmed.
+Clones FILTER's descriptor. Slots 1-11 are blanked but keep FILTER's
+defaults and value counts (not drawn; writing them would change bytes for
+no reason). No formatter is declared, so the two knobs keep FILTER's
+plain-numeric zeros (hardware-confirmed).
 """
 
 from remix.schema import (BusRole, YBase, DspSection, Harness, Kind, MenuEntry,
@@ -45,12 +41,11 @@ MODULE = Module(
                                           # points at SEND's entry points, so
                                           # it must already be placed
         bus_role=BusRole.CLIENT,
-        # XBUS, not NEVER, since the one-aux rig (7 Sep 2026): the source
-        # carries ONE `$30000` literal, the payload discriminator of the
-        # track-8 send refusal (payload A keeps $30000, B is rewritten to
-        # $38000 -- the HKB diagnostic's trick), never used as an address.
-        # ⚠️ In a plain (non-XBUS) build it is not rewritten, so BOTH
-        # payloads refuse position 3; plain builds do not ship.
+        # XBUS, not NEVER: the source carries one `$30000` literal, the
+        # payload discriminator of the track-8 send refusal (payload A keeps
+        # $30000, B is rewritten to $38000), never used as an address. In a
+        # plain (non-XBUS) build it is not rewritten and both payloads refuse
+        # position 3; plain builds do not ship.
         ybase=YBase.XBUS,
         r7_latch_slot=0x69,
         gate_label="notfirst",

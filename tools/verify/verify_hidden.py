@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A HIDDEN engine is placed, dispatched, off the chooser and draws nothing.
 
-    python3 tools/verify/verify_hidden.py [remix]      (default: bamsep27)
+    python3 tools/verify/verify_hidden.py [remix]      (default: bamsep26)
 
 `Remix.hidden` takes an effect off the panel without taking it out of the
 image: the project's stored id still reaches it, and a main-menu screen edits
@@ -48,7 +48,7 @@ WRITER = 0x40054cd8
 
 def main():
     from remix import registry
-    name = sys.argv[1] if len(sys.argv) > 1 else "bamsep27"
+    name = sys.argv[1] if len(sys.argv) > 1 else "bamsep26"
     remix = registry.remix(name)
     mods = registry.modules()
     hidden = [k for k in remix.modules
@@ -183,9 +183,6 @@ def main():
         got = drawn_names(key)
         check(f"{key}'s page draws none of its knob names",
               not got, " ".join(sorted(got)) or "none drawn")
-    # A NAMED hidden module is the opposite claim, and the one that matters
-    # on the panel (6 Sep 2026, tag 16: dials with no labels): its host page
-    # MUST draw its knob names. Page 1's six are what the render shows.
     for key in [k for k in hidden if k in remix.named]:
         got = drawn_names(key)
         # a name the PLAYBACK page also draws (PTCH, RATE ...) is in the
@@ -242,12 +239,6 @@ def main():
     mem_a = pathlib.Path("out/dsp/mem_dev_A.mem")
     scratch = pathlib.Path("out/_hidden")
     scratch.mkdir(parents=True, exist_ok=True)
-    # ⚠️ BUILD THE DUMP HERE, ALWAYS. These gates run in sequence under
-    # `make verify` and several of them rebuild the same .mem files -- the
-    # delay's bit-identity gate writes the hatch dump with no guard at all,
-    # so a render against whatever was left on disk reported a guarded engine
-    # as wet. Same lesson as the station gates' audition cache (3 Sep 2026):
-    # a stale dump does not fail, it measures the wrong image.
     subprocess.run([sys.executable, "tools/build/build_bus.py"],
                    capture_output=True, text=True,
                    env={**os.environ, "REMIX": name, "DEV": "1", "XBUS": "1"})
@@ -263,12 +254,12 @@ def main():
             # The DELAY HATCH dump (DEV=1 XBUS=1, no SPEC): every server is
             # real in payload A, which is the only dump that can render the
             # delay at all -- a SPEC dump aliases its id to SEND and would
-            # render a plausible dry pass for the wrong reason (12 Aug 2026).
+            # render a plausible dry pass for the wrong reason.
             mem = "out/dsp/mem_dev_A.mem"
             if not pathlib.Path(mem).exists():
                 return None
             init, proc = send_probe.entry_points(mem, mods[key].menu.fx2_id)
-            # ONE AUX (7 Sep 2026): an engine's only input is the aux bus --
+            # ONE AUX: an engine's only input is the aux bus --
             # its own AUX goes round through the accumulator, and that
             # needs a rotation, i.e. a housekeeper. A lone delay under the
             # DEV hatch is never the housekeeper (it behaves as payload B),
@@ -303,11 +294,11 @@ def main():
 
         for key in [k for k in hidden if k in ("REVERB SERVER", "DELAY SERVER")]:
             # ⚠️ AT ITS DEFAULTS AN ENGINE IS ALREADY A DRY PASS -- both
-            # engines are RETURNS whose IN defaults to 0 (v5, 23 Aug 2026),
+            # engines are RETURNS whose IN defaults to 0 (v5),
             # so a control render has to open the input, or "the guard went
             # dry" and "the engine is dry anyway" are the same picture.
             _names = [(p.name or b"").decode("latin1") for p in mods[key].params]
-            # AUX since the one-aux rig (7 Sep 2026): the host's own send
+            # AUX since the one-aux rig: the host's own send
             # goes round through the accumulator and back into the engine
             wet = {} if "AUX" in _names else ({"IN": 127} if "IN" in _names else {})
             # The delay's default TIME (40 -> 5,184 samples) puts its first
@@ -324,14 +315,6 @@ def main():
                   away == samples,
                   f"{sum(1 for a, b in zip(away, samples) if a != b)} sample(s) differ")
             if host == samples and not wet:
-                # ⚠️ THE INSTRUMENT IS BLIND HERE, and saying so is the point.
-                # BusDelay's own IN was retired in v5: its only input is the
-                # DELAY bus, and this harness feeds no bus, so its host render
-                # is silent whether the guard fired or not. A pass here would
-                # be worthless and a fail would be wrong. The dry half above
-                # still means something -- it is bit-exact, which a running
-                # engine with no input also is -- so what this line reports is
-                # the gap, not a verdict.
                 print(f"  [SKIP] {key} at r7=0x6200 really runs -- it has no "
                       f"own-track input (bus only), so this harness cannot "
                       f"tell a guarded instance from an unfed one")

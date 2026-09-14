@@ -3,13 +3,6 @@
 with the sequencer transport started, and log what a step trig actually does
 to the per-track state the frame dispatcher reads.
 
-Why: Bryan T's session-5 ask (docs/firmware/EXTERNAL.md §6, 6 Sep 2026) — with a
-project loaded and the sequencer running, does the low nibble of a trig's
-per-track word (its sample offset within the 16-sample frame) walk from pass
-to pass when the pattern length in samples is not an integer number of
-frames? Static reading cannot show an accumulator moving; a frame-by-frame
-trace can.
-
 What runs, measured in the emulator (docs/remixer/EMU.md M5 has the full account):
 
 - The frame builder `0x4000aad0` is the DSP-frame interrupt handler; `run_frame`
@@ -28,15 +21,6 @@ What runs, measured in the emulator (docs/remixer/EMU.md M5 has the full account
   when due and the track isn't muted for it, copies that byte into
   `0x46104d15[track]` and ORs in flag bits (`0x10` = hold, confirmed here).
   This is the live artifact: FW_TRIG_WORDS never moved in any run so far.
-
-**Open finding, not yet resolved**: `FW_TRIG_WORDS` (`0x46104d26`, the array
-Bryan named and the one `0x4000d32e` reads) stayed all-zero through every
-run here, including one where a trig demonstrably fired and reached
-`0x46104d15`. `0x4000d378` (its only writer found so far) writes zero to it
-every frame regardless. Bryan's literal ask needs a RECORDER ARMED on the
-track, which this harness has not set up (the test project has an ordinary
-playback trig, not a record-enabled track) -- that is the next step, not
-something this run answers.
 
 Run:  .venv/bin/python3 tools/emu/emu_frames.py --project <dir> --frames 3000 [--bpm 128] --start --internal-clock --poke-trig N
 """

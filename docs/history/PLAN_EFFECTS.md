@@ -395,7 +395,7 @@ capability: 70 ms lines per track — doublers, short slaps, wide chorus.
   publish quirk** (lands in the Part but reaches the DSP only while T3's
   FX2 page is on screen — docs/firmware/MIDI.md).
 - **Per-mode gain structure.** The modes are 7–9 dB apart at the output
-  (`docs/remixer/TESTPASS.md`: ROOM −23.0 / PLATE −24.9 / BIG −16.1 dBFS at
+  (`docs/history/TESTPASS.md`: ROOM −23.0 / PLATE −24.9 / BIG −16.1 dBFS at
   defaults), and an input sweep (in this file's git history) put BIG across
   the clip knee at a 0.25–0.5 FS input while PLATE never reached it. The
   honest fix is per-mode headroom, set from measurement. Interim practice:
@@ -991,7 +991,7 @@ it, and both are cheap:
   (`0x40004b12`, IPL 5) reading DMA timer 3, a fader-driven burn inside the
   measurement, and a readout on HELLO WORLD's GAIN. Emulator-proven
   (`tools/verify/verify_cfprobe.py`, 22 checks); the numbers are
-  `docs/effects/FLASHPLAN.md` flash 5's to find. The interrupt level matters: the
+  `docs/history/FLASHPLAN.md` flash 5's to find. The interrupt level matters: the
   routine runs ABOVE the RTOS time slice and the level-4 MIDI framer, so
   UI or card streaming should give before audio; if audio gives first, the
   audio DMA sits at or below level 5 and every added cycle is paid by audio.
@@ -1023,7 +1023,7 @@ hosts going quiet only while a return is live. `docs/effects/BUS.md` "The return
 `tools/verify_returns.py` is its gate, and `make verify-bus` came back 19/19
 across the edit — with no return in the rig nothing changed, to the bit.
 
-**`docs/effects/FLASHPLAN.md` is the schedule** — three images plus the rig, and
+**`docs/history/FLASHPLAN.md` is the schedule** — three images plus the rig, and
 since 4 Sep 2026 a fifth, the ColdFire headroom probe (§8), ordered so the
 cheapest and safest goes first, each shaped to stack independent claims whose
 failures stay distinguishable, and each with what would falsify it. The
@@ -1113,7 +1113,7 @@ bit-identical, which is what that gate is for.
   `tools/hw/ot_project.py testproj SRC DEST REMIX` copies a project and stamps
   every bank, part and track with an id the image implements, current parts
   **and** their saved copies, checksums recomputed and read back.
-  `docs/effects/FLASHPLAN.md` step 0b.
+  `docs/history/FLASHPLAN.md` step 0b.
   ⬜ Still open, and a smaller question than it looked: whether the panel
   should RE-STAGE a page when the image under it changed, or whether "the
   project asked for id 0x12 and got what 0x12 now is" is the right answer.

@@ -9,23 +9,20 @@ ear without a flash.
     python3 tools/harness/render_reverb.py loop.wav --mode all       # all three characters
     python3 tools/harness/render_reverb.py loop.wav --build          # rebuild first
 
-Why this is trustworthy: tools/harness/dsp_host runs the REAL assembled instruction
-stream, not a model of the reverb, and the DSP56300 arithmetic is emulated
-exactly -- which REVERB.md already leans on ("for a pure optimization the
-output should be bit-identical"). About 6x faster than real time.
+tools/harness/dsp_host runs the assembled instruction stream with the
+DSP56300 arithmetic emulated exactly, about 6x faster than real time.
 
-What it CANNOT tell you, and still needs a flash (REVERB.md, BUS.md):
-  * whether four instances fit the cycle budget -- 432 cycles/sample once
-    froze the chip, and this harness will happily render something that
-    cannot run
+What it cannot tell you, and still needs a flash:
+  * whether the layout fits the cycle budget -- the harness renders code
+    that cannot run on the chip
   * anything ColdFire-side: menu, descriptors, knob labels, parameter
     ranges. -params pokes r6 directly and bypasses all of it
   * the ColdFire's timing between the two cores (dsp_host boots both since
-    7 Sep 2026, lock-step; tools/harness/rig_render.py renders the whole rig)
+   , lock-step; tools/harness/rig_render.py renders the whole rig)
   * multi-instance behaviour under a nonzero split, where there is a known
     unexplained one-vs-two-instance divergence
 
-So: voice here, then spend flashes on the cycle budget and the UI surface.
+Voice here; spend flashes on the cycle budget and the UI surface.
 """
 import argparse, array, hashlib, math, os, pathlib, re, shutil, struct, subprocess, sys, wave
 
@@ -39,23 +36,6 @@ CACHE = ROOT / "out/render"          # engine-keyed render artifacts, see engine
 
 
 # ---- provenance ----------------------------------------------------------
-# WHY THIS EXISTS. On 8 Aug 2026 a shimmer was iterated eight times by ear and
-# at least five of those renders were byte-identical to an earlier one:
-#   shimmer_v124_on.wav == shimmer_v125_on.wav                    (09e31b2d)
-#   shimmer_v122_test == shimmer_xfade_test == shimmer_hardcoded  (0fa9e3e7)
-# The edits were real; the audio was not rebuilt. A whole evening was spent
-# judging the same file and concluding the fix had not worked.
-#
-# mtime keying cannot prevent this. It misses --mem (which skips the build
-# entirely), it misses env-var changes such as SHIMMER=/MODE= that alter the
-# assembled output with no file touched, and it silently accepts a same-second
-# write. So the cache is keyed on a CONTENT FINGERPRINT of everything that can
-# change the instruction stream, the fingerprint is stored beside the artifact,
-# and a mismatch forces a rebuild.
-#
-# The over-inclusive hash (every dsp/ source, not just the ones this build
-# links) is deliberate: it errs toward rebuilding, and a needless 20-second
-# rebuild costs nothing next to one wrong by-ear verdict.
 
 # Every env var build_bus.py branches on -- grep 'environ' tools/build/build_bus.py.
 # A var missing from this list is a way to change the build without changing
@@ -64,14 +44,6 @@ BUILD_ENV = ("RVSRC", "MODE", "WIDTH", "NOSHIM", "XBUS", "SPEC", "DEV", "BURN",
              "PROBE", "XPROBE", "XBUS_BASE", "DELAYPROBE",
              "DLSRC", "MARKER", "DMODE", "DINT", "DFRZ", "DFRZAT", "TPROBE",
              "REMIX", "NOTEMPO", "TEMPOCAVE", "HKB", "DNOTE")
-# SHIMMER was in this list until Round 12; the flag build_bus.py actually
-# branches on has been NOSHIM since the v3 rewrite, so a NOSHIM build did
-# not change the fingerprint -- the exact bug the comment above names. It
-# happened AGAIN by 29 Aug 2026: NOTEMPO/TEMPOCAVE/HKB/DNOTE (and then REMIX)
-# were added to build_bus.py without landing here, and the remix refactor
-# moved the effect sources out of dsp/ so the glob below stopped seeing them.
-# When adding an env var or moving a source, this list and the globs are part
-# of the change.
 
 
 def fingerprint(extra=()):
@@ -109,50 +81,11 @@ def prov_stamp(img, fp):
 
 SR = 44100
 FRAMES = 16              # the firmware's frame (the harness's own cap is 15: the & 0xf
-                         # in setup, which dsp_host -frames overrides -- COLDFIRE_PORT.md O12).
-                         # Voicing renders run whole blocks since 12 Sep 2026; the
-                         # bit-identity gates (send_probe) are still pinned at 15.
 WARMUP_BLOCKS = 260      # the engine stays dry for 256 CALLS; pad past it and trim
 
-# -params index -> r6 offset: 0..5 are page 1, then dsp_host carries the REAL
-# page-2 map (settled on hardware 17 Aug 2026, docs/firmware/PARAM_PAGES.md): slots
-# 6/8/10 are the KNOB fields of r6+$c/$d/$e and slots 7/9/11 their COMPANION
-# fields (bits 8-15) -- companions are drivable locally since dsp_host learned
-# the map. The old note here ("6..9 -> $b..$e, knob fields only, companions
-# unwritable") described the pre-17-Aug harness; under the real map its
-# 10-entry table put GATE on slot 9, which is WIDTH's companion -- so
-# `-p GATE=n` never reached the gate, found 18 Aug 2026 when a gated-drums
-# render measured bit-identical at GATE 8/20/40.
-#
-# MODE (slot 6 since v7, 4 Sep 2026; slot 7 before -- so SPEED/SHMR is index
-# 7 now, in the companion field) still goes in via --mode / build_bus.py's
-# MODE= override, kept because the override predates companion driving and is
-# proven equivalent. ⚠️ That means THIS renderer cannot prove the MODE extract
-# itself; send_probe --rmode drives it through the parameter word.
-# MIX (idx 5) has been IN since the v4 return -- the host's own send level,
-# not a crossfade; the name stays so existing command lines keep working.
-# RATE default 1 = 1x MOD speed, the hardware boot value (0 would halve it).
-# TONE (idx 3) and DEL (idx 4) replaced HP/LP on 5 Sep 2026 (v8): TONE 64 is
-# the old HP 0 / LP 127 exactly; DEL is the host's dry send into the DELAY
-# bus, inert in this single-effect renderer (nothing reads the bus).
-# ONE AUX (7 Sep 2026): AUX at idx 0 is the host's own send into the aux bus
-# -- 64 drives the tank exactly as IN=64 did (the same headroom and share),
-# two blocks later, since the dry now goes round through the accumulator.
-# MIX at idx 5 is the STAGE crossfade (127 = wet-only, the old print); the
-# IN-keyed wet makeup (x2 at IN=64) is gone with IN, so a default render
-# prints the wet 6 dB lower than v8 did at the same tank drive.
 PARAMS = [("AUX", 64), ("TIME", 64), ("MOD", 40), ("SIZE", 127), ("TONE", 64),
           ("MIX", 127), ("_C", 0), ("SPEED", 0), ("DIFF", 64), ("SHFT", 0),
           ("GATE", 0), ("RATE", 1)]
-# SHFT (idx 9) was WIDTH until v6 (23 Aug 2026): width is pinned wide and the
-# slot selects the shimmer interval, 0/1/2/3 = +12/+19/+7/-12. Audited the
-# same day (the harness-knob-drift rule: audit wrappers with every knob
-# change).
-# SPEED has been SHMR (shimmer amount) since v101, and its old default of 64
-# put an octave-up loop gain of ~0.13 into EVERY render -- Round 12 measured
-# it inflating the sustain of every band (PLATE MF -18.7 vs -22.8 dB/s
-# without) and Sam heard it as "a high zingy bit in the bg". The voicing
-# baseline is the clean verb; ask for shimmer explicitly with -p SPEED=n.
 NAMES = {n: i for i, (n, _) in enumerate(PARAMS)}
 # _C (index 6) is MODE's slot; --mode owns it, so no knob.
 KNOBS = ", ".join(n for n, _ in PARAMS if n != "_C")
@@ -174,7 +107,7 @@ def read_wav(path):
 
 def read_wav_channels(path):
     """-> ([channel float lists in -1..1], samplerate), channels kept apart
-    (rig_render's mixer model applies AMP BAL per side, 12 Sep 2026)."""
+    (rig_render's mixer model applies AMP BAL per side)."""
     with wave.open(str(path), "rb") as w:
         ch, sw, sr, n = w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes()
         raw = w.readframes(n)
@@ -269,7 +202,7 @@ def ensure_mem(build):
     alt = bool(os.environ.get("RVSRC"))
     # DEV=1 annexes CHORUS's module as a fourth donor, which is 329 free words
     # on payload A where the shipping build has almost none (FREE 32,
-    # 11 Aug 2026). That is the room to
+    #). That is the room to
     # develop an engine change in before paying for it -- a DEV build is never
     # flashed, so it proves the SOUND without also having to have solved the
     # space problem. `make check` still gates what ships.
@@ -412,22 +345,6 @@ def run(mem, src, values, tail_s, verbose, entry=None, frames=FRAMES):
     blocks = -(-total // frames)
     n = blocks * frames
 
-    # PER-PROCESS scratch names. These were the fixed paths _render_in.raw /
-    # _render_out.raw, which meant TWO RENDERS RUNNING AT ONCE silently fed
-    # each other's audio through the emulator and wrote each other's output.
-    #
-    # It cost two measurements on 9 Aug 2026: a linearity sweep and a
-    # shimmer A/B were launched as concurrent background jobs, and between
-    # them produced an output peak that was NON-MONOTONIC in input gain
-    # (gain 0.60 louder than gain 0.70). That reads exactly like a conditional
-    # instability in the tank, which is a serious and completely fictitious
-    # bug -- it survived a determinism check, because each render on its own
-    # IS deterministic. Re-running the same points serially made it vanish.
-    #
-    # The failure is silent, it looks like an engine fault rather than a
-    # harness fault, and nothing about the render output hints at it. Unique
-    # names per process remove it entirely; the last render of a process still
-    # leaves its files behind for inspection, keyed by pid.
     tmp = ROOT / f"out/dsp/_render_in_{os.getpid()}.raw"
     out = ROOT / f"out/dsp/_render_out_{os.getpid()}.raw"
     tmp.parent.mkdir(parents=True, exist_ok=True)
@@ -593,7 +510,7 @@ def main():
             if a.wet:
                 # output = dry + wet, and the dry path is the mono input duplicated,
                 # so subtracting it recovers the wet exactly.
-                # ⚠️ TRUE AGAIN SINCE v5 (23 Aug 2026, unity dry passthrough).
+                # ⚠️ TRUE AGAIN SINCE v5.
                 # It was FALSE for the v4 window (17-23 Aug 2026): the return
                 # printed the wet ALONE, so --wet subtracted a phantom dry and
                 # produced wet-minus-dry -- any --wet render from that window

@@ -1,19 +1,16 @@
-"""MUTABLES-KITS -- the insert card plus the Octakit family.
+"""mutables-kits -- the five inserts + the Octakit family.
 
-The five MI-flavoured inserts (WarpFold, Ripple, Rungs, Streamz, BodeShift)
-with 256 Kits per Project and the LO-FI AMF fix. No CC to page 2: it
-repoints the MIDI control-parameter dispatch entry Octakit's own recipe
-rewrites (see `kits`). No bus, so unimplemented ids fall back to the
-firmware's own NONE. ⚠️ Octakit migrates Parts into Kits on load: back up
-projects first. Unflashed.
+WarpFold, Ripple, Rungs, Streamz, BodeShift with Octakit, the LO-FI AMF fix
+and CC PAGE 2 (bridged by SCENES KITS). No bus: absent ids resolve to NONE.
+Back up projects first. Unflashed.
 """
 
 from remix.schema import Remix
 
 REMIX = Remix(
     name="mutables-kits",
-    doc="Five MI inserts + Octakit + the LO-FI AMF fix.",
+    doc="Five MI inserts + Octakit + the LO-FI AMF fix + CC to page 2.",
     modules=("WARPFOLD", "RIPPLE", "RUNGS", "STREAMZ", "BODESHIFT",
-             "OCTAKIT", "LOFI AMF FIX"),
+             "OCTAKIT", "LOFI AMF FIX", "CC PAGE 2", "SCENES KITS"),
     fallback="NONE",
 )

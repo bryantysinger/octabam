@@ -2,7 +2,7 @@
 """No module's init may write r1 (or n1/m1): the stock FX1 dispatcher keeps
 the effect id in r1 across `jsr init` and indexes PROC_TABLE with it
 afterwards (P:0x4c8..0x4d7 on payload A), so an init that leaves r1 elsewhere
-sends the proc call to P:0 = the reset vector. Image 99 (13 Sep 2026) hung
+sends the proc call to P:0 = the reset vector. Image 99 hung
 every core that loaded a Spectrum on FX1 at project load, found under the
 ColdFire port; dsp_host cannot see it because it calls init and proc itself.
 

@@ -3,22 +3,16 @@
 
     make remix          (or: .venv/bin/python3 tools/remix/app.py)
 
-ONE page, three panes -- AVAILABLE (what could be in the image), LOADED
-(what is), UNIT (the selected effect's knobs and the firmware's own draw of
-its page). The loop it exists for is one move long: point at a stock effect,
-`enter` to swap one of ours in, `r` to hear it.
+One page, three panes: AVAILABLE (what could be in the image), LOADED (what
+is), UNIT (the selected effect's knobs and the firmware's own draw of its
+page). Point at a stock effect, `enter` to swap one of ours in, `r` to
+hear it.
 
-THE IMAGE FOLLOWS THE SELECTION. Every selection change rebuilds and
-re-boots in the background -- a build is ~0.3 s and a ColdFire boot ~5 s --
-so the panel on the right always draws what the middle pane says. There is
-no build key and no stale state to reason about; that apparatus existed to
-spare the operator a quarter-second and cost more than it saved.
-
-The model layers are headless and live next door: state.py (the composer),
-rig.py (categories, knobs), audition.py (rendering). This file is only the
-shell. Textual rather than curses: the remixer is already venv-hosted for
-the emulator, and the frontend rewrite is where hand-rolled layout stopped
-paying its way.
+The image follows the selection: every selection change rebuilds (~0.3 s)
+and re-boots the ColdFire emulator (~5 s) in the background, so the panel
+always draws what the middle pane says. The model layers are headless:
+state.py (the composer), rig.py (categories, knobs), audition.py
+(rendering). This file is the Textual shell.
 """
 
 from __future__ import annotations
@@ -199,9 +193,6 @@ def chooser_slot(order, key):
 # renders and made the browser unusable), but a remixer gets used on whatever
 # material is to hand, so `d` points it somewhere else and CONFIG remembers.
 CONFIG = ROOT / "out" / "_audition" / "remixer.json"
-# Its name until 3 Sep 2026. Read as a fallback so the sample folder somebody
-# chose does not silently revert to out/dry/ because the tool was renamed;
-# the next save writes the new name and this stops mattering.
 OLD_CONFIG = ROOT / "out" / "_audition" / "workbench.json"
 DEFAULT_SOURCE_DIR = ROOT / "out" / "dry"
 
@@ -229,9 +220,6 @@ def save_config(cfg):
 def source_dir():
     """The directory the SOURCE row browses, in precedence order: the env
     override, what `d` last chose, then out/dry/."""
-    # WORKBENCH_SOURCES was its name until 3 Sep 2026 and is still honoured:
-    # an env var lives in somebody's shell profile, where a rename is not a
-    # rename but a silent stop working.
     env = (os.environ.get("REMIXER_SOURCES")
            or os.environ.get("WORKBENCH_SOURCES"))
     if env:
@@ -513,17 +501,9 @@ class RemixerScreen(Screen):
         Binding("b", "mark('B')", "B = this", show=False),
         Binding("comma", "play_mark('A')", "play A", show=False),
         Binding("full_stop", "play_mark('B')", "play B", show=False),
-        # SHOWN ONLY WHEN IT APPLIES (check_action). It is the key that
-        # gets a broken selection building again -- the one gesture the
-        # remixer is built around leaves one -- and it was the only
-        # important key hidden from the footer.
         Binding("x", "fix", "fix it"),
         Binding("c", "build('check')", "full check", show=False),
         Binding("f", "fallback", "fallback", show=False),
-        # "1" for FX1, on the row the cursor is on. This is the other half
-        # of a GLOBAL remixer: until 3 Sep 2026 an effect of ours could only
-        # be reached from the FX2 slot, and only because FX1's chooser list
-        # could not grow where it sits.
         Binding("1", "fx1", "FX1 row", show=False),
         Binding("l", "load", "load"),
         Binding("s", "save", "save"),
@@ -543,16 +523,6 @@ class RemixerScreen(Screen):
             yield Static(id="pane_avail")
             yield Static(id="pane_load")
             yield Static(id="pane_unit")
-        # THE BUDGET IS A FULL-WIDTH STRIP, not the bottom half of the third
-        # column. It sat under the UNIT pane, on the argument that what is
-        # left of the image is the context you read every other number
-        # against -- true, but it is context for the IMAGE, not for the one
-        # effect the cursor is on, and it was charging the unit column ten
-        # lines for the privilege. The preview lives in that column and is
-        # the tallest thing in the remixer (the firmware's own draw of a
-        # page), so it was the one being truncated. Down here it costs the
-        # panes nothing, and the extra width lets it read in two columns
-        # instead of one long list.
         yield Static(id="pane_budget")
         yield Static(id="status")
         yield RichLog(id="log", highlight=False, markup=False)
@@ -598,18 +568,6 @@ class RemixerScreen(Screen):
         self.rerender()
 
     # ---- fitting the terminal you actually have --------------------------
-    # THREE COLUMNS NEED 118 OF THEM: 32 for the library, 40 for the image,
-    # and the rest for a UNIT pane whose widest content is the 46-column LCD
-    # the firmware itself draws. Below that the layout did not degrade, it
-    # broke -- at 80x24 the UNIT pane was handed six columns and wrapped
-    # `Stock` / `· id` / `0x04` one word per line down the screen, both list
-    # panes were cut off mid-list, and the Budget strip took nine of the
-    # twenty-four rows. An 80x24 terminal is what a new pair of hands opens,
-    # so that was the first impression the remixer made.
-    #
-    # Below the threshold it shows ONE pane at full width and `tab` moves
-    # between them, with the titles becoming a strip naming all three so the
-    # gesture is visible rather than remembered.
     WIDE_COLS = 118
     # And a middle band. At 100 columns three panes do not fit but two do
     # comfortably, and dropping straight to one pane there wasted two thirds
@@ -733,7 +691,7 @@ class RemixerScreen(Screen):
         (tools/remix/stock.py), an unmodified unit really does start them
         fully dry, and seeding a different value here would make the remixer
         lie about the page it is drawing beside. But it reads as "this effect
-        does nothing", which is what it cost on 2 Sep 2026. So say it.
+        does nothing", which is what it cost. So say it.
         """
         if mod is None:
             return None
@@ -785,7 +743,7 @@ class RemixerScreen(Screen):
     def rerender(self):
         """One pass over the three panes.
 
-        problems() runs the ledger and costs ~2.4 ms (measured 2 Sep 2026);
+        problems() runs the ledger and costs ~2.4 ms (measured);
         three panes asking it independently made every keystroke pay ~7 ms
         for one answer. Compute it here and hand it down.
         """
@@ -803,13 +761,6 @@ class RemixerScreen(Screen):
         if can_fix != getattr(self, "_can_fix", None):
             self._can_fix = can_fix
             self.refresh_bindings()          # the footer follows it
-        # ⚠️ THE BUDGET IS PAINTED FIRST, and it changes the panes' HEIGHT.
-        # It is `height: auto`, so a row appearing there -- the cycles row
-        # arriving when a build lands, the legend gaining a glyph -- steals a
-        # row from the three panes above. Nothing resized, so on_resize does
-        # not fire and _paint sees unchanged text, and the panes went on
-        # laying out against a height they no longer had: the bottom line of
-        # the unit pane was clipped away with nothing saying so.
         self._pane_budget(st, probs)
         self._pane_available(st)
         self._pane_loaded(st, probs)
@@ -979,7 +930,7 @@ class RemixerScreen(Screen):
         # takes their space -- their code IS the donor region our modules are
         # written over -- so showing the trade where it happens is the point.
         # WHICH REVERBS ARE ACTUALLY GONE, from the build's own report --
-        # not "all three, always", which is what this said before 2 Sep 2026.
+        # not "all three, always", which is what this said before.
         gone = [c for c in st.harvest
                 if c.split()[0] not in st.donors_kept]
         if st.donors_kept or not gone:
@@ -1078,9 +1029,6 @@ class RemixerScreen(Screen):
             return "[dim]" + " · ".join(
                 one(n, placeable(st.sel, t, u, st.harvest)[0])
                 for n, t, u, _f in st.regions) + "[/]" + boot
-        # No build has reported yet. Say which of the two reasons it is --
-        # this line used to claim "a stock chooser: 14 effects, no modules"
-        # for ANY unmeasured selection, including `bus`, which has three.
         if not [m for m in st.selected if m.dsp is not None]:
             return "[dim]a stock chooser: 14 effects, no modules[/]"
         return "[dim]building…[/]"
@@ -1175,12 +1123,6 @@ class RemixerScreen(Screen):
                     out += (f"[{OK}]{'#' * fill}[/][dim]{'.' * (c - fill)}[/]")
             return out
 
-        # ⚠️ THE FOOTER SAYS WHAT HAS ACTUALLY HAPPENED, not what could.
-        # `.` means "offered to the placer", and on a stock chooser with
-        # nothing of ours in it that is the whole run and NOTHING has been
-        # overwritten -- every one of those effects still works. Reading the
-        # dots as loss is the obvious mistake and the footer used to invite
-        # it by saying "harvested" whether or not a word had been placed.
         lo = (0 if not hv else
               sum(c for k, _a, _n, c in seg
                   if sp[k][0] < min(sp[h][0] for h in hv)))
@@ -1498,14 +1440,6 @@ class RemixerScreen(Screen):
                                     f"{tracks.stop - 1}, no module claims "
                                     f"one") + "[/]"))
 
-        # CYCLES. The fourth scarce thing was really the fifth: over the
-        # per-core budget the DSP does not refuse the image, it WEDGES
-        # (PLAN.md s2 -- "the wall is a CLIFF", +200 cycles was a hard hang
-        # with zero warning). So it is the one resource here whose overrun
-        # you cannot discover by building, and it lived behind `c` and a
-        # full `make check`. It is the WORST core, under the worst mix of
-        # this selection's own effects across the four FX2 slots -- an image
-        # cannot stop the operator putting the heaviest one on all four.
         if st.cycles:
             worst, usable, mix = st.cycles
             free = usable - worst
@@ -1539,12 +1473,6 @@ class RemixerScreen(Screen):
         side.append(why("rows",
                         f" {'rows':<{W}}[{c}]{31 - used_rows:>5}[/] free of "
                         f"31 [dim]· {used_rows} loaded[/]"))
-        # And the cave. The build reports only what is LEFT, so the total
-        # comes from state.CAVE_BYTES (pinned to build_bus's own bounds by
-        # the selftest) and the used figure is the subtraction -- which is
-        # the point: a stock chooser plants nothing on the ColdFire, so the
-        # honest reading of the default selection is the whole region free,
-        # not the wordless "untouched" this used to print.
         if st.cave_free is not None:
             c = OK if st.cave_free > 512 else WARN if st.cave_free else BAD
             brief.append(("cave", f"[{c}]{st.cave_free:,} B[/]"))
@@ -1563,28 +1491,6 @@ class RemixerScreen(Screen):
             side.append(why("cave",
                             f" {'cave':<{W}}[dim]    ? free of "
                             f"{CAVE_BYTES:,} B · not built[/]"))
-        # ONE legend line, decoding the ONE thing on this pane that is not
-        # already words: the bar's three glyphs. What an FX2 buffer count
-        # counts used to be spelled out here in two further lines of prose
-        # -- three of the pane's eleven lines spent on standing text -- and
-        # it read as an unexplained footnote rather than as a legend,
-        # because the rows it belonged to are two lines up and say "4 free
-        # of 4 · tracks 5-8 all keep their own" in words already. It is in
-        # `?` with the rest of the buffer story instead.
-        # A KEY, one glyph per line. Three items strung along one line with
-        # `·` separators read as a run-on sentence rather than as a legend
-        # -- which is fair, because it IS three unrelated definitions, and
-        # the only thing on the pane a reader cannot decode from the words
-        # beside it. Aligned under the label column so it reads as a key.
-        # ⚠️ THERE IS NO GLYPH LEGEND ANY MORE. It sat at the bottom of the
-        # strip labelled `bar`, in the same label column as `words A`,
-        # `cycles` and `cave` -- so it read as a fifth scarce thing called
-        # "bar" whose value was "held by a reverb you kept listed". Moving it
-        # under the bars it decodes fixed the mislabelling and left the
-        # better question standing: every row already says in WORDS what its
-        # bar says in glyphs (`0 free of 2,724 · 0 loaded`, `held by Plate,
-        # Spring, Dark`), so the legend was decoding a picture of a sentence
-        # printed beside it.
         out = [ln for ln in out if ln is not None]
         # A SHORT TERMINAL GETS THE NUMBERS, NOT THE ROWS. Nine lines of
         # budget out of twenty-four is the pane crowding out the thing it is
@@ -1609,9 +1515,6 @@ class RemixerScreen(Screen):
             self._budget_resized(len(lines) + 1)
             self._paint("#pane_budget", lines + [cur])
             return
-        # ⚠️ ONE COLUMN NOW, not two. The descriptor column is what the
-        # second column's width used to be spent on, and a row that says
-        # what it is beats a row that fits beside another one.
         rows = columns(out + side, self.app.size.width - 2)
         rows += self._memory_map(st, self.app.size.width - 2)
         # Its own height is what the panes above are laid out against, so a
@@ -1666,15 +1569,6 @@ class RemixerScreen(Screen):
             bits.append(f"tracks {tr.start}-{tr.stop - 1}")
         out.append(f"[dim]{' · '.join(bits)}[/]")
         out.append(f"[dim]{escape(mod.doc)}[/]")
-        # WHAT IT COSTS, while you are still deciding. "Will this fit beside
-        # what I already have" is what the library pane is really asked, and
-        # every answer used to arrive only as a refusal after adding it.
-        # ⚠️ ONE LINE EACH, which is how resources() has always returned
-        # them and what docs/remixer/REMIXER.md's "one line per menu" describes.
-        # Joining them with ` · ` made one long sentence that Textual then
-        # flowed, so the FX1 and FX2 answers broke across lines mid-phrase
-        # and a simple fact read as a caveat -- which is the exact mistake
-        # that split them into separate strings in the first place.
         res = rig.resources(mod, st.words.get(mod.key), st.fx1,
                             mod.key in st.sel, st.harvest)
         for line in res:
@@ -1740,18 +1634,6 @@ class RemixerScreen(Screen):
         out.append("[dim]← → change · r render + hear · space replay[/]"
                    if self.pane == UNIT else
                    "[dim]tab here to change values and audition[/]")
-        # ⚠️ THE UNIT PANE ENDS HERE. It used to close with a block showing
-        # the firmware's own draw of this effect's page -- and the answer to
-        # "what is that for?", asked four times on 3 Sep 2026, turned out to
-        # be "nothing this pane should do". The rows above already list every
-        # drawn parameter with its page number, from the same descriptor, so
-        # the picture said it again; CHOOSERS lists the chooser rows; and
-        # what was left were two ASSERTIONS about the built descriptor and a
-        # boolean about the boot. The assertions moved to verify_menu, where
-        # a mismatch fails `make check` instead of having to be noticed in
-        # the corner of a pane; the boot is one line under CHOOSERS, where it
-        # belongs, because it is a fact about the IMAGE and not about the
-        # effect the cursor is on.
         self._paint("#pane_unit", self._fit("#pane_unit", out, cur_line,
                                             head=head))
 
@@ -1760,7 +1642,7 @@ class RemixerScreen(Screen):
         """The firmware's own draw of one page, CACHED.
 
         ⚠️ This is what made a HELD arrow key lag. render_fx2 costs 15-96 ms
-        (mean 32; render_fx1 16, render_menu 8 -- measured 2 Sep 2026), and
+        (mean 32; render_fx1 16, render_menu 8 --), and
         rerender() ran it on every keystroke, so under key repeat the work
         per key exceeded the repeat interval and the UI fell behind the key,
         then kept stepping after release. Single presses always felt fine,
@@ -1815,13 +1697,6 @@ class RemixerScreen(Screen):
              for ln in grid] + [f"{edge}'" + "-" * w + "'[/]"]
 
     # ---- keeping the image equal to the selection ------------------------
-    # There used to be a stale() gate here: the preview refused to draw when
-    # the image on disk was not the selection, and printed a bold two-line
-    # disclaimer telling the operator to press b. Every fresh launch is
-    # stale, so the headline feature opened showing a disclaimer -- and what
-    # it was guarding is a 0.26 s build (`make bus` from a touched manifest,
-    # measured 2 Sep 2026) plus a 4.6 s ColdFire boot, both already on a
-    # worker thread. So the image just follows the selection instead.
     def schedule_sync(self):
         """The selection changed. Rebuild and re-boot, after a short pause so
         a run of swaps costs one build rather than one per keystroke."""
@@ -2018,11 +1893,6 @@ class RemixerScreen(Screen):
         if abs(step) == 1:
             step = self._accel(step, canon, hi)
         vals[canon] = max(0, min(hi, vals.get(canon, 0) + step))
-        # ⚠️ A MODE CHANGE RE-DEFAULTS THE OTHER KNOBS (Sam, 3 Sep 2026: "can
-        # you adjust all of the settings to their defaults when they switch").
-        # Landing on GRAIN with the tape depth still where CLEAN left it is
-        # not a starting point, it is a puzzle. Only slots the view names are
-        # touched; everything else the operator dialled survives.
         if mod.mode_slot is not None and slot == mod.mode_slot:
             view = mod.view_for(vals[canon])
             if view is not None:
@@ -2068,14 +1938,6 @@ class RemixerScreen(Screen):
             rows = self.avail_rows()
             mod = rows[min(self.cur[AVAILABLE], len(rows) - 1)]
             if mod.key in st.sel:
-                # ⚠️ THIS USED TO REMOVE IT, and that cost a `bus` user
-                # both servers. A ✓ in the LIBRARY means "already in the
-                # image", so `enter` there reads as "select this", not
-                # "throw it out" -- and once the first server was gone the ▸
-                # had moved onto the OTHER one, so re-adding the first
-                # swapped the second away. One keystroke, both servers lost,
-                # and nothing on screen said that was the deal.
-                # The library ADDS. LOADED removes. Point at the row.
                 self.pane = LOADED
                 self.cur[LOADED] = st.order.index(mod.key)
                 st.msg = (f"{disp(mod)} is already in the image — "
@@ -2155,15 +2017,6 @@ class RemixerScreen(Screen):
         one swap happened.
         """
         st = self.app.state
-        # ⚠️ A SELECTION WITH NO BUS DOES NOT NEED SEND AT ALL. Unimplemented
-        # ids resolve to the firmware's own NONE, which costs no words --
-        # see schema.NO_FALLBACK and state.auto_fallback. Conscripting SEND
-        # into an insert collection cost it 215-250 words for a client
-        # nothing in that image reads; on restock it cost PLATE REV.
-        # (This also covers the all-stock case: an untouched chooser has no
-        # bus either, and re-adding a stock reverb used to add Send because
-        # "no fallback" is true of the launch state -- which is exactly what
-        # untouched_stock() exists to keep off the ⚠ line.)
         if not any(on_the_bus(m) for m in st.selected):
             return ""
         if not any("no fallback" in p for p in st.problems()):
@@ -2174,14 +2027,6 @@ class RemixerScreen(Screen):
         st.insert_at(send.key, len(st.order))
         return " · added Send as the fallback"
 
-    # untouched_stock() lived here until 2 Sep 2026. THE LAUNCH STATE BUILDS
-    # NOW, so there is nothing to special-case: an untouched stock chooser
-    # falls back to the firmware's own NONE (schema.NO_FALLBACK), places no
-    # code and assembles to A 0/2724 · B 0/2724 -- the chooser an unmodified
-    # unit shows, rebuilt from our own tables. It used to be unbuildable for
-    # one reason only: the fallback had to be a module of ours, so the remixer
-    # opened on a selection it had to apologise for ("stock -- swap a module
-    # in to build it") and the panel drew nothing until you did.
 
     def blockers(self, probs):
         """The modules whose removal would clear the ⚠, if that is the shape

@@ -3,7 +3,7 @@
 does `rig_render` (mixer model included) match the ColdFire port?
 
     python3 tools/harness/port_compare.py --project out/o9d/proj_t1eqA --remix bus
-    python3 tools/harness/port_compare.py --project PROJ --image out/mainos_bus.bin --remix bamsep27 \\
+    python3 tools/harness/port_compare.py --project PROJ --image out/mainos_bus.bin --remix bamsep26 \\
         --tracks 1,2,5,8 --frames 400
 
 The port (`tools/emu/ot_emu`) boots IMAGE, loads PROJECT from a staged card,
@@ -15,28 +15,11 @@ core's read-back slot, after FX2 and before LEVEL). Then `rig_render` runs
 the SAME part on the SAME image with each track's chain input as its stem
 (`--amp 1.0`, the model applying VOL^2 and the balance as the DSP does) and
 the two are fitted per track -- lag, least-squares scale, residual -- and
-the port's TX0 main slot against `mix.wav` (LEVEL^2 and the sum).
-
-What a result means. A linear chain (SEND, a flat EQ, a station at rest)
-should fit to a scale of 0.00 dB and a residual of -100 dB or better: that
-is the mixer model, the parameter path and the harness's dispatch all
-agreeing with the firmware on this part. An engine with history (the
-reverb's free-running allpass modulator, the delay's LFO) matches in level
-and not in residual (COLDFIRE_PORT.md O12: -14 dB with the modulators
-live, levels within 0.1 dB) -- read the scale, not the residual, there.
-A scale that is NOT 0 dB on a linear chain is a finding: a knob the port
-publishes that the harness does not, or the reverse.
-
-Cost: one port run (~75 s for 400 frames) plus one rig_render. The project
-is COPIED before anything is written to it; `--master-off` (default) turns
-MASTER_TRACK off in the copy so TX0 is the mix itself and not the master's
-FX (the RIG's T8 master carries stock LO-FI, O14).
-"""
+the port's TX0 main slot against `mix.wav` (LEVEL^2 and the sum)."""
 import argparse, json, math, os, pathlib, shutil, subprocess, sys, wave
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
-sys.path.append(str(pathlib.Path(__file__).resolve().parents[1] / "scratch"))   # the block-dump readers
-import blockdump as bd                      # noqa: E402  (tools/scratch)
-import o10_recloop as rl                    # noqa: E402  (track_audio, readback_audio)
+import blockdump as bd                      # noqa: E402
+import recloop as rl                        # noqa: E402  (track_audio, readback_audio)
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 STOCK = ROOT / "out/raw/section_3_MAIN_OS.bin"
@@ -160,14 +143,6 @@ def main():
         outL, outR = rl.readback_audio(c, t), rl.readback_audio(c, t, True)
         taps[t] = dict(inL=inL, inR=inR, outL=outL, outR=outR,
                        in_db=db(rms(inL[1500:] + inR[1500:]) / 8388608), out_db=db(rms(outL[1500:] + outR[1500:]) / 8388608))
-    # Compare the tracks that PASS audio under the port: chain input AND chain
-    # output live. A record with audio and a chain output of digital zero is
-    # not a closed chain -- it is a machine whose record carries something
-    # other than its chain input (a STATIC/FLEX slot's record is not the
-    # THRU's, O10), and feeding that to the harness compares two different
-    # things. Listed, not compared, unless --tracks names it.
-    # A bus HOST or a return has chain output and no chain input of its own
-    # (it is fed over the bus): compared on its output, its stem silent.
     live = [t for t, v in taps.items() if v["out_db"] > -120]
     skipped = [t for t, v in taps.items() if v["in_db"] > -120 and t not in live]
     want = [int(x) for x in a.tracks.split(",") if x] if a.tracks else live

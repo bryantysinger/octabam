@@ -5,16 +5,13 @@ you, reached from stock code by detours you name by SYMBOL. Copy this
 directory to modules/<yourname>/ and edit. Directories starting with `_`
 are skipped by the registry, so this file is never built.
 
-For a finished one small enough to read in one sitting, see
-modules/hello-dram/ (one unit, no hooks -- the loader canary); for the
-real thing, modules/midi-scenes/ (seven units built from the author's own
-repository as a submodule, 34 detours, four pokes). docs/remixer/MODULES.md
-"Declaring a ColdFire module" carries the reasoning these comments only
-summarise; docs/remixer/PLACEMENT.md says where the bytes go and why.
+modules/hello-dram/ is a finished one (one unit, no hooks); modules/
+midi-scenes/ a real one (units built from the author's repository as a
+submodule, detours, pokes). docs/remixer/MODULES.md "Declaring a ColdFire
+module" is the guide; docs/remixer/PLACEMENT.md says where the bytes go.
 
-Say here what the module IS, which stock routines it changes, what was
-measured and what is inferred. Then delete every comment below that you
-have answered -- a template's leftovers read as fact to the next person.
+Say what the module is, which stock routines it changes, what is measured
+and what is inferred. Delete every comment below once answered.
 """
 
 from remix.schema import Detour, Kind, Linked, Module, Poke
@@ -67,7 +64,7 @@ MODULE = Module(
 
     # A stock pointer array that needs more entries: TableGrow relocates it
     # into free space with your symbols appended and repoints every
-    # reference (busscreen's menu-state table is the worked example).
+    # reference.
     # tables=(TableGrow("...", old=0x400xxxxx, count=16,
     #                   symbols=(("unit", "my_row"),),
     #                   refs=((0x400xxxxx, 0x400xxxxx),)),),

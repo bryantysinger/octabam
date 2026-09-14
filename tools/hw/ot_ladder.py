@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """The rig LADDER: one rung per bank, stepped over MIDI, measured after STOP.
 
-Built 13 Sep 2026 for the evening the rig's defaults are settled on the
-unit. The idea: effect selection cannot be driven over MIDI, but every
-effect id and knob byte lives in the PROJECT, and a pattern selects a part.
+Effect selection cannot be driven over MIDI, but every effect id and knob
+byte lives in the PROJECT, and a pattern selects a part.
 So a ladder of configurations is a project -- the same pattern copied into
 pattern 1 of banks A..H, and each bank's four parts holding one rung's
 layout -- and a rung is selected by STOP, program change, START. Nobody
@@ -47,13 +46,7 @@ WHAT A RUNG REPORTS, none of it a listening call:
 ⚠️ CONNECTIONS ARE ASSERTED OVER MIDI before every rung (page-1 CCs: FX2
 slot 0 = CC 40 on the track's channel, T8's return level = FX1 slot 2 =
 CC 36), from the same table the project was stamped from. A panel
-re-select loads the manifest defaults and both bus knobs default to 0.
-
-⚠️ PROGRAM CHANGE needs PROG CH RECEIVE on (PROJECT > MIDI > SYNC) and the
-transport slaved (CLOCK + TRANSPORT RECEIVE). The unit takes a pattern
-change at the next boundary while running, so the runner stops first
-(Sam, 13 Sep 2026). A program is A01 = 0 .. H16 = 127.
-"""
+re-select loads the manifest defaults and both bus knobs default to 0."""
 import argparse
 import json
 import pathlib
@@ -652,10 +645,6 @@ def reanalyse(args):
     print("\n".join(rows))
 
 
-# ---------------------------------------------------------------------------
-# stress: drive every page-1 knob MIDI can reach through its extremes while
-# the rung plays (Sam, 13 Sep 2026: the errors "were happening constantly",
-# so a static soak has little value; the knobs are what a set does)
 # ---------------------------------------------------------------------------
 def _cc_for(mods, layout, t, fx, name):
     spec = layout[t][0 if fx == "fx1" else 1]

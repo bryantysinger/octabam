@@ -1,32 +1,24 @@
-"""Tempo sync -- the project's first ColdFire code caves.
+"""TEMPO SYNC -- two ColdFire caves: the DSP learns the tempo, and BusDelay's
+TIME draws as a division.
 
-This module adds no effect. It changes what the firmware DOES, which makes it
-the worked example of the other kind of contribution: two patches into the
-ColdFire main OS, one hooking a per-frame routine, one supplying a display
-formatter.
+The DSP is never told the tempo (the ColdFire computes every tempo-derived
+rate itself). The publish cave hooks the per-frame voice-record writer at
+the instruction that stores the FX2 id, replays it, and also stores tempo24,
+samples-per-MIDI-clock (Q12.4), the crossfader position and any held MIDI
+note into four halfwords of the record that are written every frame and
+never read; the DSP reads them at r6+$6..$9.
 
-THE PROBLEM IT SOLVES. The DSP is never told the tempo -- the ColdFire
-computes every tempo-derived rate itself, so a DSP effect has no way to know
-what a bar is. The publish cave hooks the per-frame voice-record writer at
-the instruction that stores the FX2 id, replays that instruction, and then
-also stores tempo24, samples-per-MIDI-clock (Q12.4), the crossfader position
-and any held MIDI note into four halfwords of the record that are written
-every frame and never read. Those land on the DSP side as r6+$6..$9.
-
-⚠️ THE CAVE FILTERS ON FX2 IDS 6 AND 7, AND THOSE IDS ARE COMPILED INTO THE
-PINNED BYTES (`subq.l #6,%d0; cmpi.l #1,%d0` in tempo_cave.s). A module that
-changes its fx2 id does not change this cave, and the two then disagree
-silently -- the DSP simply never sees a tempo. Until the build can patch
-values into a cave, an id change here means re-assembling and re-pinning.
+The cave filters on FX2 ids 6 and 7, compiled into the pinned bytes
+(`subq.l #6,%d0; cmpi.l #1,%d0` in tempo_cave.s): a module that changes its
+fx2 id must re-assemble and re-pin this cave, or the DSP never sees a tempo.
 
 The formatter cave is BusDelay TIME's display: it prints the division name
 ("1/8") while the DSP's sticky snap holds one and milliseconds otherwise,
-using the same integers as the DSP rule. It is position-independent and its
-two state longs live inside the cave.
+from the same integers as the DSP rule. Position-independent; its two state
+longs live inside the cave.
 
-Both caves sit in the stock zero run at 0x400d6b00-0x400d7c3c, past the
-descriptor clones. NOTEMPO=1 installs neither, and the DSP side then reads
-zeros and SYNC becomes a no-op by design.
+Both caves float in the stock zero run past the descriptor clones.
+NOTEMPO=1 installs neither; the DSP then reads zeros and SYNC is a no-op.
 """
 
 from remix.schema import CavePatch, FormatterReg, Kind, Module
@@ -44,8 +36,8 @@ TEMPO_CAVE_BYTES = bytes.fromhex(
     "2f08" "41f9400d64c2" "10304800" "205f"  # held note[d4] ...
     "0280000000ff" "0c80000000ff" "6602" "4280"  # 0xff (released) -> 0
     "3540002a"                             # ... -> +0x2a (r6+$9)
-    "20398000181c" "6712"                  # tempo24; 0 -> nodiv (R48
-                                           # HUNG AT BOOT on divu.l by 0)
+    "20398000181c" "6712"                  # tempo24; 0 -> nodiv (divu.l by 0
+                                           # hangs the boot)
     "35400024"                             # tempo24 -> +0x24 (r6+$6)
     "223c0285ff00" "4c401001" "35410026"   # 42336000/tempo24 -> +0x26
     "221f" "201f" "4e75")
@@ -71,7 +63,6 @@ MODULE = Module(
         ),
         CavePatch(
             label="time_fmt cave",
-            # Moved here 24 Aug 2026 when the tempo cave grew to 104 bytes.
             cave_addr=None,          # floats: 0x400d7080 behind the tempo cave
             pinned=TIME_FMT_BYTES,
             source="modules/tempo-sync/time_fmt.s",

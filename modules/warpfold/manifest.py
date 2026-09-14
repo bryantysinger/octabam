@@ -1,10 +1,7 @@
-"""WarpFold -- a Mutable-Instruments-Warps-flavoured ring modulator / wavefolder.
+"""WarpFold -- a Warps-flavoured ring modulator / wavefolder.
 
-The first OUTSIDER module: an effect built entirely against the manifest
-contract, with no build_bus.py knowledge of its own. Unlike the two servers it
-is a plain per-track INSERT -- no bus role, no shared-window buffers, placed in
-BOTH payloads -- so it runs on any of the eight tracks, and several tracks can
-run their own instance at once.
+A per-track insert: no bus role, no shared-window buffers, placed in both
+payloads, so it runs on any track and several tracks can run their own.
 
 Algorithm (modules/warpfold/warp_fold.asm):
   FOLD  -- drive the input 1..8x and reflect it back through +/-1 with the
@@ -42,9 +39,7 @@ MODULE = Module(
     params=(
         # ---- page 1 -------------------------------------------------------
         # DRV 0 is an exact identity through the folder (gain 1x never
-        # reaches the reflection), so a fresh instance in FOLD mode passes
-        # audio untouched until the knob moves -- deliberate, after SHMR's
-        # lesson about defaults that were never revisited.
+        # reaches the reflection): a fresh instance passes audio untouched.
         Param(b"DRV", 0, active=True, formatter=_PLAIN,
               doc="fold drive, 1..8x into the reflection; 0 = exact identity"),
         Param(b"FREQ", 48, active=True, formatter=_PLAIN,
@@ -65,7 +60,7 @@ MODULE = Module(
     ),
     dsp=DspSection(
         asm="modules/warpfold/warp_fold.asm",
-        priority=5,                   # after every shipping module
+        priority=5,
         bus_role=BusRole.NONE,
         ybase=YBase.NEVER,            # no shared-window buffers at all
         r7_latch_slot=None,

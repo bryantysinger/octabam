@@ -1,58 +1,42 @@
 """The stock FX2 effects, as things a remix can keep in the chooser.
 
 Every octabam image replaces the FX2 chooser wholesale with the remix's
-modules. Until 2 Sep 2026 that hid all fourteen stock FX2 effects, although
-only three of them are actually CONSUMED -- PLATE, SPRING and DARK REV,
-whose 2,724 words of DSP code are the donor region every module packs into.
-The other eleven keep their code, their descriptor and their dispatch
-entries in every image; they merely had no chooser row. This table makes
-them first-class so a remix can list them by name, in chooser order, next
-to the modules -- and so the composer can say what is kept, what is hidden
-and what is replaced instead of leaving the operator to guess.
+modules. Only three stock effects are consumed -- PLATE, SPRING and DARK
+REV, whose 2,724 words of DSP code are the donor region modules pack into;
+the other eleven keep their code, descriptor and dispatch entries in every
+image. This table lets a remix list them by name, in chooser order, beside
+the modules. A stock entry costs nothing: no clone, no placement, no words,
+no cycles charged by `make cycles` (FILTER's 192 cycles is the only figure
+measured, docs/firmware/CHIP.md); the build writes its list row and cursor
+position.
 
-A stock entry costs NOTHING: no clone (its descriptor is where stock put
-it), no placement (its code is where stock put it), no words, no cycles
-charged by `make cycles` (which cannot see it -- the FILTER figure of 192
-cycles is the only one measured, docs/firmware/CHIP.md). What the build writes for
-it is its list row and its cursor position, and nothing else.
-
-ITS KNOBS ARE READ FROM THE STOCK DESCRIPTOR, not declared: names, defaults,
+Its knobs are read from the stock descriptor, not declared: names, defaults,
 value counts and the enable bitmap come out of the pristine image
-(out/raw/section_3_MAIN_OS.bin, the same record the panel draws from), so
-the remixer shows a stock effect's real page-1/page-2 controls and
-`send_probe --set` can drive them by name. The build never writes these
-params back (a stock row is not cloned), and when the image is absent --
-a fresh clone before `make setup` -- the entry simply carries no params.
+(out/raw/section_3_MAIN_OS.bin), so the remixer shows a stock effect's real
+controls and `send_probe --set` can drive them by name. When the image is
+absent the entry carries no params.
 
-A SELECT'S LABELS COME FROM THE FIRMWARE ITSELF: the words a stock select
-draws ("12dB|24dB", "NONE|HP|LP|BOTH", "A#0".."A 9") are not data in the
-image, they are printed by the slot's display-formatter FUNCTION, so
-tools/build/stock_labels.py runs each formatter on the emulated ColdFire for every
-value and checks the result in as stock_labels.json (2 Sep 2026). The
-registry reads that file; the selftest proves it still matches the firmware
-whenever the emulator is available.
+A select's labels come from the firmware: the words a stock select draws
+("12dB|24dB", "NONE|HP|LP|BOTH") are printed by the slot's display-formatter
+function, so tools/build/stock_labels.py runs each formatter on the emulated
+ColdFire for every value and checks the result in as stock_labels.json. The
+selftest proves it still matches whenever the emulator is available.
 
-RENDERING. A stock effect renders locally the way an insert does: dsp_host
-runs its code straight from a dump of the STOCK image's payload A
-(tools/remix/audition.py), with `-alloc 1` so an effect that takes an
-instance buffer gets Y:0x4000 as the hardware would give track 1. Measured
-2 Sep 2026: FILTER passes at unity and a narrow LP takes a tone down 27 dB,
-CHORUS at MIX=127 modulates, COMPRESSOR passes at defaults. The one that
-cannot render is DELAY: its DSP dispatch is stock's null stub because the
-Echo Freeze delay runs on the ColdFire (DMA over SDRAM rings,
-docs/firmware/EXTERNAL.md), so there is no DSP code to run.
+Rendering: a stock effect renders locally the way an insert does, dsp_host
+running its code from a dump of the stock image's payload A
+(tools/remix/audition.py) with `-alloc 1`, so an effect that takes an
+instance buffer gets Y:0x4000 as the hardware gives track 1. DELAY cannot
+render: its DSP dispatch is stock's null stub; the Echo Freeze delay runs
+on the ColdFire (DMA over SDRAM rings, docs/firmware/EXTERNAL.md).
 
-Two of them are special:
-
-  DELAY (0x08)   works from its row exactly as on a stock unit, costs the
-                 DSP nothing, and has no local render (above).
-  the four with  SPATIALIZER, FLANGER, CHORUS, COMB allocate an FX2
-  a buffer       instance buffer through the host's bump allocator (they
-                 read X:0x213 at init; docs/firmware/DSP.md section 10), and the
-                 allocator hands out per-TRACK bases that are exactly the
-                 addresses BusVerb, Nimbus and BusDelay hardcode. The
-                 ledger refuses them beside any module with fixed Y
-                 buffers; see Claims.stock_instance_buffer.
+  DELAY (0x08)   works from its row as on a stock unit, costs the DSP
+                 nothing, no local render.
+  SPATIALIZER, FLANGER, CHORUS, COMB allocate an FX2 instance buffer through
+                 the host's bump allocator (X:0x213 at init;
+                 docs/firmware/DSP.md section 10) at per-track bases that
+                 are the addresses BusVerb, Nimbus and BusDelay hardcode.
+                 The ledger refuses them beside any module with fixed Y
+                 buffers (Claims.stock_instance_buffer).
 
 Addresses are the descriptors' E addresses from docs/firmware/PARAM_PAGES.md
 section 2 (P = E + 0x38 is what the chooser list holds). Words are the
@@ -105,7 +89,7 @@ def _image():
 #
 # Read from the pristine image rather than written down, so it cannot drift.
 # (Both stock lists open with a NONE row, id 0x00 -- which our rebuilt FX2
-# list drops. Noted 2 Sep 2026 from an outside report; see PLAN.)
+# list drops. Noted from an outside report; see PLAN.)
 FX1_CHOOSER, FX2_CHOOSER = 0x400d6060, 0x400d6090
 _fx1_ids: frozenset[int] | None = None
 
@@ -259,20 +243,7 @@ MODULES = (
            "Stock Echo Freeze delay -- runs on the ColdFire, so it costs the "
            "DSP nothing; the row works as on a stock unit. No local render.",
            "Y"),
-    # ---- THE THREE REVERBS, listable since 2 Sep 2026 -------------------
-    # Their code IS the donor region, so they are the only stock rows whose
-    # availability depends on the rest of the selection: the build packs from
-    # PLATE upward and nulls a donor id ONLY where words actually landed
-    # (build_bus.py), so a light selection keeps the ones it never reached.
-    # It refuses a row whose words were taken, which is the guard that makes
-    # listing them safe.
-    #
-    # buffer=True is MEASURED, not assumed: all three read x:>$213 -- the
-    # host's bump allocator -- within the first ~25 words of their entry
-    # (PLATE 0x01018, SPRING 0x01267, DARK 0x01692; payload A disassembly,
-    # 2 Sep 2026), exactly like the four stock effects already flagged. So
-    # the ledger refuses them beside any module with fixed Y buffers, on the
-    # same grounds and with the same evidence.
+    # ---- THE THREE REVERBS, listable -------------------
     _stock("PLATE REV", "plate", 0x14, 0x400d5594, b"PLTE", b"PLATE REV", 594,
            "Stock plate reverb. Its 594 words are the FIRST of the donor "
            "region, so it is the first row any module of ours takes.",
@@ -295,7 +266,7 @@ MODULES = (
 # ---- where each effect's CODE lives, per payload ---------------------------
 # The thirteen DSP effects are laid out CONTIGUOUSLY and every one of them is
 # self-contained: no control flow leaves its own span and nothing enters it
-# but its own dispatch entry (measured 3 Sep 2026, tools/build/dsp_reach.py over
+# but its own dispatch entry (measured, tools/build/dsp_reach.py over
 # both payloads; the one apparent exception is PLATE's `do #<$6,>$1267`,
 # whose operand is a loop END and therefore exclusive). That is what makes
 # any of them harvestable for its words, not just the three reverbs.
@@ -383,7 +354,7 @@ def regions_of(harvest) -> tuple[tuple[str, ...], ...]:
     ground, and the only cost of a gap is fragmentation: a module larger
     than the biggest run has nowhere to go even when the total is ample.
 
-    Until 3 Sep 2026 this returned the LARGEST run alone and the rest were
+    Until this returned the LARGEST run alone and the rest were
     given up for nothing -- visible in the remixer as "drop two effects,
     free only the reverbs" (Sam, 3 Sep). A stranded run is now placeable.
     """
@@ -414,7 +385,7 @@ def harvest_order(harvest=CONSUMED) -> tuple[str, ...]:
 
     The region is packed from its lowest address upward, so the effect at the
     bottom goes first and the one at the top survives longest. Written down
-    for the three reverbs until 3 Sep 2026; sorted from the image now,
+    for the three reverbs until; sorted from the image now,
     because any run of effects can be harvested and nothing says a remix
     lists them in address order.
     """
@@ -426,7 +397,7 @@ def consumed_at(key: int | str, harvest=CONSUMED) -> int:
     """Words our modules may place before this effect's code is overwritten.
 
     ⚠️ ONLY MEANINGFUL FOR A SINGLE RUN. It walks the harvested set as one
-    packed stream; since 3 Sep 2026 the placer fills each contiguous run
+    packed stream; the placer fills each contiguous run
     separately (regions_of), so with a gap this over-counts what precedes an
     effect in the later run. Callers gate on len(regions_of(...)) < 2.
     """
@@ -451,7 +422,7 @@ BY_KEY = {m.key: m for m in MODULES}
 # ---- the stock curve bank at X:0x4840, and who reads it --------------------
 # A 4,096-word data record (32 curves x 128, docs/firmware/TABLES.md) at the
 # SAME X address in BOTH payloads -- the exception to the per-payload table
-# shift CLAUDE.md warns about (measured 14 Sep 2026, dsp_modmap: A at image
+# shift CLAUDE.md warns about (measured, dsp_modmap: A at image
 # 0x400e7181, B at 0x400fa786, word for word identical) -- and immediately
 # above the core's boot clear (P:0x300a6, `do #$7c0` from X:0x4080 ends at
 # 0x4840 exactly), so nothing zeroes it and its image bytes are what the DSP
@@ -462,7 +433,7 @@ BY_KEY = {m.key: m for m in MODULES}
 # record's range and each hit is mapped to the effect whose span holds it.
 # On the stock image that is DJ EQ alone (36 sites per payload, all
 # `x:(r5+$xxx0),reg` reads of curve bases, 0 as a destination; measured
-# 14 Sep 2026 over tools/build/dsp_disasm_all.py's output), which is why
+# over tools/build/dsp_disasm_all.py's output), which is why
 # EXTERNAL.md's "LO-FI AMPH table" label for the record is not repeated
 # here -- LO-FI's code carries no address into it.
 #

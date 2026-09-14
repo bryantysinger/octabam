@@ -1,121 +1,57 @@
-# MIDI scenes
+# MIDI SCENES
 
 MIDI-driven scene locks, built from
-[bkkbrls-del/midisc](https://github.com/bkkbrls-del/midisc) — via Sam's
-fork, branch `octabam-gas`, checked out here as the submodule `upstream/`
-(`git submodule update --init`). `Kind.CF_PATCH`: seven linker-placed
-units, 35 detours, four pokes — 39 sites inside the OS. No DSP code, no
-menu row. Tracking his **1.40MIDISC5** tree (12 Sep 2026).
+[bkkbrls-del/midisc](https://github.com/bkkbrls-del/midisc) (submodule
+`upstream/`, tracking `1.40MIDISC8`). `Kind.CF_PATCH`: thirteen linker-placed
+units in DRAM, 38 detours, four pokes. No DSP code, no menu row.
 
-Octatrack 1.40C has no per-scene parameter lock over MIDI — XF morph reads
-one live 8×30 lock table that only the panel can write. midisc adds a
-second, addressable table (`MSC`, `scene<<8 | track<<5 | flat`, 4 KB) and
-rewires scene hold, XF morph, part save/reload and the scene
-clear/copy/paste menu rows to read and write it when a MIDI event — not
-the panel — is driving. The panel path is untouched.
+## What it does
 
-## How it is built, and the branch that waits for him
+Stock 1.40C has no per-scene parameter lock over MIDI: XF morph reads one live
+8×30 lock table that only the panel writes. midisc adds a second, addressable
+table (`MSC`, `scene<<8 | track<<5 | flat`, 4 KB) and rewires scene hold, XF
+morph, part save/reload and the scene clear/copy/paste rows to read and write
+it when a MIDI event is driving. The panel path is untouched. His README
+(`upstream/README.md`) is the behaviour list.
 
-His caves are written in a small Python encoder (`tools/ot3_asm.py`) and
-linked into fixed addresses by his `build.py`. The `octabam-gas` branch
-adds one file, `tools/gas_port.py`, which drives his own `build_*`
-functions with an encoder subclass that also records one GNU-as line per
-instruction, writes `gas/*.s` (one per cave region, plus `msc.s` and
-`state.s`), then assembles and links every region at **his** address and
-compares — all five code regions reproduce his bytes exactly. Cross-cave
-references are linker symbols in the `.s` form (his `SENT_*` sentinels,
-the addresses `build.py` hands to builders, the MSC table, the four state
-bytes), so octabam can place each region where there is room. His
-`build.py` is untouched: the `.s` files are generated *from* it. The PR to
-him waits until he has finished his own changes; the branch then rebases.
+Not carried: his MIDI → CONTROL CC48/55/56 tick rows (UI-table pokes, not a
+cave); CCs behave as stock in an octabam image.
 
-octabam's manifest lists the seven units as `dram=True`: the build links
-them together as its **platform runtime**, packs it (~2 KB), appends it
-behind octabam's loader and depacks it at boot into the platform's 10 MB
-reserve at the bottom of stock's audio page arena (`0x40a955e0` — the
-placement Octakit and octamax have both proven on hardware;
-`docs/remixer/PLACEMENT.md`). MSC's 0xff fill is just part
-of the image, so nothing needs initialising at boot. The 38 hook sites
-are wired by symbol with the right instruction for each — `jmp` for stubs
-that replay what they displaced, `jsr` for callable ones, one `lea`
-operand rewrite, two `bne→bra` flips, two `bne→nop` flips — and, without
-Octakit in the image, the boot site's three-byte redirect into the
-loader. That is the whole footprint inside the OS: **236 bytes**, 242
-with the boot redirect (the pinned snapshot changed 7,946 and filled the
-OS's free runs to within 52 bytes).
+## How it is built
 
-## Measured vs inferred
+His caves are written in his Python encoder (`tools/ot3_asm.py`) and placed
+at fixed addresses by his `build.py`. His `tools/gas_port.py` drives the same
+builders with an encoder subclass that records one GNU-as line per
+instruction, writes `gas/*.s`, then assembles and links every region at his
+address and compares. Cross-cave references are linker symbols, so octabam
+places each unit where it chooses: every unit is `dram=True`, linked into the
+platform runtime, appended behind octabam's loader and depacked at boot into
+the arena reserve (`docs/remixer/PLACEMENT.md`). Inside the OS the module
+changes only the detour and poke sites, plus the boot redirect when no other
+module supplies it.
 
-**Measured:**
-- `tools/verify/verify_midiscenes.py` (in `make verify`): every region assembles
-  and links to his encoder's bytes at his addresses, and the committed
-  `gas/*.s` are what `gas_port.py` regenerates.
-- `make check REMIX=midi-scenes` passes; every detour's expect bytes match
-  stock. `ported` (+ the LO-FI AMF fix) composes.
-- **Booted under the ColdFire port** (`tools/verify/verify_dram_boot.py`, in
-  `make verify`): the boot detour reaches octabam's loader, the loader
-  calls the stock depacker with our stage and window, the boot reaches
-  the RTOS handoff with the loader's hash gates all passing, and the
-  window reads back equal to the linked image in 8,618 of 8,622 bytes —
-  the 4 that differ are his state words, i.e. his code ran **from DRAM**
-  through the `apply_part` detour during boot.
-- His `apply_part` hook (`0x40009094`) is shared with Octakit and octamax;
-  the ledger refuses those combinations by name unless `SCENES KITS` is in
-  the remix to bridge it (`remixes/mods.py`, green on 10 Sep 2026 against
-  1.40MIDISC). None of 1.40MIDISC's four new sites (0x40034754,
-  0x4003493e, 0x40034764, 0x40034950) is written by Octakit — checked
-  against all 650 writes her recipe makes.
+## Measured
 
-**Inferred / not measured:** nothing built by this pipeline has been
-flashed; his own builds are what has run on hardware. That the linked
-layout behaves identically to his fixed one follows from the per-region
-identity plus the linker resolving the same symbols — it is not a
-separate measurement.
+- `tools/verify/verify_midiscenes.py` (in `make verify`): every region
+  assembles and links to his encoder's bytes at his addresses, and the
+  committed `gas/*.s` are what `gas_port.py` regenerates.
+- Under the ColdFire port: the boot detour reaches the loader, the loader's
+  hash gates pass, the window reads back equal to the linked image except his
+  own state words, i.e. his code ran from DRAM during boot. Arms the control
+  fixture's five tracks.
+- His own `1.40MIDISC8` image fails project load under the port: his CAVE2
+  (`0x400d2ee6`, 308 bytes) overruns the enable words (`0x400d3014/18`) of a
+  stock descriptor at `0x400d2e8a` that the loader reads; stock also writes
+  `0x400d2e84..89`, where his VOICE_RELOAD_CAVE starts. This build links
+  every unit into DRAM and is immune. Told him.
+- **On hardware 14 Sep 2026** as `OKMS1` (remix `ok-ms`, with Octakit),
+  confirmed working by him on his own unit.
 
 ## Open
 
-- ~~Detour chaining for `0x40009094`~~ — done, `modules/scenes-kits`.
-  Still open beyond the hook: a Kits-aware form. His code addresses the
-  Part window through `BANK_PTR` (`0x46c82456`) and his bank
-  switch/invalidate hooks key MSC off the bank; Octakit untethers Kits
-  from Banks. The image builds and the apply path is coherent; what his
-  Part Save/Reload hooks mean against her LOAD/SAVE KIT menus is not
-  measured anywhere.
-- Nothing from this pipeline has been flashed; the first flash is
-  `hello-dram`, then this (`PLAN.md`, work order).
-- ✅ **The project-load I/O half is FIXED in 1.40MIDISC.** Re-measured
-  10 Sep 2026 on the same card (`docs/remixer/PLACEMENT.md`): his new
-  image reads 30,467 sectors and writes 297 in 6,189 ATA commands —
-  *exactly* the `hello-dram` control's counts, every counter. The
-  1.40MSC image on the same fixture read 21,958 and wrote 0. His fix:
-  `bank_switch`/`bank_invalidate` preserved only `d0` across a `jsr`
-  that replaced a plain `move.l d0,(BANK_PTR).l`, so the sample load
-  lost registers; they now save `d1-d7/a0-a6`.
-- ❌ **RETRACTED 13 Sep 2026: the "track-arming defect" below was the
-  port's own saved-bank watch, keyed on the stock PC of a store his
-  cave now makes** (`docs/remixer/PLACEMENT.md`). With the watch following
-  the detour, 1.40MIDISC5 and 1.40MSCN6 both arm the control's five. The
-  paragraph is kept as the record of a wrong finding that was reported
-  upstream and PR'd (bkkbrls-del/midisc#2, withdrawn):
-- ~~⚠️ **The track-arming half is NOT fixed, and is a separate defect —
-  bisected to ONE site, `0x40087d44`, and narrowed to `unpack`.**~~
-  1.40MIDISC5 shipped "Site B no-pack" crediting this finding, but the
-  symptom is UNCHANGED on the same fixture, and a re-bisect (including
-  his new `0x400622c6` hook, which is not it) still lands on
-  `0x40087d44`. Since that site no longer packs, it is `unpack` — whose
-  one stock-visible write is the 144-byte shadow→working sparse sync.
-  Told him; see `docs/remixer/PLACEMENT.md`. (Previously described as
-  `bank_sw` B.) Three tracks
-  arm at frame 0 (0, 5, 7) against the control's five (0, 1, 2, 4, 7),
-  identically on both his images, so it is not the register clobber.
-  Dropping that single hook restores all five; dropping any of the other
-  37 does not, and dropping all 38 also restores them (so the DRAM units
-  are innocent and the instrument can see the effect). Both `bank_sw`
-  sites carry the same cave and only this one breaks arming, so it is the
-  SITE: stock guards `0x400622aa` with a changed-bank test and publishes
-  `0x80000002` after the store, while `0x40087d44` is unconditional and
-  publishes before it. WHICH part of his cave does the damage is
-  **inferred, not established** — see `docs/remixer/PLACEMENT.md`.
-  Unmeasured on hardware. His to look at.
-- The PR upstream, once he's done: `tools/gas_port.py` + `gas/`, and
-  optionally `build.py` consuming the `.s` form.
+- The apply_part entry (`0x40009094`) stays stock since his 1.40MSCN6 (his
+  earlier wrapper hung project load on hardware), so Octakit owns it alone
+  and nothing bridges the two. What his Part save/reload hooks mean against
+  her LOAD/SAVE KIT menus is not measured; the Kit write protocol
+  (`gk_workspace_*`, `modules/octakit/README.md`) is the remaining piece.
+- His MIDI CONTROL tick rows, if wanted, need a menu-table mechanism.
