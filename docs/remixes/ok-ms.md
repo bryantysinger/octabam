@@ -11,7 +11,7 @@ The two community mods on the stock effects, plus the one bridge they need. No o
 
 ## Status
 
-**On hardware.** Built 14 Sep 2026 as `OKMS1` (without KITS RELOAD) and confirmed working the same day by midisc's author on his own unit (his projects; boot, load, play, his mod). The first image from this pipeline to run on silicon. Its first Part Reload trapped (VEC:04 in Octakit's caller check) — the reason KITS RELOAD exists; reproduced and cleared under the port (`modules/kits-reload/README.md`). `OKMS2` = this remix with the bridge: flashed 14 Sep 2026, works; Part Reload no longer traps. This is the image being shared.
+On hardware, 14 Sep 2026: OKMS2 (this remix). Its predecessor OKMS1 (no KITS RELOAD) trapped on Part Reload (VEC:04); OKMS2 does not.
 
 ## Build
 
