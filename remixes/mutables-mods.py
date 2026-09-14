@@ -11,6 +11,6 @@ REMIX = Remix(
     name="mutables-mods",
     doc="Five MI inserts + every community firmware mod, bridged.",
     modules=("WARPFOLD", "RIPPLE", "RUNGS", "STREAMZ", "BODESHIFT",
-             "MIDI SCENES", "OCTAKIT", "LOFI AMF FIX", "CC PAGE 2", "SCENES KITS"),
+             "MIDI SCENES", "OCTAKIT", "LOFI AMF FIX", "CC PAGE 2", "SCENES KITS", "KITS RELOAD"),
     fallback="NONE",
 )

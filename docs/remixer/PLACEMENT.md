@@ -440,6 +440,20 @@ their own state words only. Not measured: MIDI CCs through the chained
 dispatch (the port has no MIDI in), his Part save/reload menu hooks
 against her Kit menus, hardware.
 
+**The second bridge, 14 Sep 2026: `modules/kits-reload`.** The "Part
+save/reload menu hooks" line above was the open question, and hardware
+answered it: OKMS1 (the pair, no bridge) trapped on the first Part
+Reload (VEC:04, ADDR = her `gk_stock_part_saved_to_working_reload_
+report_fatal`, D0 = his `rel_after`). Not a byte collision -- her
+replacement of the stock reload validates its CALLER's return address
+and his `reload` stub substitutes it. The bridge keeps the stock `jsr`
+at both call sites and hooks the RETURN sites for his post-work (one of
+them her own `reload-shortcut-format` site, overridden like `CC_NEXT`).
+The ledger now carries the class: `Runtime.pinned_returns` (read from
+her abi.inc) against `Detour.subst_return`. Reproduced and fixed under
+the port with `ot_emu --call` (a firmware routine called as main on the
+loaded project); hardware pending. `modules/kits-reload/README.md`.
+
 ## What is still open
 
 - **More than 10 MB** is the same mechanism with a bigger

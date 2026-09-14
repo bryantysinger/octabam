@@ -224,6 +224,34 @@ def check(selected) -> list[str]:
                               f"0x{max(ostart, pa):08x} -- both rewrite the same bytes")
                 pokes.append(span)
 
+    # ---- pinned return addresses (schema.Runtime.pinned_returns) ----------
+    # A runtime's replacement routine may validate its CALLER: Octakit's
+    # part reload reads the return address off the stack and traps on any
+    # but the two stock sites' own. A detour of that `jsr` whose stub
+    # returns the callee through its own continuation (Detour.subst_return
+    # -- midisc's `reload`) trips it, and no byte overlaps: OKMS1 ran until
+    # the first Part Reload (14 Sep 2026, VEC:04 in her report_fatal with
+    # D0 = his rel_after). Refused by name unless a bridge overrides the
+    # detour (modules/kits-reload).
+    for r in selected:
+        pins = getattr(getattr(r, "runtime", None), "pinned_returns", ())
+        if not pins:
+            continue
+        for m in selected:
+            if m is r:
+                continue
+            for d in getattr(m, "detours", ()):
+                if not d.subst_return or (d.site, m.key) in overridden_detours:
+                    continue
+                span = d.pad_to or len(d.expect)
+                for ret in pins:
+                    if d.site < ret <= d.site + span:
+                        clash("pinned return", r.name, m.name,
+                              f"0x{ret:08x} -- {r.name}'s callee validates the return "
+                              f"address of the jsr at 0x{d.site:08x} and traps on any "
+                              f"other; {m.name}'s stub ({d.note or d.symbol}) returns it "
+                              f"through its own -- bridge the site")
+
     # ---- loader-appended runtimes (schema.Runtime) ------------------------
     # The append sits at the end of the OS image and its loader owns one
     # DRAM window, so an image carries at most one. Its recipe's sparse

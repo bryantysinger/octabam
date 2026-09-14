@@ -13,7 +13,7 @@ REMIX = Remix(
     modules=("REVERB SERVER", "DELAY SERVER", "SEND", "DELAY",
              "SPECTRUM", "CHARACTER", "MODULATION",
              "TEMPO SYNC", "CC PAGE 2",
-             "MIDI SCENES", "OCTAKIT", "SCENES KITS"),
+             "MIDI SCENES", "OCTAKIT", "SCENES KITS", "KITS RELOAD"),
     fallback="SEND",
     fx1=("SPECTRUM", "CHARACTER", "MODULATION"),
 )

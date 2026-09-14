@@ -518,6 +518,13 @@ class Detour:
     kind: str = "jmp"
     target: int | None = None
     pad_to: int | None = None
+    # The stub reaches the stock callee with a return address of its OWN
+    # on the stack (midisc's `reload`, `apply_bridge`: the site's return
+    # parked in apply_ret, the stub's continuation in its place). A callee
+    # another module replaces may validate that address -- Octakit's
+    # part reload traps on any but the stock sites' (Runtime.pinned_returns)
+    # -- and the ledger refuses the pair by name.
+    subst_return: bool = False
 
 
 @dataclass(frozen=True)
@@ -574,6 +581,14 @@ class Runtime:
     recipe: str        # firmware.json, repo-relative
     sources: str       # directory holding the .S/.c sources it names
     report_note: str = ""
+    # Return addresses the runtime's replacement routines validate: they
+    # compare the caller's return address on the stack against these and
+    # trap (`illegal`, VEC:04) on any other. A detour of the `jsr` that
+    # pushes one of them, whose stub returns the callee through its own
+    # continuation (Detour.subst_return), reaches that trap on the unit
+    # -- OKMS1's Part Reload, 14 Sep 2026. Derived from the sources
+    # (Octakit: abi.inc's *_RETURN equates), never typed.
+    pinned_returns: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)

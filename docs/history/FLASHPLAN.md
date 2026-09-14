@@ -946,7 +946,8 @@ retracted (it was the port's own saved-bank watch, `FAILURE_MODES.md`).
 The 14 stock effects are now listed so the FX2 chooser is the stock one
 (the recfix one-row trap). [14 Sep: superseded -- `OKMS1`, remix `ok-ms`,
 the same two mods without the extras, is CONFIRMED WORKING on the midisc
-author's unit; see PLAN.md.] Nothing from this pipeline has run on
+author's unit -- and trapped on Part Reload; `KITS RELOAD` bridges it, in
+`mods` too; see PLAN.md.] Nothing from this pipeline has run on
 hardware yet: **this flash is the smoke test**, on Sam's unit, before the
 build recipe is shared with the mods' authors.
 
