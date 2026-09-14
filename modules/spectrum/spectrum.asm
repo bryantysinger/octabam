@@ -407,12 +407,27 @@ fs_mvowl:
         move    #$21,n5                 ; 33
         move    (r5)+n5                 ; r5 = COS_TABLE[idx][0] (33 words past G2)
         move    #$3,n5
-; formant 0: cw = CW[idx][0] + frac*(CW[idx+1][0] - CW[idx][0]) (p:(r5)+n5
+; ONE loop over the three formants (14 Sep 2026; it was three copies of the
+; block, 27 words each). The coefficient slots are stride-1 per formant --
+; m1 at $10..$12, a2 at $13..$15, b0 at $16..$18 -- so r3 = r7 + $10 + k and
+; the stores are r3-relative; the only per-formant constants, e_k and R_k,
+; sit in the P table after the COS table (manifest VOWL_ER) and r2 walks
+; them. m3 is linear here as it is in the sample loop, which addresses
+; through r3 the same way.
+        move    x:(r7+$4e),r2           ; the P table's base ...
+        move    #>$ffffff,m2
+        move    #$30,n2
+        move    (r2)+n2                 ; ... + 48: the (e_k, R_k) pairs
+        move    r7,r3
+        move    #$10,n3
+        move    (r3)+n3                 ; r3 = r7 + $10, formant 0's m1
+        do      #3,>fs_vfz
+; formant k: cw = CW[idx][k] + frac*(CW[idx+1][k] - CW[idx][k]) (p:(r5)+n5
 ; reads the first and steps to the next vowel, p:(r5)-n5 reads it and steps
-; back; (r5)+ moves to the next formant); R' = R0 + e0*RES narrows the band
+; back; (r5)+ moves to the next formant); R' = R_k + e_k*RES narrows the band
 ; with RES; m1 = R'*cw = -a1/2, a2 = R'^2, b0 = (1 - a2)/2.
-        move    p:(r5)+n5,y0            ; CW[idx][0]
-        move    p:(r5)-n5,b             ; CW[idx+1][0]
+        move    p:(r5)+n5,y0            ; CW[idx][k]
+        move    p:(r5)-n5,b             ; CW[idx+1][k]
         move    (r5)+
         move    y0,a
         sub     a,b                     ; diff
@@ -422,75 +437,24 @@ fs_mvowl:
         add     y0,a                    ; cw
         move    a,x1
         move    x:(r6+$1),x0            ; RES/128
-        move    #>$00bc7a,y1       ; e0 = 0.9*(1 - R0)
+        move    p:(r2)+,y1              ; e_k = 0.9*(1 - R_k)
         mpy     x0,y1,a
-        add     #>$7f2e95,a        ; R0 = exp(-pi*90/fs)
+        move    p:(r2)+,y0              ; R_k = exp(-pi*bw_k/fs)
+        add     y0,a                    ; R' (the immediate add it replaces
+                                        ; summed the same 24-bit word into a1)
         move    a,y1                    ; R' (> 0: the SEND-safe second operand)
         mpy     x1,y1,b                 ; m1 = cw*R'
-        move    b,x:(r7+$10)
+        move    b,x:(r3)                ; $10 + k
         move    a,x0
         mpy     x0,y1,b                 ; a2 = R'^2
-        move    b,x:(r7+$13)
+        move    b,x:(r3+$3)             ; $13 + k
         asr     #$1,b,b
         neg     b
         add     #>$400000,b             ; b0 = 1/2 - a2/2
-        move    b,x:(r7+$16)
-; formant 1: cw = CW[idx][1] + frac*(CW[idx+1][1] - CW[idx][1]) (p:(r5)+n5
-; reads the first and steps to the next vowel, p:(r5)-n5 reads it and steps
-; back; (r5)+ moves to the next formant); R' = R1 + e1*RES narrows the band
-; with RES; m1 = R'*cw = -a1/2, a2 = R'^2, b0 = (1 - a2)/2.
-        move    p:(r5)+n5,y0            ; CW[idx][1]
-        move    p:(r5)-n5,b             ; CW[idx+1][1]
-        move    (r5)+
-        move    y0,a
-        sub     a,b                     ; diff
-        move    b,x0
-        move    x:(r7+$49),y1           ; frac
-        mpy     x0,y1,a
-        add     y0,a                    ; cw
-        move    a,x1
-        move    x:(r6+$1),x0            ; RES/128
-        move    #>$00e632,y1       ; e1 = 0.9*(1 - R1)
-        mpy     x0,y1,a
-        add     #>$7f003a,a        ; R1 = exp(-pi*110/fs)
-        move    a,y1                    ; R' (> 0: the SEND-safe second operand)
-        mpy     x1,y1,b                 ; m1 = cw*R'
-        move    b,x:(r7+$11)
-        move    a,x0
-        mpy     x0,y1,b                 ; a2 = R'^2
-        move    b,x:(r7+$14)
-        asr     #$1,b,b
-        neg     b
-        add     #>$400000,b             ; b0 = 1/2 - a2/2
-        move    b,x:(r7+$17)
-; formant 2: cw = CW[idx][2] + frac*(CW[idx+1][2] - CW[idx][2]) (p:(r5)+n5
-; reads the first and steps to the next vowel, p:(r5)-n5 reads it and steps
-; back; (r5)+ moves to the next formant); R' = R2 + e2*RES narrows the band
-; with RES; m1 = R'*cw = -a1/2, a2 = R'^2, b0 = (1 - a2)/2.
-        move    p:(r5)+n5,y0            ; CW[idx][2]
-        move    p:(r5)-n5,b             ; CW[idx+1][2]
-        move    (r5)+
-        move    y0,a
-        sub     a,b                     ; diff
-        move    b,x0
-        move    x:(r7+$49),y1           ; frac
-        mpy     x0,y1,a
-        add     y0,a                    ; cw
-        move    a,x1
-        move    x:(r6+$1),x0            ; RES/128
-        move    #>$0162ff,y1       ; e2 = 0.9*(1 - R2)
-        mpy     x0,y1,a
-        add     #>$7e758f,a        ; R2 = exp(-pi*170/fs)
-        move    a,y1                    ; R' (> 0: the SEND-safe second operand)
-        mpy     x1,y1,b                 ; m1 = cw*R'
-        move    b,x:(r7+$12)
-        move    a,x0
-        mpy     x0,y1,b                 ; a2 = R'^2
-        move    b,x:(r7+$15)
-        asr     #$1,b,b
-        neg     b
-        add     #>$400000,b             ; b0 = 1/2 - a2/2
-        move    b,x:(r7+$18)
+        move    b,x:(r3+$6)             ; $16 + k
+        move    (r3)+
+fs_vfz:
+        nop
         bra     fs_mdone
 fs_mladr:
 ; ---- LADR (13 Sep 2026): the Moog transistor ladder, the LINEAR zero-delay

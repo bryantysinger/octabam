@@ -70,6 +70,17 @@ COS_TABLE = (
     0x7f159c, 0x788738, 0x7fe212, 0x7f0497, 0x798957,
 )
 
+# VOWL's per-formant constants, after the COS table: for each formant k the
+# pair (e_k, R_k) with R_k = exp(-pi*bw_k/fs) for bw = 90 / 110 / 170 Hz and
+# e_k = 0.9*(1 - R_k), the RES narrowing (R' = R_k + e_k*RES). Read with
+# p:(r2)+ by the one per-block formant loop (14 Sep 2026: they were three
+# copies of the block, each with its own two immediates).
+VOWL_ER = (
+    0x00bc7a, 0x7f2e95,
+    0x00e632, 0x7f003a,
+    0x0162ff, 0x7e758f,
+)
+
 MODULE = Module(
     name="spectrum",
     key="SPECTRUM",
@@ -118,7 +129,7 @@ MODULE = Module(
         # octaves, an equal step per detent -- read with p:(r5)+ and
         # interpolated linearly per block (12 Sep 2026). The squared law it
         # replaced put half the dial above 2 kHz (station_laws.py).
-        ptable=G2_TABLE + COS_TABLE,
+        ptable=G2_TABLE + COS_TABLE + VOWL_ER,
         priority=12,                  # after every existing module
         bus_role=BusRole.NONE,        # an insert that also WRITES the bus
         ybase=YBase.NEVER,
