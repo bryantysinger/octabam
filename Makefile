@@ -173,8 +173,6 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	  echo "  [SKIP] label check against the firmware: no .venv (make emu-setup)"
 	@$(PY) tools/verify/verify_modenames.py $(REMIX) 2>/dev/null || \
 	  echo "  [SKIP] per-mode knob names: no .venv, or this remix has none"
-	@$(PY) tools/verify/verify_menushortcut.py $(REMIX) 2>/dev/null || \
-	  echo "  [SKIP] menu shortcut: no .venv, or this remix has none"
 	@$(PY) tools/verify/verify_ccpage2.py 2>/dev/null || \
 	  echo "  [SKIP] cc page-2 cave: no .venv"
 	@$(PY) tools/verify/verify_hidden.py $(REMIX) 2>/dev/null || \

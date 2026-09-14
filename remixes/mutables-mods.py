@@ -1,9 +1,8 @@
-"""MUTABLES-MODS -- the insert card plus every community firmware mod.
+"""mutables-mods -- the five inserts + every community firmware mod.
 
-The five MI-flavoured inserts with MIDI SCENES, Octakit, the LO-FI AMF fix
-and CC to page 2, bridged by SCENES KITS. No bus, so unimplemented ids
-fall back to the firmware's own NONE. ⚠️ Octakit migrates Parts into Kits
-on load: back up projects first. Unflashed.
+WarpFold, Ripple, Rungs, Streamz, BodeShift with MIDI SCENES, Octakit, the
+LO-FI AMF fix and CC PAGE 2, bridged by SCENES KITS. No bus: absent ids
+resolve to NONE. Back up projects first. Unflashed.
 """
 
 from remix.schema import Remix

@@ -1,11 +1,8 @@
-"""HELLO-DRAM -- the reference minimal ColdFire build: one DRAM unit, alone.
+"""hello-dram -- the reference minimal ColdFire build: one DRAM unit, alone.
 
-The smallest image the DRAM platform can produce: HELLO DRAM and nothing
-else. No chooser row of ours, no DSP words, one boot-site redirect and an
-append of a few hundred bytes. It is the loader path's pipeline canary the
-way `hello` is the DSP path's: if this stops building, or the boot
-verifier stops finding the unit at its linked address, the platform moved
-under everyone.
+No chooser row, no DSP words, one boot-site redirect and a few hundred
+bytes appended. The loader path's canary: the boot verifier must find the
+unit at its linked address.
 """
 
 from remix.schema import Remix
