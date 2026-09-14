@@ -9,6 +9,7 @@ MIDI SCENES + Octakit + the LO-FI AMF fix + CC PAGE 2 on the stock effects, brid
 - **LOFI AMF FIX** (Bryan T, [octa-bt-pt](https://github.com/bryantysinger/octa-bt-pt)) — stock LO-FI's AMF knob jumps the pitch backwards at some settings because its coefficient multiply is `mpysu` (signed × unsigned) where both operands are magnitudes; two DSP words become `mpyuu`.
 - **CC PAGE 2** (octabam) — MIDI CC 62–67 reach the FX2 effect's page-2 knobs (slots 6–11) and CC 68–73 the FX1 effect's; stock reaches only page 1 over MIDI. One ColdFire cave. Confirmed on hardware 13 Sep 2026.
 - **SCENES KITS** (octabam) — the bridge that lets CC PAGE 2 and Octakit share the MIDI CC dispatch entry: CCs 62–67 ours, then hers, then stock's. Nothing of its own to use.
+- **KITS RELOAD** (octabam) — the bridge that lets MIDI SCENES' Part Reload run beside Octakit's kit reload: her reload validates its caller's return address, his stub substituted it (OKMS1 trapped on the first Part Reload); the stock call stays and his post-reload restore runs from the return sites.
 - the 14 stock FX2 effects, listed so the chooser is stock's.
 
 ## Status
