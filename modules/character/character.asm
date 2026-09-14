@@ -246,19 +246,16 @@ ch_mskz:
         mpy     x0,y1,a
         move    a,x:(r7+$24)            ; carrier step
 ; SRR (slot 11 select of r6+$e): hold mask 0 / 1 / 3 / 7
+; The select is bits 8-15 of the knob word (bit 23 clear, so a2 = 0 and
+; the and leaves it 0): compare the masked field where it sits, no shift
+; and no clean reload (14 Sep 2026; long immediates, never the 6-bit form).
         move    x:(r6+$e),a
         and     #>$ff00,a
-        move    a1,x0
-        move    x0,a
-        asl     #$8,a,a
-        move    #>$10000,x0
-        cmp     x0,a
+        cmp     #>$100,a
         beq     ch_srr2
-        move    #>$20000,x0
-        cmp     x0,a
+        cmp     #>$200,a
         beq     ch_srr4
-        move    #>$030000,x0            ; 3<<16 (zero-padded: not the base
-        cmp     x0,a                    ; literal the build rewrites)
+        cmp     #>$300,a
         beq     ch_srr8
         clr     a                       ; OFF, and anything unexpected
         bra     ch_srrz
@@ -285,13 +282,9 @@ ch_srrz:
 ; 1/(1 - 0.3375*COMP/128), HALF the JSFX's auto-gain in dB terms (that one
 ; restores unity at the dip's bottom and lifts a mix that mostly sits below
 ; the dip: +2.1 dB at COMP 40; this is +1.0 dB, today's GLUE on the unit).
-        move    x:(r6+$d),a
+        move    x:(r6+$d),a             ; the select field where it sits (as SRR)
         and     #>$ff00,a
-        move    a1,x0
-        move    x0,a
-        asl     #$8,a,a
-        move    #>$10000,x0
-        cmp     x0,a
+        cmp     #>$100,a
         beq     ch_cglue
         move    #>$7fffff,x0            ; COMP: K/4 = 1.0 (4x), release 50 ms
         move    x0,x:(r7+$22)
@@ -338,16 +331,11 @@ ch_cdone:
         move    a,x:(r7+$47)
         move    a,x:(r7+$3e)            ; return level: 0 until RET is read below
         move    a,x:(r7+$29)            ; sat mode: 0 = TAPE
-        move    x:(r6+$c),a
+        move    x:(r6+$c),a             ; the select field where it sits (as SRR)
         and     #>$ff00,a
-        move    a1,x0
-        move    x0,a
-        asl     #$8,a,a
-        move    #>$10000,x0
-        cmp     x0,a
+        cmp     #>$100,a
         beq     ch_stube
-        move    #>$20000,x0
-        cmp     x0,a
+        cmp     #>$200,a
         beq     ch_sinfd
         bra     ch_sdone                ; TAPE (a stored 3, the old BUS, too)
 ch_stube:
