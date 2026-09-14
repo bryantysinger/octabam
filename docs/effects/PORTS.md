@@ -86,3 +86,106 @@ Not yet: heard on the unit (the live rounds), the LMC1 COMP, the Moog ladder.
 Character first (TAPE done, TUBE + INFL in progress, then GLUE, COMP), one
 flash, the live Character round. Then Spectrum: the linear SEM core and the
 `f` ramp; the formant bank and anything heavier after the re-price.
+
+## MODULATION from the chorus / flanger / phaser canon (14 Sep 2026)
+
+Sam's ask: step back, find the best open source, and make Modulation a
+pedal the way Character and Spectrum became one. Three surveys, sources
+read not paraphrased, saved under the session scratchpad. Every cycle
+figure is an estimate from reading, marked so, until built and priced.
+
+Budget as it stands on origin/main (14 Sep): Modulation 453 words /
+277 cycles; core A FREE 1,282 (1,735 with today's Modulation removed),
+core B 1,744; the worst core is 4 × Character at 639, headroom 57, so a
+Modulation up to 639 cycles does not move the line. A track's line is
+2 × 1,024 words (23 ms per channel).
+
+### Licence map
+
+| source | licence | use |
+|---|---|---|
+| Airwindows (Chorus, ChorusEnsemble, StereoChorus, Vibrato, GalacticVibe, Flutter2, Ensemble) | MIT | code |
+| jpcima `string-machine` (Solina tri-chorus + Holters-Parker BBD), `bbd-delay-experimental`, `ensemble-chorus` | BSL-1.0 | code |
+| jpcima `rc-effect-playground` / Hera `HeraChorus.dsp`, `bbd_line.h` (Juno-60 chorus) | ISC (file-level) | code |
+| Mutable Instruments Rings `chorus.h`, `ensemble.h` | MIT | code |
+| ChowDSP ChowPhaser (Schulte Compact Phasing A) | BSD-3 | code |
+| Faust `phaflangers.lib` `phaser2`, `flanger_mono` (J.O. Smith) | STK-4.3 (MIT-style) | code |
+| Dattorro, Effect Design Part 2, JAES 1997 | paper | laws (Tables 6/7, the white chorus) |
+| pendragon-andyh Juno-60 measurements | data | laws |
+| TAL-NoiseMaker chorus, Surge XT chorus/Ensemble, JunoX, chowdsp BBD | GPL | laws only |
+| Rakarrack/guitarix Vibe, BYOD Solo-Vibe, Zyn APhaser | GPL | laws only |
+
+Not found anywhere permissive: a Uni-Vibe, a Dimension D clone, a
+through-zero flanger plugin, an Airwindows Flanger or Phaser (the 2007
+pages are Kagi-era AU with no source).
+
+### The candidates
+
+| candidate | source | the law | delay (samples at 44.1 k) | cost est. per stereo sample |
+|---|---|---|---|---|
+| **JUNO** | Juno-60 measured (pendragon-andyh) + jpcima ISC | two BBD lines, ONE triangle LFO, R's inverted; I = 0.513 Hz, II = 0.863 Hz, sweep 1.54→5.15 ms (L) / 1.51→5.40 (R); I+II = 9.75 Hz, 3.22→3.56 ms, mono; dry 0.83 + wet 1.0; BBD +2.3 dB; in/out filters ≈ 9.9 / 9.5 kHz 5th-order (one-pole proxies in the practical ports: 7.2 k in, 10.6 k out) | 67..238 | ≈ 35 (one-pole proxies), ≈ 60 (biquads) |
+| **DIM** | SDD-320 service notes + measurements (Synthbuilder, Fractal) | two lines on one triangle LFO in ANTIPHASE (motionless: the mean delay is constant); 0.25 Hz (modes 1/2) / 0.5 Hz (3/4); sweep 5→12, 5→10, 6→9 ms; each output = bass-boosted dry + a little same-side wet + the OTHER side's wet through a HPF, inverted; mode 4 raises same-side | 221..529 | ≈ 50; the mix and HPF constants are unpublished (ours to voice) |
+| **ENS** | jpcima string-machine (BSL) / Rings ensemble (MIT) / Haible | Solina: three taps on ONE mono line, two 3-phase sine LFOs summed, 0.6 Hz × 0.5 + 6 Hz × 0.05..0.1; 5 ± 1 ms (TCA350, 185 stages); L = t1 + t2 − t3, R = t1 − t2 − t3; 12 kHz 2nd-order input LP | 176..265 | ≈ 45 |
+| **FLNG** | Dattorro Table 6/7 + Faust `flanger_mono` | blend = feedforward = 0.7071, feedback −0.7071 (max trough); delay 0→10 ms, the strong zone the first 1 ms; L/R the SAME phase; through-zero = the dry read from a FIXED tap at the sweep's centre, the wet inverted, so the sweep crosses it (McCurdy) | ≤ 441 + centre | ≈ 25 |
+| **WHITE** (a CHOR variant) | Dattorro Fig. 36 | feedforward 1.0, blend = feedback = 0.7071, the feedback tapped at the FIXED centre (never the moving tap: modulated feedback pitch-shifts), so the chorus is an allpass at the centre; centre 400, width 350, 0.15 Hz, quadrature L/R | 50..750 | ≈ 25 |
+| **PHSR** | ChowPhaser BSD-3 | Schulte: one feedback biquad (two RC allpasses collapsed, C 15 nF, fb ≤ 0.95, three tanh) then N first-order allpasses on one shared coefficient (C 25 nF), 3 MAC a stage; LDR: light = 20.1 − 20·lfo, R = 100 k·(light/0.1)^−0.75 → the whole coefficient set is a P-table on the LFO word; sine LFO 0..16 Hz, skew `2^s` | none | ≈ 100..130 at 8 stages (the R→coefficient chain block-rate, tabled) |
+| PHSR alt. | Faust `phaser2` STK | 4 second-order allpasses, notch k at `fratio^(k+1)·θ`, R = e^(−π·width/fs), fb ±0.999, quadrature L/R; the cos per stage a table | none | ≈ 100..120 |
+| **VIBE** | Uni-Vibe (laws only: Rakarrack/guitarix, BYOD, Keen) | four stages, C = 0.015 µ / 0.22 µ / 470 p / 0.0047 µ; LDR 500 kΩ dark → 600 Ω lit through a lamp one-pole (10 ms) and a cell with asymmetric TC (85 ms dark, 5 ms lit); BJT shaper per stage | none | ≈ 160..250; no permissive code, every constant ours |
+| **VIB** | Airwindows StereoChorus / GalacticVibe MIT | quadrature dual vibrato; GalacticVibe: fixed 0..254 samples, a NEW random rate each LFO cycle (0.43..0.70 × drift), Leslie-like; StereoChorus: depth ∝ 1/speed so every setting feels equally intense, L/R 1.98 rad apart | 257 | ≈ 35 |
+| **FLUT** | Airwindows Flutter2 MIT | independent L/R LFOs, a random rate 0.24..0.98 × per cycle; depth ≤ 90 ± 90 samples; "reel-to-reel to cassette to VHS" | ≤ 182 | ≈ 45 |
+| COMB | ours | DLY the pitch, FDBK the ring (Sam: "works, sounds good", 12 Sep) | | today's |
+
+Not portable: Airwindows Ensemble (2..48 taps each with its own sine, ≈ 30
+a tap), TakeCare (18 lines ≥ 4,626 words), StereoEnsemble (7,523-sample
+lines); the full Holters-Parker BBD (≈ 100..150 a line a channel, five
+complex poles a side) — the proxy every practical port uses is a one-pole
+or a biquad each side of the line plus a soft clip, ≤ 15 a line.
+
+### Interpolation, the thing every source is about
+
+- Airwindows: a 3-point read (weights 1−f, 1, f, × 0.5, minus 1/50 of
+  the second difference) preceded by an "air" pre-emphasis (3 mul, 8 add
+  a channel) that puts back the highs the averaging takes. Chris: "the
+  moving part [is] totally fluid, analog-like".
+- Dattorro: "all-pass interpolation for delay modulation becomes critical
+  to the transparency of any chorus"; linear = a time-varying lowpass.
+  THD+N: linear −78..−88 dB, warped allpass −77..−85, unwarped −53..−59.
+  TAL uses the first-order allpass interpolation.
+- Ours: linear, blended toward the OLDER sample since 12 Sep (the crackle
+  fix). A chorus that reads darker at the sweep's extremes is the linear
+  interpolation; the BBD proxy filter hides it, the air/allpass reads fix it.
+
+### The pedal (proposed, 14 Sep 2026 — the mode set is Sam's call)
+
+Page 1 the performance surface, page 2 knob / select / knob / select:
+
+| page 1 | RATE · DPTH · FDBK · MIX · TONE · WDTH |
+|---|---|
+| page 2 | DLY · MODE · — · — · — · — |
+
+- **RATE / DPTH** keep today's laws (RATE squared 0.05..8 Hz); a mode's
+  ModeView re-defaults them to its source's numbers (JUNO 0.513 Hz and
+  the Juno's depth; DIM 0.25 Hz; ENS 0.6 Hz; FLNG 0.15 Hz).
+- **FDBK** bipolar: negative = Dattorro's white chorus / the flanger's
+  inverted regen; in PHSR the Schulte feedback; in COMB the ring.
+- **TONE** the BBD proxy: the in/out one-pole corner, 64 = the Juno's,
+  down = darker (the CE-2's 6.6 kHz, TAL's 2 kHz), up = open.
+- **WDTH** the L/R LFO relationship: 0 = mono (the Juno I+II, the
+  flanger), 64 = the source's (Juno antiphase, Dattorro quadrature,
+  Dimension antiphase), 127 = beyond.
+- **DLY** the centre (Dattorro: "manual" on a flanger pedal); in COMB the
+  pitch.
+- **MODE** JUNO · DIM · ENS · FLNG · PHSR · COMB (six positions, the
+  select's maximum; drop one for VIB/FLUT if wanted). PHSR was retired
+  13 Sep at 464 cycles; ChowPhaser's law prices ≈ 120 — a different
+  fact, the decision stays Sam's. VIBE stays out: no permissive code,
+  every constant unproven.
+- Each mode is proven against a float transcription of its source
+  (`modules/modulation/<source>_ref.py`, the Capacitor2/Pockey pattern);
+  the Juno and Solina against the measured delay ranges and rates.
+
+Cost: the dearest mode sets the price (the Ripple pattern); PHSR ≈ 130 +
+the LFO and mix ≈ 200, else ENS ≈ 60 + ≈ 130 — both under today's 277.
+Words: two lines of 1,024 as today; ENS shares one line (mono in), DIM
+and JUNO use both. Estimate ≈ 700..900 words with six modes and the
+reference tables in X.
