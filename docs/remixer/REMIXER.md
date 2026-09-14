@@ -173,8 +173,8 @@ exactly the addresses BusVerb's tank hardcodes — so the ledger refuses each
 pair, and the chooser is one list for all eight tracks so the image cannot
 keep them apart. The ledger states it one PAIR at a time, which is four
 near-identical walls of text; the pane aggregates them into the sentence
-above. What you are left with — BusVerb, the seven stock effects that can
-coexist, and Send — *is* `remixes/restored.py`.
+above. What you are left with is BusVerb, the seven stock effects that can
+coexist, and Send.
 
 The three stock **reverbs** are not here — they are in CHOOSERS, because they
 are part of a stock chooser. See below.
@@ -199,7 +199,7 @@ move standalone against the pristine image; `build_bus.py` does it now).
 It belongs to the **remix**, not to the module — which menu an effect appears
 on is a composition choice, like the chooser order beside it — so it is
 `Remix.fx1`, a tuple of module keys, written by `s` and read by `l`.
-`remixes/bothslots.py` is the worked example.
+`remixes/bamsep26.py` is the worked example (the three stations on FX1).
 
 **It costs no words and it is not free.** The code is placed either way; the
 bill is four bytes of cave per row plus the relocated list, and **cycles**.
@@ -444,7 +444,7 @@ impossible — measured:
 | | today | if off-one-is-off-both |
 |---|---|---|
 | **bus** | region 2,724 · FX1 keeps **10 of 10** | region 6,158 · FX1 keeps **0 of 10** |
-| restored | 2,724 · 10 of 10 | 3,342 · 6 of 10 |
+| `bus` + the seven coexisting stock effects | 2,724 · 10 of 10 | 3,342 · 6 of 10 |
 
 `bus`'s whole shape is *FX2 is mine, FX1 stays stock*: its FX2 chooser is
 BusVerb, BusDelay and Send, so every stock effect is off FX2. Taking them
@@ -457,25 +457,21 @@ that run's lowest address; anything the placer never reaches keeps its
 algorithm and its dispatch and simply has no chooser row — which is exactly
 what unlisting a stock effect has always done.
 
-`remixes/scattered.py` is the worked example: it gives up three separate runs
-(261 / 3,342 / 277 words) and the placer fills two of them — Streamz's 255
-words into Spatializer's 261-word opening, WarpFold's 322 into the big run.
-The map draws a bracket per run, so the stock effects between them read as
-what they are: the wall.
+`tools/remix/selftest.py`'s placer probe is the worked example: STREAMZ +
+WARPFOLD with an FX1 list that drops SPATIALIZER and COMB gives up three
+separate runs (261 / 3,342 / 277 words) and the placer fills two of them —
+Streamz's 255 words into Spatializer's 261-word opening, WarpFold's 322
+into the big run. The map draws a bracket per run.
 
 ⚠️ **A gap is a wall, not a loss.** A module is one code stream, so it must
 fit inside a **single** run: two runs of 1,500 words will not take a
 2,000-word module, which is why the budget names the **largest opening**
 beside the total. Harvesting an effect that sits *between* two runs joins
-them into one. Until 3 Sep 2026 only the largest run was placeable at all
-and every other run was given up for nothing — visible in the remixer as
-"drop two effects and the free space does not move".
+them into one.
 
-⚠️ **`remixes/bothslots.py` gives up four more than it used to.** Its curated
-FX1 chooser drops FLANGER, CHORUS, SPATIALIZER and COMB, and its FX2 chooser
-lists only WarpFold — so those four are on no menu at all, genuinely
-unreachable, and their words are free. `verify_replaces` had assumed only the
-three reverbs could ever be nulled. The thirteen DSP effects are laid out **contiguously** —
+A curated FX1 chooser that drops FLANGER, CHORUS, SPATIALIZER and COMB
+beside an FX2 chooser that lists none of them puts those four on no menu
+at all: unreachable, and their words are free. The thirteen DSP effects are laid out **contiguously** —
 6,158 words in each payload — and every one is **self-contained**, so any
 unbroken run of them is ground a module can be placed into (`docs/remixer/MODULES.md`
 has the measurement). The three reverbs are only the **default**: they are
@@ -614,10 +610,10 @@ Nimbus     FX2  pins 2 core-private buffer slots on whichever core hosts it
 ```
 
 **They are two effects, not one.** BusVerb serves tracks 5-8 and BusDelay
-tracks 1-4, on different cores, and each ships alone: `verbonly` is BusVerb
-without the delay, and a delay-only remix builds too (BusDelay lands on
-payload B and its id aliases to SEND on A, so selecting it on tracks 5-8
-makes a send rather than silence). Showing them as one "bus" would hide the
+tracks 1-4, on different cores, and each builds alone (a delay-only remix
+lands BusDelay on payload B and aliases its id to SEND on A, so selecting
+it on tracks 5-8 makes a send rather than silence). Showing them as one
+"bus" would hide the
 track range, which is the thing you have to know to use either.
 
 ### It costs the FX2 ROW, not the effect

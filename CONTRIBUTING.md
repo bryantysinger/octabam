@@ -1,7 +1,6 @@
 # Contributing
 
-Issues, listening reports, findings and modules are all welcome. This page
-is the contract a module signs, the rule every port lives by, and the
+The contract a module signs, the rule every port lives by, and the
 etiquette for building from somebody else's repository.
 
 ## The one rule
@@ -9,10 +8,9 @@ etiquette for building from somebody else's repository.
 **Never an Elektron byte.** Not an OS image, not a `.syx`, not a slice of
 either, not in a commit and not attached to an issue or PR. Describe it,
 hash it, or name the commit that built it. Anything a module needs from
-the stock firmware is taken from the *user's* copy at build time —
-Octakit `.incbin`s 411 stock routines that way, and the repo holds none of
-them. `.gitignore` refuses `*.bin`, `*.syx`, `downloads/` and `out/` for
-this reason; do not work around it.
+the stock firmware is taken from the user's copy at build time (Octakit
+`.incbin`s 411 stock routines that way). `.gitignore` refuses `*.bin`,
+`*.syx`, `downloads/` and `out/`.
 
 ## A module
 
@@ -67,9 +65,8 @@ The form depends on the module:
 
 `tools/verify/verify_midiscenes.py` and `verify_octakit.py` are the two
 standing proofs; write the equivalent for yours. When you port someone
-else's mod, run *their* build against the shared stock image first, and
-use its output as the oracle — that is how every port here started, and
-it is what turns "I rewrote it" into "it is theirs".
+else's mod, run their build against the shared stock image first and use
+its output as the oracle.
 
 ## Building from an author's repository
 
@@ -105,9 +102,7 @@ reports, bit-identical. Every step of the DRAM platform landed under it.
 
 **Say what was measured and what was inferred**, in the README, with what
 would falsify each claim; retract in every document that repeated a
-number, not just the one you are editing. The project has been burned by
-confident stale numbers more than once (`CLAUDE.md`, "How claims are
-written here").
+number, not just the one you are editing.
 
 **Flashing is the author's own step, on their own unit**, and it is
 expensive: bump `BUILD` so the unit's version string maps to a commit,
@@ -119,8 +114,7 @@ is seen.
 ## Etiquette
 
 - Read the traps in `CLAUDE.md` before trusting an assembler, an
-  emulator, or a null result — several are the kind that assemble clean
-  and do the wrong thing.
+  emulator, or a null result.
 - Collisions are refused by name; `make modules` prints the matrix. If
   your module cannot share an image with another, say so in its README
   and say why (a shared hook site, a shared data structure).

@@ -395,7 +395,7 @@ capability: 70 ms lines per track — doublers, short slaps, wide chorus.
   publish quirk** (lands in the Part but reaches the DSP only while T3's
   FX2 page is on screen — docs/firmware/MIDI.md).
 - **Per-mode gain structure.** The modes are 7–9 dB apart at the output
-  (`docs/remixer/TESTPASS.md`: ROOM −23.0 / PLATE −24.9 / BIG −16.1 dBFS at
+  (`docs/history/TESTPASS.md`: ROOM −23.0 / PLATE −24.9 / BIG −16.1 dBFS at
   defaults), and an input sweep (in this file's git history) put BIG across
   the clip knee at a 0.25–0.5 FS input while PLATE never reached it. The
   honest fix is per-mode headroom, set from measurement. Interim practice:

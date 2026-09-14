@@ -63,7 +63,7 @@ feedback loop across both cores.
 
 **Total bus latency is exactly 2 blocks** — 32 samples on hardware, 30 in
 the emulator's 15-frame blocks — measured to the sample
-(`docs/remixer/TESTPASS.md`). One block from write-then-read, one from the
+(`docs/history/TESTPASS.md`). One block from write-then-read, one from the
 four-buffer read-two-back below.
 
 ## The accumulators: four rotating buffers

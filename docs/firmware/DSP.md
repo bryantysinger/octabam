@@ -654,7 +654,7 @@ mpyi    #>$e00000,x1,a    ; fractional multiply
 > its end ("develop in isolation, integrate by imitation") is what was built,
 > and the harness has long since validated far more than a reverb — the
 > current description of the working system is **`docs/remixer/HARNESS.md`**, and the
-> functional baseline it can prove is `docs/remixer/TESTPASS.md`.
+> functional baseline it can prove is `docs/history/TESTPASS.md`.
 
 **Working**: memory loading, the emulator, single-stepped calls via the DSP's own
 `jsr`, output capture. The passthrough stub returns exactly the two impulse
