@@ -137,10 +137,8 @@ proc:
         add     #>$10,a
         move    a,x:(r7+$26)
 ; WID -> the right channel's LFO phase offset, 0 .. half a cycle
-        move    x:(r6+$e),a
-        and     #>$7f0000,a
-        move    a1,x0
-        move    x0,a
+        move    x:(r6+$e),a             ; a knob word: bit 23 clear, so a2 = 0
+        and     #>$7f0000,a             ; ... and stays 0 through the and
         asr     #$1,a,a                 ; 0 .. ~0.5 of a cycle
         move    a,x:(r7+$25)
 ; SHPE (slot 9 select of r6+$d): the sin blend, the saw blend, the square gain
@@ -179,9 +177,7 @@ mo_shdone:
 ; TONE -> the one-pole coefficient inside the feedback path
         move    x:(r6+$d),a
         and     #>$7f0000,a
-        move    a1,x0
-        move    x0,a
-        move    a,x0
+        move    a1,x0                   ; (a knob word, non-negative: no clean reload)
         move    #$7c,y1                 ; (short immediate: bits 23-16)
         mpy     x0,y1,a
         add     #>$040000,a
@@ -189,9 +185,7 @@ mo_shdone:
 ; DLY -> the centre delay in Q11.12 samples, ~0.2 .. 23 ms (8 .. 1000)
         move    x:(r6+$c),a
         and     #>$7f0000,a
-        move    a1,x0
-        move    x0,a
-        move    a,x0
+        move    a1,x0                   ; (a knob word, non-negative: no clean reload)
 ; ⚠️ NO SHIFT. $3e0000 IS 992*4096, so the product already lands in Q11.12:
 ; mpy(DLY/128, 992*4096/2^23) leaves (992*DLY/128)*4096 in a1. The `asr #11`
 ; that used to be here divided it by 2,048, which pinned every line mode at
@@ -286,12 +280,10 @@ mo_mdone:
         do      n7,>molinz
         bsr     moshap                  ; both LFOs, into $1d and $1e
 ; ---- advance the write phase --------------------------------------------
-        move    x:(r7+$1b),a
+        move    x:(r7+$1b),a            ; 0..1023, so phase + 1 is 1..1024: a2 = 0
         add     #>$1,a
         and     #>$3ff,a
-        move    a1,x0
-        move    x0,a
-        move    a,x:(r7+$1b)
+        move    a1,x:(r7+$1b)           ; a1 straight to memory: no limiter to trip
 ; ---- L: the modulated tap ------------------------------------------------
         move    x:(r7+$1d),x0           ; lfo L
         move    x:(r7+$22),y1           ; depth, Q11.12
@@ -322,10 +314,8 @@ mo_mdone:
                                         ; crossing of the sweep -- a crackle
                                         ; on hats, invisible on a 440 Hz sine
                                         ; (ear + fix 12 Sep 2026)
-        move    a1,x0
-        move    x0,a
-        move    x:(r7+$19),x0
-        add     x0,a
+        move    x:(r7+$19),x0           ; ($3f is 0..1023, + 1023 stays positive:
+        add     x0,a                    ; a2 = 0 through the and, no clean reload)
         move    a,r5
         move    y:(r5),a                ; t1
         move    x:(r7+$3c),x0
@@ -388,9 +378,7 @@ mo_mdone:
         move    a,x:(r7+$3d)
         move    x:(r7+$3f),a
         add     #>$3ff,a                ; the older neighbour (as L)
-        and     #>$3ff,a
-        move    a1,x0
-        move    x0,a
+        and     #>$3ff,a                ; (as L: positive before the and)
         move    x:(r7+$19),x0
         add     x0,a
         add     #>$400,a
@@ -458,11 +446,9 @@ mo_dry:
 moshap:
         move    x:(r7+$1c),a            ; the phase
         move    x:(r7+$26),x0
-        add     x0,a
-        and     #>$7fffff,a
-        move    a1,x0
-        move    x0,a
-        move    a,x:(r7+$1c)
+        add     x0,a                    ; phase <= $7fffff + inc <= $610: no carry
+        and     #>$7fffff,a             ; into a2, which stays 0 through the and
+        move    a1,x:(r7+$1c)
         move    #$40,x0                 ; 0.5 (short immediate: bits 23-16)
         move    a,b
         sub     x0,b                    ; phase - 0.5 ...
@@ -510,10 +496,8 @@ moshap:
         move    a,x:(r7+$1d)            ; lfo L
         move    x:(r7+$1c),a
         move    x:(r7+$25),x0           ; ... WID further round
-        add     x0,a
-        and     #>$7fffff,a
-        move    a1,x0
-        move    x0,a
+        add     x0,a                    ; phase + WID offset (<= $3f8000) < 2^24:
+        and     #>$7fffff,a             ; a2 = 0 through the and, no clean reload
         move    #$40,x0                 ; 0.5 (short immediate: bits 23-16)
         move    a,b
         sub     x0,b                    ; phase - 0.5 ...
