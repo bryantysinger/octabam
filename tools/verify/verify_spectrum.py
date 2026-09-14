@@ -28,7 +28,7 @@ Gates:
   LADR (13 Sep 2026, the linear zero-delay Moog ladder, MODE 5):
   4-pole      -> 2 kHz vs 4 kHz at FREQ 64 differ by ~24 dB (LP reads ~12)
   DC          -> DC (unity at RES 0);  distinct from LP: 4 kHz > 10 dB lower
-  CAP         -> Capacitor2 tracks its transcription; LOW/HIGH cut; ENV/LFO move the cutoff
+  ISO         -> Capacitor2 tracks its transcription; LOW cut; ENV/LFO move the cutoff
   resonance   -> the tone at fc rises monotonically RES 0 < 64 < 100 < 127
   RES 127     -> bounded at 0.13 and 0.5 FS (below full scale, no rail)
 
@@ -159,24 +159,22 @@ dcv = int(0.25 * 8388607)
 check("BP at DC -> 0", abs(d_bp) < 64, f"{d_bp:.0f} LSB")
 check("LP at DC -> DC", abs(d_lp - dcv) < 256, f"{d_lp:.0f} vs {dcv}")
 
-# ---- 4. CAP: Airwindows Capacitor2 (14 Sep 2026) ------------------------------
-# LOW = FREQ (127 open), HIGH = RES (0 off), NLIN the dielectric. Against the
+# ---- 4. ISO: Airwindows Capacitor2 (14 Sep 2026) ------------------------------
+# LOW = FREQ (127 open), COLR = RES (the dielectric); no HIGH cut (option B). Against the
 # transcription modules/spectrum/capacitor2_ref.py after its chase settles.
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "modules/spectrum"))
 import capacitor2_ref as _C2
-_c_open = rms_db(render(tone(1000, 0.2), MODE=2, FREQ=127, RES=0, NLIN=0)[0]) - rms_db(tone(1000, 0.2))
-check("CAP open (LOW 127, HIGH 0, NLIN 0) passes 1 kHz at the plugin's trim, -2.1 dB (1.5/cbrt(7))", abs(_c_open + 2.1) < 1.0, f"{_c_open:+.2f} dB")
+_c_open = rms_db(render(tone(1000, 0.2), MODE=2, FREQ=127, RES=0)[0]) - rms_db(tone(1000, 0.2))
+check("ISO open (LOW 127, COLR 0) passes 1 kHz at the plugin's trim, -2.1 dB (1.5/cbrt(7))", abs(_c_open + 2.1) < 1.0, f"{_c_open:+.2f} dB")
 _c_lo = rms_db(render(tone(4000, 0.2), MODE=2, FREQ=40, RES=0)[0]) - rms_db(render(tone(100, 0.2), MODE=2, FREQ=40, RES=0)[0])
-check("CAP LOW 40 cuts 4 kHz by > 12 dB against 100 Hz", _c_lo < -12, f"{_c_lo:.1f} dB")
-_c_hi = rms_db(render(tone(100, 0.2), MODE=2, FREQ=127, RES=100)[0]) - rms_db(render(tone(4000, 0.2), MODE=2, FREQ=127, RES=100)[0])
-check("CAP HIGH 100 cuts 100 Hz by > 12 dB against 4 kHz", _c_hi < -12, f"{_c_hi:.1f} dB")
-for _f, _r, _c in ((127, 0, 0), (60, 20, 64), (90, 40, 127)):
+check("ISO LOW 40 cuts 4 kHz by > 12 dB against 100 Hz", _c_lo < -12, f"{_c_lo:.1f} dB")
+for _f, _c in ((127, 0), (60, 64), (90, 127)):
     _src = tone(440, 0.3)
-    _L, _ = render(_src, MODE=2, FREQ=_f, RES=_r, NLIN=_c)
-    _ref = _C2.Capacitor2(_f / 128, _r / 128, _c / 128, octabam=True); _rL, _ = _ref.process([v / 8388607 for v in _src], [v / 8388607 for v in _src])
+    _L, _ = render(_src, MODE=2, FREQ=_f, RES=_c)
+    _ref = _C2.Capacitor2(_f / 128, 0.0, _c / 128, octabam=True); _rL, _ = _ref.process([v / 8388607 for v in _src], [v / 8388607 for v in _src])
     _me = sum(abs(_L[i] / 8388607 - _rL[i]) for i in range(N // 2, N)) / (N - N // 2)
     _lv = rms_db(_L) - 20 * math.log10(max(1e-9, math.sqrt(sum(v * v for v in _rL[N // 2:]) / (N - N // 2))))
-    check(f"CAP LOW {_f} HIGH {_r} NLIN {_c} tracks Capacitor2 (mean |err| < 0.02, level within 1 dB)",
+    check(f"ISO LOW {_f} COLR {_c} tracks Capacitor2 (mean |err| < 0.02, level within 1 dB)",
           _me < 0.02 and abs(_lv) < 1.0, f"mean |err| {_me:.4f}, level {_lv:+.2f} dB")
 
 # ---- 5. ENV and LFO onto the cutoff (14 Sep 2026: two bipolar depths) ---------
@@ -314,11 +312,11 @@ check("every knob at both extremes renders", True)
 # envelope (tools/harness/pressure.py) and the FX2 chooser both take it at
 # its word, so it is proven here at every extreme, and the guard sees no
 # write outside the frame.
-L, R = render(ramp, slot="fx2", FREQ=30, RES=110, MODE=1, ENV=127, LFO=127, NLIN=100)
+L, R = render(ramp, slot="fx2", FREQ=30, RES=110, MODE=1, ENV=127, LFO=127)
 check("FX2 instance is a bit-exact DRY PASS at every extreme (fx1_only)",
       L == ramp and R == ramp,
       "" if L == ramp else f"first diff at {next(i for i,(a,b) in enumerate(zip(L,ramp)) if a!=b)}")
-render(ramp, slot="fx2", guard=True, FREQ=30, RES=110, MODE=1, ENV=127, LFO=127, NLIN=100)
+render(ramp, slot="fx2", guard=True, FREQ=30, RES=110, MODE=1, ENV=127, LFO=127)
 g = getattr(render, "guard_out", "")
 check("FX2 instance trips no write guard",
       "guard clean" in g,

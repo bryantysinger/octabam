@@ -17,7 +17,7 @@ class Capacitor2:
     def __init__(self, A, B, C, octabam=False):
         self.lp = A * A; self.hp = B * B; self.gain = 1.0
         if octabam:
-            self.lp = 0.004 + 0.996 * A * A; self.hp = 0.9 * B * B + 2 ** -12; self.gain = 1.0 + 15.0 * C
+            self.lp = 0.004 + 0.996 * A * A; self.hp = 2 ** -12; self.gain = 1.0 + 15.0 * C   # option B: no HIGH cut, B ignored
         self.octabam = octabam
         self.nonLin = 1.0 + ((1.0 - C) * 6.0)
         self.trim = 1.5 / (self.nonLin ** (1.0 / 3.0))

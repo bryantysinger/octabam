@@ -2523,3 +2523,10 @@ reads full-scale signals, ours sit a tenth of that); a mode change clears
 the shared state block (the pop); CAP's defaults declared (LOW 127, HIGH 0,
 NLIN 64) for the stamp. The reference carries the station's knob laws as
 an option; CAP tracks it to 6e-4 at NLIN 127.
+**Option B (image 16), Sam's pick after "feels a bit confused and jumbled":**
+one rule -- FREQ is always where, RES always the flavour, ENV and LFO always
+move FREQ, nothing on page 1 belongs to one mode. MODE = LP / BP / ISO /
+VOWL / LADR (ISO = the isolator, was CAP: "is there a better name for
+people that won't know what cap is"); ISO's HIGH cut and the NLIN knob went,
+its colour is RES (drawn COLR), VOWL draws RES as SHRP. Page 1 FREQ RES ENV
+LFO WDTH; page 2 MODE RATE.

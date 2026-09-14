@@ -346,7 +346,7 @@ fs_mbp:
 ; (HP went 14 Sep 2026: the panel's tick widget draws FIVE positions and
 ; the sixth was blank; CAP's HIGH is the high-pass now)
 fs_mcap:
-; ---- CAP (14 Sep 2026): Airwindows Capacitor2 (Chris Johnson, MIT), the
+; ---- ISO (14 Sep 2026; drawn ISO, "CAP" until option B): Airwindows Capacitor2 (Chris Johnson, MIT), the
 ; isolator with a dielectric: a lowpass and a highpass (LOW = FREQ, HIGH =
 ; RES here, the knobs renamed by the mode) whose one-pole amounts are the
 ; knob squared, chased 1/16 per block, and per sample scaled by the signal
@@ -374,25 +374,18 @@ fs_mcap:
         asr     #$4,a,a
         add     x0,a
         move    a,x:(r7+$26)            ; lpBase += (target - lpBase)/16
-        move    x:(r6+$1),x0
-        move    x:(r6+$1),y1
-        mpy     x0,y1,a                 ; (HIGH/128)^2
-        move    a,x0
-        move    #>$733333,y1            ; 0.9
-        mpy     x0,y1,a
-        add     #>$000800,a             ; + 2^-12
-        move    x:(r7+$27),x0
-        sub     x0,a
-        asr     #$4,a,a
-        add     x0,a
-        move    a,x:(r7+$27)            ; hpBase
+; the high-pass side is a fixed 2^-12 (a ~2 Hz corner: a DC block, never a
+; frozen pole) -- option B, 14 Sep 2026: one cutoff, one flavour, so ISO's
+; separate HIGH cut went and RES became the dielectric's colour (COLR).
+        move    #>$000800,x0
+        move    x0,x:(r7+$27)           ; hpBase
 ; NLIN: the plugin's dielectric reads the signal near full scale; ours sits
 ; a tenth of that, so the knob also GAINS the term (Sam: "can't hear any
 ; effect from it"): scale = |1 - g x / nl| with g = 1 + 15 C and
 ; nl = 1 + 6 (1 - C) -- x/7 at 0 (the plugin's mildest), 16 x at 127.
 ; Stored as gn/16 = (1 + 15C)/(16 nl) = ((1 + 15C)/128) / (nl/8), one
 ; division; the loop's asl #3 puts the 8 back.
-        move    x:(r6+$5),x0            ; C = NLIN/128
+        move    x:(r6+$1),x0            ; C = RES/128, drawn COLR in ISO
         move    #$60,y1                 ; 6/8
         mpy     x0,y1,a
         neg     a
@@ -407,13 +400,13 @@ fs_mcap:
         div     x0,a
         move    a0,x0
         move    x0,x:(r7+$28)           ; gn/16 = (1 + 15C)/(16 nl), <= 0.993
-        move    x:(r6+$5),x0
-        move    x:(r6+$5),y1
+        move    x:(r6+$1),x0
+        move    x:(r6+$1),y1
         mpy     x0,y1,a                 ; C^2
         move    a,x0
         move    #>$326e98,y1            ; 0.394
         mpy     x0,y1,a
-        move    x:(r6+$5),x0
+        move    x:(r6+$1),x0
         move    #>$fb6db7,y1            ; -0.036
         mac     x0,y1,a
         add     #>$322d0e,a             ; + 0.392: trim/2 = 0.75/cbrt(nl), fitted
@@ -564,7 +557,7 @@ fs_mdone:
         move    a,x:(r7+$2c)            ; ($25 is the SVF's HP tap -- 14 Sep 2026's first build put this there and every LP leaked half its HP)
 
 ; ---- BYPASS: the defaults are a bit-exact passthrough ---------------------
-; FREQ 127, RES 0, ENV 64, LFO 64, WDTH 64, MODE LP (NLIN is CAP's alone).
+; FREQ 127, RES 0, ENV 64, LFO 64, WDTH 64, MODE LP.
 ; Every part that ever chose stock FILTER runs this on FX1 after the flash,
 ; so the neutral block copies nothing at all.
         clr     b

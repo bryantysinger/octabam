@@ -99,34 +99,34 @@ MODULE = Module(
     params=(
         # ---- page 1: the performance surface, scene/CC-reachable -----------
         Param(b"FREQ", 127, active=True, formatter=_PLAIN,
-              doc="cutoff, 60 Hz..15 kHz exponential; in VOWL the vowel A-E-I-O-U; in CAP the LOW cut"),
+              doc="the cutoff, 60 Hz..15 kHz exponential; in VOWL the vowel A-E-I-O-U; ENV and LFO move it"),
         Param(b"RES", 0, active=True, formatter=_PLAIN,
-              doc="resonance, up to Q~33 (bounded); in VOWL the formants' bandwidth; in CAP the HIGH cut"),
+              doc="the flavour: resonance (LP/BP/LADR), the vowels' sharpness (VOWL), the dielectric colour (ISO)"),
         Param(b"ENV", 64, 128, active=True, formatter=_BIPOL,
               doc="the envelope follower onto the cutoff, drawn -64..+63; 0 = none"),
         Param(b"LFO", 64, 128, active=True, formatter=_BIPOL,
               doc="the LFO onto the cutoff, drawn -64..+63; 0 = none (RATE on page 2)"),
         Param(b"WDTH", 64, 128, active=True, formatter=_BIPOL,
               doc="stereo width of the output, drawn -64..+63: 0 untouched, -64 mono, +63 double sides"),
-        Param(b"NLIN", 0, active=True, formatter=_PLAIN,
-              doc="CAP only: how hard the signal bends the cutoff (the dielectric); 0 mild, 127 intense"),
+        _BLANK,   # (NLIN went with option B, 14 Sep 2026: ISO's colour is RES)
         # ---- page 2: knob / select / knob / select / knob / select ----------
         _BLANK,
         Param(b"MODE", 0, 5, active=True, formatter=_STEP,
-              labels=("LP", "BP", "CAP", "VOWL", "LADR"),
-              doc="LP/BP the SEM; CAP Airwindows Capacitor2; VOWL formants by FREQ; LADR the Moog ladder"),
+              labels=("LP", "BP", "ISO", "VOWL", "LADR"),
+              doc="LP/BP the SEM; ISO a DJ isolator with colour (Airwindows Capacitor2); VOWL formants; LADR the Moog"),
         _BLANK,   # was DPTH (14 Sep 2026: ENV and LFO on page 1)
         _BLANK,   # was ROUT (SER/PAR/RING/FM: filter B retired 14 Sep 2026)
         Param(b"RATE", 64, 128, active=True, formatter=_PLAIN,
               doc="LFO speed ~0.08..9 Hz, and the envelope release (0 slow .. 127 fast)"),
         _BLANK,   # was SRC (14 Sep 2026: both depths have their own knob)
     ),
-    # CAP renames the cutoff pair to what they are there, and its defaults
+    # Option B (14 Sep 2026): FREQ is always where, RES always the flavour;
+    # a mode labels RES for what it is there. ISO's defaults
     # (a stamp lands them; the live re-default on MODE is stage B's open
     # ColdFire half). Five positions: the tick widget draws five (14 Sep 2026).
     mode_slot=7,
-    mode_views=(ModeView(mode=2, names={0: b"LOW", 1: b"HIGH"},
-                         defaults={0: 127, 1: 0, 5: 64}),),
+    mode_views=(ModeView(mode=2, names={0: b"LOW", 1: b"COLR"}, defaults={0: 127, 1: 64}),
+                ModeView(mode=3, names={1: b"SHRP"})),
     dsp=DspSection(
         asm="modules/spectrum/spectrum.asm",
         # FREQ's taper: 33 SVF f coefficients (Q23, 2*sin(pi*fc/fs)) at FREQ
