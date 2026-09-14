@@ -101,7 +101,7 @@ MODULE = Module(
         Param(b"FREQ", 127, active=True, formatter=_PLAIN,
               doc="the cutoff, 60 Hz..15 kHz exponential; in VOWL the vowel A-E-I-O-U; ENV and LFO move it"),
         Param(b"RES", 0, active=True, formatter=_PLAIN,
-              doc="the flavour: resonance (LP/BP/LADR), the vowels' sharpness (VOWL), the dielectric colour (ISO)"),
+              doc="the flavour: resonance in LP/BP/LADR, sharpness in VOWL, the dielectric colour in ISO"),
         Param(b"ENV", 64, 128, active=True, formatter=_BIPOL,
               doc="the envelope follower onto the cutoff, drawn -64..+63; 0 = none"),
         Param(b"LFO", 64, 128, active=True, formatter=_BIPOL,
@@ -113,7 +113,7 @@ MODULE = Module(
         _BLANK,
         Param(b"MODE", 0, 5, active=True, formatter=_STEP,
               labels=("LP", "BP", "ISO", "VOWL", "LADR"),
-              doc="LP/BP the SEM; ISO a DJ isolator with colour (Airwindows Capacitor2); VOWL formants; LADR the Moog"),
+              doc="LP/BP the SEM; ISO an isolator with colour (Capacitor2); VOWL formants; LADR the Moog"),
         _BLANK,   # was DPTH (14 Sep 2026: ENV and LFO on page 1)
         _BLANK,   # was ROUT (SER/PAR/RING/FM: filter B retired 14 Sep 2026)
         Param(b"RATE", 64, 128, active=True, formatter=_PLAIN,
