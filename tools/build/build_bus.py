@@ -2657,10 +2657,49 @@ mkgo:""",
             # -- it is not the housekeeper there either; SEND's self-healing
             # election covers that, exactly as on hardware.
             gated = (tag == ("A" if _hkb else "B")) or (DEV and name == "DELAY SERVER")
-            body = (f"        bra     {_GATE_LABEL[name]}         "
-                    f"; payload {tag} never housekeeps" if gated else
-                    f";  (payload {tag} housekeeps: no gate emitted)")
-            return src.replace("; XBUS_GATE", body, 1)
+            label = _GATE_LABEL[name]
+            if not gated:
+                return src.replace("; XBUS_GATE",
+                                   f";  (payload {tag} housekeeps: no gate emitted)", 1)
+            # ⚠️ EXCISED, NOT BRANCHED OVER (14 Sep 2026). Until then the
+            # gated payload carried the whole housekeeping block behind a
+            # 2-word `bra <label>`: 72 dead words in SEND, 70 in the delay,
+            # on a payload that was at FREE 5 once and 193 the day this
+            # landed. The block runs from the marker to its exit label and
+            # nothing outside it reaches in -- checked HERE, not assumed:
+            # every label the span defines must be referenced only inside
+            # it, and every r7 slot it STORES must be read nowhere outside
+            # (SEND's last-seen rotation at r7+$68 and the delay's at
+            # r7+$88 are the block's own; the delay's later r7+$68 is its
+            # LineR base, a different slot in a different file). The exit
+            # label itself is kept: the block below it is the everyone-path.
+            # Behaviourally identical to the bra: the branch was
+            # unconditional, so no instruction in the span could execute.
+            i = src.index("; XBUS_GATE")
+            j = src.find(f"\n{label}:", i)
+            if j < 0:
+                sys.exit(f"XBUS: {name}: no `{label}:` after its ; XBUS_GATE marker")
+            j += 1                              # keep the exit label's line
+            span, rest = src[i:j], src[:i] + src[j:]
+            _code = lambda s: "\n".join(l.split(";", 1)[0] for l in s.splitlines())
+            _rest_code = _code(rest)
+            for lab in re.findall(r"^([A-Za-z_]\w*):", _code(span), re.M):
+                if re.search(rf"\b{re.escape(lab)}\b", _rest_code):
+                    sys.exit(f"XBUS: {name}: label `{lab}` inside the gated "
+                             f"housekeeping block is referenced outside it -- "
+                             f"the block cannot be excised")
+            for slot in set(re.findall(r",x:\(r7\+\$([0-9a-f]+)\)", _code(span))):
+                if re.search(rf"x:\(r7\+\${slot}\)", _rest_code):
+                    sys.exit(f"XBUS: {name}: r7+${slot} is stored by the gated "
+                             f"housekeeping block and read outside it -- "
+                             f"the block cannot be excised")
+            _n = sum(1 for l in _code(span).splitlines()
+                     if l.strip() and not re.match(r"^\w+:\s*$", l.strip()))
+            return (src[:i]
+                    + f";  payload {tag} never housekeeps: the housekeeping "
+                      f"block ({_n} instructions, marker -> {label}) is "
+                      f"EXCISED by build_bus.py, not branched over\n"
+                    + src[j:])
 
         def _rotinit(src, name, slot):
             """Seed the tracked rotation at init. PAYLOAD B ONLY."""
