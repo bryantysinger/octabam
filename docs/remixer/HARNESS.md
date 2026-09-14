@@ -197,7 +197,7 @@ fallback SEND on T8) 1,570 instructions/sample at its worst block; core 1
 wall was triangulated in `cycle_count.py`'s units (words in the sample
 loop), so the static sum is the comparable floor. The ColdFire port
 measured the same rig under the firmware's own dispatch (`--dsp-stopwatch`,
-`docs/firmware/COLDFIRE_PORT.md`): core 0 24,654 a frame against the
+`docs/history/COLDFIRE_PORT.md`): core 0 24,654 a frame against the
 meter's 24,971, core 1 15,177 against 14,880: the meter reads the real
 load within 2 %.
 
@@ -292,9 +292,9 @@ through a station per knob value and reports the −3 dB corner, the peak of
   modelled, so a part carrying stock DELAY renders no repeats under
   `ot_emu` (inferred from the silence).
 - **What only ears catch.** GRAIN's right-channel hiss passed every
-  automated check and was found by listening. `docs/effects/VOICING.md`
+  automated check and was found by listening. `docs/history/VOICING.md`
   has the listening protocol.
 
-`docs/history/TESTPASS.md` is the functional baseline; `docs/effects/CAPTURE.md`
+`docs/history/TESTPASS.md` is the functional baseline; `docs/history/CAPTURE_18AUG.md`
 the protocol for measurements that need hardware; `docs/firmware/DSP.md`
 §6b the bring-up of `dsp_host` and the ABI.

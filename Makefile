@@ -266,7 +266,7 @@ emu-card: ## Boot with an emulated CF card holding PROJECT and load it
 	@test -n "$(PROJECT)" || { echo "usage: make emu-card PROJECT=<project dir> [SET=..] [NAME=..]"; exit 1; }
 	$(PY) tools/emu/emu_card.py --project "$(PROJECT)" --set "$(SET)" $(if $(NAME),--name "$(NAME)",)
 
-# Route A: the firmware's own scheduler running (docs/firmware/RTOS_FORK.md). Exits 0
+# Route A: the firmware's own scheduler running (docs/history/RTOS_FORK.md). Exits 0
 # when the M6a gate passes: every task created and run once.
 .PHONY: emu-rtos
 emu-rtos: ## Boot with the card and run the real scheduler to the M6a gate

@@ -12,7 +12,7 @@ routes on Unicorn's CFV4E core:
   popped by hand, PIT0 as a timer counted in samples, the interrupt
   controllers modelled), loads a project from an emulated card, runs the
   sequencer. ~120× real time, no audio; the oracle the C++ port
-  (`docs/firmware/COLDFIRE_PORT.md`) is measured against.
+  (`docs/history/COLDFIRE_PORT.md`) is measured against.
 
 The bring-up record is `docs/history/EMU_BRINGUP.md`; route A's is
 `docs/history/RTOS_FORK.md`.

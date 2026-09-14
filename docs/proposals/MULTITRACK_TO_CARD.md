@@ -182,7 +182,7 @@ is real.
    audible FX2, and dump the 64 words at `0x80003190`. Falsifier: anything
    other than T1 after FX2. On the port this needs the DSP frame engine
    running before the transport starts: `ot_emu --pre-roll N`
-   (`docs/firmware/RTOS_FORK.md` §10.47, 10 Sep 2026). The earlier runs
+   (`docs/history/RTOS_FORK.md` §10.47, 10 Sep 2026). The earlier runs
    that read the block as zero started the DSP cold at transport start,
    which `--pre-roll` closes; no run has dumped the block since.
 

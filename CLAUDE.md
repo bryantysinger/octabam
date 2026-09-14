@@ -417,7 +417,7 @@ modules that pinned a track by its r7 (the one-aux return on T8, the
 track-8 send refusal) matched in the harness and never on the unit — flash
 6's "the return never reaches T8", with `make verify-onebus` green on
 exactly that property. Found 8 Sep 2026 by running the shipping image from
-the card under the ColdFire port (`docs/firmware/COLDFIRE_PORT.md` O11). Any module
+the card under the ColdFire port (`docs/history/COLDFIRE_PORT.md` O11). Any module
 logic keyed on a dispatcher fact (r7, r6, X:0x213, instance blocks) is
 measured under the port (`ot_emu --dsp-pcwatch`), never modelled in
 `dsp_host`; and a hardware failure the lock-step harness cannot show goes to

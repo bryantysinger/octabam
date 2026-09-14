@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Emulator route A: the firmware's own scheduler, running (docs/firmware/RTOS_FORK.md).
+"""Emulator route A: the firmware's own scheduler, running (docs/history/RTOS_FORK.md).
 
 M1-M5 run firmware COLD: a function called against the warm machine, an
 interrupt handler pushed a fake frame. This module crosses the `trap #0`
@@ -1658,7 +1658,7 @@ def _cli():
     ap.add_argument("--golden", default="",
                     help="write the M6a facts (created tasks, which ran, the first switch, the first "
                          "dispatches, the handoff PC and the boot's auto-pokes) as JSON: THE ORACLE the "
-                         "C++ port (tools/emu/ot_emu) is diffed against, docs/firmware/COLDFIRE_PORT.md")
+                         "C++ port (tools/emu/ot_emu) is diffed against, docs/history/COLDFIRE_PORT.md")
     ap.add_argument("--trace", action="store_true", help="print every dispatch/irq/create")
     ap.add_argument("--starvation", action="store_true", help="print burst-end PCs per task")
     ap.add_argument("--watch-calls", default="", help="comma-separated addresses to log entries to")

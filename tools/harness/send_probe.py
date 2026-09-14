@@ -352,7 +352,7 @@ def analyse(sig, label, tone_end=None):
     what made every insert look broken (found).
 
     The fix is deliberately ADDITIVE, not a correction of the window: every
-    THD in `docs/effects/VOICING.md` was measured against the tail, and moving the
+    THD in `docs/history/VOICING.md` was measured against the tail, and moving the
     window silently would invalidate the lot (the reverb reads -36.5 dB on the
     tail and -21.7 dB on the tone -- they are different measurements, not a
     better and a worse one). So the tail stays the default, and `tone_end` is
@@ -565,7 +565,7 @@ def main():
                     help="append a CHARACTER in SAT=BUS with both "
                          "return levels at 127 to the layout and measure "
                          "ITS output: the engines' wet as the master hears "
-                         "it, two blocks late (docs/effects/BUS.md 'The returns'). "
+                         "it, two blocks late (docs/history/BUS.md 'The returns'). "
                          "The servers' own streams then carry dry only.")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()

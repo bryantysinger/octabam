@@ -599,7 +599,7 @@ catches each collision it claims to.
   on a tree you trust, make the change, `scripts/refhash.sh check`; 26
   configurations, artifacts and build reports, bit-identical.
 - Voicing is judged by ear, level-matched, A/B/A/B, wet-only
-  (`docs/effects/VOICING.md`). Render locally rather than flashing.
+  (`docs/history/VOICING.md`). Render locally rather than flashing.
 - A `layout_char` makes your module placeable by `send_probe`, which
   measures a bus accumulator and so analyses only modules whose harness
   says `is_server`; render an insert with `--direct`.

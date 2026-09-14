@@ -383,7 +383,7 @@ often smeared into a reverb tail.
 **Cause.** Core 0's housekeeping flips the rotation word in the middle of
 core 1's frame and every client read the word directly, so a frame's
 sends split across two buffers (measured under the port,
-`docs/firmware/COLDFIRE_PORT.md` O12; `docs/effects/XBUS.md`).
+`docs/history/COLDFIRE_PORT.md` O12; `docs/effects/XBUS.md`).
 
 **Fix.** Four ACC buffers; one rotation tracker per core (`build_bus.py`
 ROTLATCH, payload B). No local test is evidence here: `dsp_host` runs the

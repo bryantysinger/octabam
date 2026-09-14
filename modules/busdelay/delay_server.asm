@@ -405,7 +405,7 @@ bus_mine:
         move    a,x:(r7+$1a)            ; this call's DELAY ACC read address
 ; ---- this call's DELAY WET write address: STEREO, FOUR DEEP (3 Sep 2026) --
 ; Read now, by a Character station in BUS mode -- the return on the master
-; (docs/effects/BUS.md "The returns"), which is on the OTHER core -- so it takes the
+; (docs/history/BUS.md "The returns"), which is on the OTHER core -- so it takes the
 ; accumulators' four-buffer rotation and carries L and R (32 words a buffer,
 ; interleaved: the ping-pong image is the point of the delay). The base is
 ; the reverb's wet page plus $80 -- spelled as base + offset, NOT one literal,

@@ -122,7 +122,7 @@ sequencer trig
 of the core the GPIO byte at `0xfc0a400c` selects: one byte register per
 4-byte stride on a 16-bit FlexBus port (CS2, `CSCR2 = 0x180`); a 16-bit
 bus cycle delivers its two bytes to two adjacent registers (measured under
-the port, `docs/firmware/COLDFIRE_PORT.md`; an earlier reading of "command
+the port, `docs/history/COLDFIRE_PORT.md`; an earlier reading of "command
 0x81 / 0x8C, status bit 6" is retracted):
 
 - `0x2000_0000` ICR: `0x81` = INIT|RREQ, an interface reset before each
