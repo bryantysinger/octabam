@@ -133,7 +133,7 @@ PORT ?= A
 
 .PHONY: port-compare
 port-compare: ## One part under the firmware (ot_emu) and under rig_render on the same input: make port-compare PROJECT=dir [IMAGE=out/mainos_bus.bin] [PCARGS='--tone out/o9d/kickAB_late.wav']
-	@test -n "$(PROJECT)" || { echo "usage: make port-compare PROJECT=out/o9d/proj_t1eqA [IMAGE=out/mainos_bus.bin REMIX=bamsep27] [PCARGS=...]"; exit 1; }
+	@test -n "$(PROJECT)" || { echo "usage: make port-compare PROJECT=out/o9d/proj_t1eqA [IMAGE=out/mainos_bus.bin REMIX=bamsep26] [PCARGS=...]"; exit 1; }
 	python3 tools/harness/port_compare.py --project $(PROJECT) --remix $(REMIX) $(if $(IMAGE),--image $(IMAGE)) $(PCARGS)
 
 .PHONY: reverb
@@ -175,8 +175,6 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	  echo "  [SKIP] per-mode knob names: no .venv, or this remix has none"
 	@$(PY) tools/verify/verify_menushortcut.py $(REMIX) 2>/dev/null || \
 	  echo "  [SKIP] menu shortcut: no .venv, or this remix has none"
-	@$(PY) tools/verify/verify_busscreen.py 2>/dev/null || \
-	  echo "  [SKIP] bus screen table relocation: no .venv"
 	@$(PY) tools/verify/verify_ccpage2.py 2>/dev/null || \
 	  echo "  [SKIP] cc page-2 cave: no .venv"
 	@$(PY) tools/verify/verify_hidden.py $(REMIX) 2>/dev/null || \

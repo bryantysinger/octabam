@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-"""O10: the recorder loop under the port -- what T2 plays back from R1.
+"""The recorder loop under the port: what T2 plays back from R1.
 
-  o10_recloop.py DUMP [bpm] [rlen_steps]
+  recloop.py DUMP [bpm] [rlen_steps]
 Extracts T2's chain input (its 84-word record audio: what the FLEX voice plays)
 and prints, per sequencer step, the level and the dominant frequency (from
 zero crossings; `--audio-in tones` puts 500*(k+1) Hz on RX0 slot k, so the
 frequency says WHICH input pair the recorder captured), then the largest
 sample-to-sample jump in each pass relative to the tone's own slope -- a seam
-click shows as a jump far above the slope (Bryan's 128/RLEN4 case: PR #157's
-follow-on, RTOS_FORK 10.18).
+click shows as a jump far above the slope.
 """
 import sys, math, pathlib
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
@@ -22,12 +21,10 @@ def words(w):
 
 def record_audio(rec, right=False):
     """One 84-word track record -> its 16 audio samples (L, or R).
-    Measured 8 Sep 2026 (O9d/O10): the record is a sequence of SEGMENTS, each
-    a 4-word header (count, 0, 0x40000, tag) followed by `count` stereo pairs,
-    16 pairs in all -- a THRU voice ships two empty headers then 16 pairs; a
-    FLEX voice ships e.g. (15 pairs)(1 pair), (14)(2), ... the split moving one
-    sample per frame with the header's first word. Parsed, not assumed: a
-    wrong layout shows as a frame-periodic glitch against a fitted sine."""
+    The record is a sequence of segments, each a 4-word header (count, 0,
+    0x40000, tag) followed by `count` stereo pairs, 16 pairs in all (measured
+    8 Sep 2026: a THRU voice ships two empty headers then 16 pairs; a FLEX
+    voice splits them, the split moving one sample per frame)."""
     o = 1 if right else 0
     pairs = []; i = 0
     while len(pairs) < 16 and i + 4 <= len(rec):

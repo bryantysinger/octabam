@@ -1457,38 +1457,22 @@ def main():
     _appends = []
     _payloads = []                  # runtimes carried by octabam's loader (1e)
     for _k in REMIX.modules:
-        _x = getattr(remix_modules()[_k], "runtime_ext", None)
-        if _x is not None and _x.host not in REMIX.modules:
-            sys.exit(f"{_k} extends the {_x.host} runtime, which this remix does not "
-                     f"carry -- add it, or drop {_k}")
-    for _k in REMIX.modules:
         _m = remix_modules()[_k]
         _rt = getattr(_m, "runtime", None)
         if _rt is None:
             continue
         from remix import runtime_build
         _work = pathlib.Path("out/runtime") / _m.name
-        # Other selected modules that extend THIS runtime (schema.RuntimeExt)
-        # are linked into it here; their symbols join its table.
-        _exts = [(remix_modules()[_e].key, remix_modules()[_e].runtime_ext)
-                 for _e in REMIX.modules
-                 if getattr(remix_modules()[_e], "runtime_ext", None) is not None
-                 and remix_modules()[_e].runtime_ext.host == _m.key]
         # A runtime whose recipe writes the arena geometry (Octakit's four)
         # declares them in its ArenaReserve; the build computes those
         # literals from EVERY reservation in the remix (1e) instead.
         _skip = tuple(getattr(getattr(_m, "arena", None), "recipe_writes", ())) + \
             tuple(_ovr_writes.get(_m.key, ()))                 # bridged (schema.Override)
-        _writes, _append, _info = runtime_build.build(_rt, IMG.read_bytes(), _work, _exts,
+        _writes, _append, _info = runtime_build.build(_rt, IMG.read_bytes(), _work,
                                                       skip=_skip)
         _sym[_m.key] = _info["symbols"]
         _exports.update({k: v for k, v in _info["symbols"].items()
                          if not k.startswith("_") or k.startswith("__gk_")})
-        if _exts:
-            print(f"  {_m.key}: extended by {', '.join(k for k, _ in _exts)}"
-                  f"{' (code budget 0x%x)' % _info['code_budget'] if _info['code_budget'] else ''}"
-                  f" -- the host's own identities do not apply to the composite; "
-                  f"its helper constants were regenerated")
         for _va, _expect, _write, _name in _writes:
             _got = bytes(img[_va - BASE:_va - BASE + len(_expect)])
             if _got != _expect:

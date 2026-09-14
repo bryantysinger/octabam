@@ -3,7 +3,7 @@
 does `rig_render` (mixer model included) match the ColdFire port?
 
     python3 tools/harness/port_compare.py --project out/o9d/proj_t1eqA --remix bus
-    python3 tools/harness/port_compare.py --project PROJ --image out/mainos_bus.bin --remix bamsep27 \\
+    python3 tools/harness/port_compare.py --project PROJ --image out/mainos_bus.bin --remix bamsep26 \\
         --tracks 1,2,5,8 --frames 400
 
 The port (`tools/emu/ot_emu`) boots IMAGE, loads PROJECT from a staged card,
@@ -34,9 +34,8 @@ FX (the RIG's T8 master carries stock LO-FI, O14).
 """
 import argparse, json, math, os, pathlib, shutil, subprocess, sys, wave
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
-sys.path.append(str(pathlib.Path(__file__).resolve().parents[1] / "scratch"))   # the block-dump readers
-import blockdump as bd                      # noqa: E402  (tools/scratch)
-import o10_recloop as rl                    # noqa: E402  (track_audio, readback_audio)
+import blockdump as bd                      # noqa: E402
+import recloop as rl                        # noqa: E402  (track_audio, readback_audio)
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 STOCK = ROOT / "out/raw/section_3_MAIN_OS.bin"

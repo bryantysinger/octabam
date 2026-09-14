@@ -268,34 +268,9 @@ def _run(args, cwd):
     return r.stdout
 
 
-def _regenerate(ws, old: dict, new: dict):
-    """The host's OS-resident helpers bake five constants derived from the
-    built runtime (schema.RuntimeExt): substitute the host's values for the
-    composite's in the recipe's writes. Each value occurs exactly once in
-    her recipe (measured), so a count other than one is an error."""
-    out = []
-    counts = {k: 0 for k in old}
-    for va, expect, write, name in ws:
-        w = bytearray(write)
-        for k in old:
-            o, n = old[k].to_bytes(4, "big"), new[k].to_bytes(4, "big")
-            i = w.find(o)
-            while i >= 0:
-                w[i:i + 4] = n
-                counts[k] += 1
-                i = w.find(o, i + 4)
-        out.append((va, expect, bytes(w), name))
-    bad = {k: c for k, c in counts.items() if c != {"raw_size": 2}.get(k, 1)}
-    if bad:
-        sys.exit(f"runtime build: helper constants found {bad} times, not once "
-                 f"(raw_size twice) -- the host's recipe changed shape; refusing")
-    return out
-
-
-def build(rt, stock: bytes, work: pathlib.Path, extensions=(), skip=()) -> tuple[list, bytes, dict]:
+def build(rt, stock: bytes, work: pathlib.Path, skip=()) -> tuple[list, bytes, dict]:
     """Returns (writes, append, info). `info` carries the identities and
-    the gcc version actually used, for the build report. `extensions` =
-    (module key, schema.RuntimeExt) pairs linked into this runtime."""
+    the gcc version actually used, for the build report."""
     missing = [t for t in TOOLS if not shutil.which(t)]
     if missing:
         sys.exit(f"runtime build: missing {', '.join(missing)} -- run `make setup` "
@@ -333,42 +308,13 @@ def build(rt, stock: bytes, work: pathlib.Path, extensions=(), skip=()) -> tuple
         obj = work / (src.stem + ".o")
         compile_one(src, obj)
         objects.append(obj)
-    # ---- extensions: other modules' sources, into THIS runtime ------------
-    ext_keys = []
-    budget = None
-    for key, ext in extensions:
-        ext_keys.append(key)
-        if ext.code_budget is not None:
-            budget = max(budget or 0, ext.code_budget)
-        for i, name in enumerate(ext.sources):
-            src = ROOT / name
-            if not src.exists() or src.suffix not in (".S", ".s", ".c"):
-                sys.exit(f"runtime build: {key}: bad extension source {name!r}")
-            obj = work / f"ext_{key.replace(' ', '_')}_{i}_{src.stem}.o"
-            compile_one(src, obj)
-            objects.append(obj)
     ldscript = srcdir / "link.ld"
-    if budget is not None:
-        # The host's code budget is one assignment in her linker script and
-        # is not PROVIDE()d, so it cannot be overridden from the command
-        # line; rewrite that line in a scratch copy. Until the host makes it
-        # overridable upstream, this is the seam -- and it is printed.
-        text = ldscript.read_text()
-        import re
-        new_text, n = re.subn(r"RUNTIME_CODE_BUDGET = 1\n(?:.*\n)*?.*?;\n",
-                              f"RUNTIME_CODE_BUDGET = 0x{budget:x};\n", text, count=1)
-        if n != 1:
-            sys.exit("runtime build: could not find RUNTIME_CODE_BUDGET in the host's link.ld")
-        ldscript = work / "link.ld"
-        ldscript.write_text(new_text)
     ld = ["m68k-elf-ld", "-T", ldscript]
     elf, raw = work / "runtime.elf", work / "runtime.bin"
     _run([*ld, "--defsym", "GK_PACKED_RUNTIME_HASH=0", "-o", elf, *objects], work)
     _run(["m68k-elf-objcopy", "-O", "binary", "-j", ".runtime", elf, raw], work)
     runtime = raw.read_bytes()
-    extended = bool(ext_keys)
-    if not extended:
-        _verify(f"rebuilt runtime (m68k-elf-gcc {gcc_version}, recipe pins "
+    _verify(f"rebuilt runtime (m68k-elf-gcc {gcc_version}, recipe pins "
                 f"{spec['compiler']['gcc_version']})", runtime, runtime_spec["raw"])
     for op in runtime_spec["stock_operations"]:
         s = op["target_offset"]
@@ -376,8 +322,7 @@ def build(rt, stock: bytes, work: pathlib.Path, extensions=(), skip=()) -> tuple
             sys.exit("runtime build: a stock routine inside the runtime differs from its slice")
 
     packed = PACKED_MAGIC + len(runtime).to_bytes(4, "big") + pack(runtime, spec["build"]["max_candidates"])
-    if not extended:
-        _verify("packed runtime", packed, runtime_spec["packed"])
+    _verify("packed runtime", packed, runtime_spec["packed"])
     packed_path = work / "packed.bin"
     packed_path.write_bytes(packed)
     packed_obj = work / "packed.o"
@@ -391,9 +336,8 @@ def build(rt, stock: bytes, work: pathlib.Path, extensions=(), skip=()) -> tuple
     append_path = work / "append.bin"
     _run(["m68k-elf-objcopy", "-O", "binary", "-j", ".early", "-j", ".stage", elf, append_path], work)
     append = append_path.read_bytes()
-    if not extended:
-        _verify("append (loader + stage + packed runtime)", append,
-                {"size": spec["append"]["length"], "sha256": spec["append"]["sha256"]})
+    _verify("append (loader + stage + packed runtime)", append,
+            {"size": spec["append"]["length"], "sha256": spec["append"]["sha256"]})
     if spec["append"]["offset"] != len(stock):
         sys.exit("runtime build: the recipe appends somewhere other than the end of the image")
 
@@ -403,39 +347,6 @@ def build(rt, stock: bytes, work: pathlib.Path, extensions=(), skip=()) -> tuple
         if len(f) == 3 and not f[2].startswith(".L"):
             symbols[f[2]] = int(f[0], 16)
     ws = writes(spec, stock, skip)
-    if extended:
-        # The host's OS-resident helpers bake five constants derived from HER
-        # runtime; the composite has its own. Measured against her recipe:
-        # raw size (twice: hash helper + repair helper), raw rolling hash,
-        # packed size, packed hash (post-clear relocation wrapper), backup
-        # address (RUNTIME_END - raw size, repair helper). Same ×33 hash as
-        # the loader's GK_PACKED_RUNTIME_HASH.
-        def roll(b):
-            h = 0
-            for x in b:
-                h = (h * 33 + x) & 0xFFFFFFFF
-            return h
-        # Her values: the recipe pins her raw/packed bytes by sha256, not by
-        # rolling hash, so link HER sources alone once more (her script, no
-        # extensions), verify against her identities, and roll those bytes.
-        host_only = work / "host_only"
-        host_only.mkdir(exist_ok=True)
-        elf0, raw0 = host_only / "runtime.elf", host_only / "runtime.bin"
-        _run(["m68k-elf-ld", "-T", srcdir / "link.ld", "--defsym", "GK_PACKED_RUNTIME_HASH=0",
-              "-o", elf0, *objects[:len(spec["sources"])]], work)
-        _run(["m68k-elf-objcopy", "-O", "binary", "-j", ".runtime", elf0, raw0], work)
-        runtime0 = raw0.read_bytes()
-        _verify("host runtime, unextended", runtime0, runtime_spec["raw"])
-        packed0 = PACKED_MAGIC + len(runtime0).to_bytes(4, "big") + pack(runtime0, spec["build"]["max_candidates"])
-        _verify("host packed runtime, unextended", packed0, runtime_spec["packed"])
-        # backup = the UNCACHED alias of RUNTIME_END minus the runtime size
-        # (her repair helper bakes 0x4e00154b = 0x4e025de0 - 0x24895)
-        uncached_end = symbols["__gk_runtime_backup_uncached_start"] + len(runtime)
-        old = dict(raw_size=len(runtime0), raw_hash=roll(runtime0), packed_size=len(packed0),
-                   packed_hash=roll(packed0), backup=uncached_end - len(runtime0))
-        new = dict(raw_size=len(runtime), raw_hash=roll(runtime), packed_size=len(packed),
-                   packed_hash=roll(packed), backup=uncached_end - len(runtime))
-        ws = _regenerate(ws, old, new)
     def _roll(b):
         h = 0
         for x in b:
@@ -445,7 +356,6 @@ def build(rt, stock: bytes, work: pathlib.Path, extensions=(), skip=()) -> tuple
                 runtime_size=len(runtime), packed_size=len(packed), append_size=len(append),
                 runtime_load=runtime_load, memory=spec.get("memory"), symbols=symbols,
                 output_os=spec["output"]["os"], id=spec["id"], version=spec["build"]["version"],
-                extended=ext_keys, code_budget=budget,
                 # what octabam's loader needs to carry this runtime as a PAYLOAD:
                 # her stage (signature + GKA3 stream, exactly her .stage section,
                 # where her post-clear relocation re-depacks from), her window,

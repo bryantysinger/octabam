@@ -511,73 +511,20 @@ def main():
                 if registry.modules()[k].menu.fx2_id in stock.fx1_ids()}
     # The three that differ, and why -- a remix reaching this list by
     # accident is the thing being guarded against.
-    _want = {"restock": (),                       # lists all fourteen
-             # recfix is Bryan's recorder fix: three ColdFire caves, NO DSP
-             # words placed, and all fourteen stock effects listed so the
-             # chooser is the one an unmodified unit shows. Like restock it
-             # therefore gives up nothing -- and unlike restock that is the
-             # POINT: somebody flashes it and carries on using their own
-             # projects, so taking a reverb away would be a regression in
-             # the one build whose whole job is to change nothing else.
-             "recfix": (),
-             # mods is the community family alone (13 Sep 2026): no DSP words
-             # placed, all fourteen listed for the same reason as recfix --
-             # it goes to the mods' own authors, who carry on with their
-             # own projects.
-             "mods": (),
-             "ok-ms": (),          # Octakit + MIDI SCENES alone, same reason
-             "nimbuslite": ("PLATE REV", "SPRING REV"),   # keeps DARK REV
-             # deliberately gives up two more, to put a non-reverb donor on
-             # the unit for the first time (docs/effects/FLASHPLAN.md)
-             "fieldtest": ("FLANGER", "CHORUS", "PLATE REV", "SPRING REV",
-                           "DARK REV"),
-             # THREE runs on purpose -- the multi-run worked example. Its
-             # placement is checked for real below, not just its harvest.
-             "scattered": ("SPATIALIZER", "FLANGER", "CHORUS", "PLATE REV",
-                           "SPRING REV", "DARK REV", "COMB FILTER"),
-             # the BamSep26 stations beside the reverb: FILTER is REPLACED
-             # (its words are the station's ground) and the FX1 list keeps
-             # only DJ EQ, COMPRESSOR and LO-FI, so ten of thirteen go
-             # the three stations take FILTER, LO-FI and CHORUS by name and
-             # nothing else is listed, so all thirteen go: one 6,158-word run.
-             # bamsep26 is the rig and has the same shape (stock DELAY is on
-             # its chooser, but it has no DSP code to give up).
-             "bamsep26": ("FILTER", "SPATIALIZER", "EQUALIZER", "PHASER",
-                          "FLANGER", "CHORUS", "PLATE REV", "SPRING REV",
-                          "DARK REV", "COMPRESSOR", "LO-FI", "DJ EQ",
-                          "COMB FILTER"),
-             # bamsep27 is design pass 2: the same three stations, so the
-             # same harvest, minus the stock DELAY row (which has no DSP
-             # code to give up anyway).
-             "bamsep27": ("FILTER", "SPATIALIZER", "EQUALIZER", "PHASER",
-                          "FLANGER", "CHORUS", "PLATE REV", "SPRING REV",
-                          "DARK REV", "COMPRESSOR", "LO-FI", "DJ EQ",
-                          "COMB FILTER"),
-             "stations": ("FILTER", "SPATIALIZER", "EQUALIZER", "PHASER",
-                          "FLANGER", "CHORUS", "PLATE REV", "SPRING REV",
-                          "DARK REV", "COMPRESSOR", "LO-FI", "DJ EQ",
-                          "COMB FILTER"),
-             # the rig plus a community family (10 Sep 2026): the same
-             # stations, so the same thirteen; the mods place no DSP words.
-             "rig-scenes": ("FILTER", "SPATIALIZER", "EQUALIZER", "PHASER",
-                            "FLANGER", "CHORUS", "PLATE REV", "SPRING REV",
-                            "DARK REV", "COMPRESSOR", "LO-FI", "DJ EQ",
-                            "COMB FILTER"),
-             "rig-kits": ("FILTER", "SPATIALIZER", "EQUALIZER", "PHASER",
-                          "FLANGER", "CHORUS", "PLATE REV", "SPRING REV",
-                          "DARK REV", "COMPRESSOR", "LO-FI", "DJ EQ",
-                          "COMB FILTER"),
-             "rig-mods": ("FILTER", "SPATIALIZER", "EQUALIZER", "PHASER",
-                          "FLANGER", "CHORUS", "PLATE REV", "SPRING REV",
-                          "DARK REV", "COMPRESSOR", "LO-FI", "DJ EQ",
-                          "COMB FILTER")}
+    # Remixes that list all fourteen stock effects place no DSP words and
+    # give up nothing; the rig replaces FILTER, LO-FI and CHORUS with the
+    # stations and lists nothing else, so all thirteen go as one run.
+    _rig = ("FILTER", "SPATIALIZER", "EQUALIZER", "PHASER", "FLANGER", "CHORUS",
+                 "PLATE REV", "SPRING REV", "DARK REV", "COMPRESSOR", "LO-FI",
+                 "DJ EQ", "COMB FILTER")
+    _want = {"restock": (), "recfix": (), "mods": (), "ok-ms": (),
+             "bamsep26": _rig, "rig-scenes": _rig, "rig-kits": _rig,
+             "rig-mods": _rig}
     for _n in registry.remix_names():
         _r = registry.remix(_n)
         _hv = stock.region_of(stock.harvested(
             set(_r.modules) | set(_r.fx1 or _fx1_all)))
         _exp = _want.get(_n, stock.CONSUMED)
-        if _n == "bothslots":
-            continue                     # its curated FX1 list gives it more
         if tuple(_hv) != tuple(_exp):
             bad += 1
             print(f"  [FAIL] remix {_n!r} gives up {_hv}, expected {_exp}")
@@ -598,20 +545,28 @@ def main():
           f"runs, and the shipped ones give up exactly what they always did")
 
     # ---- MULTI-RUN PLACEMENT, actually built --------------------------
-    # ⚠️ THE GROUPING ABOVE IS ARITHMETIC; THIS IS THE BUILD. Nothing else
-    # here would notice the placer quietly reverting to one bump cursor:
-    # `scattered` would still assemble, still pass every other check, and
-    # simply leave its two smaller runs empty -- which is exactly the defect
-    # this replaced (3 Sep 2026, "when I remove some reverb it only shows
-    # the free reverb space"). So: build it, and require that two modules
-    # landed in two DIFFERENT runs.
+    # The grouping above is arithmetic; this builds a remix whose harvest is
+    # three non-adjacent runs (SPATIALIZER 261 w; FLANGER..DARK REV 3,342 w;
+    # COMB 277 w) and requires STREAMZ (255 w) in run 1 and WARPFOLD (322 w)
+    # in run 2. A placer that reverted to one bump cursor would leave the
+    # small runs empty and still build.
+    _probe = ROOT / "remixes/_selftest_scattered.py"
+    _probe.write_text(
+        "from remix.schema import Remix\n\n"
+        "REMIX = Remix(name='_selftest_scattered', doc='scratch',\n"
+        "              modules=('STREAMZ', 'WARPFOLD'), fallback='NONE',\n"
+        "              fx1=('FILTER', 'EQUALIZER', 'DJ EQ', 'PHASER',\n"
+        "                   'COMPRESSOR', 'LO-FI'))\n")
     r = subprocess.run([sys.executable, "tools/build/build_bus.py"],
                        cwd=ROOT, capture_output=True, text=True,
-                       env={**os.environ, "REMIX": "scattered",
+                       env={**os.environ, "REMIX": "_selftest_scattered",
                             "XBUS": "1", "SPEC": "1"})
+    _probe.unlink(missing_ok=True)
+    for junk in (ROOT / "remixes/__pycache__").glob("_selftest_scattered*"):
+        junk.unlink(missing_ok=True)
     if r.returncode:
         bad += 1
-        print(f"  [FAIL] remix 'scattered' does not build:\n"
+        print(f"  [FAIL] remix 'placer probe' does not build:\n"
               f"{r.stdout[-600:]}{r.stderr[-400:]}")
     else:
         # ⚠️ PER PAYLOAD. The two payloads put the same effects at
@@ -635,7 +590,7 @@ def main():
                 _by_pay[_pay]["at"][m.group(1)] = int(m.group(2), 16)
         if sorted(_by_pay) != ["A", "B"]:
             bad += 1
-            print(f"  [FAIL] 'scattered': expected both payloads, saw "
+            print(f"  [FAIL] 'placer probe': expected both payloads, saw "
                   f"{sorted(_by_pay)}")
         else:
             _ok = True
@@ -646,19 +601,19 @@ def main():
                        for k, a in _at.items()}
                 if len(_rs) != 3:
                     bad += 1; _ok = False
-                    print(f"  [FAIL] 'scattered' payload {_p}: {len(_rs)} "
+                    print(f"  [FAIL] 'placer probe' payload {_p}: {len(_rs)} "
                           f"runs, expected 3")
                 elif sorted(_at) != ["STREAMZ", "WARPFOLD"]:
                     bad += 1; _ok = False
-                    print(f"  [FAIL] 'scattered' payload {_p}: placed "
+                    print(f"  [FAIL] 'placer probe' payload {_p}: placed "
                           f"{sorted(_at)}, expected both modules")
                 elif None in _in.values():
                     bad += 1; _ok = False
-                    print(f"  [FAIL] 'scattered' payload {_p}: a module "
+                    print(f"  [FAIL] 'placer probe' payload {_p}: a module "
                           f"landed outside every run -- {_at} vs {_rs}")
                 elif len(set(_in.values())) < 2:
                     bad += 1; _ok = False
-                    print(f"  [FAIL] 'scattered' payload {_p}: both modules "
+                    print(f"  [FAIL] 'placer probe' payload {_p}: both modules "
                           f"landed in the SAME run ({_in}) -- the placer is "
                           f"not filling the smaller openings")
                 elif _in["STREAMZ"] != 0:
@@ -666,11 +621,11 @@ def main():
                     # MUST take it. Anywhere else means the small opening
                     # was skipped, which is the whole defect.
                     bad += 1; _ok = False
-                    print(f"  [FAIL] 'scattered' payload {_p}: STREAMZ went "
+                    print(f"  [FAIL] 'placer probe' payload {_p}: STREAMZ went "
                           f"to run {_in['STREAMZ'] + 1}, not the 261-word "
                           f"opening it fits")
             if _ok:
-                print(f"  [PASS] 'scattered' fills 2 of its 3 non-contiguous "
+                print(f"  [PASS] 'placer probe' fills 2 of its 3 non-contiguous "
                       f"runs in BOTH payloads (STREAMZ into the 261-word "
                       f"opening, WarpFold into the big run)")
 
@@ -713,7 +668,7 @@ def main():
     # through the other FX1 buffers and into FX2 slot 0. Pinned per module so
     # a manifest that starts reading the allocator cannot quietly become
     # eligible.
-    _want = {"NIMBUS LITE": "sizes its buffer", "NIMBUS": "fixed FX2",
+    _want = {"NIMBUS": "fixed FX2",
              "REVERB SERVER": "bus server", "DELAY SERVER": "bus server",
              "WARPFOLD": None, "RIPPLE": None, "RUNGS": None,
              "STREAMZ": None, "BODESHIFT": None, "HELLO WORLD": None}

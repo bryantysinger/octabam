@@ -244,11 +244,6 @@ def check(selected) -> list[str]:
     # midi-scenes, octamax and octakit, and this is where it is refused.
     runtimes = [m for m in selected if getattr(m, "runtime", None) is not None]
     hosts = {m.key for m in runtimes}
-    for m in selected:
-        x = getattr(m, "runtime_ext", None)
-        if x is not None and x.host not in hosts:
-            clash("runtime extension", m.name, f"(no {x.host})",
-                  f"a DRAM host it extends -- {x.host} is not in this remix")
     for i, a in enumerate(runtimes):
         for b in runtimes[i + 1:]:
             clash("appended runtime", a.name, b.name,

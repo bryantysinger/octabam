@@ -20,8 +20,7 @@ def touches_coldfire(m) -> bool:
     """Does this module change the OS image outside its own chooser row --
     caves, linked units, detours, pokes, grown tables or a runtime?"""
     return bool(m.cf_patches or m.linked or m.detours or m.pokes
-                or m.tables or m.runtime is not None
-                or m.runtime_ext is not None)
+                or m.tables or m.runtime is not None)
 
 
 def matrix(mods):

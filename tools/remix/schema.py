@@ -722,36 +722,6 @@ class Override:
 
 
 @dataclass(frozen=True)
-class RuntimeExt:
-    """Sources linked INTO another module's loader-appended runtime.
-
-    The DRAM host is Em's Octakit runtime (schema.Runtime): its loader,
-    post-clear relocation, instruction-cache sync and hash gate are eight
-    OS-resident pieces of measured reverse-engineering, and re-deriving
-    them for a second loader would repeat her work. So a module that wants
-    DRAM extends the host: its GNU-as sources are compiled with the host's
-    own flags and linked with the host's own linker script, its symbols
-    join the host's symbol table (detours resolve against both), and it
-    rides the host's loader, relocation and hash gate for free.
-
-    Consequences, all deliberate: the host must be in the remix (the
-    ledger refuses otherwise); the host's pinned identities cannot hold
-    for the composite runtime, so the build regenerates the five derived
-    constants the host's OS-resident helpers bake in (runtime size and
-    hash, packed size and hash, backup address -- located and verified
-    against her own recipe) and records its own identities instead; and
-    the host's code budget is the author's (`RUNTIME_CODE_BUDGET` in
-    link.ld, 128 KiB with ~1.9 KB spare) -- `code_budget` asks the build
-    for more, which it can only honour by rewriting that one line of her
-    script in a scratch copy until she makes it overridable upstream.
-    """
-
-    host: str                            # the host module's KEY, e.g. "OCTAKIT"
-    sources: tuple[str, ...]             # .S/.c/.s, repo-relative, link order
-    code_budget: int | None = None       # bytes; None = the host's own
-
-
-@dataclass(frozen=True)
 class Module:
     """One contribution, as declared by modules/<name>/manifest.py."""
 
@@ -772,9 +742,6 @@ class Module:
     # today: the append sits at the end of the OS and the loader owns one
     # DRAM window; the ledger refuses a second.
     runtime: Runtime | None = None
-    # Sources linked into ANOTHER module's runtime (schema.RuntimeExt): the
-    # way a module gets DRAM without a loader of its own.
-    runtime_ext: RuntimeExt | None = None
     # Linker-backed ColdFire code (schema.Linked): units the build assembles
     # and links where it places them, wired in by symbol (Detour), plus
     # relocated-and-grown stock tables and plain asserted pokes.

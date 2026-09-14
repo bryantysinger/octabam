@@ -15,7 +15,7 @@ Every case below renders through tools/harness/dsp_host with BOTH payloads boote
 (docs/remixer/HARNESS.md "Two cores"): the senders and the delay on payload B where
 the unit runs them, the reverb and the return on payload A, so the chain
 buffer, the liveness stamps and the return all cross the real core boundary.
-The image is the rig remix (bamsep27) as SPEC -- the stations must be in it.
+The image is the rig remix (bamsep26) as SPEC -- the stations must be in it.
 
   chain        both engines + T8 return: the return IS the reverb's stage
                output; T5 and T1 print nothing (a return is live)
@@ -52,7 +52,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import too
 import send_probe  # noqa: E402
 from remix import registry  # noqa: E402
 
-REMIX = "bamsep27"
+REMIX = "bamsep26"
 OUT = ROOT / "out/dsp"
 SCRATCH = OUT / "_onebus"
 IMAGE = ROOT / "out/mainos_bus.bin"
