@@ -49,7 +49,8 @@
 ;   $40 FX2-slot flag (set at init: 1 = this instance is on FX2, dry; per block)
 ;   $41/$42 DC block L x1/y1, $43/$44 R x1/y1 (TUBE; PERSISTENT, zeroed at init; long-form slots)
 ;   $37 d/2  $38 d  $4c (0.5+d)/2  $39 comp/4 (TUBE, per block)   $3a e/2  $3b 1-e (INFL, per block)
-;   $46 DC block k (1 or 0), $47 R (0.999 or 0): on in TUBE only (per block)
+;   $46/$47 (free since 14 Sep 2026: the DC blocker's k = 1 and R = 0.999 are
+;   immediates in chtube, which only TUBE calls)
 ;   $49 chtube's u/2 park (per sample)
 ;   $4d DRV==0: skip the saturator (per block)
 ;   $3c/$3d reverb / delay liveness grace (BUS mode, per block)
@@ -204,8 +205,9 @@ ch_offok:
         move    b,x:(r7+$4d)
 ; CRSH -> a bit MASK, built ONCE PER BLOCK (the per-sample cost is then one
 ; AND). The knob picks how many low bits are cleared, 0..21; the mask is
-; $ffffff shifted left that many times, and the shift runs in a `do` loop
-; here rather than a `rep` per sample.
+; $ffffff shifted left that many times, under a `rep` here rather than one
+; per sample. The shifts carry into A2, so the mask leaves through a1 (a
+; `move a,x:` would saturate: the A2-staleness trap, CLAUDE.md).
 ; bits = 21 * knob / 128. The knob word IS knob/128 in Q23, so the product
 ; with 21/128 is 21*knob/2^14 as a fraction; one asr #16 of the accumulator
 ; leaves the plain integer.
@@ -222,14 +224,10 @@ ch_offok:
         tst     a                       ; (tst takes an ACCUMULATOR, never a
         move    #>$ffffff,a             ; register; a move does not disturb it)
         beq     ch_mskz                 ; knob 0: the all-ones mask, unshifted
-        do      y0,>ch_mskl
-        asl     #$1,a,a
-        move    a1,x0                   ; asl leaves A2 stale every trip
-        move    x0,a
-ch_mskl:
-        nop
+        rep     y0                      ; (a rep of 0 would be 65536 trips: the
+        asl     #$1,a,a                 ; guard above)
 ch_mskz:
-        move    a,x:(r7+$23)            ; the mask: AND clears the low bits
+        move    a1,x:(r7+$23)           ; the mask: AND clears the low bits
 ; RING: carrier step, WarpFold's squared taper; 0 = OFF (a step of 0 leaves
 ; the phase still, and the per-sample gate below skips the multiply)
         move    x:(r6+$d),a             ; a knob word: bit 23 clear, a2 = 0
@@ -324,11 +322,9 @@ ch_cdone:
 ; (the old BUS) lands on TAPE. Per-mode words, all from DRV = d (0..0.992):
 ;   TUBE  $37 = d/2 (the positive half's scale)  $38 = d (the negative half's)
 ;         ($4c = (0.5 + d)/2 input gain and $39 = comp/2 below, every mode)
-;         $46/$47 = the DC blocker on (k 1, R 0.999)
+;         (the DC blocker's k = 1, R = 0.999 are chtube's own immediates)
 ;   INFL  $3a = e/2 with e = d            $3b = 1 - e
         clr     a
-        move    a,x:(r7+$46)            ; the DC blocker off (k = R = 0) unless TUBE
-        move    a,x:(r7+$47)
         move    a,x:(r7+$3e)            ; return level: 0 until RET is read below
         move    a,x:(r7+$29)            ; sat mode: 0 = TAPE
         move    x:(r6+$c),a             ; the select field where it sits (as SRR)
@@ -345,10 +341,10 @@ ch_stube:
         move    a,x:(r7+$38)            ; the negative half: d
         asr     #$1,a,a
         move    a,x:(r7+$37)            ; the positive half: d/2
-        move    #>$7fffff,x0            ; the DC blocker on: TUBE's asymmetry
-        move    x0,x:(r7+$46)           ; leaves DC (JClones' own 3 Hz remover;
-        move    #>$7fdf3b,x0            ; ours is R = 0.999, ~7 Hz, as it was)
-        move    x0,x:(r7+$47)
+                                        ; (the DC blocker -- TUBE's asymmetry
+                                        ; leaves DC; JClones' own 3 Hz remover,
+                                        ; ours R = 0.999, ~7 Hz -- is chtube's,
+                                        ; its k and R immediates there)
         bra     ch_sdone
 ch_sinfd:
         move    #>$2,x0
@@ -961,12 +957,12 @@ chtube:
         move    a,x0                    ; x, the DC blocker's input (LIMITING)
         move    x:(r3),x1               ; x1
         move    x0,x:(r3)               ; x1 <- x
-        move    x:(r7+$46),y1           ; k = 1.0
+        move    #>$7fffff,y1            ; k = 1.0 (an immediate: chtube is TUBE's)
         mpy     x1,y1,b                 ; k*x1 (mpysu: y1 is positive)
         move    x0,a
         sub     b,a                     ; x - x1
         move    x:(r3+$1),x0            ; y1
-        move    x:(r7+$47),y1           ; R = 0.999
+        move    #>$7fdf3b,y1            ; R = 0.999
         mac     x0,y1,a                 ; + R*y1
         move    a,x:(r3+$1)             ; y1 <- y
         move    a,b
