@@ -2560,9 +2560,8 @@ lfrol:
         do      n7,>rvend
 
 ; ---- input: mono sum, plus the shared REVERB bus accumulator (BUS.md) ----
-        move    #>$1,n0
-        move    x:(r0),a
-        move    x:(r0+n0),x0
+        move    x:(r0)+,a               ; L
+        move    x:(r0)-,x0              ; R, and r0 back on L (m0 linear)
         add     x0,a
         asr     #$1,a,a
 ; RETURN input (v4): own share = dry * IN, with the SAME 3-bit headroom every
@@ -2704,7 +2703,6 @@ lfrol:
 ; GATE (gated-reverb hold). $1b already holds "own dry + scaled bus" from the
 ; input sum above, so the diffuser below reads the (undelayed) input directly.
 ; Freeing $29/$30/$62 gives the gate its three state slots.
-        move    #>$1,n0                 ; n0 = 1, as the removed block set it
 
 ; ---- EARLY REFLECTIONS: REMOVED (9 Aug 2026) ------------------------------
 ; Six discrete taps summed onto the output IS a flutter echo by construction
@@ -3873,7 +3871,7 @@ fbB:
         asl     #$1,a,a
         move    x:(r0),x0               ; dry L, still in place
         add     x0,a                    ; + dry at unity (v5)
-        move    a,x:(r0)                ; L in place -- dry + wet (MIX's old
+        move    a,x:(r0)+               ; L in place -- dry + wet; r0 on to R
                                         ; dry term and $71 stash stay gone:
                                         ; unity dry needs neither scaling nor
                                         ; a stash)
@@ -3898,16 +3896,15 @@ fbB:
         move    x:(r7+$69),y0           ; print gain, as on L
         mpy     y0,x0,a
         asl     #$1,a,a
-        move    x:(r0+n0),x0            ; dry R, still in place
+        move    x:(r0),x0               ; dry R, still in place
         add     x0,a                    ; + dry at unity (v5)
-        move    a,x:(r0+n0)             ; R in place -- dry + wet
+        move    a,x:(r0)+               ; R in place -- dry + wet; r0 on to
+                                        ; the next frame (n0 is not used)
         move    r5,x:(r7+$64)           ; WET pointer: one stereo frame on
         move    (r1)+                   ; all four line pointers advance together
         move    (r2)+                   ; and each wraps inside its own line
         move    (r3)+                   ; under m1..m4 = $fff
         move    (r4)+
-        move    #>$2,n0
-        move    (r0)+n0                 ; advance one stereo frame
 rvend:
 
 noloop:

@@ -477,10 +477,9 @@ cnt_done:
 
 ; ---- per-sample: mono dry sum, scaled into the ONE accumulator -----------
         move    x:(r6),y1                ; AUX level, the one knob
-        move    #>$1,n0
         do      n7,>send_end
-        move    x:(r0),a                 ; L
-        move    x:(r0+n0),x0             ; R
+        move    x:(r0)+,a                ; L
+        move    x:(r0)+,x0               ; R, and r0 on to the next frame
         add     x0,a
         asr     #$1,a,a                  ; a = mono
         move    a,x1                     ; x1 = mono, the mpy operand
@@ -499,9 +498,6 @@ cnt_done:
         add     b,a
         move    a,y:(r2)+                ; AUX ACC[write][i] += contribution
 
-        move    #>$2,n0
-        move    (r0)+n0                  ; next stereo frame
-        move    #>$1,n0
 send_end:
         nop
 send_refused:
