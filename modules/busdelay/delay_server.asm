@@ -2068,7 +2068,6 @@ gmode:
         move    x0,a
         move    a,x:(r7+$14)
 gvlz:
-        nop
 ; ---- wet L = sum of four * makeup --------------------------------------
 ; four windows at quarter offsets sum to exactly 2, so the makeup coeff's
 ; 1/2 at full density is unity and its 1.0 top is +6 dB for the sparsest
@@ -2190,7 +2189,6 @@ gvlz:
         move    x0,a
         move    a,x:(r7+$14)
 gvrz:
-        nop
 ; ---- wet R -------------------------------------------------------------
         move    x:(r7-$2a),x0
         move    x:(r7-$c),y1
@@ -2630,9 +2628,8 @@ rskipw:
         add     #>$2,a
         move    a,x:(r7+$1b)            ; OUTPUT pointer: one stereo frame on
 
-        move    #>$2,n0
-        move    (r0)+n0                  ; advance one stereo frame
-        move    #>$1,n0
+        move    (r0)+n0                 ; advance one stereo frame: two
+        move    (r0)+n0                 ; steps, n0 stays 1 (14 Sep 2026)
 dlyend:
 
 ; ---- save both phases, restore the M registers ----------------------------
