@@ -2595,3 +2595,26 @@ of global control." Built (image 19):
   the dollar); $33 is the SVF's d and every LP/BP render came back silent.
   The true free slots below $40 are $3c..$3f; scan with a script, never a
   shell pattern.
+
+**14 Sep 2026, Sam's round on image 19:** "tame doesn't really take the
+right thing out. But at around half it seems to catch some of the harsh.
+Is there a tapered lp or limiter you would normally run on something like
+this? does the original effect have anything?" The SEM plugin has a state
+tanh, the Moog plugin a feedback tanh; both were left out of the linear
+ports. Sam: "yeah lets do it." Built (image 20):
+
+- TAME now drives the filters' own saturation and the output clip is gone:
+  v' = v + m (sc(clamp(v g))/g − v) on the SVF's two states (both
+  channels), the ladder's feedback u, ISO's output (its peak under ENV is
+  the lowpass chase) and VOWL's output. One callee fs_sat (28 words, last in
+  the file: dsp_asm has no backward short bsr), inlined inside fs_lcore and
+  fs_ccore (the pricer refuses a callee that calls one). TAME 0 stays
+  bit-exact; the BP peak at FREQ 70 RES 110 on a tone at fc goes −4.6 →
+  −26.9 dBFS at 127 (the clip gave −21.4); a −34 dBFS tone within 0.02 dB.
+  Spectrum prices 346, unchanged. Slots $3c/$3d.
+- Tables: no. The cubic needs none; Character's tables are tape/tube laws,
+  not tanh; a module's tables go to the stock curve bank X:0x4840 by the
+  build and are not shared between modules.
+- ⚠️ CC 49 (mute) and CC 50 (solo) on a track's channel do not act on the
+  unit: sent twice on image 19, the capture stayed within 2 dB. Cause open;
+  the panel's [MUTE] + [TRACK] is the route.
