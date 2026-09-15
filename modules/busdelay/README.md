@@ -8,6 +8,8 @@ its output goes on to BusVerb and to the return.
 
 ## Memory: two 32K lines, 741 ms
 
+On the unit as image 28 (15 Sep 2026): "sounds fantastic now".
+
 Since 15 Sep 2026 each line is 32,768 words: LineL is core 1's whole
 shared half (`Y:0x38000–0x3FFFF`), LineR the core's private FX2 buffer
 region (`Y:0x4000–0xBFFF`) — the region BusVerb's tank owns on core 0 and
