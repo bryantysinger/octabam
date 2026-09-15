@@ -190,7 +190,7 @@ def main():
     # average of a 438 Hz tone does not cancel between alternate repeats
     # (measured -9 dB at PING 127 with TIME 40: test artefact, not engine).
     R = lambda **k: Inst("REVERB SERVER", 0, 0, MOD=0, **k)   # noqa: E731
-    D = lambda **k: Inst("DELAY SERVER", 1, 0, PING=0, **k)   # noqa: E731
+    D = lambda **k: Inst("DELAY SERVER", 1, 0, PING=0, TIME=20, **k)   # noqa: E731  (5,184 samples: the first repeat lands inside BLOCKS; TIME is 64 + knob*256 since the 32K lines)
     S6 = lambda **k: Inst("SEND", 0, 1, fed=True, SEND=100, **k)   # noqa: E731
     S2 = lambda **k: Inst("SEND", 1, 1, fed=True, SEND=100, **k)   # noqa: E731
     RET = lambda **k: Inst("CHARACTER", 0, 3, fx=1, RET=127, **k)  # noqa: E731  (RET by position since 13 Sep 2026: no SAT=BUS)

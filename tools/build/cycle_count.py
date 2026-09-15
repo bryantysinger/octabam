@@ -160,6 +160,8 @@ def prep(name):
         return src
     src = _ASM[name].read_text()
     if name == "delay_server":
+        from remix import geom as _geom
+        src = _geom.select(src, False)          # the shipping geometry
         # THE GRAIN LEVER, priced as built. schema.Remix.grains rolls the
         # reader to two grains per line for the cycles; pricing the source
         # instead reports the four-grain figure for a two-grain image, which

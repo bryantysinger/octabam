@@ -208,7 +208,7 @@ on their real cores == the DEV hatch.
 | `0x30000–0x37FFF` | core 0's half: BusVerb's relocated buffers (`0x30000`, `0x34000`), shimmer line, tank state | fully owned |
 | `0x31000` / `0x32000` | stock bootstraps A and B ✅ | dead after boot |
 | `0x36000+` | bus scratch (`docs/firmware/CHIP.md` for the extent) | both cores touch it |
-| `0x38000–0x3FFFF` | core 1's half: BusDelay's LineL + LineR, 16,384 words each | ~371 ms per line |
+| `0x38000–0x3FFFF` | core 1's half: BusDelay's LineL, 32,768 words (LineR is core 1's private `Y:0x4000–0xBFFF`, 15 Sep 2026) | 741 ms per line |
 
 AGU modulo addressing needs power-of-2 alignment (big buffers at
 `0x30000`/`0x34000`/`0x38000`/`0x3C000`); `0xC000–0x2FFFF` is absent, so no

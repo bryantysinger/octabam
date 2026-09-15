@@ -5,7 +5,7 @@ BusVerb + BusDelay on one aux bus (pedals on the send: the send passes both, eac
 ## What is in it
 
 - **BusVerb** — an eight-line FDN reverb (ROOM / PLATE / BIG, shimmer, gate, mid/side width) that serves all eight tracks over a cross-core bus. Hosted on one of tracks 5–8.
-- **BusDelay** — a multi-mode delay (CLEAN / pitched GRAIN cloud / REVERSE, tape wow, freeze) serving all eight tracks. Hosted on one of tracks 1–4. TIME reads as a tempo division (TEMPO SYNC).
+- **BusDelay** — a multi-mode delay (CLEAN / pitched GRAIN cloud / REVERSE, tape wow, freeze) serving all eight tracks. Hosted on one of tracks 1–4. TIME reads as a tempo division (TEMPO SYNC); up to 739 ms (1/4 and 1/2T at 121 BPM) since the 32K lines, 15 Sep 2026, unflashed.
 - **Send** — the FX2 effect every other track runs: one SEND knob into the bus. The fallback for any unassigned track.
 - **DELAY** (stock) — the stock Echo Freeze delay row, unchanged; it runs on the ColdFire and costs the DSP nothing.
 - **Spectrum** (FX1, on FILTER's id) — a filter pedal: SEM LP/BP/HP, Airwindows Capacitor2, formants, the Moog ladder; ENV and LFO onto the cutoff; width. Knobs FREQ RES ENV LDP LSP WDTH / TAME MODE.
@@ -33,3 +33,4 @@ make image REMIX=bamsep26 BUILD=1     # -> out/OCTATRACK_OCTABAM1.bin
 
 - After flashing, stamp every project you will play before pressing play: `python3 tools/hw/ot_project.py stamp-defaults <project> bamsep26`. A part saved under another layout feeds the stations its old bytes and the sequencer stalls.
 - Judge BusVerb on track 5 (payload A serves tracks 5–8), BusDelay on track 1.
+- First flash with the 32K lines: a stored TIME byte now means twice the time (64 + knob·256 samples). `python3 tools/hw/ot_project.py stamp-slot <project> busdelay 1 20` on every project you will play, or re-set TIME on the delay host per part.
