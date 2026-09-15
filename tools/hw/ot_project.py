@@ -11,6 +11,8 @@
     python3 tools/hw/ot_project.py stamp-slot PROJECT_DIR MODULE SLOT [VALUE] [--track N[,N]]
     python3 tools/hw/ot_project.py set-fx PROJECT_DIR fx1|fx2 TRACK MODULE [--page V,V,V,V,V,V] [--page2 V,...]
     python3 tools/hw/ot_project.py thru-track PROJECT_DIR TRACK [--page HEX14]
+    python3 tools/hw/ot_project.py stored PROJECT_DIR                  # .strd twins (the unit's saved state)
+    python3 tools/hw/ot_project.py delaytest SRC_DIR DEST_DIR [SENDER]  # only the delay bus: T1 host, the rest SEND
 
 Writes edit GAIN= lines only, preserve CRLF and byte length discipline of the
 rest of the file, and refuse to run without a same-day backup directory
@@ -718,13 +720,13 @@ def make_test_project(src, dest, remix_name):
 # bank gets the same layout, so any pattern is the rig. Knob bytes are the
 # manifest defaults with the few deliberate exceptions listed per track.
 RIG = (
-    (1, ("CHARACTER", {}),                  ("DELAY SERVER", {"AUX": 30})),
-    (2, ("SPECTRUM", {}),                   ("SEND", {"AUX": 40})),
-    (3, ("SPECTRUM", {}),                   ("SEND", {"AUX": 30})),
-    (4, ("SPECTRUM", {}),                   ("SEND", {"AUX": 40})),
-    (5, ("MODULATION", {}),                 ("REVERB SERVER", {"AUX": 40})),
-    (6, ("SPECTRUM", {}),                   ("SEND", {"AUX": 50})),
-    (7, ("SPECTRUM", {}),                   ("SEND", {"AUX": 40})),    # SPECTRUM, not
+    (1, ("CHARACTER", {}),                  ("DELAY SERVER", {"SEND": 30})),
+    (2, ("SPECTRUM", {}),                   ("SEND", {"SEND": 40})),
+    (3, ("SPECTRUM", {}),                   ("SEND", {"SEND": 30})),
+    (4, ("SPECTRUM", {}),                   ("SEND", {"SEND": 40})),
+    (5, ("MODULATION", {}),                 ("REVERB SERVER", {"SEND": 40})),
+    (6, ("SPECTRUM", {}),                   ("SEND", {"SEND": 50})),
+    (7, ("SPECTRUM", {}),                   ("SEND", {"SEND": 40})),    # SPECTRUM, not
     (8, ("CHARACTER", {"RET": 127, "COMP": 40}), (None, {})),   # the return by position (RET = slot 4, 13 Sep 2026); GLUE by position (14 Sep); no FX2 (no send from T8)
 )
 
@@ -786,6 +788,50 @@ def lfo_clear(pdir, track, lfo, guard=True):
                 if d[PART_BASE + p * PART_STRIDE + LFO_P1_OFF + tt * 24 + 3 + nn] != 0:
                     sys.exit(f"{bank.name} part {p + 1}: read-back disagrees")
     print(f"{'every LFO' if every else f'T{track} LFO{lfo}'} depth -> 0 in every part of every bank of {pdir.name}")
+
+
+def write_stored(pdir):
+    """Give every .work file its .strd twin (a byte copy) where one is
+    missing. A unit-saved project carries both, identical (RECTRIG,
+    6 Sep 2026: bank01/project/arr01 .work == .strd); a project written by
+    these tools carried .work only, and the unit showed it as modified with
+    RELOAD refusing, there being no stored state to reload (OCTABAM89,
+    15 Sep 2026). `_bank_write` keeps a .strd in step once it exists."""
+    import shutil
+    pdir = pathlib.Path(pdir)
+    n = 0
+    for w in sorted(pdir.glob("*.work")):
+        t = w.with_suffix(".strd")
+        if not t.is_file():
+            shutil.copy2(w, t); n += 1
+    print(f"{n} .strd file(s) written in {pdir}")
+    return n
+
+
+def make_delay_test_project(src, dest, remix_name="bamsep26", sender=3):
+    """Copy a project (samples included) and put ONLY the delay bus in it:
+    T1 = DELAY SERVER on FX2, every other track = SEND on FX2, FX1 = NONE
+    everywhere with zeroed page bytes (id 0 runs SEND's proc on a stale
+    slot-0 byte otherwise), every part of every bank. Track `sender` sends
+    at 100, the rest at 0; no return station, so the delay's wet prints on
+    T1's own output. Then the .strd twins."""
+    import shutil
+    src, dest = pathlib.Path(src), pathlib.Path(dest)
+    if dest.exists():
+        sys.exit(f"{dest} exists -- refusing to overwrite. Pick a new name.")
+    if not (src / "project.work").is_file():
+        sys.exit(f"{src} is not an Octatrack project directory")
+    shutil.copytree(src, dest)
+    for f in dest.glob("._*"):
+        f.unlink()
+    zeros = [0] * 6
+    set_fx(dest, "fx1", 1, 0, page=zeros, page2=zeros, guard=False)
+    set_fx(dest, "fx2", 1, "DELAY SERVER", page=[0, 40, 60, 100, 0, 127], page2=[0, 0, 64, 1, 64, 0], guard=False)
+    for t in range(2, 9):
+        set_fx(dest, "fx1", t, 0, page=zeros, page2=zeros, guard=False)
+        set_fx(dest, "fx2", t, "SEND", page=[100 if t == sender else 0, 0, 0, 0, 0, 0], page2=zeros, guard=False)
+    write_stored(dest)
+    print(f"delay test project -> {dest}: T1 DELAY SERVER, T2-T8 SEND (T{sender} at 100), FX1 NONE")
 
 
 def make_rig_project(src, dest, remix_name):
@@ -892,7 +938,10 @@ if __name__ == "__main__":
         # mirror too, the way a bank's eight PART records require
         set_machine_type(pdir, int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5]), int(sys.argv[6]))
     elif cmd == "testproj": make_test_project(sys.argv[2], sys.argv[3], sys.argv[4])
-    elif cmd == "rigproj": make_rig_project(sys.argv[2], sys.argv[3], sys.argv[4])
+    elif cmd == "rigproj": make_rig_project(sys.argv[2], sys.argv[3], sys.argv[4]); write_stored(sys.argv[3])
+    elif cmd == "stored": write_stored(pdir)                                # .strd twins for every .work
+    elif cmd == "delaytest":                                                # <src> <dest> [sender track]
+        make_delay_test_project(sys.argv[2], sys.argv[3], sender=int(sys.argv[4]) if len(sys.argv) > 4 else 3)
     elif cmd == "lfo": lfo_report(pdir)                                      # every live LFO, per part
     elif cmd == "lfo-clear":                                                # <project> <track> <lfo> | <project> all
         lfo_clear(pdir, sys.argv[3], sys.argv[4] if len(sys.argv) > 4 else 0, guard=False)

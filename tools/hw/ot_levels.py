@@ -233,6 +233,7 @@ def cmd_normalize(src, dest, target, peakcap, level, ampvol):
     report.append(f"\n{len(done)} files rewritten, GAIN 48 on {len(samples_of(dest))} sample slots, LEVEL {level} on 8 tracks and AMP VOL {ampvol} on T1-7 (a 0 kept) in {NPARTS_ALL} part records x {nb} banks.")
     (dest / "LEVELS.md").write_text("\n".join(report) + "\n")
     print("\n".join(report))
+    OP.write_stored(dest)
 
 
 def main():

@@ -125,7 +125,7 @@ decodes the official file and validates its checksum, and round-trips ours.
    enough: the sequencer runs every track of the part.
 3. **The bus (rig remixes):** BusVerb runs on tracks 5–8 (payload A),
    BusDelay on tracks 1–4 (payload B); a host on the wrong bank falls back
-   to a SEND. Test the reverb on track 5. SEND's AUX is the one send; the
+   to a SEND. Test the reverb on track 5. SEND's SEND knob is the one send; the
    return is Character on track 8 with RET up.
 4. **A new module:** check the two things no local test can see — that each
    page-2 select draws as a select (a formatter outranks the value count

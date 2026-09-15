@@ -18,7 +18,7 @@ label comes from its formatter cave.
 
 | | CLEAN | GRAIN | REVERSE |
 |---|---|---|---|
-| page 1: AUX · TIME · FDBK · TONE · PING · MIX | the same everywhere | | |
+| page 1: SEND · TIME · FDBK · TONE · PING · MIX | the same everywhere | | |
 | MODE (p6) | CLEAN | GRAIN | REVRS |
 | MDEP (p7) | wow depth | SCAT: how far apart the grains read | wow depth |
 | MRAT (p8) | wow rate, 64 = 1× | DENS: density, level-flat | wow rate |

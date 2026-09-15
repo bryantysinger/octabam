@@ -300,7 +300,7 @@ def main():
             _names = [(p.name or b"").decode("latin1") for p in mods[key].params]
             # AUX since the one-aux rig: the host's own send
             # goes round through the accumulator and back into the engine
-            wet = {} if "AUX" in _names else ({"IN": 127} if "IN" in _names else {})
+            wet = {} if "SEND" in _names else ({"IN": 127} if "IN" in _names else {})
             # The delay's default TIME (40 -> 5,184 samples) puts its first
             # repeat past this 6,000-sample window once the 256-call warm-up
             # is spent; TIME 0 (the 64-sample floor) brings the repeats in.

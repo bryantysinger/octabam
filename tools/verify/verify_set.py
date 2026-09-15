@@ -205,6 +205,7 @@ def main():
     ccpage2 = "CC PAGE 2" in registry.remix(a.remix).modules
     midi = OUT / "in.midi"
     lines = [f"40 B{chans[1] & 0xf:X} 28 64"]
+    ccpage2 = ccpage2 and part["fx1"][0] != 0          # the cave guards FX1 id 0 (NONE)
     if ccpage2:
         lines.append(f"40 B{chans[0] & 0xf:X} 44 4D")
     # the one-aux return: RET (FX1 slot 4, CC 38) to 127 on T8, so T2's

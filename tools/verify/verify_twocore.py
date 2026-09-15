@@ -60,7 +60,7 @@ def knobs(key, **kw):
 
 R = knobs("REVERB SERVER")
 D = knobs("DELAY SERVER")
-S_DEL = knobs("SEND", AUX=127)          # one aux (7 Sep 2026): the one send
+S_DEL = knobs("SEND", SEND=127)          # one aux (7 Sep 2026): the one send
 S_VRB = S_DEL
 
 # layout: list of (letter, core, params); instance order is dispatch order

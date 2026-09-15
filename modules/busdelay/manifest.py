@@ -60,9 +60,9 @@ MODULE = Module(
     ),
     params=(
         # ---- page 1 -------------------------------------------------------
-        # AUX at slot 0 on every track, hosts included: this host's own dry
+        # SEND at slot 0 on every track, hosts included: this host's own dry
         # send into the aux (headroomed, summed, counted only while nonzero).
-        Param(b"AUX", 0, active=True, formatter=_PLAIN,
+        Param(b"SEND", 0, active=True, formatter=_PLAIN,
               doc="this track's send into the one aux bus (delay, then reverb, back on T8)"),
         Param(b"TIME", 40, active=True, formatter=_PLAIN,
               doc="delay time -- a free dial that sticky-snaps to tempo divisions"),
@@ -113,7 +113,7 @@ MODULE = Module(
     # REVERSE, the grain scatter and density in GRAIN.
     mode_slot=6,
     mode_views=(
-        # slots: 1 TIME, 2 FDBK, 3 TONE, 4 PING, 5 MIX, 10 PTCH; AUX at 0 is
+        # slots: 1 TIME, 2 FDBK, 3 TONE, 4 PING, 5 MIX, 10 PTCH; SEND at 0 is
         # never re-defaulted by a mode
         ModeView(mode=0,                        # CLEAN: centred, no wow
                  defaults={1: 40, 2: 60, 3: 100, 4: 0, 5: 127,

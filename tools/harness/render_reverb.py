@@ -83,7 +83,7 @@ SR = 44100
 FRAMES = 16              # the firmware's frame (the harness's own cap is 15: the & 0xf
 WARMUP_BLOCKS = 260      # the engine stays dry for 256 CALLS; pad past it and trim
 
-PARAMS = [("AUX", 64), ("TIME", 64), ("MOD", 40), ("SIZE", 127), ("TONE", 64),
+PARAMS = [("SEND", 64), ("TIME", 64), ("MOD", 40), ("SIZE", 127), ("TONE", 64),
           ("MIX", 127), ("_C", 0), ("SPEED", 0), ("DIFF", 64), ("SHFT", 0),
           ("GATE", 0), ("RATE", 1)]
 NAMES = {n: i for i, (n, _) in enumerate(PARAMS)}

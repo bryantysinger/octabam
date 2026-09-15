@@ -57,7 +57,7 @@ SR = 44100
 
 BASE = [0, 40, 60, 100, 64, 127, 0, 0, 0, 0, 64, 0]
 
-SLOT = {"AUX": 0, "TIME": 1, "FDBK": 2, "TONE": 3, "PING": 4, "MIX": 5,
+SLOT = {"SEND": 0, "TIME": 1, "FDBK": 2, "TONE": 3, "PING": 4, "MIX": 5,
         "MDEP": 7, "MRAT": 8, "PTCH": 10}
 
 

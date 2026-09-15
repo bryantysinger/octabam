@@ -9,7 +9,7 @@ The architecture record for the bus. The development logs are
 ## The shape
 
 ```
-every track ──AUX──▶ [aux accumulator] ──▶ BusDelay (T1 FX2) ──chain──▶ BusVerb (T5 FX2) ──▶ RET on T8 (Character)
+every track ──SEND──▶ [aux accumulator] ──▶ BusDelay (T1 FX2) ──chain──▶ BusVerb (T5 FX2) ──▶ RET on T8 (Character)
   (SEND's one knob; the hosts' too)         stage 1, MIX                 stage 2, MIX          one level
 
 CORE 0 (payload A)  tracks 5–8   BusVerb   Y:0x4000–0xBFFF (private) + Y:0x30000–0x37FFF (shared lo) = 65,536 words = 1.49 s
@@ -32,7 +32,7 @@ CORE 1 (payload B)  tracks 1–4   BusDelay  Y:0x4000–0xBFFF (private) + Y:0x3
 
 ## The one aux bus (7 Sep 2026; ✅ flash 7, 9 Sep 2026)
 
-- One send: `SEND` has one knob, `AUX` (slot 0). Both engines carry `AUX`
+- One send: `SEND` has one knob, `SEND` (slot 0). Both engines carry `SEND`
   at slot 0 as well (the host's own dry into the same accumulator, same
   headroom, count and auto-gain). Stations carry no sends; a part that
   stored 127 in a former send slot sends nothing.
@@ -79,9 +79,9 @@ touches only the ids a station replaced):
 
 | | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| SEND | AUX | | | | | | | | | | | |
-| BusVerb | AUX | TIME | MOD | SIZE | TONE | MIX | MODE | SHMR | DIFF | SHFT | GATE | RATE |
-| BusDelay | AUX | TIME | FDBK | TONE | PING | MIX | MODE | MDEP | MRAT | SIZE | PTCH | FRZE |
+| SEND | SEND | | | | | | | | | | | |
+| BusVerb | SEND | TIME | MOD | SIZE | TONE | MIX | MODE | SHMR | DIFF | SHFT | GATE | RATE |
+| BusDelay | SEND | TIME | FDBK | TONE | PING | MIX | MODE | MDEP | MRAT | SIZE | PTCH | FRZE |
 | Character | DRV | FOLD | TXTR | COMP | RET | TONE | MIX | SAT | — | — | WDTH | — |
 
 ## What a send is
@@ -110,7 +110,7 @@ buffers back from the write:
 
 Bus scratch, `Y:0x900..` in core 0's half of the shared window
 (`modules/send/send_client.asm` is the map): `0x900` rotation, `0x901..0x940`
-chain buffer, `0x941` BusVerb host's AUX field, `0x961..0x9a0` aux
+chain buffer, `0x941` BusVerb host's SEND field, `0x961..0x9a0` aux
 accumulator, `0x9c1/0x9c2` role locks, `0x9c3..0x9c5` liveness stamps,
 `0x9c7..0x9ca` aux send count per buffer. Role locks make the first
 instance of a server the only one: a second instance returns as a
@@ -188,7 +188,7 @@ against a stamp (`SAVE=1` first). `tools/verify/verify_onebus.py` (in `make
 check`) runs the chain on both cores: the return is the reverb's output and
 both hosts are silent under it; delay-only falls through; neither engine
 returns silence; delay MIX 0 == no delay two blocks later, sample-exact;
-reverb MIX 0 returns the aux itself; a SEND on core-0 position 3 at AUX 127
+reverb MIX 0 returns the aux itself; a SEND on core-0 position 3 at SEND 127
 changes nothing and the mirror position on core 1 does; a station with
 stored send bytes contributes nothing; the chain is identical under four
 instruction-level skews. `make verify-twocore`: SEND, delay and series hops

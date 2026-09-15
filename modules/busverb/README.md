@@ -9,7 +9,7 @@ Voicing: [`docs/history/VOICING.md`](../../docs/history/VOICING.md).
 
 ## Measured
 
-- Wet levels at defaults, AUX 100: ROOM −16.9, PLATE −19.1, BIG −19.0 dBFS.
+- Wet levels at defaults, SEND 100: ROOM −16.9, PLATE −19.1, BIG −19.0 dBFS.
 - RT60 (a 50 ms burst, −3..−33 dB slope) at TIME 0 / 32 / 64 / 96 / 127:
   ROOM 0.87 / 1.0 / 1.5 / 2.8 / 3.9 s; PLATE 0.9 → 4.4 s; BIG 1.6 → 11.7 s.
   The tank law is `$1e = a − k_mode·(d_min + d_span·(1−t)²)` (k ROOM 0.5 /

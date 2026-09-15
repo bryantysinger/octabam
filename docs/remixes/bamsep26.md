@@ -6,7 +6,7 @@ BusVerb + BusDelay on one aux bus, three stations on FX1, the stock delay, tempo
 
 - **BusVerb** — an eight-line FDN reverb (ROOM / PLATE / BIG, shimmer, gate, mid/side width) that serves all eight tracks over a cross-core bus. Hosted on one of tracks 5–8.
 - **BusDelay** — a multi-mode delay (CLEAN / pitched GRAIN cloud / REVERSE, tape wow, freeze) serving all eight tracks. Hosted on one of tracks 1–4. TIME reads as a tempo division (TEMPO SYNC).
-- **Send** — the FX2 effect every other track runs: one AUX knob into the bus. The fallback for any unassigned track.
+- **Send** — the FX2 effect every other track runs: one SEND knob into the bus. The fallback for any unassigned track.
 - **DELAY** (stock) — the stock Echo Freeze delay row, unchanged; it runs on the ColdFire and costs the DSP nothing.
 - **Spectrum** (FX1, on FILTER's id) — a filter pedal: SEM LP/BP/HP, Airwindows Capacitor2, formants, the Moog ladder; ENV and LFO onto the cutoff; width. Knobs FREQ RES ENV LDP LSP WDTH / TAME MODE.
 - **Character** (FX1, on LO-FI's id) — crush, fold/ring, saturation, compressor, width; the bus return (RET) on track 8. Knobs DRV FOLD TXTR COMP RET TONE / MIX SAT WDTH.
