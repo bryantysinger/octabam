@@ -11,14 +11,14 @@ BusVerb + BusDelay on one aux bus (pedals on the send: the send passes both, eac
 - **Spectrum** (FX1, on FILTER's id) — a filter pedal: SEM LP/BP/HP, Airwindows Capacitor2, formants, the Moog ladder; ENV and LFO onto the cutoff; width. Knobs FREQ RES ENV LDP LSP WDTH / TAME MODE.
 - **Character** (FX1, on LO-FI's id) — crush, fold/ring, saturation, compressor, width; the bus return (RET) on track 8. Knobs DRV FOLD TXTR COMP RET TONE / MIX SAT WDTH.
 - **Modulation** (FX1, on CHORUS's id) — chorus / flanger / comb. Knobs RATE DPTH FDBK MIX / DLY MODE TONE SHPE WID.
-- **TEMPO SYNC** (octabam) — two ColdFire caves: the held MIDI note reaches BusDelay, and BusDelay's TIME draws as a division (1/8, 1/4 …) instead of milliseconds; the tempo itself comes from stock's record word. On the unit since 24 Aug 2026; the note-only cave (15 Sep 2026) is unflashed.
+- **TEMPO SYNC** (octabam) — two ColdFire caves: the held MIDI note reaches BusDelay, and BusDelay's TIME draws as a division (1/8, 1/4 …) instead of milliseconds; the tempo itself comes from stock's record word. On the unit since 24 Aug 2026; the note-only cave since image 24 (15 Sep 2026).
 - **CC PAGE 2** (octabam) — MIDI CC 62–67 reach the FX2 effect's page-2 knobs (slots 6–11) and CC 68–73 the FX1 effect's; stock reaches only page 1 over MIDI. One ColdFire cave. Confirmed on hardware 13 Sep 2026.
 
 FX2 chooser: BusVerb, BusDelay, Send, DELAY. FX1 chooser: NONE, Spectrum, Character, Modulation. The stations are FX1-only and default to a bit-exact passthrough, so a saved part that chose FILTER, LO-FI or CHORUS still plays.
 
 ## Status
 
-On Sam's MKII (image 96, 13 Sep 2026, and later). The one-aux bus claims all pass on hardware (flash 7). Every other stock effect is harvested: 13 effects; a saved part naming one plays silence.
+On Sam's MKII (image 96, 13 Sep 2026; image 25 with the WET pedal chain, 15 Sep 2026). The one-aux bus claims all pass on hardware (flash 7); the sends into the delay with the note-only tempo cave, image 24. Every other stock effect is harvested: 13 effects; a saved part naming one plays silence.
 
 ## Build
 

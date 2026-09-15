@@ -256,7 +256,7 @@ same knob was RET in BUS and CRSH elsewhere.
 position on the master and inert elsewhere; the wet enters at the front of
 the chain; DRV 0 skips the saturator (bit-exact).
 
-## An FX1 station's page 2 does not reach the DSP on a bus host ✅ measured under the port
+## An FX1 station's page 2 does not reach the DSP on a bus host ✅ fixed (image 24)
 
 **Symptom.** Character on T1 (a THRU, FX1) made a quiet tone at idle; knob
 3 at 127 gave −47 dBFS of broadband hash with the panel's SAT at BUS or
@@ -284,7 +284,8 @@ BusDelay reads tempo24 from stock's own record word (halfword 31, `r6+$13`,
 `0x40004d6a`) and derives the period on the DSP. Under the port with the
 fix, a live SAT edit on T1 (`--call 0x4003abe4,1,1 --call-at 20`) lands in
 the record (`0x7f01`) and only the copier writes halfwords 18-20; 120 BPM
-snaps TIME to exactly 11,025 samples (1/8) in `rig_render`. Unflashed.
+snaps TIME to exactly 11,025 samples (1/8) in `rig_render`. Image 24
+(15 Sep 2026): the sends into the delay work on the unit.
 
 ## A DC thump every 10.59 s at idle, from track 6 ✅ source measured
 
