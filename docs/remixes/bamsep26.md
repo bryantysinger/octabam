@@ -13,13 +13,13 @@ BusVerb + BusDelay on one aux bus (pedals on the send: the send passes both, eac
 - **Modulation** (FX1, on CHORUS's id) — chorus / flanger / comb. Knobs RATE DPTH FDBK MIX / DLY MODE TONE SHPE WID.
 - **TEMPO SYNC** (octabam) — two ColdFire caves: the held MIDI note reaches BusDelay, and BusDelay's TIME draws as a division (1/8, 1/4 …) instead of milliseconds; the tempo itself comes from stock's record word. On the unit since 24 Aug 2026; the note-only cave since image 24 (15 Sep 2026).
 - **CC PAGE 2** (octabam) — MIDI CC 62–67 reach the FX2 effect's page-2 knobs (slots 6–11) and CC 68–73 the FX1 effect's; stock reaches only page 1 over MIDI. One ColdFire cave. Confirmed on hardware 13 Sep 2026.
-- **MODE DEFAULTS** (octabam) — turning a MODE on the panel re-defaults the knobs around it to that mode's view (BusDelay's three modes, Modulation's six, Spectrum's VOWL/LADR), on FX1 and FX2; SEND is never touched. Two detours in the page-2 editors. Measured under the port (`verify_modedefaults`); unflashed. A MODE set over CC 62/68 is not re-defaulted.
+- **MODE DEFAULTS** (octabam) — turning a MODE on the panel re-defaults the knobs around it to that mode's view (BusDelay's three modes, Modulation's six, Spectrum's VOWL/LADR), on FX1 and FX2; SEND is never touched. Two detours in the page-2 editors. Measured under the port (`verify_modedefaults`); confirmed on the unit, image 26 (15 Sep 2026). A MODE set over CC 62/68 is not re-defaulted.
 
 FX2 chooser: BusVerb, BusDelay, Send, DELAY. FX1 chooser: NONE, Spectrum, Character, Modulation. The stations are FX1-only and default to a bit-exact passthrough, so a saved part that chose FILTER, LO-FI or CHORUS still plays.
 
 ## Status
 
-On Sam's MKII (image 96, 13 Sep 2026; image 25 with the WET pedal chain, 15 Sep 2026). The one-aux bus claims all pass on hardware (flash 7); the sends into the delay with the note-only tempo cave, image 24. Every other stock effect is harvested: 13 effects; a saved part naming one plays silence.
+On Sam's MKII (image 96, 13 Sep 2026; image 25 with the WET pedal chain and image 26 with MODE DEFAULTS, 15 Sep 2026). The one-aux bus claims all pass on hardware (flash 7); the sends into the delay with the note-only tempo cave, image 24. Every other stock effect is harvested: 13 effects; a saved part naming one plays silence.
 
 ## Build
 
