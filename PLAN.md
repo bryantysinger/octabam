@@ -73,9 +73,18 @@ From `docs/remixer/PLACEMENT.md`, measured under the port unless marked.
 6. octamax (mxldyn): ported on branch `octamax-deferred` (`d952976`), parked
    pending a conversation with the author.
 7. The DSP side's open items: `docs/history/PLAN_EFFECTS.md`.
-8. Voicing rounds for the bus engines on image 25 (the live-round
-   protocol: level-match first, transport stopped at the end of every
-   test), then Modulation v2 (PR #258, unflashed, never heard).
+8. The reverb is closed out (15 Sep 2026, "is awesome"; its buffers and
+   voicing are kept whatever else moves). Next rounds: BusDelay with the
+   32K lines (741 ms; 1/4 and 1/2T at 121 BPM; built, gated, unflashed --
+   stored TIME bytes mean twice the time, `stamp-slot <project> busdelay 1
+   20` before play), then Modulation v2 (PR #258, never heard). Sam's
+   fallback if the long delay disappoints: revisit the voicing and the
+   alternative delay algorithms (BBD/tape loop saturation, resonant TONE,
+   ducking; `docs/firmware/CHIP.md` "The rig's load" for the cycle room).
+10. Static that stays after taxing knob moves with both engines live
+    (FAILURE_MODES, 15 Sep 2026): not the knob-change cost and not a
+    self-send loop (both measured under the port); the wall is the open
+    candidate and only the burn sweep on C02 places it.
 9. Under the port the transport start re-applies the saved bank's FX ids
    for T1-T3, T7 and T8 only (T4-T6 keep the load's bank A ids, by
    `--bank` or by a program change); `verify_set` stages the tested bank

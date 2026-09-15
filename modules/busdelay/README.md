@@ -6,6 +6,30 @@ REVERSE, with tape wow (MDEP / MRAT) and a freeze hold in every mode. Hosted
 on payload B (core 1), which serves tracks 1–4. Stage 1 of the one aux bus:
 its output goes on to BusVerb and to the return.
 
+## Memory: two 32K lines, 741 ms
+
+Since 15 Sep 2026 each line is 32,768 words: LineL is core 1's whole
+shared half (`Y:0x38000–0x3FFFF`), LineR the core's private FX2 buffer
+region (`Y:0x4000–0xBFFF`) — the region BusVerb's tank owns on core 0 and
+nothing writes on core 1 (measured under the port: OCTABAM89 C02, 900
+frames, every DSP write per 256-word region on both cores; core 1 wrote
+`Y:0x0000–0x07ff`, `0x0900–0x09ff`, `0x36000–0x361ff` and its shared half,
+nothing in `0x1000–0xBFFF`). TIME is 64 + knob·256 samples, 1.5–739 ms;
+the sticky snap knows twelve divisions, 1/32T … 1/4. — at 121 BPM 1/4 (496
+ms) and 1/2T (661 ms) hold, 1/4. (744 ms) from 122 BPM, 1/2 never below
+162. REVERSE's mono ring is LineL's 32K, unchanged. LineR's pointer is
+base-relative (`y:(r2+n2)`): the private base is only 16K-aligned, so an
+absolute pointer cannot be masked — the first build wrote every other
+sample 16K away. The DEV hatch (payload A, beside the reverb's tank) keeps
+two 16K lines in the shared half; `tools/remix/geom.py` selects the
+`; @B` / `; @DEV` lines, and the two geometries render bit-identically at
+any TIME both can hold (`verify_twocore`). The ledger refuses a second
+owner of the private region on the same payload (`Claims.owns_fx2_buffers`).
+
+Stored TIME bytes from before (64 + knob·128) now mean twice the time:
+`ot_project.py stamp-slot <project> busdelay 1 20` puts every part's T1 at
+the old default's 118 ms.
+
 TIME is a free dial with a sticky snap: near a division it snaps, holds that
 division through tempo changes, and lets go when the knob moves. The tempo
 is stock's record word (tempo24 at `r6+$13`, halfword 31 of every track's
@@ -66,6 +90,8 @@ one is better"); GRAIN DENS 32 → 127 on the loop "sounds pretty good".
 
 ## Open
 
-- REVERSE's segment ceiling is 371 ms (the whole 32K ring).
+- REVERSE's segment ceiling is 371 ms (its 32K ring is LineL); a 741 ms
+  segment would need both lines as one ring, which they are not (LineR is
+  in the private region).
 - Pitch accuracy below −1.5 octaves: finder or engine.
 - The delay return is ~4 dB quieter than the reverb at equal send.

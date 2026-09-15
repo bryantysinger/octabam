@@ -1,6 +1,6 @@
 | BusDelay TIME's display formatter (fmt(buf, value) -> sprintf). Prints the
 | tempo division name while the DSP's sticky snap holds one (the same
-| integers as the DSP rule: free = value*128 + 64 samples, ticks = 42,336,000
+| integers as the DSP rule: free = value*256 + 64 samples, ticks = 42,336,000
 | / tempo24, snap when |free - ticks*M/16| <= free/16 for M in mtab), else
 | milliseconds. Position-independent; `state` (last value, held division)
 | lives inside the cave.
@@ -11,8 +11,8 @@ fmt:    lea     -20(%sp),%sp
         move.l  28(%sp),%d0             | value 0..127
         lea     state(%pc),%a2
         move.l  %d0,%d1
-        lsl.l   #7,%d1
-        add.l   #64,%d1                 | free, samples
+        lsl.l   #8,%d1
+        add.l   #64,%d1                 | free, samples (the DSP clamps at the line)
         cmp.l   (%a2),%d0
         beq.s   decide                  | knob unchanged: keep held
         move.l  %d0,(%a2)               | last = value
@@ -37,7 +37,7 @@ loop:   moveq   #0,%d5
         move.l  %d4,4(%a2)
         addq.l  #1,4(%a2)               | held = index + 1 (last match wins)
 2:      addq.l  #1,%d4
-        cmp.l   #10,%d4
+        cmp.l   #12,%d4
         bne.s   loop
 decide: move.l  4(%a2),%d0              | held, 0 = free
         beq.s   free
@@ -63,10 +63,11 @@ free:   moveq   #10,%d0
         lea     12(%sp),%sp
         rts
 
-mtab:   .byte   2,3,4,6,8,9,12,16,18,24
+mtab:   .byte   2,3,4,6,8,9,12,16,18,24,32,36
         .balign 2
 strtab: .word   s0-strtab,s1-strtab,s2-strtab,s3-strtab,s4-strtab
         .word   s5-strtab,s6-strtab,s7-strtab,s8-strtab,s9-strtab
+        .word   s10-strtab,s11-strtab
 s0:     .asciz  "1/32T"
 s1:     .asciz  "1/32"
 s2:     .asciz  "1/16T"
@@ -77,6 +78,8 @@ s6:     .asciz  "1/8"
 s7:     .asciz  "1/4T"
 s8:     .asciz  "1/8."
 s9:     .asciz  "1/4"
+s10:    .asciz  "1/2T"
+s11:    .asciz  "1/4."
         .balign 4
 state:  .long   0xffffffff              | last value: none, so the first draw evaluates
         .long   0                       | held

@@ -309,11 +309,20 @@ def check(selected) -> list[str]:
     # them on one core write over each other. Each works perfectly alone.
     # Declared rather than scanned -- see Claims.owns_fx2_buffers for why a
     # scan cannot tell an address from a mask.
+    # Per CORE: two owners on DIFFERENT payloads never meet (BusVerb's tank
+    # on A, BusDelay's LineR on B under SPEC). A module without a DspSection
+    # or with no payload set counts as on both.
     buf = [m for m in selected
            if getattr(m, "claims", None) is not None
            and m.claims.owns_fx2_buffers]
+
+    def _pay(m):
+        p = getattr(getattr(m, "dsp", None), "payloads", None)
+        return frozenset(p) if p else frozenset({"A", "B"})
     for i, a in enumerate(buf):
         for b in buf[i + 1:]:
+            if not (_pay(a) & _pay(b)):
+                continue
             clash("FX2 instance buffers", a.name, b.name,
                   "Y:0x4000-0xBFFF -- that region is per CORE, so only one "
                   "of them can be hosted on a given core; each works alone")

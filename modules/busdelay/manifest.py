@@ -1,5 +1,10 @@
 """BusDelay -- a multi-mode delay: CLEAN, GRAIN (pitched), REVERSE.
 
+Two 32K lines on the shipping core (741 ms of TIME): LineL the shared half,
+LineR core 1's private FX2 buffer region Y:0x4000-0xBFFF, which the reverb's
+tank owns on core 0 and nothing writes on core 1 (port, 15 Sep 2026). The
+DEV hatch keeps two 16K lines (tools/remix/geom.py).
+
 Clones SPRING REV's descriptor. A cloned descriptor inherits the donor's
 display formatter, which overrides the value count, so every slot below
 states its renderer. TIME's formatter is the tempo-sync cave, registered
@@ -32,16 +37,16 @@ SIZE_ROWS = (
     (16384, 512,  0,     0x1fff, 0x800, 0x400,  0x80000,  0),
     (2048,  4096, 28608, 0x1fff, 0x800, 0x400,  0x80000,  0),   # 4+: garbage index
 )
-# The sticky snap's ten tempo divisions, M << 11 for M in 2, 3, 4, 6, 8, 9,
-# 12, 16, 18, 24 (1/32T .. 1/4; 1/2T and 1/4. never fit the 370 ms line
-# below ~170 BPM), smallest first -- last match wins in the engine's loop.
-# At offset 40.
+# The sticky snap's twelve tempo divisions, M << 11 for M in 2, 3, 4, 6, 8,
+# 9, 12, 16, 18, 24, 32, 36 (1/32T .. 1/4.; 1/2 = 48 never fits the 741 ms
+# line below 162 BPM, 1/4. fits from 122), smallest first -- last match wins
+# in the engine's loop. At offset 40.
 SNAP_DIVS = (0x1000, 0x1800, 0x2000, 0x3000, 0x4000,
-             0x4800, 0x6000, 0x8000, 0x9000, 0xc000)
+             0x4800, 0x6000, 0x8000, 0x9000, 0xc000, 0x10000, 0x12000)
 # The bus auto-gain's 1/sqrt(N), Q23, indexed by the client count masked to
 # 0..7 -- so [0] is 1/sqrt(8), where eight writers wrap to (and a count of 0
 # lands harmlessly: the accumulator is zero then). 1/sqrt(N) because
-# uncorrelated senders sum as sqrt(N). At offset 50.
+# uncorrelated senders sum as sqrt(N). At offset 52.
 RECIP = (0x2d413c, 0x7fffff, 0x5a8279, 0x49e69d,
          0x400000, 0x393e4b, 0x34417a, 0x306123)
 PTABLE = tuple(w for row in SIZE_ROWS for w in row) + SNAP_DIVS + RECIP
@@ -64,8 +69,8 @@ MODULE = Module(
         # send into the aux (headroomed, summed, counted only while nonzero).
         Param(b"SEND", 0, active=True, formatter=_PLAIN,
               doc="this track's send into the one aux bus (delay, then reverb, back on T8)"),
-        Param(b"TIME", 40, active=True, formatter=_PLAIN,
-              doc="delay time -- a free dial that sticky-snaps to tempo divisions"),
+        Param(b"TIME", 20, active=True, formatter=_PLAIN,
+              doc="delay time, 1.5 .. 739 ms -- a free dial that sticky-snaps to tempo divisions"),
         Param(b"FDBK", 60, active=True, formatter=_PLAIN,
               doc="feedback -- how much each repeat regenerates"),
         Param(b"TONE", 100, active=True, formatter=_PLAIN,
@@ -115,17 +120,19 @@ MODULE = Module(
     mode_slot=6,
     mode_views=(
         # slots: 1 TIME, 2 FDBK, 3 TONE, 4 PING, 5 MIX, 10 PTCH; SEND at 0 is
-        # never re-defaulted by a mode
+        # never re-defaulted by a mode. TIME is 64 + knob*256 samples since
+        # the 32K lines (15 Sep 2026): 20 = 5,184 samples, 18 = 4,672 -- the
+        # same times the views held at 40 / 36 under the old *128 law.
         ModeView(mode=0,                        # CLEAN: centred, no wow
-                 defaults={1: 40, 2: 60, 3: 100, 4: 0, 5: 127,
+                 defaults={1: 20, 2: 60, 3: 100, 4: 0, 5: 127,
                            7: 0, 8: 64, 10: 64}),
         ModeView(mode=1,                        # GRAIN
                  names={7: b"SCAT", 8: b"DENS"},   # PTCH is PTCH in every mode
                  # Sam's recipe on the unit (15 Sep 2026): octave up, ping-pong
-                 defaults={1: 36, 2: 40, 3: 100, 4: 127, 5: 127,
+                 defaults={1: 18, 2: 40, 3: 100, 4: 127, 5: 127,
                            7: 40, 8: 127, 9: 1, 10: 96}),
         ModeView(mode=2,                        # REVERSE: centred, no wow, 371 ms
-                 defaults={1: 40, 2: 60, 3: 100, 4: 0, 5: 127,   # segments (SIZE 3 = XTRM)
+                 defaults={1: 20, 2: 60, 3: 100, 4: 0, 5: 127,   # segments (SIZE 3 = XTRM)
                            7: 0, 8: 64, 9: 3, 10: 64}),
     ),
     dsp=DspSection(
@@ -148,6 +155,8 @@ MODULE = Module(
     # The source names 0901h-0903h as this module's RATE/DRV state block; the
     # scan sees 0901 and 0902. 0903 is reserved because whether it is live
     # is not established.
-    claims=Claims(reserved_private_y=(0x0903,)),
+    # LineR is the core's private FX2 buffer region: the ledger refuses a
+    # second owner on the same payload (BusVerb's tank is payload A's).
+    claims=Claims(reserved_private_y=(0x0903,), owns_fx2_buffers=True),
     harness=Harness(layout_char="D", is_server=True),
 )

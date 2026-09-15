@@ -163,6 +163,32 @@ firmware, 1,130 on the meter). Only the burn sweep measures the ceiling.
 `make cycles` prints the live per-module figures and the worst load a core
 can be asked for.
 
+### The rig's load, measured (15 Sep 2026)
+
+`rig_render.py --project OCTABAM89 --bank 3 --part 2` (C02's layout: T1
+Character + BusDelay, T2-T4 Spectrum + SEND, T5 Modulation + BusVerb,
+T6-T7 Spectrum, T8 Character as the return; the part's own knobs, audio on
+every track), the meter's unit (instructions/sample, max block):
+
+| | core 0 (T5-T8) | core 1 (T1-T4) |
+|---|---|---|
+| as stored (every station at its passthrough, delay CLEAN) | 1,301 | 561 |
+| delay GRAIN | 1,301 | 1,276 |
+| pricer, static, everything live (Spectrum 346 ×3 / ×2, Character 639, Modulation 476, BusDelay 1,243, BusVerb 1,157, SEND 10 ×3) | 2,994 | 2,950 |
+| usable | 3,120 | 3,120 |
+
+The delay alone: CLEAN 476, GRAIN 1,191, REVERSE 497 (T1=D with three
+sends). The stations cost their static price only when a knob leaves
+neutral; at the part's stored values every one takes its bypass loop. So
+the rig plays at ~40 % of the wall as stored and prices at ~95 % of it
+with every station live and GRAIN selected, inside the counter's ~270
+error on the reverb — the burn sweep on C02 is the one measurement that
+places it. The levers, in order of cycles: GRAIN's four grains per line
+(`Remix.grains=2` halves the reader, −350 on core 1, an ear decision);
+Spectrum's TAME saturator (28 words ×6 calls, runs at TAME 0 too); a
+station's per-track cost is paid once per track, so which tracks carry
+Spectrum sets the floor.
+
 ## 3. DSP Y memory
 
 Swept end to end on hardware (`dsp/ymemprobe.asm`, in git history), per
@@ -242,12 +268,12 @@ disassemble before believing.
 | | |
 |---|---|
 | BusVerb | `Y:0x4000–0xBFFF`, 32,768 words, hardcoded, both payloads (different cores) |
-| BusDelay | `Y:0x30000–0x37FFF` (A) / `Y:0x38000–0x3FFFF` (B), 32,768 words each; the payload-A base is the DEV hatch's only |
+| BusDelay | LineL `Y:0x38000–0x3FFFF` (B) + LineR `Y:0x4000–0xBFFF` (B's private FX2 region, unwritten by anything else on core 1: port, 15 Sep 2026), 32,768 words each; the DEV hatch keeps two 16K lines at `Y:0x38000` in payload A |
 | bus scratch | `Y:0x900–0xad9`, 474 words: `modules/send/send_client.asm` is the authoritative map (❌ this row read `0x900–0x980`, "parity word", 4 wet buffers until 30 Aug 2026) |
 | per-instance base stash | `Y:0x795 + (r7>>8)`, one word per instance |
 | SEND | nothing; never touches its own slot |
 
-32,768 words is the ceiling per server and BusVerb is at it.
+32,768 words of shared window is the ceiling per server; BusVerb is at it, and BusDelay adds the private region on its core.
 
 ## 4. DSP program memory
 

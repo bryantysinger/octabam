@@ -8,9 +8,13 @@ snaps to the same TIME through 2M, so only a division with no double in the
 table (16, 18, 24 clocks) can see it. An impulse through BusDelay on T1
 (FDBK 0) is timed by its echo:
 
-    120 BPM, TIME 86  -> 11,025 samples (1/8 = 12 clocks; ambiguous, kept as the base)
-    200 BPM, TIME 103 -> 13,230 samples (1/4 = 24 clocks; a halved period leaves it free at 13,248)
-     96.5 BPM, TIME 86 -> 11,072 samples (no division within free/16: free-running)
+    120 BPM, TIME 43  -> 11,025 samples (1/8 = 12 clocks; ambiguous, kept as the base)
+    200 BPM, TIME 51  -> 13,230 samples (1/4 = 24 clocks; a halved period leaves it free at 13,120)
+     96.5 BPM, TIME 43 -> 11,072 samples (no division within free/16: free-running)
+    120 BPM, TIME 86  -> 22,050 samples (1/4 -- past the old 16K line; the 32K lines, 15 Sep 2026)
+    120 BPM, TIME 115 -> 29,400 samples (1/2T = 32 clocks, a division the 16K line never held)
+
+TIME is 64 + knob*256 samples (was *128 until the 32K lines).
 
 Builds the remix's image to a private copy (the selftest leaves whichever
 remix it built last at out/mainos_bus.bin) and renders it through rig_render
@@ -24,7 +28,7 @@ from remix import registry  # noqa: E402
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 OUT = ROOT / "out/tempoverify"
 IMPULSE_AT = 4410
-CASES = ((120.0, 86, 11025), (200.0, 103, 13230), (96.5, 86, 11072))
+CASES = ((120.0, 43, 11025), (200.0, 51, 13230), (96.5, 43, 11072), (120.0, 86, 22050), (120.0, 115, 29400))
 
 
 def impulse(path):

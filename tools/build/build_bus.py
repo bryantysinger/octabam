@@ -1486,6 +1486,16 @@ def main():
     print("=== DSP: code placed, dispatch wired, both payloads ===")
     delay_src = (pathlib.Path(ASM_SRC["DELAY SERVER"]).read_text()
                  if "DELAY SERVER" in ASM_SRC else None)
+    if delay_src is not None:
+        # The line geometry follows the placement: `; @B` lines ship (two
+        # 32K lines, LineR in core 1's private FX2 buffer region), `; @DEV`
+        # lines are the hatch's (payload A beside the reverb's tank: the two
+        # 16K lines in the shared half). tools/remix/geom.py.
+        from remix import geom as _geom
+        _nb, _nd = _geom.census(delay_src)
+        delay_src = _geom.select(delay_src, DEV)
+        print(f"  DELAY SERVER: line geometry {'DEV (16K lines, payload A)' if DEV else 'shipping (32K lines, LineR private)'}"
+              f" -- {_nd if DEV else _nb} placement lines kept, {_nb if DEV else _nd} dropped")
     if delay_src is None:
         # The overrides below splice into the delay's source. Asking for one
         # in a remix that has no delay is a mistake worth naming, not a
