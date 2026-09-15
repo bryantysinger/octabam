@@ -176,6 +176,7 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	python3 tools/verify/verify_burn.py $(REMIX)
 	python3 tools/verify/verify_twocore.py
 	python3 tools/verify/verify_onebus.py
+	python3 tools/verify/verify_tempo.py $(REMIX)
 
 .PHONY: verify-roll
 verify-roll: ## Prove an alternate REVERB engine is bit-identical: make verify-roll CAND=cand.asm [REF=modules/busverb/reverb_server.asm]

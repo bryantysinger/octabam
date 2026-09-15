@@ -54,8 +54,8 @@ cannot be scene-locked.
 
 Fader position: `0x460d16c8` (long, 0..127), written by the panel path
 (`0x40061e0a`, raw) and by CC 48 (`0x4006269a`, `127−value`); `xf=127` ⇒
-scene A. Nothing of ours is hard-locked to the fader; the tempo cave
-publishes fader+1 at `r6+$8`, unread.
+scene A. Nothing of ours is hard-locked to the fader, and nothing of ours
+reads it on the DSP.
 
 ## Notes ✅
 
@@ -76,21 +76,31 @@ selected while driving notes).
 
 ## The DSP record ✅
 
-The record is fully rewritten every frame (`0x4000cb6e..0x4000cb7c`
-copies `0x80000830+72t` into `+0x24..+0x35` before `jsr 0x40004bd4`).
-"Dead" means never read; a cave re-stores every pass. Free on those
-terms: `+0x28, +0x2a, +0x2c` = `r6+$8, $9, $a`; `+0x2e..+0x34` are live
-page-2 params, `+0x36/+0x38` ids.
+The record (32 halfwords per track) is fully rewritten every frame
+(`0x4000cb6e..0x4000cb7c` copies `0x80000830+72t` into `+0x24..+0x3d`
+before `jsr 0x40004bd4`). Every halfword is read by something: `+0x24..
++0x28` (18-20) are the FX1 instance's page 2 (`r6_FX1+$c..$e` = `r6_FX2+
+$6..$8`), `+0x2a..+0x2e` (21-23) the AMP page 2 (`r6_block+$15..$17`,
+read by the dispatcher at P:0x231), `+0x30..+0x34` (24-26) the FX2 page 2,
+`+0x36/+0x38` the ids, `+0x3a..+0x3e` (29-31) the writer's own words: a
+per-track table word, the flag/split word (`r2+$1e`) and **tempo24
+(`0x8000181c`) at `+0x3e`**, stored by stock at `0x40004d6a` for every
+track. Retracted 15 Sep 2026: "`+0x24..+0x2c` are dead" (they were read
+by no FX2 effect; the FX1 effect on the same track reads them).
 
 The tempo cave (`modules/tempo-sync/tempo_cave.s`, hooked at `0x40004d40`
-in the per-frame voice-record writer, for FX2 ids 6 and 7) publishes:
+in the per-frame voice-record writer, for FX2 id 6) publishes one byte:
 
 ```
-+0x24  r6+$6   tempo24 (BPM*24, from 0x8000181c)
-+0x26  r6+$7   ticks Q12.4 = 42,336,000 / tempo24 (samples per MIDI clock * 16)
-+0x28  r6+$8   fader + 1 (1 = fully B, 128 = fully A, 0 = no cave)
-+0x2a  r6+$9   held note (0x400d64c2[track]) or 0 on release
++0x1b  r6+$1 bits 8-15   held note (0x400d64c2[track]) or 0 on release
+                         (the low byte of BusDelay's TIME halfword)
 ```
+
+BusDelay reads tempo24 at `r6+$13` (`+0x3e`) and derives the MIDI-clock
+period (42,336,000 / tempo24, Q12.4) per block. Until 15 Sep 2026 the cave
+stored tempo24, the period, fader+1 and the note at `+0x24..+0x2a` (FX2
+ids 6 and 7), which clobbered the FX1 page 2 and the AMP page 2's first
+halfword on every host track (`docs/remixer/FAILURE_MODES.md`).
 
 The track index is `a0 − 0x80000110` (`moveal %d4,%a0 ; addal
 #0x80000110,%a0` at `0x40004d38`).

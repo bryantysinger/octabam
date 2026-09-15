@@ -7,8 +7,12 @@ on payload B (core 1), which serves tracks 1–4. Stage 1 of the one aux bus:
 its output goes on to BusVerb and to the return.
 
 TIME is a free dial with a sticky snap: near a division it snaps, holds that
-division through tempo changes, and lets go when the knob moves. The panel
-label comes from the [`tempo-sync`](../tempo-sync/) formatter cave.
+division through tempo changes, and lets go when the knob moves. The tempo
+is stock's record word (tempo24 at `r6+$13`, halfword 31 of every track's
+record); the MIDI-clock period is derived per block on the DSP (24-step
+`div`, `y:$090d`). The held MIDI note arrives from the
+[`tempo-sync`](../tempo-sync/) note cave at `r6+$1` bits 8-15; the panel
+label comes from its formatter cave.
 
 ## Knobs
 

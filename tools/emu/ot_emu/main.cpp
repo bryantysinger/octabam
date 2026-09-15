@@ -98,7 +98,9 @@ int main(int _argc, char** _argv)
 	std::string coverage;		// O9b: every ColdFire PC executed from the transport start on, with its count -> FILE (diff two runs)
 	bool frameTimer = false;	// O9b: keep the free-running 16-sample frame timer with --dsp (default: the DSP's bank word is the frame edge)
 	std::string pokeAfterLoad;	// O9c: "addr=byte;addr=byte" written after the load, before the frames (drive an apply the load skips)
+	std::string pokeEarly;		// the same, written before --call (the current-track byte 0x80000000 an editor call reads)
 	std::string callSpec;		// "addr[,arg,...]": a firmware routine called AS MAIN after the load (a menu action the port has no panel for -- Part Reload, 14 Sep 2026)
+	int callAt = -1;			// with --sequencer: make that call this many frames AFTER the transport start instead (a panel edit while playing: the transport start re-applies the part over the live lane, so an edit made before it is gone)
 	int mainLevel = -1;			// O9b: post sys command 4 (SET MAIN LEVEL) with this level after the load; -1 = don't (the emulated load never does, and every voice then renders at gain zero)
 	std::string memDump;		// O10.21: "addr,len=path[;...]" -- ColdFire memory ranges, raw bytes, to FILE at the very end (peeks only support one word, pre-sequencer; this is a range, post-run)
 
@@ -163,7 +165,9 @@ int main(int _argc, char** _argv)
 		else if(a == "--main-level" && i + 1 < _argc)	mainLevel = std::atoi(_argv[++i]);
 		else if(a == "--mem-dump" && i + 1 < _argc)	memDump = _argv[++i];
 		else if(a == "--poke" && i + 1 < _argc)		pokeAfterLoad = _argv[++i];
+		else if(a == "--poke-early" && i + 1 < _argc)	pokeEarly = _argv[++i];
 		else if(a == "--call" && i + 1 < _argc)		callSpec = _argv[++i];
+		else if(a == "--call-at" && i + 1 < _argc)	callAt = std::atoi(_argv[++i]);
 		else if(a == "--frame-timer")				frameTimer = true;
 		else
 		{
@@ -361,12 +365,20 @@ int main(int _argc, char** _argv)
 		}
 		if(!watchMem.empty())
 		{
-			const auto comma = watchMem.find(',');
-			const auto wa = static_cast<uint32_t>(std::strtoul(watchMem.c_str(), nullptr, 0));
-			const auto wl = comma == std::string::npos ? 4u
-				: static_cast<uint32_t>(std::strtoul(watchMem.c_str() + comma + 1, nullptr, 0));
-			rtos.watchMem(wa, wl);
-			std::printf("watch-mem  : %#x..%#x\n", wa, wa + wl - 1);
+			// ADDR,LEN[;ADDR,LEN...]: the watches stack (a lane and the DSP
+			// record it feeds, in one run).
+			size_t q = 0;
+			while(q < watchMem.size())
+			{
+				auto e = watchMem.find(';', q); if(e == std::string::npos) e = watchMem.size();
+				const auto one = watchMem.substr(q, e - q); q = e + 1;
+				const auto comma = one.find(',');
+				const auto wa = static_cast<uint32_t>(std::strtoul(one.c_str(), nullptr, 0));
+				const auto wl = comma == std::string::npos ? 4u
+					: static_cast<uint32_t>(std::strtoul(one.c_str() + comma + 1, nullptr, 0));
+				rtos.watchMem(wa, wl);
+				std::printf("watch-mem  : %#x..%#x\n", wa, wa + wl - 1);
+			}
 		}
 		const auto rs = rtos.run(runMs);
 		static const char* const g_rtosNames[] = {"GATE", "TIME", "FAULT", "ILLEGAL"};
@@ -545,7 +557,22 @@ int main(int _argc, char** _argv)
 			// with the stack a `pea arg; jsr` would leave, on the loaded
 			// project. An `illegal` on the way is reported with the
 			// registers the unit's exception screen shows (ADDR = PPC, D0).
-			if(!callSpec.empty())
+			const auto pokeBytes = [&m](const std::string& _spec, const char* _when)
+			{
+				size_t q = 0;
+				while(q < _spec.size())
+				{
+					auto e = _spec.find(';', q); if(e == std::string::npos) e = _spec.size();
+					const auto one = _spec.substr(q, e - q); q = e + 1;
+					const auto eq = one.find('='); if(eq == std::string::npos) continue;
+					const auto addr = static_cast<uint32_t>(std::strtoul(one.c_str(), nullptr, 0));
+					const auto val = static_cast<uint32_t>(std::strtoul(one.c_str() + eq + 1, nullptr, 0));
+					m.write8(addr, static_cast<uint8_t>(val));
+					std::printf("poke       : %#x <- %#x (%s)\n", addr, val, _when);
+				}
+			};
+			pokeBytes(pokeEarly, "before the call");
+			const auto doCall = [&]()
 			{
 				std::vector<uint32_t> args;
 				size_t q = 0;
@@ -567,7 +594,9 @@ int main(int _argc, char** _argv)
 					std::printf("call       : %#x(%zu arg%s) DID NOT RETURN -- %s; D0 %#x SP %#x (was %#x)\n",
 						target, args.size(), args.size() == 1 ? "" : "s", rtos.why().c_str(),
 						m.getD0(), m.getA7(), sp0);	// the address is in why() (PPC has moved on to the exception vector)
-			}
+			};
+			if(!callSpec.empty() && callAt < 0)
+				doCall();
 
 			// -- M6c: the sequencer, for real (milestone O6) -----------------
 			// Route A's `--sequencer` branch, step for step. The order is
@@ -621,20 +650,7 @@ int main(int _argc, char** _argv)
 				if(pokeTrig)
 					std::printf("poke trig  : track 1 step %d -> mask byte 7 = %#04x\n",
 						pokeTrig, rtos.pokeTrig(static_cast<uint32_t>(pokeTrig)));
-				if(!pokeAfterLoad.empty())
-				{
-					size_t q = 0;
-					while(q < pokeAfterLoad.size())
-					{
-						auto e = pokeAfterLoad.find(';', q); if(e == std::string::npos) e = pokeAfterLoad.size();
-						const auto one = pokeAfterLoad.substr(q, e - q); q = e + 1;
-						const auto eq = one.find('='); if(eq == std::string::npos) continue;
-						const auto addr = static_cast<uint32_t>(std::strtoul(one.c_str(), nullptr, 0));
-						const auto val = static_cast<uint32_t>(std::strtoul(one.c_str() + eq + 1, nullptr, 0));
-						m.write8(addr, static_cast<uint8_t>(val));
-						std::printf("poke       : %#x <- %#x (after the load)\n", addr, val);
-					}
-				}
+				pokeBytes(pokeAfterLoad, "after the load");
 				rtos.installTrigLog();
 				if(!coverage.empty())
 					m.setProfile(1);		// every PC from here: the coverage of the frames phase
@@ -647,8 +663,23 @@ int main(int _argc, char** _argv)
 				if(pcRing)
 					rtos.armPcRingNow(pcRing);
 				const auto target = frame0 + static_cast<uint64_t>(frames);
-				const auto rs2 = rtos.runUntil(frames * ot::g_framePeriod / ot::g_sampleHz * 1000.0 * 5 + 2000.0,
-					[&] { return rtos.frameCount() >= target; });
+				const auto budgetMs = frames * ot::g_framePeriod / ot::g_sampleHz * 1000.0 * 5 + 2000.0;
+				if(!callSpec.empty() && callAt >= 0)
+				{
+					// The call from main's spin while the sequencer runs: the
+					// frame engine keeps going underneath it, as on the unit.
+					const auto at = frame0 + static_cast<uint64_t>(callAt);
+					rtos.runUntil(budgetMs, [&] { return rtos.frameCount() >= at; });
+					if(rtos.runToMainSpin() == ot::Rtos::Stop::Gate)
+					{
+						std::printf("call-at    : frame %d (%llu since the transport start)\n",
+							callAt, static_cast<unsigned long long>(rtos.frameCount() - frame0));
+						doCall();
+					}
+					else
+						std::printf("call-at    : main never spun -- %s\n", rtos.why().c_str());
+				}
+				const auto rs2 = rtos.runUntil(budgetMs, [&] { return rtos.frameCount() >= target; });
 				static const char* const g_seqStop[] = {"REACHED", "TIME", "FAULT", "ILLEGAL"};
 				std::printf("sequencer  : playing bank %u pattern %u "
 					"(re-selected through the load's own last step)\n", seq.first, seq.second);

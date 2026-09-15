@@ -219,26 +219,35 @@ same knob was RET in BUS and CRSH elsewhere.
 position on the master and inert elsewhere; the wet enters at the front of
 the chain; DRV 0 skips the saturator (bit-exact).
 
-## An FX1 station's page 2 does not reach the DSP on T1 🔴 mechanism open
+## An FX1 station's page 2 does not reach the DSP on a bus host ✅ measured under the port
 
 **Symptom.** Character on T1 (a THRU, FX1) made a quiet tone at idle; knob
 3 at 127 gave −47 dBFS of broadband hash with the panel's SAT at BUS or
 TAPE alike: the DSP on T1 was in TAPE whatever the panel said (the old bit
-crusher on the input floor).
+crusher on the input floor). T3 (STATIC) and T8 (FLEX) took a panel page-2
+edit; T1 did not.
 
-**Measured under the port.** The ColdFire side is exonerated: the FX1
-page-2 editor `0x4003abe4` writes the Part at `+0x8f07e + track*30 +
-slot`, the shadow at `0x100a51cc + …` and the live lane at `0x80000842 +
-track*72 + slot` (+0x32, the lane the per-frame copier `0x4000cae8`
-delivers), with no page or index term, and did so for T1 (THRU), T3 and
-T8. T3 (STATIC) and T8 (FLEX master) take a panel page-2 edit on
-hardware; T1 (THRU) does not; the stamp reaches all three.
+**Cause (measured 15 Sep 2026, `ot_emu --watch-mem` on T1's DSP record).**
+The tempo cave (`modules/tempo-sync`, hooked in the voice-record writer
+for FX2 ids 6/7) stored tempo24, the clock period, fader+1 and the note
+into record halfwords 18-21 (`+0x24..+0x2a`) every frame, after the copier
+had put the FX1 page-2 bytes in 18-20 and the AMP page-2 bytes in 21-23:
+`0x400d7550` wrote `0x0b55` (TEMPOx24 2901) over MIX/SAT, `0x400d755e` the
+period over WDTH, `0x400d7522` the fader over AMP p2's first word, 59
+frames of 60. Halfwords 18-20 are `r6_FX2+$6..$8`, believed unread since
+24 Aug 2026 (true of FX2 effects) — and `r6_FX1+$c..$e`, the FX1
+instance's page 2. The discriminator was the host, not the machine: T2
+(THRU, FX2 = SEND) kept its page 2, T1 (THRU, FX2 = BusDelay) lost it.
+Every FX1 effect on a delay or reverb host, stock ones included, has run
+page 2 on the tempo bytes since 24 Aug 2026.
 
-**Cause.** Downstream of the lane: the DSP side at position 0 on payload
-B, or a per-frame refresh of that lane peculiar to a THRU machine. Not
-measured. Next: the port with `--watch` on `0x80000842..0x80000847` and
-T1's DSP record bytes 36-41 across frames after an FX1 editor call, THRU
-machine loaded. Interim: keep every station's knob 3 at 0 on FX1 tracks.
+**Fix.** The cave publishes the note only, into the low byte of BusDelay's
+TIME halfword (`+0x1b`, `r6+$1` bits 8-15, masked out of the knob decode);
+BusDelay reads tempo24 from stock's own record word (halfword 31, `r6+$13`,
+`0x40004d6a`) and derives the period on the DSP. Under the port with the
+fix, a live SAT edit on T1 (`--call 0x4003abe4,1,1 --call-at 20`) lands in
+the record (`0x7f01`) and only the copier writes halfwords 18-20; 120 BPM
+snaps TIME to exactly 11,025 samples (1/8) in `rig_render`. Unflashed.
 
 ## A DC thump every 10.59 s at idle, from track 6 ✅ source measured
 

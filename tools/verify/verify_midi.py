@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Local verification of the MIDI note path:
-note -> BusDelay GRAIN pitch (r6+$9, latched). dsp_host has no ColdFire
+note -> BusDelay GRAIN pitch (r6+$1 bits 8-15, latched). dsp_host has no ColdFire
 cave, so the word is forced with the DNOTE= build override and the result
 compared with the PTCH knob, which drives the same 2^x law.
 
@@ -74,7 +74,7 @@ def same(a, b):
 # of the cases are BIT-IDENTICAL rather than spectral: no note ever == the
 # knob, and note 84 (the OT's unison) == PTCH 64, because both feed the same
 # 2^x arithmetic with f = 0.
-G = ("--set", "MODE=1", "--set", "MRAT=127", "--set", "MDEP=0", "--set", "DRV=0",
+G = ("--set", "MODE=1", "--set", "MRAT=127", "--set", "MDEP=0",
      "--set", "FDBK=0", "--set", "PING=0", "--set", "TIME=127", "--set", "SIZE=1")
 knob64 = render("knob64", {}, *G, "--set", "PTCH=64")
 check("DNOTE=0 == the PTCH knob (no note ever: unchanged)",
