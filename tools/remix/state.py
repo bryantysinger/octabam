@@ -461,7 +461,7 @@ class State:
             if c.returncode == 0:
                 try:
                     j = json.loads(c.stdout[c.stdout.index("{"):])
-                    self.cycles = (j["worst_core"], j["usable"] + j.get("filter_credit", 0),
+                    self.cycles = (j["worst_core"], j["usable"],
                                    j["worst_core_modules"])
                 except (ValueError, KeyError):
                     pass

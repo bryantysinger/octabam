@@ -1829,11 +1829,12 @@ mkgo:""",
             if not n:
                 sys.exit(f"XBUS: {name} has no bus scratch literals to move")
             n_priv = len(re.findall(r"\$09[0-9a-f]{2}\b", src))
-            # RATE increments are 4 refs; a v6+ source adds 4 more for the
-            # freeze-crossfade ramp (satdrv tail load/store, per-block re-arm
-            # load/store). Keyed on the ramp word's presence so verify_delay
-            # can still build a pre-v6 REFERENCE source.
-            n_want = 8 if "y:>$0904" in src else 4
+            # RATE increments were 4 refs (0901h/0902h) until the wow went,
+            # 15 Sep 2026; a v6+ source has 4 for the freeze-crossfade ramp
+            # (satdrv tail load/store, per-block re-arm load/store). Keyed on
+            # the words' presence so verify_delay can still build an older
+            # REFERENCE source.
+            n_want = (4 if "y:>$0901" in src else 0) + (4 if "y:>$0904" in src else 0)
             # + 2 for the TIME slew state (load + store)
             n_want += 2 if "y:>$0907" in src else 0
             # + 4 for the sticky-snap state: last knob + held division,
@@ -1850,8 +1851,7 @@ mkgo:""",
             n_want += 3 if "y:>$090d" in src else 0
             if name == "DELAY SERVER" and n_priv != n_want:
                 sys.exit(f"XBUS: {name} expected exactly {n_want} core-private "
-                         f"$09xx refs (RATE/DRV state"
-                         f"{' + freeze ramp' if n_want == 8 else ''}), "
+                         f"$09xx refs (RATE state, freeze ramp, slew, snap, note, RETD, tempo), "
                          f"found {n_priv}")
             src = re.sub(r"\$9([0-9a-f]{2})\b",
                          lambda m: "$%x" % (XBUS_BASE + int(m.group(1), 16)), src)

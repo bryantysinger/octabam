@@ -55,7 +55,7 @@ MODULE = Module(
     name="busdelay",
     key="DELAY SERVER",
     kind=Kind.DSP_EFFECT,
-    doc="Multi-mode delay: CLEAN / pitched GRAIN cloud / REVERSE, tape wow, freeze.",
+    doc="Multi-mode delay: CLEAN / pitched GRAIN cloud / REVERSE, freeze.",
     menu=MenuEntry(
         fx2_id=0x06,
         donor_desc=0x400d5726,        # SPRING REV
@@ -97,11 +97,12 @@ MODULE = Module(
         # MDEP on slot 7: delivered in $c's companion field (bits 8-15), as
         # stock FILTER's DIST knob is on slot 11. Default 0: an aux delay
         # sits still.
-        Param(b"MDEP", 0, 128, active=True, formatter=_PLAIN,
-              doc="tape mod (wow) depth; 0 = none - GRAIN: scatter, how far apart the grains read"),
-        # MRAT 64 = exactly 1x; the DPTH=0 bypass gate depends on it.
-        Param(b"MRAT", 64, 128, active=True, formatter=_PLAIN,
-              doc="tape mod (wow) rate, 64 = 1x - GRAIN: density, full dial, level-flat (R61)"),
+        # SCAT / DENS are GRAIN's (inert in CLEAN and REVERSE); the tape wow
+        # that used these slots went 15 Sep 2026.
+        Param(b"SCAT", 40, 128, active=True, formatter=_PLAIN,
+              doc="GRAIN: scatter, how far apart the grains read; inert in CLEAN and REVERSE"),
+        Param(b"DENS", 127, 128, active=True, formatter=_PLAIN,
+              doc="GRAIN: density, full dial, level-flat (R61); inert in CLEAN and REVERSE"),
         # SIZE: GRAIN's grain length and REVERSE's segment, one select.
         Param(b"SIZE", 1, 4, active=True, formatter=_STEP,
               labels=("46MS", "93MS", "23MS", "XTRM"),
@@ -114,26 +115,24 @@ MODULE = Module(
               labels=("RUN", "HOLD"),
               doc="freeze the line as a loop -- loop length = TIME"),
     ),
-    # ---- what each MODE renames and re-defaults ---------------------------
-    # MDEP and MRAT are the tape modulation depth and rate in CLEAN and
-    # REVERSE, the grain scatter and density in GRAIN.
+    # ---- what each MODE re-defaults ---------------------------------------
+    # SCAT and DENS (slots 7/8) are GRAIN's alone since the wow went, so no
+    # mode renames them.
     mode_slot=6,
     mode_views=(
         # slots: 1 TIME, 2 FDBK, 3 TONE, 4 PING, 5 MIX, 10 PTCH; SEND at 0 is
         # never re-defaulted by a mode. TIME is 64 + knob*256 samples since
         # the 32K lines (15 Sep 2026): 20 = 5,184 samples, 18 = 4,672 -- the
         # same times the views held at 40 / 36 under the old *128 law.
-        ModeView(mode=0,                        # CLEAN: centred, no wow
-                 defaults={1: 20, 2: 60, 3: 100, 4: 0, 5: 127,
-                           7: 0, 8: 64, 10: 64}),
-        ModeView(mode=1,                        # GRAIN
-                 names={7: b"SCAT", 8: b"DENS"},   # PTCH is PTCH in every mode
-                 # Sam's recipe on the unit (15 Sep 2026): octave up, ping-pong
+        ModeView(mode=0,                        # CLEAN: centred
+                 defaults={1: 20, 2: 60, 3: 100, 4: 0, 5: 127, 10: 64}),
+        ModeView(mode=1,                        # GRAIN: Sam's recipe on the unit
+                 # (15 Sep 2026): octave up, ping-pong
                  defaults={1: 18, 2: 40, 3: 100, 4: 127, 5: 127,
                            7: 40, 8: 127, 9: 1, 10: 96}),
-        ModeView(mode=2,                        # REVERSE: centred, no wow, 371 ms
+        ModeView(mode=2,                        # REVERSE: centred, 371 ms
                  defaults={1: 20, 2: 60, 3: 100, 4: 0, 5: 127,   # segments (SIZE 3 = XTRM)
-                           7: 0, 8: 64, 9: 3, 10: 64}),
+                           9: 3, 10: 64}),
     ),
     dsp=DspSection(
         asm="modules/busdelay/delay_server.asm",

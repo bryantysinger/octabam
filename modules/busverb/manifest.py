@@ -9,6 +9,7 @@ from remix.schema import (BusRole, Claims, YBase, DspSection, Formatter,
 
 _PLAIN = Formatter.PLAIN
 _STEP = Formatter.STEPPED
+_BLANK = Param(b"", 0)             # an undrawn slot
 
 
 # ---- the module's P table ---------------------------------------------------
@@ -97,8 +98,12 @@ MODULE = Module(
               doc="this track's send into the one aux bus (delay, then reverb, back on T8)"),
         Param(b"TIME", 64, active=True, formatter=_PLAIN,
               doc="decay time -- how long the tail rings"),
-        Param(b"MOD", 30, active=True, formatter=_PLAIN,
-              doc="tank modulation depth -- 0 static, high = chorused tail; speed is RATE"),
+        # SHMR 0 is bit-identical to the engine without shimmer. On page 1
+        # since 15 Sep 2026 (MOD's slot; the tank modulation is pinned at MOD
+        # 30 / RATE 1x inside the engine -- Sam: the modulation is the LFOs'
+        # and the station's, and a static tank rings).
+        Param(b"SHMR", 0, active=True, formatter=_PLAIN,
+              doc="shimmer -- pitch-shifted regeneration in the tail; 0 = off"),
         Param(b"SIZE", 100, active=True, formatter=_PLAIN,
               doc="room size -- scales the eight tank lines (taps up to ~89 ms)"),
         # TONE is HP + LP on one knob: 0..64 closes the high cut (dark),
@@ -121,11 +126,7 @@ MODULE = Module(
         Param(b"MODE", 1, 3, active=True, formatter=_STEP,
               labels=("ROOM", "PLATE", "BIG"),
               doc="voicing: ROOM / PLATE / BIG; BIG clips first"),
-        # SHMR 0 is bit-identical to the engine without shimmer. On slot 7
-        # it is delivered in $c's companion field (bits 8-15), like stock
-        # FILTER's DIST knob on slot 11.
-        Param(b"SHMR", 0, 128, active=True, formatter=_PLAIN,
-              doc="shimmer -- pitch-shifted regeneration in the tail; 0 = off"),
+        _BLANK,                 # SHMR lived here until 15 Sep 2026 (now page-1 slot 2)
         # DIFF 80: the VintageVerb match point bracketed at ~80-90.
         Param(b"DIFF", 80, 128, active=True, formatter=_PLAIN,
               doc="diffusion -- low = discrete repeats, high = smooth wash"),
@@ -135,10 +136,7 @@ MODULE = Module(
               doc="shimmer interval in semitones -- heard once SHMR is up"),
         Param(b"GATE", 0, 128, active=True, formatter=_PLAIN,
               doc="gated-reverb hold -- higher holds longer; the useful range is low (8-20)"),
-        # MOD speed select. Index 1 is 1x; the panel shows it 1-based ("2").
-        Param(b"RATE", 1, 4, active=True, formatter=_STEP,
-              labels=("0.5x", "1x", "2x", "4x"),
-              doc="MOD speed multiplier; the panel shows it 1-based"),
+        _BLANK,                 # RATE (the MOD speed select) went with the MOD knob, 15 Sep 2026
     ),
     mode_slot=6,                      # MODE names itself (ROOM / PLATE / BIG)
     dsp=DspSection(

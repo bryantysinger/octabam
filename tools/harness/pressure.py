@@ -13,7 +13,7 @@ on the ColdFire or inside stock's own share, which the counter does not
 price) -- and sums the STATIC per-sample cost of each pick, each module at
 its worst mode loop (`tools/build/cycle_count.py`: a floor, words in the
 sample loop, no contention; ~270 LOW on the reverb, CHIP.md s2). The wall
-is USABLE + the FILTER credit. Out comes the distribution: how many layouts
+is USABLE. Out comes the distribution: how many layouts
 are over, the cheapest over and the dearest under, and the station count
 that fits beside each server. `out/pressure/<remix>_layouts.tsv` has every
 layout. The wall is a CLIFF and only the burn sweep measures it (CHIP.md
@@ -84,16 +84,9 @@ def price(a):
     remix = registry.remix(a.remix)
     mods = price_modules(remix)
     servers = [k for k, m in mods.items() if m["server"]]
-    # the FILTER credit, as cycle_count computes it
-    _all = registry.modules()
-    filter_listed = "FILTER" in set(remix.modules) | set(remix.fx1)
-    filter_replaced = any(_all[k].menu is not None and _all[k].menu.replaces == "FILTER" for k in mods)
-    credit = 0 if (filter_listed and not filter_replaced) else 4 * 192
     wall = a.wall or cc.USABLE
-    wall_credit = cc.USABLE + credit
     OUT.mkdir(parents=True, exist_ok=True)
-    print(f"remix {remix.name!r}: wall = {wall} cycles/sample per core (USABLE; tag 91 hung at a static 3,106); "
-          f"credited line {wall_credit} (+{credit} FILTER credit) shown beside it")
+    print(f"remix {remix.name!r}: wall = {wall} cycles/sample per core (USABLE; tag 91 hung at a static 3,106)")
     print(f"{'module':16} {'cycles':>7}  fx1 fx2 server  worst loop")
     for k, m in sorted(mods.items(), key=lambda kv: -kv[1]["cycles"]):
         print(f"{k:16} {m['cycles']:7d}  {'x' if m['on_fx1'] else '.':^3} {'x' if m['on_fx2'] else '.':^3} "
@@ -106,9 +99,8 @@ def price(a):
         lay = enumerate_layouts(mods, srv)
         over = {c: v for c, v in lay.items() if v > wall}
         under = {c: v for c, v in lay.items() if v <= wall}
-        over_c = sum(1 for v in lay.values() if v > wall_credit)
         print(f"\n{label}: server {srv or 'none'}; {len(lay)} layouts, {len(over)} over the wall "
-              f"({100 * len(over) / len(lay):.0f}%; {over_c} = {100 * over_c / len(lay):.0f}% over the credited line)")
+              f"({100 * len(over) / len(lay):.0f}%)")
         if over:
             cheapest_over = min(over.items(), key=lambda kv: kv[1])
             print(f"  cheapest OVER : {cheapest_over[1]:5d}  {fmt(cheapest_over[0])}")
@@ -126,15 +118,15 @@ def price(a):
                 n = int((wall - base) // mods[st]["cycles"])
                 print(f"  beside {srv}: {n} x {st} fit on the arithmetic ({mods[st]['cycles']} each, {base} base)")
         for combo, v in sorted(lay.items(), key=lambda kv: -kv[1]):
-            rows.append((core, v, "OVER" if v > wall else ("over-credited" if v > wall_credit else "ok"), fmt(combo)))
-        summary[label] = dict(server=srv, layouts=len(lay), over=len(over), over_credited=over_c, worst=worst[1],
+            rows.append((core, v, "OVER" if v > wall else "ok", fmt(combo)))
+        summary[label] = dict(server=srv, layouts=len(lay), over=len(over), worst=worst[1],
                               worst_layout=fmt(worst[0]))
     tsv = OUT / f"{remix.name}_layouts.tsv"
     with open(tsv, "w") as f:
         f.write("core\tcycles\tverdict\tlayout\n")
         for r in rows:
             f.write("\t".join(map(str, r)) + "\n")
-    (OUT / f"{remix.name}_price.json").write_text(json.dumps(dict(remix=remix.name, wall=wall, wall_credited=wall_credit, credit=credit,
+    (OUT / f"{remix.name}_price.json").write_text(json.dumps(dict(remix=remix.name, wall=wall,
                                                                    modules={k: m["cycles"] for k, m in mods.items()},
                                                                    cores=summary), indent=1))
     print(f"\n-> {tsv} ({len(rows)} rows)")
@@ -152,7 +144,7 @@ DEAR = {
     "CHARACTER": {"DRV": 127, "FOLD": 127, "CRSH": 127, "COMP": 127, "MIX": 127, "RING": 127, "WDTH": 127, "SRR": 3},
     "SPECTRUM": {"RES": 127, "MODE": 4, "ROUT": 3, "SRC": 2, "DPTH": 127},   # DRV retired 13 Sep 2026
     "MODULATION": {"MIX": 127, "FDBK": 127, "DPTH": 127, "MODE": 2},   # MODE 2 = COMB since 13 Sep 2026 (PHSR/TREM/VIB/PAN retired); STGS gone
-    "DELAY SERVER": {"SEND": 100, "FDBK": 100, "MODE": 1, "MDEP": 127, "MRAT": 127, "WET": 127, "FRZE": 0},
+    "DELAY SERVER": {"SEND": 100, "FDBK": 100, "MODE": 1, "SCAT": 127, "DENS": 127, "WET": 127, "FRZE": 0},
     "REVERB SERVER": {"SEND": 100, "MODE": 2, "SHMR": 127, "DIFF": 127, "GATE": 0, "WET": 127, "MOD": 127},
     "SEND": {"SEND": 100},
 }
@@ -266,9 +258,9 @@ ODD = [
     ("Character with RET up (the return) on T4, not T8",
      "T4=CHARACTER,T1=DELAY SERVER,T2=SEND,T5=REVERB SERVER,T8=CHARACTER", ["T4:RET=127", "T8:RET=127", "T2:SEND=100"]),
     ("reverb DIFF 127 (the 4 Sep squeal)",
-     "T5=REVERB SERVER,T6=SEND,T1=DELAY SERVER,T2=SEND", ["T5:DIFF=127", "T5:TIME=127", "T5:MOD=127", "T6:SEND=127", "T2:SEND=127"]),
+     "T5=REVERB SERVER,T6=SEND,T1=DELAY SERVER,T2=SEND", ["T5:DIFF=127", "T5:TIME=127", "T5:SHMR=127", "T6:SEND=127", "T2:SEND=127"]),
     ("delay FDBK 127, FRZE HOLD, GRAIN",
-     "T1=DELAY SERVER,T2=SEND,T5=REVERB SERVER,T6=SEND", ["T1:FDBK=127", "T1:MODE=1", "T1:FRZE=1", "T1:MRAT=127", "T2:SEND=127"]),
+     "T1=DELAY SERVER,T2=SEND,T5=REVERB SERVER,T6=SEND", ["T1:FDBK=127", "T1:MODE=1", "T1:FRZE=1", "T1:DENS=127", "T2:SEND=127"]),
     ("every station at every extreme on one track, both slots",
      "T5=SPECTRUM+CHARACTER,T6=SEND,T1=MODULATION+SPECTRUM,T2=SEND",
      ["T5:FX1:RES=127", "T5:FX1:DRV=127", "T5:FX1:MODE=4", "T5:FX1:ROUT=3", "T5:FX2:DRV=127", "T5:FX2:FOLD=127", "T5:FX2:CRSH=127",

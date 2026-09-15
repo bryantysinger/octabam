@@ -74,14 +74,14 @@ def same(a, b):
 # of the cases are BIT-IDENTICAL rather than spectral: no note ever == the
 # knob, and note 84 (the OT's unison) == PTCH 64, because both feed the same
 # 2^x arithmetic with f = 0.
-G = ("--set", "MODE=1", "--set", "MRAT=127", "--set", "MDEP=0",
+G = ("--set", "MODE=1", "--set", "DENS=127", "--set", "SCAT=0",
      "--set", "FDBK=0", "--set", "PING=0", "--set", "TIME=127", "--set", "SIZE=1")
 knob64 = render("knob64", {}, *G, "--set", "PTCH=64")
 check("DNOTE=0 == the PTCH knob (no note ever: unchanged)",
       same(knob64, render("note0", {"DNOTE": "0"}, *G, "--set", "PTCH=64")))
 check("note 84 (unison) == PTCH 64, bit-identical (one 2^x law, f = 0)",
       same(knob64, render("note84", {"DNOTE": "84"}, *G, "--set", "PTCH=64")))
-clean = render("clean", {}, "--set", "MODE=0", "--set", "MDEP=0", "--set", "FDBK=0",
+clean = render("clean", {}, "--set", "MODE=0", "--set", "FDBK=0",
                "--set", "PING=0", "--set", "TIME=127")
 uni = peak_hz(clean, 80, 3000)
 for note, want, rate in ((96, 1200, 96), (91, 700, None), (72, -1200, 32)):

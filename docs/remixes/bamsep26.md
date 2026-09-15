@@ -4,7 +4,7 @@ BusVerb + BusDelay on one aux bus (pedals on the send: the send passes both, eac
 
 ## What is in it
 
-- **BusVerb** — an eight-line FDN reverb (ROOM / PLATE / BIG, shimmer, gate, mid/side width) that serves all eight tracks over a cross-core bus. Hosted on one of tracks 5–8.
+- **BusVerb** — an eight-line FDN reverb (ROOM / PLATE / BIG, shimmer, gate, mid/side width) that serves all eight tracks over a cross-core bus. Hosted on one of tracks 5–8. Knobs SEND TIME SHMR SIZE TONE WET / MODE DIFF SHFT GATE (the MOD and RATE knobs went 15 Sep 2026: the tank modulation is pinned at their defaults; unflashed).
 - **BusDelay** — a multi-mode delay (CLEAN / pitched GRAIN cloud / REVERSE, tape wow, freeze) serving all eight tracks. Hosted on one of tracks 1–4. TIME reads as a tempo division (TEMPO SYNC); up to 739 ms (1/4 and 1/2T at 121 BPM) since the 32K lines, 15 Sep 2026, unflashed.
 - **Send** — the FX2 effect every other track runs: one SEND knob into the bus. The fallback for any unassigned track.
 - **DELAY** (stock) — the stock Echo Freeze delay row, unchanged; it runs on the ColdFire and costs the DSP nothing.

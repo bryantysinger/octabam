@@ -74,14 +74,14 @@ REVERB_ID = SERVER_ID.get("R")
 SEND_ID = SERVER_ID.get("S")
 DELAY_ID = SERVER_ID.get("D")
 
-REV_FLAGS = {"time": "TIME", "mod": "MOD", "mix": "WET", "raux": "SEND",
-             "shmr": "SHMR",
-             "rmode": "MODE", "width": "SHFT", "gate": "GATE", "rrate": "RATE",
+REV_FLAGS = {"time": "TIME", "mix": "WET", "raux": "SEND",
+             "shmr": "SHMR",                  # page-1 slot 2 since 15 Sep 2026 (MOD's; the tank mod is pinned)
+             "rmode": "MODE", "width": "SHFT", "gate": "GATE",
              "rtone": "TONE"}
 DELAY_FLAGS = {"dtime": "TIME", "dfdbk": "FDBK", "dtone": "TONE",
-               "dping": "PING", "dmix": "WET", "din": "SEND", "dwow": "MDEP",
-               "dmode": "MODE", "drate": "MRAT", "dptch": "SIZE",
-               "dspray": "MDEP", "dpitch": "PTCH", "dfrz": "FRZE"}
+               "dping": "PING", "dmix": "WET", "din": "SEND",
+               "dmode": "MODE", "drate": "DENS", "dptch": "SIZE",
+               "dspray": "SCAT", "dpitch": "PTCH", "dfrz": "FRZE"}
 
 
 def _slots(key, flags):
@@ -418,7 +418,7 @@ def write_wav(path, L, R):
         w.writeframes(bytes(b))
 
 
-REV_PARAMS  = [0, 64, 0, 127, 64, 127, 0, 0, 64, 0, 0, 1]
+REV_PARAMS  = [0, 64, 0, 127, 64, 127, 0, 0, 64, 0, 0, 0]   # slot 2 = SHMR since 15 Sep 2026 (the tank mod is pinned; slots 7/11 blank)
 # send: x:(r6+0) = AUX, the one send; main() sets it from --level
 SEND_PARAMS = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 DELAY_PARAMS = [0, 40, 60, 100, 64, 127, 0, 0, 64, 0, 64, 0]
@@ -450,17 +450,12 @@ def main():
                          "--rin are aliases (the old -DEL / IN knobs).")
     ap.add_argument("--time", type=int, default=64,
                     help="TIME/decay (slot 0). MODE scales this by its own decay\nconstant in r7+$1e -- BIG's is 1.000000, i.e. NO headroom.")
-    ap.add_argument("--mod", type=int, default=0,
-                    help="MOD depth (slot 1). Zeroed in the THD tests to keep LFO\nsidebands out of the metric -- which also suppressed any\ninterpolation artifact the modulation would have caused.")
     ap.add_argument("--shmr", type=int, default=0,
                     help="SHIMMER amount (param slot 7 since v7, 4 Sep 2026 -> the COMPANION field of r6+$c; slot 6's knob field before, NOT $b -- the $b\nreading is why the delay's WOW worked locally and never on hardware; see\nPARAM_PAGES.md). v101 replaced\nSPEED with SHMR; render_reverb.py still calls this slot SPEED.\nBuilds before 41d252c default it to 48, not 0.")
     ap.add_argument("--dtime", type=int, default=None,
                     help="DELAY TIME 0..127 (delay slot 0, default 40 -- the\nboot default). PITCH mode caps the lag at 14335 samples,\ni.e. TIME ~111.")
     ap.add_argument("--dfdbk", type=int, default=None,
                     help="DELAY FDBK 0..127 (delay slot 1, default 60)")
-    ap.add_argument("--dwow", type=int, default=None,
-                    help="DELAY WOW depth 0..127 (delay slot 6, default 0).\n"
-                         "TAPE's wow/flutter depth; ignored by the other modes.")
     ap.add_argument("--dmix", type=int, default=None,
                     help="DELAY WET 0..127 (slot 5, default 127): the repeats'\n"
                          "level on top of the aux, which passes at unity\n"
@@ -512,9 +507,6 @@ def main():
                          "ROOM: REV_PARAMS[7] stays 0, which was the ONLY\n"
                          "reachable mode here until 18 Aug 2026 (the panel\n"
                          "boots BIG; renders wanting it must say so).")
-    ap.add_argument("--rrate", type=int, default=None,
-                    help="reverb RATE select 0..3 = 0.5/1/2/4x MOD speed\n"
-                         "(slot-11 companion, born 18 Aug 2026; default 1x).")
     ap.add_argument("--shft", "--width", type=int, default=None, dest="width",
                     help="reverb SHFT 0..3 (slot-9 companion): shimmer\n"
                          "interval +12/+19/+7/-12. Was WIDTH until v6\n"
@@ -615,11 +607,11 @@ def main():
                                                      ROOT / "out/dsp/_send_probe_A.mem")
     _rs = _slots("REVERB SERVER", REV_FLAGS)
     rev = list(REV_PARAMS)
-    for _f, _v in (("mix", a.mix), ("shmr", a.shmr), ("mod", a.mod),
+    for _f, _v in (("mix", a.mix), ("shmr", a.shmr),
                    ("time", a.time), ("raux", a.raux)):
         rev[_rs[_f]] = _v
     for _f, val in (("rmode", a.rmode), ("width", a.width),
-                    ("gate", a.gate), ("rrate", a.rrate),
+                    ("gate", a.gate),
                     ("rtone", a.rtone)):
         if val is not None:
             rev[_rs[_f]] = val
@@ -636,7 +628,7 @@ def main():
         if sr != SR:
             wsrc = render_reverb.resample(wsrc, sr, SR)
     dpar = None
-    if any(v is not None for v in (a.dtime, a.dfdbk, a.dmix, a.din, a.dpitch, a.dwow,
+    if any(v is not None for v in (a.dtime, a.dfdbk, a.dmix, a.din, a.dpitch,
                                    a.dtone, a.dping, a.dspray, a.dmode,
                                    a.drate, a.dptch, a.dfrz)):
         dpar = list(DELAY_PARAMS)
@@ -644,7 +636,7 @@ def main():
         for _f, val in (("dtime", a.dtime), ("dfdbk", a.dfdbk),
                         ("dtone", a.dtone), ("dping", a.dping),
                         ("dmix", a.dmix), ("din", a.din), ("dpitch", a.dpitch),
-                        ("dwow", a.dwow), ("dmode", a.dmode),
+                        ("dmode", a.dmode),
                         ("drate", a.drate), ("dptch", a.dptch),
                         ("dspray", a.dspray), ("dfrz", a.dfrz)):
             if val is not None:
