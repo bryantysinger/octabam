@@ -54,8 +54,6 @@ On Sam's unit since flash 4; the LADR voicing (PR #254) since image 21.
 
 ## Open
 
-- Bank levels measured −12 dB on the ladder card, unbisected.
-- The Moog passband drop.
 - A parallel-move relayout of the sample loop (coefficients contiguous in
   X, state in Y, walked by r3/r4) would roughly halve the loop; the identity
   gate above is the check. No consumer for the cycles yet.
