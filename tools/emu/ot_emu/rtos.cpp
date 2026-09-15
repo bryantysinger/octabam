@@ -58,6 +58,7 @@ namespace ot
 		// receive).
 		m_intc1.addLine(43, [this] { return m_pit0.irq(); });
 		m_intc1.addLine(44, [this] { return m_pit1.irq(); });
+		m_intc0.addLine(26, [this] { return m_uart60.irq(); });
 		m_intc0.addLine(27, [this] { return m_uart64.irq(); });
 		m_intc0.addLine(28, [this] { return m_uart68.irq(); });
 		// INTC0 source 1 = the DSP frame clock (vector 0x41), and sources
@@ -102,7 +103,7 @@ namespace ot
 				m_ataIrqDue = m_sample + m_ataLatency;
 			return true;
 		}
-		for(auto* u : {&m_uart64, &m_uart68})
+		for(auto* u : {&m_uart60, &m_uart64, &m_uart68})
 			if(_addr >= u->base() && _addr < u->base() + 0x20)
 			{
 				_out = u->read(_addr - u->base(), _size);
@@ -148,7 +149,7 @@ namespace ot
 		}
 		else
 		{
-			for(auto* u : {&m_uart64, &m_uart68})
+			for(auto* u : {&m_uart60, &m_uart64, &m_uart68})
 				if(_addr >= u->base() && _addr < u->base() + 0x20)
 					u->write(_addr - u->base(), _size, _val, _replay);
 		}
@@ -206,7 +207,7 @@ namespace ot
 		}
 		m_seeded = m_machine.peripheralWrites().size();
 		if(m_quirks.clearTransmitInterrupt)
-			for(auto* u : {&m_uart64, &m_uart68})
+			for(auto* u : {&m_uart60, &m_uart64, &m_uart68})
 				u->clearTransmitInterrupt();
 
 		installHostPortMover();

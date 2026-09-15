@@ -2,7 +2,7 @@
 """A real project on the built image under the ColdFire port: the routing
 facts a flash used to be the first test of.
 
-    python3 tools/verify/verify_set.py bamsep26 --project ~/octa/backups/.../OCTABAM88 [--bank 2] [--frames 400]
+    python3 tools/verify/verify_set.py bamsep26 --project ~/octa/backups/.../OCTABAM88 [--bank 2] [--frames 900]
     OT_PROJECT=... [OT_BANK=2] make check REMIX=bamsep26   # the same, from make verify
 
 Stages the project (banks, project.work with [STATES] BANK= set to the
@@ -18,6 +18,13 @@ the machine back:
             wrote over 18-21 on every bus host until 15 Sep 2026)
   audio     every track whose record carries audio has a chain output
             (the read-back slot), and the main out is not silent
+  midi      CC 40 (AUX, FX2 page 1 slot 0) at 100 on T2's channel over the
+            port's MIDI IN (UART0) moves T2's record halfword 12 to 100;
+            with CC PAGE 2 in the remix, CC 68 at 77 on T1's channel lands
+            in T1's FX1 page-2 lane and record halfword 18 (the queue ->
+            main -> DSP leg verify_ccpage2 cannot run); on a one-aux remix
+            RET (CC 38) at 127 on T8, and T8's chain output must then carry
+            T2's send through the delay and the reverb
   card      the card as the firmware left it (--card-out, read back with
             emu_card.extract_image): which project files it rewrote, and
             its own LOG 000000.txt -- every ERROR line that is not a FILE
@@ -65,6 +72,12 @@ def part_of(pdir, bank, part):
                 pat_part=pat_part)
 
 
+def midi_channels(pdir):
+    """MIDI_TRIG_CHn from project.work, 0-based, per track."""
+    raw = (pdir / "project.work").read_bytes().decode("latin1")
+    return [int(m) for m in re.findall(r"MIDI_TRIG_CH\d=(-?\d+)", raw)][:8]
+
+
 def sample_paths(pdir):
     """(type, slot 1-based) -> PATH= from project.work."""
     _, slots = otp.read_project(pdir)
@@ -103,8 +116,9 @@ def stage(pdir, part, set_name, name, tree, image_mb, bank, card):
     # The emulated load applies bank A's part and ends on bank A whatever
     # BANK= says (RTOS_FORK.md section 7), and the transport start's
     # refresher re-applies the saved bank's ids only for tracks it touches
-    # (T1-T3, T7, T8 of the rig; T4-T6 kept bank A's, 15 Sep 2026). The
-    # tested bank goes in as bank A too, so both paths carry its part.
+    # (T1-T3, T7, T8 of the rig; T4-T6 kept bank A's, by --bank and by a
+    # program change alike, 15 Sep 2026). The tested bank goes in as bank
+    # A too, so both paths carry its part.
     if bank != 1:
         shutil.copy2(copy / f"bank{bank:02d}.work", copy / "bank01.work")
     pw = copy / "project.work"
@@ -140,7 +154,8 @@ def main():
     ap.add_argument("--project", default=os.environ.get("OT_PROJECT", ""))
     ap.add_argument("--bank", type=int, default=int(os.environ.get("OT_BANK", "0")),
                     help="1-based (or OT_BANK); default: the project's saved bank")
-    ap.add_argument("--frames", type=int, default=400)
+    ap.add_argument("--frames", type=int, default=900,
+                    help="after the transport start; the delay and the reverb each warm up 256 blocks, in series")
     ap.add_argument("--load-ms", type=int, default=20000)
     ap.add_argument("--set-name", default="OCTABAM")
     ap.add_argument("--name", default="RIG")
@@ -183,6 +198,22 @@ def main():
             sys.exit(f"verify_set: building {a.remix} failed:\n{(r.stdout + r.stderr)[-1500:]}")
         shutil.copy2(ROOT / "out/mainos_bus.bin", image)
 
+    # MIDI IN: AUX to 100 on T2 at frame 40; with CC PAGE 2, FX1 page-2 slot 6
+    # to 77 on T1 at frame 40 (the page-1 slew takes ~30 frames).
+    chans = midi_channels(pdir)
+    ccpage2 = "CC PAGE 2" in registry.remix(a.remix).modules
+    midi = OUT / "in.midi"
+    lines = [f"40 B{chans[1] & 0xf:X} 28 64"]
+    if ccpage2:
+        lines.append(f"40 B{chans[0] & 0xf:X} 44 4D")
+    # the one-aux return: RET (FX1 slot 4, CC 38) to 127 on T8, so T2's
+    # send comes back on the master through the delay and the reverb
+    mods = registry.remix(a.remix).modules
+    onebus = all(k in mods for k in ("CHARACTER", "REVERB SERVER", "DELAY SERVER")) and part["fx1"][7] == 0x1c
+    if onebus:
+        lines.append(f"40 B{chans[7] & 0xf:X} 26 7F")
+    midi.write_text("\n".join(lines) + "\n")
+
     dumps = {k: OUT / f"{k}.bin" for k in ("ids", "records", "lanes")}
     blocks, cmds, log, card_after = OUT / "port.dump", OUT / "port.cmds", OUT / "port.txt", OUT / "card_after.img"
     if not (a.reuse and blocks.is_file() and all(p.is_file() for p in dumps.values())):
@@ -191,7 +222,7 @@ def main():
         print(f"  card: {mb} MB, {len(audio)} sample file(s) staged for bank {bank} part {part_no}")
         cmd = [str(EMU), "--image", str(image), "--card", str(card), "--set", a.set_name, "--project", a.name,
                "--sequencer", "--internal-clock", "--frames", str(a.frames), "--load-ms", str(a.load_ms),
-               "--dsp", "--main-level", "64", "--audio-in", "tones", "--poke-trig", "2",
+               "--dsp", "--main-level", "64", "--audio-in", "tones", "--poke-trig", "2", "--midi", str(midi),
                "--block-dump", str(blocks), "--cmd-log", str(cmds), "--card-out", str(card_after),
                "--mem-dump", f"{LIVE_IDS:#x},16={dumps['ids']};{RECORDS:#x},512={dumps['records']};{LANES:#x},576={dumps['lanes']}"]
         with open(log, "w") as f:
@@ -233,6 +264,18 @@ def main():
                 bad.append(f"{what} lane {want.hex()} record {got.hex()}")
         check(f"page 2: T{t + 1} record halfwords 18-26 == the lane", not bad, "; ".join(bad))
 
+    # midi
+    aux = recs[64 + 24] << 8 | recs[64 + 25]                     # T2 halfword 12
+    check("midi: CC 40 = 100 on T2's channel reached T2's AUX halfword", (aux >> 8) == 100,
+          f"halfword 12 = {aux:#06x} (knob {aux >> 8}; the lane's slew takes ~30 frames)")
+    if ccpage2:
+        lane_v, rec_v = lanes[0x32], recs[2 * 18]
+        check("midi: CC 68 = 77 on T1's channel reached T1's FX1 page-2 slot 6 (CC PAGE 2)",
+              lane_v == 77 and rec_v == 77, f"lane +0x32 = {lane_v}, record halfword 18 high byte = {rec_v}")
+    m = re.search(r"midi in    : (\d+) byte\(s\) still queued", text)
+    check("midi: the firmware took every byte", m is not None and m.group(1) == "0",
+          f"{m.group(1) if m else '?'} queued at the end")
+
     # audio
     import blockdump as bd, recloop as rl
     c = bd.classes(bd.read(str(blocks)))
@@ -248,6 +291,10 @@ def main():
     print("        " + "  ".join(rows[:4]) + "\n        " + "  ".join(rows[4:]))
     check("audio: every track with record audio has a chain output", not silent_chain,
           f"silent chain: {', '.join(silent_chain)}" if silent_chain else "")
+    if onebus:
+        ret = db(rms(rl.readback_audio(c, 8)[-2000:]))
+        check("audio: the aux return on T8 carries T2's send (RET 127 over CC 38)", ret > -60,
+              f"T8 chain output {ret:.1f} dBFS in the last 2000 samples")
     # the report prints both cores' audio lines at the boot, the load and
     # the end; core 0's at the end is the ESAI's, and it carries the counts
     tx = re.findall(r"TX0 non-zero per RING WORD \(slot \+ rotation [0-9.]+\) ([0-9 ]+);", text)

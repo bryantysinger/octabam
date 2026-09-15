@@ -96,6 +96,12 @@ namespace ot
 		// first write. Route A clears bit 0 after seeding for exactly this;
 		// 🟡 inferred from the storm, not measured.
 		void clearTransmitInterrupt() { m_imr &= ~1u; }
+		// Bytes arriving on the line (MIDI IN on UART0): queued for the
+		// firmware's receive handler, the line asserting while the receive
+		// interrupt is enabled and the queue is not empty.
+		void receive(const std::vector<uint8_t>& _bytes) { m_rx.insert(m_rx.end(), _bytes.begin(), _bytes.end()); }
+		size_t pending() const { return m_rx.size(); }
+		uint32_t imr() const { return m_imr; }
 
 		uint32_t read(uint32_t _off, uint32_t _size);
 		void write(uint32_t _off, uint32_t _size, uint32_t _val, bool _replay);

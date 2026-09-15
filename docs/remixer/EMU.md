@@ -132,6 +132,15 @@ out/emu/ot_emu --image out/mainos_bus.bin --card out/card.img --set OCTABAM --pr
   main, after the load) and `--call-at N` (the same call N frames after
   the transport start, so the part re-apply does not erase an edit).
   `--poke` writes after the load, before the frames.
+- MIDI IN: `--midi FILE`, one event per line, `<frames after the
+  transport start> <hex bytes>` or `pre <hex bytes>` (before the transport
+  start, the transport stopped). Bytes go onto UART0 (`0xfc060000`, INTC0
+  source 26) and the firmware's own RX ISR, framer and MIDI thread take
+  them: CC 40 = 100 on T2's channel moved T2's AUX halfword (with the
+  page-1 slew, ~30 frames), CC 68 landed in the FX1 page-2 lane through
+  the CC PAGE 2 cave, `pre C0 10` switched to bank B while stopped. A
+  program change while playing waits for the pattern's end (thousands of
+  frames).
 - Watches: `--watch-mem ADDR,LEN[;ADDR,LEN...]` (every write, with the
   PC), `--watch-read`, `--watch-pc`, `--dsp-watch core:X|Y|P:addr`,
   `--dsp-pcwatch core:pc`, `--dsp-peek core:X|Y|P:addr,len` (upper-case
@@ -154,9 +163,15 @@ verify` when `OT_PROJECT` is set) does all of this for one part of a real
 project and asserts: the load completed; the live FX1/FX2 id arrays equal
 the part's; every track's record halfwords 18-26 equal its page-2 lane;
 every track with record audio has a chain output; the main out is not
-silent; the load rewrote no project file; the firmware's LOG carries no
-error beyond the unstaged samples. The tested bank is staged as
-bank A too and `MASTER_TRACK=0` (the emulated load ends on bank A; with
-the master on nothing reaches TX0 under the port). ~75 s. On the image
-before PR #271 it fails T1 and T5 (the tempo cave); on it, 0 failures
-(OCTABAM88 bank B, 15 Sep 2026).
+silent; CC 40 over MIDI IN moved T2's AUX and (CC PAGE 2) CC 68 reached
+T1's FX1 page 2; on a one-aux remix RET at 127 over CC 38 brings T2's
+send back on T8's chain output through the delay and the reverb (−45
+dBFS at frame 900; the two engines warm up 256 blocks each, in series);
+the load rewrote no project file; the firmware's LOG carries no error
+beyond the unstaged samples. The tested bank is staged as bank A too and
+`MASTER_TRACK=0` (the emulated load ends on bank A, and the transport
+start's refresher re-applies the saved bank's ids for T1-T3, T7 and T8
+only, by `--bank` or by a program change alike; with the master on
+nothing reaches TX0 under the port). ~80 s. On the image before PR #271
+it fails T1 and T5 (the tempo cave); on it, 18 checks pass (OCTABAM88
+bank B, 15 Sep 2026).
