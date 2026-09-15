@@ -287,6 +287,35 @@ the record (`0x7f01`) and only the copier writes halfwords 18-20; 120 BPM
 snaps TIME to exactly 11,025 samples (1/8) in `rig_render`. Image 24
 (15 Sep 2026): the sends into the delay work on the unit.
 
+## Static that stays after knob moves with both engines live 🔴 cause open
+
+**Symptom (15 Sep 2026, image 26, OCTABAM89 C02).** Turning knobs on
+BusDelay or BusVerb -- "ones that would tax it, like changing times" --
+sometimes brings in static and crackle that stays. Triggered "pretty
+reliably" with the reverb host's SEND up and both WETs up; a transport
+restart clears it, after which it takes a few knob moves on either engine
+to bring back. Not reproducible on demand later the same session. One
+10 s capture while it was audible (`out/hw/voicing25/noise_now.wav`):
+HF above 8 kHz −77 dB against −85..−91 dB after CC toggles of the delay's
+WET, with no clean A/B on the same material.
+
+**Measured under the port (ONEAUX fixture, engines warm, CC at frame
+700).** A knob turn costs no block extra: the CC lands through the page-1
+slew and the FX2 call is the same on the change frame (delay 3,754 →
+3,754, MODE → REVRS 3,914; reverb 16,710 ± 14) for TIME / SIZE / MODE /
+FRZE. The reverb host sending itself is not a loop: T5 SEND 127, both
+WETs 127, T3 sending -- +0.8 dB on T5's chain output, no growth over 2,000
+frames; the ColdFire delivers every track's audio block every frame.
+
+**Open.** The port models no stall, so it cannot see the cycle wall,
+which fits the shape: C02's layout prices ~2,950 (core 1) and ~2,994
+(core 0) instructions/sample against 3,120 usable with a counter ~270 low
+on the reverb, and an overrun that desynchronises the frame handshake
+persists until a restart. Same family as the tick and the freeze above.
+To decide: with the static going, take one station off the core (T2's
+FX1 to NONE); or the burn image (`make burn`) on C02, stepping the burn
+until it appears.
+
 ## A DC thump every 10.59 s at idle, from track 6 ✅ source measured
 
 **Symptom.** Transport stopped: a thump every 10.59 s, ringing 2 s through
