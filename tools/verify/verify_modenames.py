@@ -78,7 +78,8 @@ def main():
                 continue
             want = (mode_names.complete(mod)
                     if slot == mod.mode_slot and mod.mode_views else {})
-            want = mode_names.with_selfname(want, slot, prm.labels)
+            if slot == mod.mode_slot:
+                want = mode_names.with_selfname(want, slot, prm.labels)
             work.append((key, mod, slot, want))
     for key, mod, slot, want in work:
         desc = clones.get(key)
