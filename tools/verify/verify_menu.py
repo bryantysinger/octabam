@@ -435,6 +435,19 @@ def main():
         check(_rows == _want,
               f"FX1 viewport row count == {_want} (got {_rows})"
               + (" -- it scrolls" if len(_list) > CHOOSER_ROWS else ""))
+        if "OCTAKIT" in REMIX.modules:
+            # Octakit reads the stock FX1 table at 0x400d6060 by cursor
+            # 0..10; the build mirrors the relocated list into it.
+            check(len(_list) <= 11,
+                  f"OCTAKIT-compatible FX1 chooser has at most 11 rows "
+                  f"(got {len(_list)})")
+            for _i in range(12):
+                _shadow = rd32(img, FX1_CHOOSER + _i * 4)
+                _want = _list[_i] if _i < len(_list) else 0
+                check(_shadow == _want,
+                      f"OCTAKIT FX1 shadow[{_i}] == "
+                      f"{'live chooser' if _i < len(_list) else '0'} "
+                      f"(0x{_shadow:08x})")
         _listed = set()
         for _n, _k in enumerate(REMIX.fx1):
             _m = _MODS[_k]
