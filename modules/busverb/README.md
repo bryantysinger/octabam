@@ -20,6 +20,13 @@ Voicing: [`docs/history/VOICING.md`](../../docs/history/VOICING.md).
   allpasses at g 0.77 read as a metallic sheen; capping the span at ~0.70
   removes it.
 
+## On the unit
+
+Image 26/27 (15 Sep 2026, the WET pedal chain): Sam, "is awesome" -- the
+round closed with nothing to change; the reverb's buffers and voicing are
+kept whatever the delay-memory work finds ("not willing to sacrifice any
+verb").
+
 ## Open
 
 - Coupling the diffuser g to TIME (~13 words) waits for payload A words.
