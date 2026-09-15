@@ -1,0 +1,49 @@
+# MODE DEFAULTS
+
+Turning a MODE on the panel re-defaults the knobs around it to that mode's
+`ModeView` (`docs/remixer/MODULES.md`, "Per-mode knob names and defaults").
+
+## Hook
+
+Both page-2 editors call the project-dirty routine `0x40027e00` after their
+Part and shadow stores and before the live-lane store:
+
+| editor | entry | detoured jsr | at the site |
+|---|---|---|---|
+| FX2 page 2 | `0x4003a9dc(slot2, ticks)` | `0x4003aaea` | a2 = slot2, d2 = the clamped value, d4 = track, d5 = part |
+| FX1 page 2 | `0x4003abe4(slot2, ticks)` | `0x4003acf2` | the same |
+
+`modedef.s` replays the call, reads the slot's effect id from the Part
+(`+0x8ed88 + track` / `+0x8ed80 + track`), and walks the table: an entry
+whose id and MODE slot match, and a view whose mode equals the value, has
+its pairs written -- page-1 slots through `0x40054cd8(track, flat, value)`
+(flat `0x12 + k` FX1, `0x18 + k` FX2: Part, shadow, live byte, the
+descriptor's clamp), page-2 slots with the editor's own stores (Part
+`+0x8f084`/`+0x8f07e`, shadow `0x100a51d2`/`0x100a51cc`, lane `+0x38`/
+`+0x32`, the slot's redraw flag `0x46c7d244[(slot2*5+1)*4] = 20`). The
+dirty flags are the editor's, already set. Registers d2-d7/a2-a6 are
+preserved as the displaced callee preserves them.
+
+## The table
+
+Generated per remix by `manifest.table_inc` (`Linked.include`), one entry
+per module in the image with views: `id, mode slot, nviews`, then per view
+`mode, npairs, (slot, value)*`; `0xff` ends it. 528 B linked in the rig.
+
+## Measured
+
+`tools/verify/verify_modedefaults.py` (in `make verify` with `OT_PROJECT`):
+the FX2 editor called on T1 (BusDelay, CLEAN -> GRAIN) and the FX1 editor
+on T2 (Modulation, JUNO -> ENS) under the port leave every pair of the
+landed view in the live lane, page 1 and page 2, and the untouched slots
+at the fixture's bytes. The editor takes encoder ticks of 256 units
+against a per-slot step (`0x46c7dede + slot2*20 + 8`; 0x10e for a 3-way
+select under the port), so two ticks move a select by one.
+
+## Not measured / open
+
+- The panel redraw and the feel on the unit (unflashed).
+- A MODE reached over MIDI (CC PAGE 2's cave writes the slot itself, not
+  through the editor) is not re-defaulted.
+- The Part bytes are written by the same formulas `modules/ccpage2` proves
+  against the editor; the verifier reads the live lane only.

@@ -770,11 +770,12 @@ def main():
                                     # far -> the --defsym set later units
                                     # resolve their cross-unit references from
 
-    def _link(src, at, cpu, work, sections=(), defsyms=()):
+    def _link(src, at, cpu, work, sections=(), defsyms=(), incdir=None):
         """Assemble `src` and link it at `at`; return (bytes, symbols,
         globals). `sections` = objcopy -j selection (empty = every alloc
         section). `defsyms` = (name, value) pairs for symbols defined by
-        units already placed."""
+        units already placed. `incdir` = an `.include` search directory
+        (a per-remix generated include, schema.Linked.include)."""
         work = pathlib.Path(work)
         work.mkdir(parents=True, exist_ok=True)
         o, e, b = work / "u.o", work / "u.elf", work / "u.bin"
@@ -782,7 +783,8 @@ def main():
               [f"--defsym={n}=0x{v:x}" for n, v in defsyms] + ["-o", e, o]
         _oc = ["m68k-elf-objcopy", "-O", "binary"] + \
               [x for s in sections for x in ("-j", s)] + [e, b]
-        for _args in (["m68k-elf-as", f"-mcpu={cpu}", "-o", o, src], _ld, _oc):
+        _as = ["m68k-elf-as", f"-mcpu={cpu}"] + (["-I", incdir] if incdir else []) + ["-o", o, src]
+        for _args in (_as, _ld, _oc):
             _r = subprocess.run([str(a) for a in _args], capture_output=True, text=True)
             if _r.returncode:
                 sys.exit(f"{src}: {_args[0]} failed\n{_r.stderr[-2000:]}")
@@ -1045,17 +1047,22 @@ def main():
         _work.mkdir(parents=True, exist_ok=True)
         _src = pathlib.Path(_u.source)
         _defs = tuple(_exports.items())
+        _inc = None
+        if _u.include is not None:
+            _inc = _work
+            (_work / "remix.inc").write_text(
+                _u.include({_k: remix_modules()[_k] for _k in REMIX.modules}))
         if _u.reference is not None:
             _ra, _rsha = _u.reference
             (_work / "ref").mkdir(exist_ok=True)
-            _rb, _, _ = _link(_src, _ra, _u.cpu, _work / "ref", defsyms=_defs)
+            _rb, _, _ = _link(_src, _ra, _u.cpu, _work / "ref", defsyms=_defs, incdir=_inc)
             _got = hashlib.sha256(_rb).hexdigest()
             if _got != _rsha:
                 sys.exit(f"{_m.key} {_u.label}: linked at the author's address "
                          f"0x{_ra:08x} it is {len(_rb)} B sha256 {_got}, not the "
                          f"author's {_rsha} -- source or toolchain drift; refusing")
         _at = _u.cave_addr if _u.cave_addr is not None else (_cave_top + 0x7f) & ~0x7f
-        _b, _syms, _glob = _link(_src, _at, _u.cpu, _work, defsyms=_defs)
+        _b, _syms, _glob = _link(_src, _at, _u.cpu, _work, defsyms=_defs, incdir=_inc)
         _exports.update(_glob)
         if _at >= SAFE_CAVE_CEIL:
             sys.exit(f"{_u.label}: linked at 0x{_at:08x}, above the safe ceiling")

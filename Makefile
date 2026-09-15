@@ -180,6 +180,9 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	@# A real project on the built image under the ColdFire port (ids, page-2
 	@# delivery, chain audio, the main out); SKIPs without OT_PROJECT=<dir>.
 	python3 tools/verify/verify_set.py $(REMIX)
+	@# A MODE turned on the panel re-defaults its knobs (the FX1 and FX2
+	@# page-2 editors called under the port); SKIPs without OT_PROJECT=<dir>.
+	python3 tools/verify/verify_modedefaults.py $(REMIX)
 
 .PHONY: verify-roll
 verify-roll: ## Prove an alternate REVERB engine is bit-identical: make verify-roll CAND=cand.asm [REF=modules/busverb/reverb_server.asm]

@@ -494,6 +494,12 @@ class Linked:
     # belongs; the ~8 KB of zero runs inside the OS image are for what
     # must be ROM.
     dram: bool = False
+    # Assembler text generated PER REMIX -- include(modules) -> str, given
+    # the remix's modules by key -- written beside the unit as `remix.inc`
+    # and reachable by `.include "remix.inc"`. A unit whose data depends
+    # on which modules are in the image (mode-defaults' view table) is
+    # otherwise unlinkable: the source cannot know the remix.
+    include: object | None = None
 
 
 @dataclass(frozen=True)

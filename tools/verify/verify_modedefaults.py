@@ -1,0 +1,170 @@
+#!/usr/bin/env python3
+"""MODE DEFAULTS under the port: a page-2 editor call that lands on a MODE
+leaves that mode's view in the track's live lane.
+
+    python3 tools/verify/verify_modedefaults.py REMIX --project DIR
+
+Stages the project (T1's FX2 and T2's FX1 rewritten into every part of every
+bank: the emulated load applies bank A part 1), boots the remix's image in
+`ot_emu`, LOAD PROJECTs, and calls the editor as the panel would:
+
+  FX2: `0x4003a9dc(0, 2 ticks)` on T1 (BusDelay: slot 6 = MODE, CLEAN -> GRAIN)
+  FX1: `0x4003abe4(1, 2 ticks)` on T2 (Modulation: slot 7 = MODE, JUNO -> ENS)
+
+then reads the live lane (`0x80000810 + t*72`: page 1 at +0x12 (FX1) /
++0x18 (FX2), page 2 at +0x32 / +0x38) and asserts every (slot, value) of
+the landed mode's ModeView, and that the MODE byte itself moved. A control
+run of the same calls on the stock editors (the same image with the module's
+detours skipped is not buildable here, so the control is the lane BEFORE the
+call: the fixture's stamped bytes) shows what the editor alone changes.
+
+SKIPs without a project (OT_PROJECT / --project), without the port, or for
+a remix without MODE DEFAULTS. What it cannot see: the panel redraw, the
+DSP receiving page 1 (the page-1 writer's live byte is what the frame
+builder reads; verify_set covers the delivery).
+"""
+import argparse, os, pathlib, shutil, subprocess, sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
+from remix import registry  # noqa: E402
+import ot_project  # noqa: E402
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+EMU = ROOT / "out/emu/ot_emu"
+PY = ROOT / ".venv/bin/python3"
+OUT = ROOT / "out/modedefverify"
+LANES = 0x80000810
+FX2_EDITOR, FX1_EDITOR = 0x4003a9dc, 0x4003abe4
+PAGE1 = {"fx1": 0x12, "fx2": 0x18}
+PAGE2 = {"fx1": 0x32, "fx2": 0x38}
+
+
+def lane_bytes(path, track):
+    raw = path.read_bytes()
+    return raw[track * 72:(track + 1) * 72]
+
+
+def expect_view(mod, mode):
+    for v in mod.mode_views:
+        if v.mode == mode:
+            return v
+    return None
+
+
+def run_port(image, card, set_name, name, track, call, dump, log):
+    cmd = [str(EMU), "--image", str(image), "--card", str(card), "--set", set_name, "--project", name,
+           "--mount", "--load-ms", "20000", "--poke-early", f"0x80000000={track}", "--call", call,
+           "--mem-dump", f"{LANES:#x},576={dump}"]
+    with open(log, "w") as f:
+        f.write(" ".join(cmd) + "\n"); f.flush()
+        r = subprocess.run(cmd, cwd=ROOT, stdout=f, stderr=subprocess.STDOUT)
+    text = log.read_text()
+    if r.returncode or "returned, d0" not in text:
+        sys.exit(f"verify_modedefaults: ot_emu did not complete the call -- {log}")
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("remix", nargs="?", default=registry.DEFAULT_REMIX)
+    ap.add_argument("--project", default=os.environ.get("OT_PROJECT", ""))
+    ap.add_argument("--set-name", default="OCTABAM")
+    ap.add_argument("--name", default="MODEDEF")
+    ap.add_argument("--image", default="")
+    a = ap.parse_args()
+    remix = registry.remix(a.remix)
+    if "MODE DEFAULTS" not in remix.modules:
+        print(f"  [ -- ] verify_modedefaults: {a.remix} carries no MODE DEFAULTS"); return 0
+    if not a.project:
+        print("  [SKIP] verify_modedefaults: no project (OT_PROJECT=<dir> or --project)"); return 0
+    if not EMU.is_file():
+        print("  [SKIP] verify_modedefaults: no port binary (make emu-cf)"); return 0
+    pdir = pathlib.Path(a.project).expanduser()
+    if not (pdir / "project.work").is_file():
+        sys.exit(f"verify_modedefaults: {pdir} is not a project")
+    mods = registry.modules()
+    OUT.mkdir(parents=True, exist_ok=True)
+
+    image = pathlib.Path(a.image) if a.image else OUT / "mainos.bin"
+    if not a.image:
+        env = dict(os.environ, REMIX=a.remix, XBUS="1", SPEC="1"); env.setdefault("BUILD", "0")
+        r = subprocess.run([sys.executable, str(ROOT / "tools/build/build_bus.py")], env=env,
+                           capture_output=True, text=True, cwd=ROOT)
+        if r.returncode:
+            sys.exit(f"verify_modedefaults: building {a.remix} failed:\n{(r.stdout + r.stderr)[-1500:]}")
+        shutil.copy2(ROOT / "out/mainos_bus.bin", image)
+
+    # The fixture: T1 FX2 = the first FX2 module with views, T2 FX1 = the
+    # first FX1 module with views, both at their manifest defaults (MODE 0),
+    # in every part of every bank.
+    cases = []
+    for kind, keys in (("fx2", [k for k in remix.modules if k not in remix.fx1]),
+                       ("fx1", list(remix.fx1))):
+        best = None
+        for k in keys:
+            m = mods[k]
+            if getattr(m, "mode_views", ()) and m.mode_slot is not None and m.menu is not None:
+                if best is None or len(m.mode_views) > len(best[2].mode_views):
+                    best = (kind, k, m)
+        if best:
+            cases.append(best)
+    if not cases:
+        print("  [ -- ] verify_modedefaults: no module with ModeViews in the remix"); return 0
+    copy = OUT / "project"
+    if copy.exists():
+        shutil.rmtree(copy)
+    copy.mkdir(parents=True)
+    for f in pdir.iterdir():
+        if f.is_file() and f.suffix.lower() == ".work":
+            shutil.copy2(f, copy / f.name)
+    tracks = {"fx2": 0, "fx1": 1}
+    for kind, k, m in cases:
+        p1 = [p.default for p in m.params[:6]]
+        p2 = [p.default for p in m.params[6:12]]
+        ot_project.set_fx(copy, kind, tracks[kind] + 1, k, page=p1, page2=p2, guard=False)
+    card = OUT / "card.img"
+    r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(copy), a.set_name, a.name,
+                        "--tree", str(OUT / "tree"), "--out", str(card)], cwd=ROOT, capture_output=True, text=True)
+    if r.returncode:
+        sys.exit(f"verify_modedefaults: stage_card failed:\n{r.stdout[-1000:]}{r.stderr[-1000:]}")
+
+    fails = 0
+    for kind, k, m in cases:
+        t = tracks[kind]
+        slot2 = m.mode_slot - 6
+        editor = FX2_EDITOR if kind == "fx2" else FX1_EDITOR
+        # The editor takes ENCODER ticks: 256 units a tick against the slot's
+        # step (0x46c7dede + slot2*20 + 8: 0x10e for a 3-way select, 0x100 for
+        # a knob under the port), so two ticks move a select by one and a
+        # knob-stepped select by two. The landed MODE is read back, not assumed.
+        dump, log = OUT / f"{kind}_lanes.bin", OUT / f"{kind}_port.txt"
+        run_port(image, card, a.set_name, a.name, t, f"{editor:#x},{slot2},2", dump, log)
+        lane = lane_bytes(dump, t)
+        got_mode = lane[PAGE2[kind] + slot2]
+        view = expect_view(m, got_mode) if got_mode else None
+        ok = view is not None
+        print(f"  [{'ok' if ok else 'FAIL'}] {k} T{t + 1}: {kind.upper()} editor slot {m.mode_slot} +2 ticks -> MODE {got_mode}"
+              f"{'' if ok else ' (no view for it)'}")
+        fails += not ok
+        if not ok:
+            continue
+        for slot, val in sorted(view.defaults.items()):
+            off = PAGE1[kind] + slot if slot < 6 else PAGE2[kind] + slot - 6
+            got = lane[off]
+            name = m.params[slot].name.decode()
+            ok = got == val
+            print(f"  [{'ok' if ok else 'FAIL'}]   slot {slot:2d} {name:4s} lane +{off:#04x} = {got:3d}  (view {val})")
+            fails += not ok
+        # a slot the view leaves alone keeps the fixture's default
+        untouched = [s for s in range(12) if s not in view.defaults and s != m.mode_slot]
+        for slot in untouched[:2]:
+            off = PAGE1[kind] + slot if slot < 6 else PAGE2[kind] + slot - 6
+            got, want = lane[off], m.params[slot].default
+            ok = got == want
+            print(f"  [{'ok' if ok else 'FAIL'}]   slot {slot:2d} {m.params[slot].name.decode():4s} untouched = {got} (default {want})")
+            fails += not ok
+    print(f"verify_modedefaults: {'FAIL' if fails else 'ok'} ({fails} failure(s))")
+    return 1 if fails else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

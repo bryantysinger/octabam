@@ -10,7 +10,8 @@ chose the stock effect still plays.
 
 The bus is one aux: AUX -> BusDelay -> BusVerb -> the return (Character
 with RET up on T8). TEMPO SYNC makes BusDelay's TIME read divisions; CC
-PAGE 2 puts CC 62-67 on the host engine's page-2 slots.
+PAGE 2 puts CC 62-67 on the host engine's page-2 slots; MODE DEFAULTS
+re-defaults a mode's knobs when MODE is turned on the panel.
 
 Every other stock effect is harvested: 13 effects, 6,158 words per payload
 in one run; a saved part naming one gets silence (the null stub).
@@ -27,7 +28,7 @@ REMIX = Remix(
     doc="The rig: bus (BusVerb + BusDelay) + three stations + the stock delay.",
     modules=("REVERB SERVER", "DELAY SERVER", "SEND", "DELAY",
              "SPECTRUM", "CHARACTER", "MODULATION",
-             "TEMPO SYNC", "CC PAGE 2"),
+             "TEMPO SYNC", "CC PAGE 2", "MODE DEFAULTS"),
     fallback="SEND",
     fx1=("SPECTRUM", "CHARACTER", "MODULATION"),
 )
