@@ -6,7 +6,7 @@ a selection of modules, and the build turns a remix and the user's own
 for where code goes; `docs/history/PLAN_EFFECTS.md` is the DSP-effects
 programme this grew out of, with its open items.
 
-## Where it stands (14 Sep 2026)
+## Where it stands (15 Sep 2026)
 
 - **On hardware:** `ok-ms` (Octakit ot-26914 + MIDI SCENES 1.40MIDISC8 on
   the stock effects), built as `OKMS1`, confirmed working by midisc's
@@ -32,6 +32,15 @@ programme this grew out of, with its open items.
   (every claim, the compatibility matrix), and the ColdFire port
   (`tools/emu/ot_emu`) that boots every DRAM remix and reads each window
   back.
+- **A real project under the port, before a flash:** `OT_PROJECT=<dir>
+  [OT_BANK=n] make check REMIX=<name>` (`verify_set`, `docs/remixer/EMU.md`)
+  loads the project with its samples on the built image, plays it with
+  both DSP cores, drives it over MIDI IN, and asserts the ids, the page-2
+  delivery, the chain audio, the aux return, the main out, the card as
+  the firmware left it and the firmware's own LOG. 18 checks on
+  OCTABAM88 bank B / `bamsep26`, ~80 s. It found the T1 page-2 defect's
+  cause (the tempo cave over the FX1 page 2 of every bus host, PR #271)
+  — fixed, unflashed.
 
 ## The ground
 
@@ -61,6 +70,12 @@ From `docs/remixer/PLACEMENT.md`, measured under the port unless marked.
 6. octamax (mxldyn): ported on branch `octamax-deferred` (`d952976`), parked
    pending a conversation with the author.
 7. The DSP side's open items: `docs/history/PLAN_EFFECTS.md`.
+8. Flash the tempo-cave fix (PR #271, `bamsep26`): FX1 page 2 on T1/T5 on
+   the unit; `OCTABAM89` plays as stamped.
+9. Under the port the transport start re-applies the saved bank's FX ids
+   for T1-T3, T7 and T8 only (T4-T6 keep the load's bank A ids, by
+   `--bank` or by a program change); `verify_set` stages the tested bank
+   as bank A. Cause open.
 
 ## Gates and rules
 
