@@ -245,9 +245,7 @@ per-core layout the remix lets a user select (four tracks × FX1 ∈ {none,
 the FX1 rows of ours} × FX2 ∈ {SEND, this core's server, ours on the FX2
 chooser, stock rows at 0}, at most one server per core) and sums the static
 per-sample cost of each pick at its worst mode loop (`cycle_count.py`),
-against two lines: 3,120 (USABLE, `docs/firmware/CHIP.md` §2) and 3,888
-(USABLE + the FILTER credit: 3,120 was measured with four stock FILTERs
-running inside stock's share). Tag 91 hung the sequencer with three
+against 3,120 (USABLE, `docs/firmware/CHIP.md` §2). Tag 91 hung the sequencer with three
 stations beside the reverb at a static 3,106, under both lines, which
 points at the counter's known error (the reverb ~270 low, the delay ~260
 high); the burn sweep settles both. `out/pressure/<remix>_layouts.tsv` has

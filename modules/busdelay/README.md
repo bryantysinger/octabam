@@ -2,7 +2,7 @@
 
 A multi-mode delay: CLEAN, GRAIN (a pitched granular cloud over the delay
 lines: Nimbus's grain readers, four per line, one continuous pitch) and
-REVERSE, with tape wow (MDEP / MRAT) and a freeze hold in every mode. Hosted
+REVERSE, with a freeze hold in every mode. Hosted
 on payload B (core 1), which serves tracks 1–4. Stage 1 of the one aux bus:
 its output goes on to BusVerb and to the return.
 
@@ -46,15 +46,19 @@ label comes from its formatter cave.
 |---|---|---|---|
 | page 1: SEND · TIME · FDBK · TONE · PING · WET | the same everywhere | | |
 | MODE (p6) | CLEAN | GRAIN | REVRS |
-| MDEP (p7) | wow depth | SCAT: how far apart the grains read | wow depth |
-| MRAT (p8) | wow rate, 64 = 1× | DENS: density, level-flat | wow rate |
+| SCAT (p7) | inert | how far apart the grains read | inert |
+| DENS (p8) | inert | density, level-flat | inert |
 | SIZE (p9) | unused | grain length 46 / 93 / 23 ms, XTRM 186 ms | segment; XTRM = 371 ms |
 | PTCH (p10) | no effect | ±2 oct, 64 = unison; a held MIDI note overrides | no effect |
 | FRZE (p11) | hold | hold (the grains keep grazing) | hold |
 
-Each mode's `ModeView` re-defaults the knobs and renames MDEP/MRAT in GRAIN.
-PING 0 and MDEP 0 by default: an aux delay sits still; the bounce and the
-wow are the knobs'. In REVERSE the two 16K lines are one 32K mono ring
+Each mode's `ModeView` re-defaults the knobs. PING 0 by default: an aux
+delay sits still; the bounce is the knob's. The tape wow (MDEP / MRAT, a
+lerped read at TIME + wow, flutter, and a loop saturation gated on the
+depth) went 15 Sep 2026 -- Sam: the modulation is the LFOs' and the
+Modulation station's, and the crackle gathered around those knobs; the
+removal is bit-identical to depth 0 and the delay prices 1,243 -> 1,057.
+In REVERSE the two 16K lines are one 32K mono ring
 (XTRM = 16,384 samples = 371 ms, the mode's default), PING is forced off and
 the output is mono to both channels.
 

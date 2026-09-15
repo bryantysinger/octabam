@@ -67,11 +67,11 @@
 ;   p0 AUX  -> this host's own dry send into the one aux bus (written to the
 ;              AUX accumulator, flagged at y:$941)
 ;   p1 TIME -> feedback, 0.875 .. 0.999
-;   p2 MOD, p3 SIZE
+;   p2 SHMR (MOD until 15 Sep 2026; the tank modulation is pinned at MOD 30), p3 SIZE
 ;   p4 TONE -> HP and LP on one knob (the HI/LO blocks)
 ;   p5 MIX  -> the stage crossfade: out = in*(1-MIX) + wet*MIX
-;   page 2: MODE (slot 6, $c KNOB field), SHMR ($c companion), DIFF, SHFT,
-;   GATE, RATE ($e low bits)
+;   page 2: MODE (slot 6, $c KNOB field), DIFF, SHFT, GATE (slots 7 and
+;   11 are blank since 15 Sep 2026: SHMR moved to page-1 slot 2, RATE went)
 ;   core-private y:$09f1 delay-liveness grace, $09f2 this sample's chain
 ;   input (at unity, the passthrough); $09f0 the SEND level for the loop
 ;
@@ -975,7 +975,12 @@ mdcpy:
 ; ---- MOD: modulation depth, scales the LFO triangle ---------------------
 ; MOVED from $4 to $1 (labelled SHVG) in v61, swapping with HI above: $4
 ; is labelled LP and now carries the high cut, which is what it says.
-        move    x:(r6+$2),x0            ; MOD: slot 2 (one-aux re-slot)
+        move    #$1e,x0                 ; the tank modulation depth, PINNED at
+                                        ; what the MOD knob's default (30) gave:
+                                        ; the knob went 15 Sep 2026 (Sam: the
+                                        ; modulation is the LFOs' and the
+                                        ; station's; the tank must not go
+                                        ; static), SHMR took its slot
         move    x:(r7+$73),y1           ; v95: scaled per MODE, only ever down
         mpy     x0,y1,a                 ; (BIG sits at unity), so the knob keeps
         asl     #$1,a,a
@@ -1036,12 +1041,9 @@ shfst:
 
 ; ---- RATE: LFO increment, ~0.34 Hz .. ~3 Hz -----------------------------
 ; 8x what it would be per sample, because the LFO is stepped once per block.
-; ---- LFO RATE: fixed and SLOW, decoupled from MOD -----------------------
-        move    x:(r6+$c),a
-        and     #>$7f00,a               ; slot 7's companion field
-        move    a1,x0
-        move    x0,a                    ; A2-clean before the shift
-        asl     #$8,a,a                 ; -> value<<16, the knob scale
+; ---- SHMR: page-1 slot 2 since 15 Sep 2026 (MOD's old slot) -------------
+        move    x:(r6+$2),a
+        and     #>$7f0000,a             ; knob field, value<<16
         move    a1,x0                   ; SCALED TO A QUARTER. The raw knob is a
         move    #$60,y1                 ; loop gain on TOP of the tank's own
         mpy     x0,y1,a                 ; feedback, and by ear 25/127 raw (0.20)
@@ -1072,32 +1074,8 @@ shfst:
         mpy     x1,y1,a                 ; its full range inside each character, the
         move    a,x:(r7+$2f)            ; same shape as MOD depth and damping.
 
-; ---- RATE: MOD speed select -- page-2 slot 11 companion -----
-        move    x:(r6+$e),a
-        and     #>$7f00,a               ; slot 11 companion, bits 8-15
-        asr     #$8,a,a
-        move    a1,x0
-        move    x0,a                    ; select 0..3, A2-clean
-        move    #>$1,x0
-        cmp     x0,a
-        beq     rspd                    ; 1x (the default): leave $2f untouched
-        blt     rsp0
-        move    #>$2,x0
-        cmp     x0,a
-        beq     rsp2
-        move    x:(r7+$2f),a            ; select 3 (shows as 4 on the panel): 4x
-        asl     #$2,a,a
-        bra     rspw
-rsp2:
-        move    x:(r7+$2f),a            ; 2x
-        asl     #$1,a,a
-        bra     rspw
-rsp0:
-        move    x:(r7+$2f),a            ; 0.5x
-        asr     #$1,a,a
-rspw:
-        move    a,x:(r7+$2f)
-rspd:
+; (the RATE speed select on slot 11 went with the MOD knob, 15 Sep 2026:
+; the LFO runs at 1x, the default it always had)
 
         move    x:(r6+$e),a
         and     #>$7f0000,a             ; knob field, val<<16

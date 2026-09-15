@@ -50,11 +50,8 @@ _ASM = registry.asm_by_stem()
 BANK = {"reverb_server": 1, "delay_server": 1, "send_client": 2}
 
 FX2_SLOTS = 4           # per core: four tracks, one FX2 each
-# AND FOUR FX1 SLOTS, on the same four tracks. Stock's own FX1 load is
-# already inside STOCK_SHARE (the 7 Aug sweep measured the spare with four
-# FILTERs running), so a module of ours listed on FX1 is charged ON TOP
-# without crediting back the stock effect it displaces. That is the
-# conservative direction, and the same one the FX2 slots are priced in.
+# AND FOUR FX1 SLOTS, on the same four tracks: a module of ours on FX1 is
+# charged against USABLE like everything else.
 FX1_SLOTS = 4
 
 
@@ -78,8 +75,7 @@ def bank_worst(rows, mods, fx1=(), stock_fx1_keys=()):
     the remix lists on FX1 (Remix.fx1) can be selected there as well, on top
     of whatever that track's FX2 slot is running -- which is why PLAN.md s2
     puts FX1's real ceiling at "cycles x4". The dearest FX1-listed module is
-    charged four times, without crediting back the stock effect it displaces
-    (stock's own FX1 load is inside STOCK_SHARE already).
+    charged four times.
 
     Returns (total, [(name, count), ...]).
     """
@@ -483,14 +479,6 @@ def main():
         if hasattr(_stock, "MODULES_BY_KEY") else \
         {e.key for e in _stock.MODULES if e.menu.fx2_id in _stock.fx1_ids()}
     # STOCK FILTER'S OWN LOAD IS INSIDE STOCK_SHARE: the 23 Aug budget was
-    # measured with four FILTERs running (192 each, CHIP.md s2). An image
-    # in which FILTER cannot run -- harvested off both choosers, or its
-    # id taken by a replacement -- gets those 768 back for our code.
-    _fx1_keys = set(remix.fx1) if remix.fx1 else _stock_fx1
-    _filter_listed = "FILTER" in set(remix.modules) | _fx1_keys
-    _filter_replaced = any(m["replaces"] == "FILTER" for m in mods)
-    filter_credit = 0 if (_filter_listed and not _filter_replaced) \
-        else 4 * 192
     rows = [measure(m["stem"]) for m in mods]
 
     if "--verify" in args:
@@ -527,9 +515,6 @@ def main():
                               # rather than against core_total, and there
                               # must be one source for the figure.
                               usable=USABLE,
-                              # +768 when stock FILTER cannot run in
-                              # this image (see the printed line).
-                              filter_credit=filter_credit,
                               burn_spare_measured=BURN_SPARE,
                               bank_at_measure=BANK_AT_MEASURE,
                               core_total=CORE_TOTAL), indent=2))
@@ -569,11 +554,7 @@ def main():
     print(f"{'budget/core':{w}}  {CORE_TOTAL:>13}   (200 MIPS / 44.1 kHz)")
     print(f"{'usable by us':{w}}  {USABLE:>13}   measured 23 Aug 2026; stock takes "
           f"the other ~{STOCK_SHARE}")
-    if filter_credit:
-        print(f"{'FILTER credit':{w}}  {filter_credit:>13}   stock FILTER cannot run "
-              f"in this image (harvested or replaced): its 4 x 192 inside "
-              f"stock's share come back to us (CHIP.md s2)")
-    _usable = USABLE + filter_credit
+    _usable = USABLE
     print(f"{'headroom':{w}}  {_usable - worst:>13}   against the worst core above"
           + ("   *** OVER ***" if worst > _usable else ""))
     print(f"{'':{w}}  {'':>13}   ⚠️ the counter reads ~270 LOW on the reverb "

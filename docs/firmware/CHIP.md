@@ -115,6 +115,7 @@ reviewed; the falsifier is a hardware measurement of the unit's tick rate.
 | stock's own share | ≈1,410 (4,535 − 3,120); ≈1,040 on the 🟡 4,160 clock | ✅ by subtraction |
 | the historic "1,392 spare" | the 7 Aug bank's spare (ceiling 964 + 1,392 = 2,356, consistent) | ✅ then; superseded as a headline |
 | ❌ "the budget is 1,080" | the load one probe build happened to survive, never a ceiling | |
+| ❌ "FILTER credit", +768 on top of 3,120 (12–15 Sep 2026) | the four environment FILTERs are inside the 3,120 (the sum above), so adding them back double-counted; removed from the pricer | |
 
 The datasheet's 200 MIPS is the ceiling of the silicon. It cannot say what
 stock already uses, what the real frame deadline is, or what memory
@@ -175,6 +176,7 @@ every track), the meter's unit (instructions/sample, max block):
 | as stored (every station at its passthrough, delay CLEAN) | 1,301 | 561 |
 | delay GRAIN | 1,301 | 1,276 |
 | pricer, static, everything live (Spectrum 346 ×3 / ×2, Character 639, Modulation 476, BusDelay 1,243, BusVerb 1,157, SEND 10 ×3) | 2,994 | 2,950 |
+| the same after TAME (290) and the wow (1,057) went, 15 Sep 2026 | 2,882 | 2,596 |
 | usable | 3,120 | 3,120 |
 
 The delay alone: CLEAN 476, GRAIN 1,191, REVERSE 497 (T1=D with three

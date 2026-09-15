@@ -58,7 +58,7 @@ SR = 44100
 BASE = [0, 40, 60, 100, 64, 127, 0, 0, 0, 0, 64, 0]
 
 SLOT = {"SEND": 0, "TIME": 1, "FDBK": 2, "TONE": 3, "PING": 4, "WET": 5,
-        "MDEP": 7, "MRAT": 8, "PTCH": 10}
+        "SCAT": 7, "DENS": 8, "PTCH": 10}
 
 
 def dp(**kw):
@@ -202,11 +202,8 @@ def main():
           f"  ({ref_words} -> {nop_words} words)")
     n_hi = render(nop_mem, dp(TONE=100), source=source)
     check("nop control: relocated code still renders identically", n_hi == c_hi)
-    c_wob = render(ref_mem, dp(MDEP=100, MRAT=64), source=source)
-    check("wobble is LIVE (reference MDEP=100 MRAT=64 differs from MDEP=0)",
-          c_wob != c_hi,
-          "" if c_wob != c_hi else
-          "  <-- the wobble cases below are VACUOUS")
+    # (the wobble-is-live control went with the wow, 15 Sep 2026: slots 7/8
+    # are GRAIN's SCAT/DENS now and do nothing in CLEAN)
 
     # ---- then the equality cases ------------------------------------------
     cand_mem, cand_words, cand_free = build(args.candidate, "cand")
@@ -215,17 +212,11 @@ def main():
         ("PING=0 (LineR silent)", dp(PING=0), 0),
         ("PING=127 (full swap)", dp(PING=127), 0),
         ("TIME=0 (64-sample floor, wrap-heavy)", dp(TIME=0), 0),
-        ("TIME=127 (16320 max)", dp(TIME=127), 0),
+        ("TIME=127 (32576 max; the hatch clamps at 16320)", dp(TIME=127), 0),
         ("FDBK=127 TONE=127 (long recirculation)", dp(FDBK=127, TONE=127), 0),
         ("defaults, split=7 (a=0/a=1 sub-block path)", dp(), 7),
-        # THE WOBBLE. BASE pins MDEP=0 and MRAT=0, so until
-        # this case modtap's modulated lerp (mod_int != 0, frac != 0), the
-        # LFO pair and satdrv's DPTH-keyed saturation were rendered only
-        # through GRAIN's fixed wow. A rewrite of those paths could pass
-        # every case above with the identity they reduce to at depth 0.
-        ("wobble MDEP=100 MRAT=64 (modtap lerp + loop saturation)",
-         dp(MDEP=100, MRAT=64), 0),
-        ("deep wobble MDEP=127 MRAT=127 FDBK=127", dp(MDEP=127, MRAT=127, FDBK=127), 0),
+        # GRAIN's SCAT/DENS (slots 7/8; the tape wow that lived there went
+        # 15 Sep 2026) are exercised by the GRAIN cases below.
         # MIX=0 is the DRY PATH, and stage 5c turned MIX from an add into a
         # crossfade. At 0 the two are identical by construction, so this case
         # is what proves the change touched only the blend and nothing else
@@ -255,16 +246,16 @@ def main():
             # v5 numbering: 1 = GRAIN, 2 = REVERSE; PITCH mode is
             # retired and its harmoniser lives in GRAIN's continuous pitch.
             # DINT drives the SIZE select (the PTCH slot until v5).
-            ("GRAIN unison SPRAY=0 (every grain on the same read)", 1, 1, dp(MDEP=0, PTCH=64)),
-            ("GRAIN unison SPRAY=127 (full scatter)", 1, 1, dp(MDEP=127, PTCH=64)),
-            ("GRAIN +12 on PTCH, 23 ms grains", 1, 2, dp(MDEP=60, PTCH=96)),
+            ("GRAIN unison SPRAY=0 (every grain on the same read)", 1, 1, dp(SCAT=0, PTCH=64)),
+            ("GRAIN unison SPRAY=127 (full scatter)", 1, 1, dp(SCAT=127, PTCH=64)),
+            ("GRAIN +12 on PTCH, 23 ms grains", 1, 2, dp(SCAT=60, PTCH=96)),
             ("GRAIN -12 on PTCH, 186 ms grains (the distance clamp)", 1, 3,
-             dp(MDEP=90, PTCH=32)),
-            ("GRAIN sparse (MRAT 0) at 93 ms", 1, 1, dp(MDEP=64, MRAT=0, PTCH=64)),
+             dp(SCAT=90, PTCH=32)),
+            ("GRAIN sparse (DENS 0) at 93 ms", 1, 1, dp(SCAT=64, DENS=0, PTCH=64)),
             ("REVERSE size 4096 (93 ms, the line's ceiling)", 2, 1, dp()),
             ("REVERSE size 512 (stutter) at TIME=127", 2, 3, dp(TIME=127)),
-            ("REVERSE 93 ms with wobble MDEP=100 MRAT=64", 2, 1,
-             dp(MDEP=100, MRAT=64)),
+            ("REVERSE 93 ms with SCAT=100 DENS=64 (inert there)", 2, 1,
+             dp(SCAT=100, DENS=64)),
         ]
         for label, dmode, dint, params in MODES:
             if dmode > shared_modes - 1:
@@ -309,9 +300,9 @@ def main():
             first = next((i for i, (x, y) in enumerate(zip(fa, fb))
                           if x != y), -1)
             detail = f"  (first differing sample {first}, {n} of {len(fa)} differ)"
-        check("bit-identical: FREEZE (DFRZ=1) with wobble MDEP=100",
-              render(rf, dp(MDEP=100, MRAT=64), source=source)
-              == render(cf, dp(MDEP=100, MRAT=64), source=source))
+        check("bit-identical: FREEZE (DFRZ=1) with SCAT=100 (inert in CLEAN)",
+              render(rf, dp(SCAT=100, DENS=64), source=source)
+              == render(cf, dp(SCAT=100, DENS=64), source=source))
         check("bit-identical: FREEZE (DFRZ=1), defaults", a == b, detail)
 
         # ---- unknown MODE must fall back to CLEAN --------------------------
