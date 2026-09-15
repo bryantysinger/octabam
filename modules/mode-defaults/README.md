@@ -24,6 +24,17 @@ descriptor's clamp), page-2 slots with the editor's own stores (Part
 dirty flags are the editor's, already set. Registers d2-d7/a2-a6 are
 preserved as the displaced callee preserves them.
 
+## Over MIDI
+
+CC PAGE 2's cave calls `CC_MODEDEF2` / `CC_MODEDEF1` after its page-2
+write (a2 = slot2, d2 = the clamped value, d4 = track, d5 = part); the
+build resolves the two symbols to this unit's entries when it is in the
+image (ROM units are linked before the caves since 15 Sep 2026; the cave's
+ratified-bytes oracle is set aside for it, as for a bridged CC_NEXT) and
+to a stock `rts` (0x40027e1a) otherwise. Measured under the port: CC 62 =
+1 on T1's channel lands GRAIN's view in the lane, and a CC 63 in the same
+frame then sets SCAT over it.
+
 ## The table
 
 Generated per remix by `manifest.table_inc` (`Linked.include`), one entry
@@ -47,7 +58,5 @@ the knobs, on FX1 and FX2.
 
 ## Open
 
-- A MODE reached over MIDI (CC PAGE 2's cave writes the slot itself, not
-  through the editor) is not re-defaulted.
 - The Part bytes are written by the same formulas `modules/ccpage2` proves
   against the editor; the verifier reads the live lane only.

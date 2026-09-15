@@ -162,6 +162,39 @@ def main():
             ok = got == want
             print(f"  [{'ok' if ok else 'FAIL'}]   slot {slot:2d} {m.params[slot].name.decode():4s} untouched = {got} (default {want})")
             fails += not ok
+    # ---- the MIDI path: CC PAGE 2's cave calls the unit after its write --------
+    if "CC PAGE 2" in remix.modules and cases:
+        kind, k, m = cases[0]
+        t = tracks[kind]
+        slot2 = m.mode_slot - 6
+        cc = (62 if kind == "fx2" else 68) + slot2
+        want_mode = 1 if expect_view(m, 1) else (2 if expect_view(m, 2) else None)
+        if want_mode is not None:
+            chan = 0                                    # T1: MIDI_TRIG_CH1 = 0 in the fixture
+            midi = OUT / "cc.midi"
+            midi.write_text(f"40 B{chan:X} {cc:02X} {want_mode:02X}\n")
+            dump, log = OUT / f"cc_{kind}_lanes.bin", OUT / f"cc_{kind}_port.txt"
+            cmd = [str(EMU), "--image", str(image), "--card", str(card), "--set", a.set_name, "--project", a.name,
+                   "--mount", "--load-ms", "20000", "--sequencer", "--internal-clock", "--frames", "120",
+                   "--midi", str(midi), "--mem-dump", f"{LANES:#x},576={dump}"]
+            with open(log, "w") as f:
+                f.write(" ".join(cmd) + "\n"); f.flush()
+                r = subprocess.run(cmd, cwd=ROOT, stdout=f, stderr=subprocess.STDOUT)
+            if r.returncode:
+                sys.exit(f"verify_modedefaults: ot_emu exit {r.returncode} -- {log}")
+            lane = lane_bytes(dump, t)
+            got_mode = lane[PAGE2[kind] + slot2]
+            view = expect_view(m, got_mode) if got_mode == want_mode else None
+            ok = view is not None
+            print(f"  [{'ok' if ok else 'FAIL'}] {k} T{t + 1}: CC {cc} = {want_mode} over MIDI IN -> MODE {got_mode} (CC PAGE 2's cave calls the unit)")
+            fails += not ok
+            if ok:
+                for slot, val in sorted(view.defaults.items()):
+                    off = PAGE1[kind] + slot if slot < 6 else PAGE2[kind] + slot - 6
+                    got = lane[off]
+                    okv = got == val
+                    print(f"  [{'ok' if okv else 'FAIL'}]   slot {slot:2d} {m.params[slot].name.decode():4s} lane +{off:#04x} = {got:3d}  (view {val})")
+                    fails += not okv
     print(f"verify_modedefaults: {'FAIL' if fails else 'ok'} ({fails} failure(s))")
     return 1 if fails else 0
 

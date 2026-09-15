@@ -885,8 +885,60 @@ def main():
         _plan = []
     _cave_top = cave_end            # caves start past the descriptor clones
     _ovf_top = OVERFLOW_RUN
+    # ROM-placed linked units go FIRST, so a cave may name a unit's global
+    # (ccpage2's CC_MODEDEF*, resolved to mode-defaults' cc_fx2 / cc_fx1 when
+    # the module is in the image, its stub `rts` otherwise). Floating caves
+    # take the run after them. 15 Sep 2026; until then units floated after
+    # the caves, which is why no cave could reach one.
+    _all_units = [(remix_modules()[_k], _u) for _k in REMIX.modules
+                  for _u in getattr(remix_modules()[_k], "linked", ())]
+    _units = [(m, u) for m, u in _all_units if not u.dram]      # ROM-placed
+    _dram = [(m, u) for m, u in _all_units if u.dram]           # platform runtime (1e)
+    if _all_units and not _toolchain:
+        sys.exit("linked units need m68k-elf-as/ld/objcopy/nm -- run `make setup` "
+                 "(Homebrew: brew install m68k-elf-gcc)")
+    for _m, _u in _units:
+        _work = pathlib.Path("out/linked") / _m.name / _u.label
+        _work.mkdir(parents=True, exist_ok=True)
+        _src = pathlib.Path(_u.source)
+        _defs = tuple(_exports.items())
+        _inc = None
+        if _u.include is not None:
+            _inc = _work
+            (_work / "remix.inc").write_text(
+                _u.include({_k: remix_modules()[_k] for _k in REMIX.modules}))
+        if _u.reference is not None:
+            _ra, _rsha = _u.reference
+            (_work / "ref").mkdir(exist_ok=True)
+            _rb, _, _ = _link(_src, _ra, _u.cpu, _work / "ref", defsyms=_defs, incdir=_inc)
+            _got = hashlib.sha256(_rb).hexdigest()
+            if _got != _rsha:
+                sys.exit(f"{_m.key} {_u.label}: linked at the author's address "
+                         f"0x{_ra:08x} it is {len(_rb)} B sha256 {_got}, not the "
+                         f"author's {_rsha} -- source or toolchain drift; refusing")
+        _at = _u.cave_addr if _u.cave_addr is not None else (_cave_top + 0x7f) & ~0x7f
+        _b, _syms, _glob = _link(_src, _at, _u.cpu, _work, defsyms=_defs, incdir=_inc)
+        _exports.update(_glob)
+        if _at >= SAFE_CAVE_CEIL:
+            sys.exit(f"{_u.label}: linked at 0x{_at:08x}, above the safe ceiling")
+        if any(img[_at - BASE:_at - BASE + len(_b)]):
+            sys.exit(f"{_m.key} {_u.label} at 0x{_at:08x} not free")
+        _in = CLONE_BASE <= _at < cave_limit
+        if _in and _at + len(_b) > cave_limit:
+            sys.exit(f"{_u.label}: past the stock zero run")
+        img[_at - BASE:_at - BASE + len(_b)] = _b
+        _sym[_u.label] = _syms
+        print(f"  {_m.key}: {_u.label} {len(_b)} B linked at 0x{_at:08x}"
+              f"{' (pinned)' if _u.cave_addr is not None else ''}"
+              f"{' -- matches the author\'s build at 0x%08x' % _u.reference[0] if _u.reference else ''}")
+        if _in:
+            _cave_top = max(_cave_top, _at + len(_b))
+        elif OVERFLOW_RUN <= _at < OVERFLOW_RUN_END:
+            _ovf_top = max(_ovf_top, (_at + len(_b) + 3) & ~3)
+
     for _c, _b in _plan:
-        if _c.cave_addr is None:
+        _floating = _c.cave_addr is None
+        if _floating:
             _c = dataclasses.replace(_c, cave_addr=(_cave_top + 0x7f) & ~0x7f)
         # ⚠️ A CAVE MAY LIVE OUTSIDE THE CLONE WINDOW. The region from
         # CLONE_BASE to the chooser list is crowded -- six descriptor clones
@@ -937,8 +989,8 @@ def main():
             # A bridge may redefine one of this cave's defsyms (CC_NEXT):
             # the linked bytes then differ from the ratified form by exactly
             # that address, so the oracle is set aside for it and said so.
-            _bridged = [n for n, _v in _c.defsyms if n in _defsym_ovr]
-            _cdefs = tuple((n, _defsym_ovr.get(n, v)) for n, v in _c.defsyms)
+            _bridged = [n for n, _v in _c.defsyms if n in _defsym_ovr or n in _exports]
+            _cdefs = tuple((n, _defsym_ovr.get(n, _exports.get(n, v))) for n, v in _c.defsyms)
             _lb, _lsyms, _lglob = _link(
                 _c.source, _c.cave_addr, _c.cpu,
                 pathlib.Path("out/linked/caves") / re.sub(r"\W+", "_", _c.label),
@@ -947,7 +999,7 @@ def main():
             _ref = (_c.reference(_c.cave_addr) if _c.reference is not None
                     else _c.pinned if _c.emit is None else _b)
             if _bridged:
-                print(f"  {_c.label}: {', '.join(f'{n} -> 0x{_defsym_ovr[n]:08x}' for n in _bridged)}"
+                print(f"  {_c.label}: {', '.join(f'{n} -> 0x{_defsym_ovr.get(n, _exports.get(n, 0)):08x}' for n in _bridged)}"
                       f" (bridged; the ratified-bytes oracle is set aside for this cave)")
                 _ref = b""
             if _ref and _lb != _ref:
@@ -956,6 +1008,31 @@ def main():
                          f"{len(_ref)} B) -- re-pin them in the manifest deliberately")
             if not _ref and not _lb:
                 sys.exit(f"{_c.label}: source produced no bytes")
+            if _floating and _inside and _c.cave_addr + len(_lb) > cave_limit:
+                # A floating source cave that no longer fits the clone window
+                # (the ROM units come first since 15 Sep 2026) goes to the
+                # second zero run, as the label formatters do; re-linked
+                # there, since its absolute references follow the address.
+                _at2 = (_ovf_top + 3) & ~3
+                if _at2 + len(_lb) > OVERFLOW_RUN_END:
+                    sys.exit(f"{_c.label}: {len(_lb)} B fits neither the clone "
+                             f"window (from 0x{_c.cave_addr:08x}) nor the overflow run")
+                _c = dataclasses.replace(_c, cave_addr=_at2)
+                _inside = False
+                _lb, _lsyms, _lglob = _link(
+                    _c.source, _c.cave_addr, _c.cpu,
+                    pathlib.Path("out/linked/caves") / re.sub(r"\W+", "_", _c.label),
+                    sections=(".text",), defsyms=_cdefs + tuple(_exports.items()))
+                _exports.update(_lglob)
+                if _ref and _c.reference is not None:
+                    _ref = _c.reference(_c.cave_addr)
+                    if _lb != _ref:
+                        sys.exit(f"{_c.source} linked at 0x{_c.cave_addr:08x} no longer "
+                                 f"matches the bytes the manifest ratifies")
+                _ovf_top = (_c.cave_addr + len(_lb) + 3) & ~3
+                if _c.emit is not None:
+                    _, _pokes = _c.emit(_c.cave_addr)     # the dispatch repoint follows the cave
+                print(f"  {_c.label}: past the clone window, placed in the overflow run")
             if any(img[_c.cave_addr - BASE:_c.cave_addr - BASE + len(_lb)]):
                 sys.exit(f"{_c.label} not free")
             _b = _lb
@@ -1052,52 +1129,9 @@ def main():
     # author's own build output, so a source or toolchain drift from the
     # bytes they ratified fails here even though the image carries the unit
     # elsewhere. Nothing runs for a remix without linked units.
-    _all_units = [(remix_modules()[_k], _u) for _k in REMIX.modules
-                  for _u in getattr(remix_modules()[_k], "linked", ())]
-    _units = [(m, u) for m, u in _all_units if not u.dram]      # ROM-placed
-    _dram = [(m, u) for m, u in _all_units if u.dram]           # platform runtime (1e)
-    if (_all_units or _payloads) and not _toolchain:
+    if _payloads and not _toolchain:
         sys.exit("linked units need m68k-elf-as/ld/objcopy/nm -- run `make setup` "
                  "(Homebrew: brew install m68k-elf-gcc)")
-
-    for _m, _u in _units:
-        _work = pathlib.Path("out/linked") / _m.name / _u.label
-        _work.mkdir(parents=True, exist_ok=True)
-        _src = pathlib.Path(_u.source)
-        _defs = tuple(_exports.items())
-        _inc = None
-        if _u.include is not None:
-            _inc = _work
-            (_work / "remix.inc").write_text(
-                _u.include({_k: remix_modules()[_k] for _k in REMIX.modules}))
-        if _u.reference is not None:
-            _ra, _rsha = _u.reference
-            (_work / "ref").mkdir(exist_ok=True)
-            _rb, _, _ = _link(_src, _ra, _u.cpu, _work / "ref", defsyms=_defs, incdir=_inc)
-            _got = hashlib.sha256(_rb).hexdigest()
-            if _got != _rsha:
-                sys.exit(f"{_m.key} {_u.label}: linked at the author's address "
-                         f"0x{_ra:08x} it is {len(_rb)} B sha256 {_got}, not the "
-                         f"author's {_rsha} -- source or toolchain drift; refusing")
-        _at = _u.cave_addr if _u.cave_addr is not None else (_cave_top + 0x7f) & ~0x7f
-        _b, _syms, _glob = _link(_src, _at, _u.cpu, _work, defsyms=_defs, incdir=_inc)
-        _exports.update(_glob)
-        if _at >= SAFE_CAVE_CEIL:
-            sys.exit(f"{_u.label}: linked at 0x{_at:08x}, above the safe ceiling")
-        if any(img[_at - BASE:_at - BASE + len(_b)]):
-            sys.exit(f"{_m.key} {_u.label} at 0x{_at:08x} not free")
-        _in = CLONE_BASE <= _at < cave_limit
-        if _in and _at + len(_b) > cave_limit:
-            sys.exit(f"{_u.label}: past the stock zero run")
-        img[_at - BASE:_at - BASE + len(_b)] = _b
-        _sym[_u.label] = _syms
-        print(f"  {_m.key}: {_u.label} {len(_b)} B linked at 0x{_at:08x}"
-              f"{' (pinned)' if _u.cave_addr is not None else ''}"
-              f"{' -- matches the author\'s build at 0x%08x' % _u.reference[0] if _u.reference else ''}")
-        if _in:
-            _cave_top = max(_cave_top, _at + len(_b))
-        elif OVERFLOW_RUN <= _at < OVERFLOW_RUN_END:
-            _ovf_top = max(_ovf_top, (_at + len(_b) + 3) & ~3)
 
     # ==== 1e. the platform runtime: DRAM units + other payloads, one loader ==
     # Every `dram=True` unit in the remix is linked as ONE image at the
