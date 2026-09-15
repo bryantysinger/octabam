@@ -197,7 +197,7 @@ operator arrives at this mode.
 | | the remixer | the unit |
 |---|---|---|
 | `names` | the UNIT pane's rows follow the current MODE (`Module.knob_map_in`); `send_probe --set SCAT=40` resolves the alias | `tools/build/mode_names.py` emits a MODE formatter that rewrites the descriptor's name fields before printing its own word |
-| `defaults` | applied the moment MODE changes | not live on the unit; `stamp-defaults` writes them |
+| `defaults` | applied the moment MODE changes | `modules/mode-defaults` (in the rig): the FX1 and FX2 page-2 editors are detoured, and a MODE turned on the panel writes the view -- page 1 through the stock page-1 writer, page 2 with the editor's own stores; without the module, `stamp-defaults` writes them. A MODE reached over CC PAGE 2 is not re-defaulted |
 
 The unit half needs no new hook: a descriptor carries its twelve parameter
 names as 12 × 6 bytes at `E+0x4e`, the clones are writable RAM, and every
@@ -399,6 +399,12 @@ DRAM unless the code has to run before the loader, or you are matching an
 author's ROM layout byte for byte. A module whose DRAM is its own (a
 `Runtime` with its own window) declares the pages it takes with
 `ArenaReserve` so the build stacks everyone's reservations.
+
+`Linked.include=fn` gives a unit data that depends on the REMIX: the build
+calls `fn(modules)` (the remix's modules by key), writes the text it
+returns beside the unit as `remix.inc`, and the source reaches it with
+`.include "remix.inc"` (`modules/mode-defaults`: the view table of every
+module in the image).
 
 A **`Detour`** rewrites one stock instruction to reach a symbol. `expect`
 is the stock bytes at `site` (whole instructions), asserted before anything
