@@ -97,7 +97,6 @@ def render(samples, slot="fx1", guard=False, **kw):
     (Claims.fx1_only) -- the gate below proves it. Until then
     every gate here rendered on alloc 1 and would now read dry."""
     kw.setdefault("MODE", LP)
-    kw.setdefault("TAME", 0)   # the linear filters are what the gates predict; TAME's own gates set it
     src = TMP / "fs_in.raw"
     src.write_bytes(b"".join(struct.pack("<i", m) for m in samples))
     out = TMP / "fs_out.raw"
@@ -322,23 +321,6 @@ _y = render(_wn, FREQ=64, RES=100, LDP=127, LSP=127, MODE=0)[0]
 _lr = rms_db(_y); _rail = sum(1 for v in _y[N // 2:] if abs(v) >= 0x7ffff0) / (N - N // 2)
 check("LADR FREQ 64 RES 100 under LDP 127 LSP 127: bounded (no rail, < RES 0 + 6 dB)",
       _rail == 0 and _lr < _l0 + 6, f"{_lr:.1f} dBFS, rail {_rail*100:.1f}%")
-
-# ---- 6i. TAME: the filters' state saturation ------------------------------
-# BP at FREQ 70 RES 110 on a tone at fc (~1.2 kHz, Q ~ 12) is the "shrill
-# peak"; TAME 127 saturates the SVF states: > 3 dB off the peak, a -34 dBFS
-# signal at unity.
-_fc70 = 60 * 250 ** (70 / 128)
-_pk0 = rms_db(render(tone(_fc70, 0.05), FREQ=70, RES=110, MODE=2)[0])
-_pk1 = rms_db(render(tone(_fc70, 0.05), FREQ=70, RES=110, MODE=2, TAME=127)[0])
-check("TAME 127 takes the BP peak at fc (FREQ 70, RES 110) down by > 3 dB", _pk0 - _pk1 > 3, f"{_pk0:.1f} -> {_pk1:.1f} dBFS")
-_q0 = rms_db(render(tone(1000, 0.02), FREQ=127, RES=0, TAME=0)[0])
-_q1 = rms_db(render(tone(1000, 0.02), FREQ=127, RES=0, TAME=127)[0])
-check("TAME 127 leaves a -34 dBFS tone within 0.5 dB (small signals at unity)", abs(_q0 - _q1) < 0.5, f"{_q0:.2f} vs {_q1:.2f} dBFS")
-_t0 = render(tone(1000, 0.4), FREQ=100, RES=64, TAME=0)[0]
-_t1 = render(tone(1000, 0.4), FREQ=100, RES=64, TAME=MOD.params[K["TAME"]].default)[0]
-check("TAME 0 and TAME at its default (50) render differently on a resonant tone", _t0 != _t1)
-_L, _R = render(ramp, MODE=0, TAME=127)
-check("the stamp with any TAME is still the bit-exact passthrough", _L == ramp and _R == ramp)
 
 # ---- 7. every knob at its extremes renders -----------------------------------
 for name in K:

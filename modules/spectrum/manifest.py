@@ -14,8 +14,7 @@ decided from the allocator base at init). MODE selects the filter:
     across A E I O U by FREQ, RES narrowing the bands.
 
 ENV (a block-peak follower, instant attack, LSP = release) and LDP (an LFO,
-LSP = speed) both move the cutoff; TAME is the filter's own saturation;
-WDTH is mid/side width on the output.
+LSP = speed) both move the cutoff; WDTH is mid/side width on the output.
 
 Every mpy is `mpy x0,y1`, the audited-signed form; every clip is the store
 limiter.
@@ -90,8 +89,7 @@ MODULE = Module(
         Param(b"WDTH", 64, 128, active=True, formatter=_BIPOL,
               doc="stereo width of the output, drawn -64..+63: 0 untouched, -64 mono, +63 double sides"),
         # ---- page 2: knob / select / knob / select / knob / select ----------
-        Param(b"TAME", 50, active=True, formatter=_PLAIN,
-              doc="the filter's own saturation (the SEM/Moog tanh), every mode: 0 off; up tames resonance"),
+        _BLANK,                 # TAME (the filters' state saturation) lived here 14-15 Sep 2026; Sam: "tame should be gone"
         Param(b"MODE", 0, 5, active=True, formatter=_STEP,
               labels=("LADR", "LP", "BP", "ISO", "VOWL"),
               doc="LADR the Moog (first: the best one); LP/BP the SEM; ISO an isolator (Capacitor2); VOWL"),

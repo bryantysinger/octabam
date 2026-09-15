@@ -8,7 +8,7 @@ BusVerb + BusDelay on one aux bus (pedals on the send: the send passes both, eac
 - **BusDelay** — a multi-mode delay (CLEAN / pitched GRAIN cloud / REVERSE, tape wow, freeze) serving all eight tracks. Hosted on one of tracks 1–4. TIME reads as a tempo division (TEMPO SYNC); up to 739 ms (1/4 and 1/2T at 121 BPM) since the 32K lines, 15 Sep 2026, unflashed.
 - **Send** — the FX2 effect every other track runs: one SEND knob into the bus. The fallback for any unassigned track.
 - **DELAY** (stock) — the stock Echo Freeze delay row, unchanged; it runs on the ColdFire and costs the DSP nothing.
-- **Spectrum** (FX1, on FILTER's id) — a filter pedal: SEM LP/BP/HP, Airwindows Capacitor2, formants, the Moog ladder; ENV and LFO onto the cutoff; width. Knobs FREQ RES ENV LDP LSP WDTH / TAME MODE.
+- **Spectrum** (FX1, on FILTER's id) — a filter pedal: SEM LP/BP/HP, Airwindows Capacitor2, formants, the Moog ladder; ENV and LFO onto the cutoff; width. Knobs FREQ RES ENV LDP LSP WDTH / MODE.
 - **Character** (FX1, on LO-FI's id) — crush, fold/ring, saturation, compressor, width; the bus return (RET) on track 8. Knobs DRV FOLD TXTR COMP RET TONE / MIX SAT WDTH.
 - **Modulation** (FX1, on CHORUS's id) — chorus / flanger / comb. Knobs RATE DPTH FDBK MIX / DLY MODE TONE SHPE WID.
 - **TEMPO SYNC** (octabam) — two ColdFire caves: the held MIDI note reaches BusDelay, and BusDelay's TIME draws as a division (1/8, 1/4 …) instead of milliseconds; the tempo itself comes from stock's record word. On the unit since 24 Aug 2026; the note-only cave since image 24 (15 Sep 2026).
