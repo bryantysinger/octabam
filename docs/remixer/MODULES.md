@@ -212,7 +212,7 @@ REVRS rather than MODE (Character's SAT and BusVerb's MODE declare
 `mode_slot` for this alone). Every other select keeps its name and the tick
 widget flashes the word on a turn — on image 26 SIZE / FRZE / SHFT / RATE
 reading `93MS` / `RUN` / `+12` / `1x` did not say what the knob was (Sam,
-15 Sep 2026).
+15 Sep 2026; image 27 with the names back: "that's better").
 
 Two limits, inferred: the rename lands on the draw after the one that
 formats MODE if the panel draws names first (turning the encoder redraws);
