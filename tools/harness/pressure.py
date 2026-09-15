@@ -152,8 +152,8 @@ DEAR = {
     "CHARACTER": {"DRV": 127, "FOLD": 127, "CRSH": 127, "COMP": 127, "MIX": 127, "RING": 127, "WDTH": 127, "SRR": 3},
     "SPECTRUM": {"RES": 127, "MODE": 4, "ROUT": 3, "SRC": 2, "DPTH": 127},   # DRV retired 13 Sep 2026
     "MODULATION": {"MIX": 127, "FDBK": 127, "DPTH": 127, "MODE": 2},   # MODE 2 = COMB since 13 Sep 2026 (PHSR/TREM/VIB/PAN retired); STGS gone
-    "DELAY SERVER": {"SEND": 100, "FDBK": 100, "MODE": 1, "MDEP": 127, "MRAT": 127, "MIX": 127, "FRZE": 0},
-    "REVERB SERVER": {"SEND": 100, "MODE": 2, "SHMR": 127, "DIFF": 127, "GATE": 0, "MIX": 127, "MOD": 127},
+    "DELAY SERVER": {"SEND": 100, "FDBK": 100, "MODE": 1, "MDEP": 127, "MRAT": 127, "WET": 127, "FRZE": 0},
+    "REVERB SERVER": {"SEND": 100, "MODE": 2, "SHMR": 127, "DIFF": 127, "GATE": 0, "WET": 127, "MOD": 127},
     "SEND": {"SEND": 100},
 }
 LETTER_TRACKS = {0: (5, 6, 7, 8), 1: (1, 2, 3, 4)}

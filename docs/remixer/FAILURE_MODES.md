@@ -97,8 +97,12 @@ plain numbers. The value published was the knob's (the port: CC 40 on a
 host moves record halfword 12 and the host's own send registers).
 
 **Fix.** Registered on slot 1. The knob is `SEND` on every track since the
-same day (it was `AUX` on SEND, BusDelay and BusVerb alike; `MIX` on the
-engines is the stage's dry/wet on the bus).
+same day (it was `AUX` on SEND, BusDelay and BusVerb alike), and the
+engines' `MIX` is `WET` and add-only: the send passes each stage at unity
+and WET adds the effect. As a crossfade the reverb's MIX faded the delay
+out and both at 0 returned the dry send alone (measured on an impulse,
+15 Sep 2026: the four corners of the two knobs gave tail-only / tail
+without the repeat delay / repeats only / the dry once).
 
 ## A generated project shows as modified and RELOAD refuses ✅ measured
 

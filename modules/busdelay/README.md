@@ -18,7 +18,7 @@ label comes from its formatter cave.
 
 | | CLEAN | GRAIN | REVERSE |
 |---|---|---|---|
-| page 1: SEND · TIME · FDBK · TONE · PING · MIX | the same everywhere | | |
+| page 1: SEND · TIME · FDBK · TONE · PING · WET | the same everywhere | | |
 | MODE (p6) | CLEAN | GRAIN | REVRS |
 | MDEP (p7) | wow depth | SCAT: how far apart the grains read | wow depth |
 | MRAT (p8) | wow rate, 64 = 1× | DENS: density, level-flat | wow rate |
@@ -41,7 +41,7 @@ DEV hatch (`make render-delay`) places the delay out of region in payload A.
 ## Measured
 
 - CLEAN and REVERSE bit-identical across the `verify_delay` cases (defaults,
-  PING 0/127, TIME 0/127, FDBK+TONE, split, MIX 0, wow, the unknown-mode
+  PING 0/127, TIME 0/127, FDBK+TONE, split, WET 0, wow, the unknown-mode
   fallback); `verify-bus` 21/21.
 - GRAIN DC gate (0.25 FS DC, full density, unison): p-p 0 across scatter
   0/64/127 and every size (four windows a quarter period apart sum to

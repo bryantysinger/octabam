@@ -755,11 +755,10 @@ snapz:
         sub     x0,a
         move    a,x:(r7+$37)            ; 1 - PING
 
-        move    x:(r6+$5),x0            ; MIX, slot 5
-        move    x0,x:(r7+$3c)           ; MIX
-        move    #>$7fffff,a
-        sub     x0,a
-        move    a,x:(r7+$3e)            ; 1 - MIX
+        move    x:(r6+$5),x0            ; WET, slot 5
+        move    x0,x:(r7+$3c)           ; WET (r7+$3e held 1-MIX until 15 Sep
+                                        ; 2026: the stage adds, it no longer
+                                        ; crossfades)
 
 ; ---- IN: this track's OWN send level into the delay (v3 stage 1) ---------
         move    x:(r6),a                ; AUX, slot 0 (one-aux rig, 7 Sep 2026:
@@ -1968,29 +1967,29 @@ rskipw:
 
 ; ---- own track: DRY AT UNITY + WET ----------------------
 ; ---- DRIVE MAKEUP: out = wet * (1 + d/2), OUTPUT STAGE ONLY --
-; ---- OUTPUT STAGE (one-aux rig, 7 Sep 2026) --------------------------------
-; The stage output is out = in*(1-MIX) + wet*MIX per channel, where `in` is
-; this sample's chain input x_in ($7d: the auto-gained aux, this host's AUX
-; included) and wet is the final (drive, x1.5, ping-shelved) tap. It is
-; PUBLISHED stereo to the shared DELAY OUTPUT buffer (the return station
-; reads it two buffers back) and its MONO average goes to the CHAIN buffer at
-; $901 at unity -- the reverb's input while this stage is live. The host
-; prints wet*MIX under its dry, or nothing while a return is live (RETD).
-; (The IN-keyed wet makeup and the -VRB send went with their knobs.) Every
-; mpy is an audited-signed order: y0,x0 or x0,y1.
-        move    x:(r7+$34),y0           ; x_in, this sample's chain input
-        move    x:(r7+$3e),x0           ; 1 - MIX
-        mpy     y0,x0,b                 ; in * (1 - MIX)
-        move    b,x:(r7+$25)            ; the passthrough term, both channels
+; ---- OUTPUT STAGE (one-aux rig, 7 Sep 2026; add-only 15 Sep 2026) ----------
+; The stage output is out = in + wet*WET per channel, where `in` is this
+; sample's chain input x_in ($7d: the auto-gained aux, this host's SEND
+; included) and wet is the final (drive, x1.5, ping-shelved) tap: a pedal on
+; the send, the send passing through it to the master at unity and WET
+; adding the repeats (until 15 Sep 2026 it crossfaded, in*(1-MIX) +
+; wet*MIX, and the reverb's MIX then faded the delay out). It is PUBLISHED
+; stereo to the shared DELAY OUTPUT buffer (the return station reads it two
+; buffers back) and its MONO average goes to the CHAIN buffer at $901 at
+; unity -- the reverb's input while this stage is live. The host prints
+; wet*WET under its dry, or nothing while a return is live (RETD). Every mpy
+; is an audited-signed order: y0,x0 or x0,y1.
+        move    x:(r7+$34),b            ; x_in, this sample's chain input
+        move    b,x:(r7+$25)            ; the passthrough term, both channels, at unity
         move    x:(r7+$32),x0           ; wet L = fL
         move    x0,a                    ; (was wet * (1 + d/2) with d = 0)
         move    x0,b
         asr     #$1,b,b                 ; wet/2 -> x1.5 both channels (R58)
         add     b,a
         move    a,x0                    ; wet L, final
-        move    x:(r7+$3c),y1           ; MIX
-        mpy     x0,y1,a                 ; wet * MIX
-        move    a,x0                    ; x0 = wet*MIX: what the host prints
+        move    x:(r7+$3c),y1           ; WET
+        mpy     x0,y1,a                 ; wet * WET
+        move    a,x0                    ; x0 = wet*WET: what the host prints
         move    x:(r7+$25),b
         add     x0,b                    ; b = stage output L
         move    b,x:(r7+$26)            ; parked for the chain's mono average
@@ -2002,7 +2001,7 @@ rskipw:
         asl     #$1,a,a
         move    x:(r0),b                ; dry L, still in place
         add     b,a                     ; + dry at unity (v5)
-        move    a,x:(r0)                ; L in place -- dry + wet*MIX
+        move    a,x:(r0)                ; L in place -- dry + wet*WET
         move    x:(r7+$33),x0           ; wet R = fR
         move    x0,a
         move    x0,b
@@ -2015,9 +2014,9 @@ rskipw:
         asr     #$1,b,b
         add     b,a                     ; + wet*PING/4 -> R shelf 0.75*PING
         move    a,x0                    ; wet R, final
-        move    x:(r7+$3c),y1           ; MIX
-        mpy     x0,y1,a                 ; wet * MIX
-        move    a,x0                    ; x0 = wet*MIX
+        move    x:(r7+$3c),y1           ; WET
+        mpy     x0,y1,a                 ; wet * WET
+        move    a,x0                    ; x0 = wet*WET
         move    x:(r7+$25),b
         add     x0,b                    ; b = stage output R
         move    x:(r7+$1b),a
@@ -2029,7 +2028,7 @@ rskipw:
         asl     #$1,a,a
         move    x:(r0+n0),x0            ; dry R
         add     x0,a
-        move    a,x:(r0+n0)             ; R in place -- dry + wet*MIX
+        move    a,x:(r0+n0)             ; R in place -- dry + wet*WET
 ; ---- the CHAIN buffer: mono average of the stage output, at unity --------
         move    x:(r7+$26),a            ; out L
         add     b,a                     ; + out R (b still holds it)

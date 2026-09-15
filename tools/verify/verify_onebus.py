@@ -13,10 +13,14 @@ The image is the rig remix (bamsep26) as SPEC -- the stations must be in it.
                delay's output
   reverb only  no delay: the reverb reads the aux accumulator directly
   neither      no engine: the return is digital silence (not garbage)
-  passthrough  delay MIX 0 with both engines == reverb only, two blocks
+  passthrough  delay WET 0 with both engines == reverb only, two blocks
                later (the chain buffer's own latency), within -60 dB
-  reverb MIX 0 reverb only, MIX 0: the return is the aux itself (x0.999)
-  hosts print  no return station: T5 prints wet*MIX under its dry
+  reverb WET 0 reverb only, WET 0: the return is the aux itself, at unity
+  pedal chain  both engines at WET 0: the return is the aux itself (the
+               send passes both pedals); delay WET 127 / reverb WET 0: the
+               return is the delay's output (the reverb adds only, it takes
+               nothing out -- a crossfade until 15 Sep 2026)
+  hosts print  no return station: T5 prints wet*WET under its dry
   T8 refused   a SEND at core-0 position 3 with AUX 127 changes nothing
   T4 sends     the mirror position on core 1 DOES send (payload gate)
   no station   a station with the old send bytes (slots 4/5 = 127) stored
@@ -214,18 +218,18 @@ def main():
     check("reverb-only return carries audio", rms_db(st_r[2][0]) > -40)
     check("both != reverb only (the reverb hears the delay)", st[2] != st_r[2])
 
-    print("\n== the passthrough: delay MIX 0 == no delay, two blocks later ==")
+    print("\n== the passthrough: delay WET 0 == no delay, two blocks later ==")
     # The chain buffer costs two blocks, and the reverb is time-variant even
     # at MOD 0 (a fixed-depth allpass modulator), so the reference is NOT the
     # reverb-only output shifted -- it is the reverb-only run fed the SAME
     # tone two blocks later, which the chain then reproduces sample for
-    # sample. What is left is the delay's (1 - MIX) at MIX 0 = 0.99999988
-    # and one auto-gain table against the other: rounding, -100 dB or so.
-    pt = [R(), S6(), RET(), D(MIX=0), S2()]
+    # sample. What is left is one auto-gain table against the other:
+    # rounding, -100 dB or so.
+    pt = [R(), S6(), RET(), D(WET=0), S2()]
     st_p = run(mems, pt, tag="pass")
     st_r30 = run(mems, ronly, tag="ronly30", tone="tone30.raw")
     lag, db = best_lag(st_r30[2][0], st_p[2][0], lo=0, hi=2)
-    check(f"delay MIX 0 return == reverb-only fed the tone 2 blocks later (lag {lag})",
+    check(f"delay WET 0 return == reverb-only fed the tone 2 blocks later (lag {lag})",
           lag == 0 and db < -80, f"residual {db:.1f} dB")
 
     print("\n== last live stage ==")
@@ -240,25 +244,41 @@ def main():
     check("no engine: the return is digital silence", peak(st_n[1][0] + st_n[1][1]) == 0,
           f"peak {peak(st_n[1][0] + st_n[1][1])}")
 
-    print("\n== reverb MIX 0: the stage passes the aux through ==")
-    rm0 = [R(MIX=0), S6(), RET(), S2()]
-    st_m = run(mems, rm0, tag="rmix0")
+    print("\n== reverb WET 0: the stage passes the aux through ==")
+    rm0 = [R(WET=0), S6(), RET(), S2()]
+    st_m = run(mems, rm0, tag="rwet0")
     # the aux is the two senders' mono sum at 100/128, /sqrt(2) auto-gain
     src = struct.unpack(f"<{BLOCKS * FRAMES}i", (SCRATCH / "tone.raw").read_bytes())[PAD:]
     expect = 2 * (100 / 128) / math.sqrt(2)          # two senders, 1/sqrt(N)
-    lag, db = best_lag(list(src), st_m[2][0], scale=expect * (127 / 128) * (127 / 128) * 0.9999)
-    check(f"reverb MIX 0 return == the aux itself (x{expect:.3f}, RET 127/128), lag {lag}",
+    scale = expect * (127 / 128)                     # RET 127/128 (fitted 1.0962, residual -109 dB)
+    lag, db = best_lag(list(src), st_m[2][0], scale=scale)
+    check(f"reverb WET 0 return == the aux itself (x{expect:.3f}, RET 127/128), lag {lag}",
+          lag == 60 and db < -80, f"residual {db:.1f} dB")
+
+    print("\n== the pedal chain: the send passes both pedals, each WET adds ==")
+    both0 = [R(WET=0), S6(), RET(), D(WET=0), S2()]
+    st_b0 = run(mems, both0, tag="both0")
+    lag, db = best_lag(list(src), st_b0[2][0], scale=scale, lo=0, hi=96)
+    check(f"delay WET 0 + reverb WET 0: the return is the aux itself through both stages (lag {lag}: two blocks more)",
+          lag == 90 and db < -80, f"residual {db:.1f} dB")
+    donly_ret = [S6(), RET(), D(), S2()]
+    st_dr = run(mems, donly_ret, tag="donlyret")
+    d_r0 = [R(WET=0), S6(), RET(), D(), S2()]
+    st_dr0 = run(mems, d_r0, tag="d_rwet0")
+    lag, db = best_lag(st_dr[1][0], st_dr0[2][0], lo=0, hi=64)
+    check(f"delay WET 127 + reverb WET 0: the return is the delay-only return (the reverb takes nothing out; lag {lag})",
           db < -40, f"residual {db:.1f} dB")
+    check("delay WET 127 + reverb WET 127 != delay only (the reverb adds)", st[2] != st_dr[1])
 
     print("\n== the hosts print when nobody returns ==")
     nr = [R(), S6(), D(), S2()]
     st_h = run(mems, nr, tag="noret")
     check("T5 prints the reverb (no station)", rms_db(st_h[0][0]) > -45, f"rms {rms_db(st_h[0][0]):.1f} dB")
     check("T1 prints the delay (no station)", rms_db(st_h[2][0]) > -40, f"rms {rms_db(st_h[2][0]):.1f} dB")
-    nr0 = [R(MIX=0), S6(), D(MIX=0), S2()]
+    nr0 = [R(WET=0), S6(), D(WET=0), S2()]
     st_h0 = run(mems, nr0, tag="noret0")
-    check("T5 with MIX 0 prints nothing but its (silent) dry", peak(st_h0[0][0]) == 0)
-    check("T1 with MIX 0 prints nothing but its (silent) dry", peak(st_h0[2][0]) == 0)
+    check("T5 with WET 0 prints nothing but its (silent) dry", peak(st_h0[0][0]) == 0)
+    check("T1 with WET 0 prints nothing but its (silent) dry", peak(st_h0[2][0]) == 0)
 
     print("\n== the send is refused on track 8, and only there ==")
     t8 = [R(), S6(), RET(), Inst("SEND", 0, 3, fed=True, SEND=127), D(), S2()]

@@ -685,7 +685,7 @@ def stress_script(mods, layout):
     at(20, "delay FDBK 127 TONE 0", [d("FDBK", 127), d("TONE", 0)])
     for i, v in enumerate(list(range(0, 128, 16)) + list(range(127, -1, -16))):
         at(1.0 if i else 15, "delay TIME sweep", [d("TIME", v)])
-    at(10, "delay PING 127 MIX 127", [d("PING", 127), d("MIX", 127)])
+    at(10, "delay PING 127 WET 127", [d("PING", 127), d("WET", 127)])
     # the reverb host (T5)
     r = lambda n, v: (5, _cc_for(mods, layout, 5, "fx2", n), v)
     at(10, "reverb TIME/MOD/SIZE 127", [r("TIME", 127), r("MOD", 127), r("SIZE", 127)])
