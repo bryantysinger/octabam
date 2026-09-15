@@ -41,8 +41,9 @@ programme this grew out of, with its open items.
   OCTABAM88 bank B / `bamsep26`, ~80 s. It found the T1 page-2 defect's
   cause (the tempo cave over the FX1 page 2 of every bus host, PR #271)
   — fixed; image 24 (15 Sep 2026) confirmed the sends into the delay on
-  the unit, image 25 (SEND on every track, the WET pedal chain, PR #277)
-  is what the rig runs now.
+  the unit, image 26 (SEND on every track, the WET pedal chain, PR #277;
+  a MODE turned on the panel re-defaults its knobs, PR #281) is what the
+  rig runs now.
 
 ## The ground
 

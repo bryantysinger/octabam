@@ -40,9 +40,13 @@ at the fixture's bytes. The editor takes encoder ticks of 256 units
 against a per-slot step (`0x46c7dede + slot2*20 + 8`; 0x10e for a 3-way
 select under the port), so two ticks move a select by one.
 
-## Not measured / open
+## On the unit
 
-- The panel redraw and the feel on the unit (unflashed).
+Image 26 (15 Sep 2026, Sam's MKII): a MODE turn on the panel re-defaults
+the knobs, on FX1 and FX2.
+
+## Open
+
 - A MODE reached over MIDI (CC PAGE 2's cave writes the slot itself, not
   through the editor) is not re-defaulted.
 - The Part bytes are written by the same formulas `modules/ccpage2` proves
