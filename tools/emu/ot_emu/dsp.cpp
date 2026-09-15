@@ -942,6 +942,24 @@ namespace ot
 	uint32_t DspPair::bootLength(const int _core) const { return m_cores[_core & 1]->boot->getLength(); }
 	uint32_t DspPair::bootAddress(const int _core) const { return m_cores[_core & 1]->boot->getInitialPC(); }
 	const std::vector<int32_t>& DspPair::audioOut(const int _core) const { return m_cores[_core & 1]->capture; }
+	void DspPair::dirty(uint32_t _seed)
+	{
+		uint32_t x = _seed ? _seed : 0x2545f491;
+		auto next = [&x]
+		{
+			x ^= x << 13; x ^= x >> 17; x ^= x << 5;
+			return x & 0xffffff;
+		};
+		for(auto& c : m_cores)
+			for(dsp56k::TWord ad = 0; ad < g_shareLo; ++ad)
+			{
+				c->mem->set(dsp56k::MemArea_X, ad, next());
+				c->mem->set(dsp56k::MemArea_Y, ad, next());
+			}
+		for(auto& w : m_shared)
+			w = next();
+	}
+
 	void DspPair::setAudioInput(std::vector<int32_t> _interleaved, const uint32_t _channels) { m_input = std::move(_interleaved); m_inputChannels = _channels; }
 	uint64_t DspPair::txAtFirstCommand(const int _core) const { return m_cores[_core & 1]->txAtFirstCmd; }
 	uint64_t DspPair::rxAtFirstCommand(const int _core) const { return m_cores[_core & 1]->rxAtFirstCmd; }

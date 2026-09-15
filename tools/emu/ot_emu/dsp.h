@@ -161,6 +161,13 @@ namespace ot
 		// -- or the built-in tones (slot k = a sine at 500 x (k+1) Hz, -20 dBFS).
 		void setAudioInput(std::vector<int32_t> _interleaved, uint32_t _channels);
 		void setAudioTones(const bool _on) { m_tones = _on; }
+		// Hardware never zeroes DSP RAM: fill both cores' X and Y (and the
+		// shared window) with a xorshift stream before the boot ROM runs, as
+		// dsp_host -dirty does for Y. The boot ROM and the loader write what
+		// they own; everything else stays garbage until an effect's init
+		// clears it (verify_dirtystate, FAILURE_MODES "The master compressor
+		// collapses one channel").
+		void dirty(uint32_t _seed);
 		// O14: feed the input from the DSP's first receive frame instead of the
 		// first 0x8c. The default (from the first command) arms a step-1
 		// recorder against a DSP->host pipeline still holding pre-start silence,
