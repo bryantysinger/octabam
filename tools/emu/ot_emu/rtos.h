@@ -103,6 +103,7 @@ namespace ot
 	inline constexpr uint32_t g_intc0 = 0xfc048000, g_intc1 = 0xfc04c000;
 	inline constexpr uint32_t g_pit0  = 0xfc080000, g_pit1  = 0xfc084000;
 	inline constexpr uint32_t g_dspi  = 0xfc05c000;
+	inline constexpr uint32_t g_uart0 = 0xfc060000;		// MIDI IN (KERNEL.md: vector 0x5a, INTC0 source 26, RX ISR 0x400106ec)
 	inline constexpr uint32_t g_uartA = 0xfc064000, g_uartB = 0xfc068000;
 
 	// The tasks, as MEASURED under the real scheduler (route A's
@@ -243,6 +244,10 @@ namespace ot
 		// master -- the frame handler takes the external-clock path and the
 		// countdown never moves: 400 frames, zero ticks, no trig.
 		uint8_t internalClock();
+		// MIDI IN: bytes onto UART0's receive queue, as the DIN input delivers them.
+		void midiIn(const std::vector<uint8_t>& _bytes) { m_uart60.receive(_bytes); }
+		size_t midiPending() const { return m_uart60.pending(); }
+		uint32_t midiImr() const { return m_uart60.imr(); }
 
 		// Start the sequencer through the real tasks, the "M5 detour" §5
 		// allows for M6c: FW_TRANSPORT(0)'s start case only sets state and
@@ -430,7 +435,7 @@ namespace ot
 		Pit m_pit0, m_pit1;
 		Edma m_edma;
 		Intc m_intc0, m_intc1;
-		Uart m_uart64{"UART@fc064000", g_uartA}, m_uart68{"UART@fc068000", g_uartB};
+		Uart m_uart60{"UART@fc060000", g_uart0}, m_uart64{"UART@fc064000", g_uartA}, m_uart68{"UART@fc068000", g_uartB};
 		Dspi m_dspi;
 		std::array<int, 16> m_kickSel = {};		// which core each channel was kicked against
 		uint64_t m_hostBlocksOut = 0, m_hostBlocksIn = 0, m_hostWordsOut = 0, m_hostWordsIn = 0, m_hostWordsShort = 0;

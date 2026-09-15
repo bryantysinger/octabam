@@ -12,7 +12,9 @@
    (reached via a stub) and writes no page-2 byte.
 
 Single-core emu: this proves the WRITE and the DECISION. The CC->queue->main
--task->DSP path only proves on hardware (docs/firmware/midi_re_cc.md).
+-task->DSP path runs under the ColdFire port: verify_set sends CC 68 over
+UART0 and reads the FX1 page-2 lane and the DSP record back (15 Sep 2026;
+hardware-confirmed on image 96/97 before that).
 """
 import importlib.util
 import pathlib

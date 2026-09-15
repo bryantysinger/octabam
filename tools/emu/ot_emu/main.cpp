@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 #include <algorithm>
@@ -101,6 +102,7 @@ int main(int _argc, char** _argv)
 	std::string pokeEarly;		// the same, written before --call (the current-track byte 0x80000000 an editor call reads)
 	std::string callSpec;		// "addr[,arg,...]": a firmware routine called AS MAIN after the load (a menu action the port has no panel for -- Part Reload, 14 Sep 2026)
 	int callAt = -1;			// with --sequencer: make that call this many frames AFTER the transport start instead (a panel edit while playing: the transport start re-applies the part over the live lane, so an edit made before it is gone)
+	std::string midiFile;		// with --sequencer: MIDI IN bytes onto UART0, one event per line: "<frames after the transport start> <hex byte>..." (e.g. "20 B0 28 7F" = CC 40 to 127 on channel 1) or "pre <hex byte>..." before the transport start ("pre C0 10" = program change 16 while stopped)
 	int mainLevel = -1;			// O9b: post sys command 4 (SET MAIN LEVEL) with this level after the load; -1 = don't (the emulated load never does, and every voice then renders at gain zero)
 	std::string memDump;		// O10.21: "addr,len=path[;...]" -- ColdFire memory ranges, raw bytes, to FILE at the very end (peeks only support one word, pre-sequencer; this is a range, post-run)
 	std::string cardOut;		// the card image as the firmware left it, to FILE at the very end (the load's WRITEs: emu_card.extract_image reads it back)
@@ -170,6 +172,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--poke-early" && i + 1 < _argc)	pokeEarly = _argv[++i];
 		else if(a == "--call" && i + 1 < _argc)		callSpec = _argv[++i];
 		else if(a == "--call-at" && i + 1 < _argc)	callAt = std::atoi(_argv[++i]);
+		else if(a == "--midi" && i + 1 < _argc)		midiFile = _argv[++i];
 		else if(a == "--frame-timer")				frameTimer = true;
 		else
 		{
@@ -638,6 +641,39 @@ int main(int _argc, char** _argv)
 				// exchanging frames since boot. --pre-roll runs the frame
 				// engine N frames before play; the default (0) keeps every
 				// earlier report bit-identical.
+				// --midi: "pre <hex bytes>" lines go in here, with the frame
+				// engine running and the transport stopped (a program change
+				// while stopped switches the bank and pattern at once; while
+				// playing it waits for the pattern's end), then main gets
+				// 200 ms to digest them. Numbered lines follow below.
+				struct MidiEvent { bool pre; uint64_t frame; std::vector<uint8_t> bytes; };
+				std::vector<MidiEvent> midiEvents;
+				if(!midiFile.empty())
+				{
+					std::ifstream mf(midiFile);
+					std::string line;
+					while(std::getline(mf, line))
+					{
+						if(line.empty() || line[0] == '#')
+							continue;
+						std::istringstream is(line);
+						std::string when; is >> when;
+						MidiEvent ev{when == "pre", when == "pre" ? 0 : std::strtoull(when.c_str(), nullptr, 10), {}};
+						std::string hex;
+						while(is >> hex)
+							ev.bytes.push_back(static_cast<uint8_t>(std::strtoul(hex.c_str(), nullptr, 16)));
+						midiEvents.push_back(std::move(ev));
+					}
+					size_t pre = 0, nbytes = 0;
+					for(const auto& ev : midiEvents) { pre += ev.pre; nbytes += ev.bytes.size(); }
+					std::printf("midi in    : %s, %zu event(s) (%zu before the transport start), %zu byte(s) onto UART0 (%#x); receive interrupt %s\n",
+						midiFile.c_str(), midiEvents.size(), pre, nbytes, ot::g_uart0, (rtos.midiImr() & 2) ? "ENABLED" : "DISABLED");
+					bool any = false;
+					for(const auto& ev : midiEvents)
+						if(ev.pre) { rtos.midiIn(ev.bytes); any = true; }
+					if(any)
+						rtos.runUntil(200.0, [&] { return false; });
+				}
 				if(preRoll > 0)
 				{
 					const auto f0 = rtos.frameCount();
@@ -666,22 +702,38 @@ int main(int _argc, char** _argv)
 					rtos.armPcRingNow(pcRing);
 				const auto target = frame0 + static_cast<uint64_t>(frames);
 				const auto budgetMs = frames * ot::g_framePeriod / ot::g_sampleHz * 1000.0 * 5 + 2000.0;
+				// Timed actions while the sequencer runs -- a panel edit
+				// (--call-at) or MIDI IN bytes (--midi): the frame engine
+				// keeps going underneath them, as on the unit.
+				struct Action { uint64_t frame; bool call; std::vector<uint8_t> bytes; };
+				std::vector<Action> actions;
 				if(!callSpec.empty() && callAt >= 0)
+					actions.push_back({static_cast<uint64_t>(callAt), true, {}});
+				for(const auto& ev : midiEvents)
+					if(!ev.pre)
+						actions.push_back({ev.frame, false, ev.bytes});
+				std::stable_sort(actions.begin(), actions.end(), [](const Action& x, const Action& y) { return x.frame < y.frame; });
+				for(const auto& act : actions)
 				{
-					// The call from main's spin while the sequencer runs: the
-					// frame engine keeps going underneath it, as on the unit.
-					const auto at = frame0 + static_cast<uint64_t>(callAt);
+					const auto at = frame0 + act.frame;
 					rtos.runUntil(budgetMs, [&] { return rtos.frameCount() >= at; });
-					if(rtos.runToMainSpin() == ot::Rtos::Stop::Gate)
+					if(act.call)
 					{
-						std::printf("call-at    : frame %d (%llu since the transport start)\n",
-							callAt, static_cast<unsigned long long>(rtos.frameCount() - frame0));
-						doCall();
+						if(rtos.runToMainSpin() == ot::Rtos::Stop::Gate)
+						{
+							std::printf("call-at    : frame %d (%llu since the transport start)\n",
+								callAt, static_cast<unsigned long long>(rtos.frameCount() - frame0));
+							doCall();
+						}
+						else
+							std::printf("call-at    : main never spun -- %s\n", rtos.why().c_str());
 					}
 					else
-						std::printf("call-at    : main never spun -- %s\n", rtos.why().c_str());
+						rtos.midiIn(act.bytes);
 				}
 				const auto rs2 = rtos.runUntil(budgetMs, [&] { return rtos.frameCount() >= target; });
+				if(!midiFile.empty())
+					std::printf("midi in    : %zu byte(s) still queued at the end (0 = the firmware took them all)\n", rtos.midiPending());
 				static const char* const g_seqStop[] = {"REACHED", "TIME", "FAULT", "ILLEGAL"};
 				std::printf("sequencer  : playing bank %u pattern %u "
 					"(re-selected through the load's own last step)\n", seq.first, seq.second);
