@@ -162,6 +162,7 @@ def main():
     ap.add_argument("--image-mb", type=int, default=64)
     ap.add_argument("--reuse", action="store_true", help="skip the port run when its dumps are there")
     ap.add_argument("--image", default="", help="a built image to boot instead of building the remix (a bisect)")
+    ap.add_argument("--extra", default="", help="extra ot_emu arguments, e.g. '--dsp-dirty' (garbage DSP RAM, as hardware)")
     a = ap.parse_args()
 
     if not a.project:
@@ -224,7 +225,7 @@ def main():
                "--sequencer", "--internal-clock", "--frames", str(a.frames), "--load-ms", str(a.load_ms),
                "--dsp", "--main-level", "64", "--audio-in", "tones", "--poke-trig", "2", "--midi", str(midi),
                "--block-dump", str(blocks), "--cmd-log", str(cmds), "--card-out", str(card_after),
-               "--mem-dump", f"{LIVE_IDS:#x},16={dumps['ids']};{RECORDS:#x},512={dumps['records']};{LANES:#x},576={dumps['lanes']}"]
+               "--mem-dump", f"{LIVE_IDS:#x},16={dumps['ids']};{RECORDS:#x},512={dumps['records']};{LANES:#x},576={dumps['lanes']}"] + a.extra.split()
         with open(log, "w") as f:
             f.write(" ".join(cmd) + "\n"); f.flush()
             r = subprocess.run(cmd, cwd=ROOT, stdout=f, stderr=subprocess.STDOUT)

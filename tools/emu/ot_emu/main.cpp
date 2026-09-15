@@ -81,6 +81,7 @@ int main(int _argc, char** _argv)
 	uint64_t dspTrace = 0;		// a status line per core every N DSP instructions
 	uint64_t dspTraceFrom = 0;	// ... only once a core has executed this many (a window at the end of a run)
 	bool dspNoIdle = false;
+	uint32_t dspDirty = 0;		// fill both cores' X/Y and the shared window with garbage before the boot (hardware never zeroes DSP RAM); the seed
 	bool dspDrainPaced = false;	// EXPERIMENT: a host-port burst completes when the DSP drained it (measured 8 Sep: one frame of exactly 16 ESAI frames, then the completion ISR loses an edge and stalls)		// execute every poll of an idle core (fidelity check; slow)
 	bool dspVerbose = false;	// the vendored DSP library's own log lines
 	std::string edmaLog;		// every eDMA kick with its TCD fields -> FILE (O8 step 4)
@@ -148,6 +149,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--dsp-trace" && i + 1 < _argc)	dspTrace = std::strtoull(_argv[++i], nullptr, 0);
 		else if(a == "--dsp-trace-from" && i + 1 < _argc)	dspTraceFrom = std::strtoull(_argv[++i], nullptr, 0);
 		else if(a == "--dsp-no-idle")			dspNoIdle = true;
+		else if(a == "--dsp-dirty")				dspDirty = i + 1 < _argc && _argv[i + 1][0] != '-' ? static_cast<uint32_t>(std::strtoul(_argv[++i], nullptr, 0)) : 0x2545f491;
 		else if(a == "--dsp-drain-paced")		dspDrainPaced = true;
 		else if(a == "--dsp-verbose")			dspVerbose = true;
 		else if(a == "--dsp-quantum" && i + 1 < _argc)	ot::DspPair::g_quantum = std::atof(_argv[++i]);	// O12: the core interleave quantum (instructions)
@@ -248,6 +250,11 @@ int main(int _argc, char** _argv)
 			int core = 0; char space = 'X'; unsigned addr = 0;
 			if(std::sscanf(dspWatch.c_str(), "%d:%c:%x", &core, &space, &addr) == 3)
 				dspPair->setWriteWatch(core, space, addr);
+		}
+		if(dspDirty)
+		{
+			dspPair->dirty(dspDirty);
+			std::printf("dsp dirty  : X/Y 0..%#x of both cores and the shared window filled with garbage (seed %#x)\n", ot::DspPair::g_shareLo - 1, dspDirty);
 		}
 		if(audioIn == "tones")
 			dspPair->setAudioTones(true);

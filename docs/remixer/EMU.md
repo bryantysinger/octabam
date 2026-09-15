@@ -141,6 +141,10 @@ out/emu/ot_emu --image out/mainos_bus.bin --card out/card.img --set OCTABAM --pr
   the CC PAGE 2 cave, `pre C0 10` switched to bank B while stopped. A
   program change while playing waits for the pattern's end (thousands of
   frames).
+- `--dsp-dirty [SEED]` fills both cores' X/Y and the shared window with a
+  xorshift stream before the boot, as hardware's unzeroed RAM (dsp_host
+  `-dirty` covers Y only). OCTABAM88 bank B on the rig image, clean vs
+  dirty at 1800 frames: the aux return on T8 −31.4 vs −30.1 dBFS.
 - Watches: `--watch-mem ADDR,LEN[;ADDR,LEN...]` (every write, with the
   PC), `--watch-read`, `--watch-pc`, `--dsp-watch core:X|Y|P:addr`,
   `--dsp-pcwatch core:pc`, `--dsp-peek core:X|Y|P:addr,len` (upper-case
