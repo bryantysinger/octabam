@@ -307,6 +307,13 @@ FRZE. The reverb host sending itself is not a loop: T5 SEND 127, both
 WETs 127, T3 sending -- +0.8 dB on T5's chain output, no growth over 2,000
 frames; the ColdFire delivers every track's audio block every frame.
 
+**The same project under the port (OCTABAM89 C02, 2,400 frames, T2+T3
+sending 127, T5's own SEND 127, both WETs 127, then TIME 0 → 127 on the
+delay, SIZE 0 → 127 and TIME 0 → 127 on the reverb, MODE → REVRS → CLEAN
+over MIDI):** every track's chain output stays off the rail with no
+sample-to-sample jump above 0.25 FS; T5's print settles at −27..−30 dBFS,
+T1's at −22. No reproduction (`out/crackle/c02_recipe.midi`).
+
 **Open.** The port models no stall, so it cannot see the cycle wall,
 which fits the shape: C02's layout prices ~2,950 (core 1) and ~2,994
 (core 0) instructions/sample against 3,120 usable with a counter ~270 low

@@ -2643,3 +2643,15 @@ GRAIN at CLEAN's knobs "a bit of a mess", at TIME 36 FDBK 40 SCAT 40 DENS
 REVERSE "pretty good ... rhythmic and sounds useful". Level facts, one
 sender at SEND 127, WET 127 both: delay wet −31 dBFS rms, reverb wet −37,
 the whole mix −31.
+
+## 15 Sep 2026 — GRAIN at two grains per line, the A/B left for the ear (unheard)
+
+The cycle lever `Remix.grains=2`, rendered at Sam's GRAIN recipe (TIME 18
+FDBK 40 SCAT 40 DENS 127 SIZE 93MS PTCH 96 PING 127, one sender at 127)
+on `pad` and `melody`: `out/ab/grain2/g4_*/T1.wav` (four per line, the
+rig) against `g2_*/T1.wav` (two). Core 1 with the delay in GRAIN: 1,192
+→ 870 instructions/sample (−322, the meter). Peaks g4 −18.2 / −18.7 dBFS,
+g2 −15.0 / −17.5: the two-grain makeup runs ~1–3 dB hotter (two triangle
+windows sum to exactly 1, four to 2, and the makeup doubles). Not
+level-matched; the rendered files are the material for the decision, not
+a verdict.
