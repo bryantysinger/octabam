@@ -2624,3 +2624,22 @@ is 50 (image 21). The passthrough detector masks TAME out of the page-2
 word (at the stamp there is no state for it to saturate), so every FILTER
 part still runs the bit-exact bypass; the verifier renders its linear
 gates at TAME 0 and tests TAME on its own.
+
+## 15 Sep 2026 — the bus round on images 25-27 (C02, Sam's hand): the reverb closed out
+
+BusVerb on T5, WET pedal chain (PR #277), T3 sending: "sounding great",
+then "is awesome" -- closed as is, nothing to change. Sam: "I'm not willing
+to sacrifice any verb": the reverb keeps its buffers (payload A's half of
+the shared window) and its voicing whatever the delay-memory and cycle
+work finds. An earlier "verb is very quiet" was user error (the delay was
+not enabled on the host).
+
+BusDelay the same round: CLEAN "a pretty decent short delay, nothing
+special but not bad" at TIME 1/16 (first repeat 125 ms measured); "is
+short and medium useful" -- the 16K line caps TIME at 1/8 at 121 BPM.
+GRAIN at CLEAN's knobs "a bit of a mess", at TIME 36 FDBK 40 SCAT 40 DENS
+127 SIZE 93MS PTCH 96 PING 127 "pretty good" (now the GRAIN view, PR
+#279; the panel applies a view on a MODE turn since image 26, PR #281).
+REVERSE "pretty good ... rhythmic and sounds useful". Level facts, one
+sender at SEND 127, WET 127 both: delay wet −31 dBFS rms, reverb wet −37,
+the whole mix −31.
