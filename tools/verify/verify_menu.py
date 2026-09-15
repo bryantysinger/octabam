@@ -176,6 +176,21 @@ def main():
             break
         a += 4
 
+    if "OCTAKIT" in REMIX.modules:
+        print("\n=== OCTAKIT: its machine-selection runtime hardcodes the "
+              "stock FX2 table at 0x400d6090 and accepts cursor 0..14; "
+              "the stock table must shadow the live OCTABAM chooser ===")
+        check(N_REAL <= 15,
+              f"OCTAKIT-compatible FX2 chooser has at most 15 rows "
+              f"(got {N_REAL})")
+        for i in range(16):
+            shadow = rd32(img, 0x400d6090 + i * 4)
+            want = positions[i] if i < len(positions) else 0
+            check(shadow == want,
+                  f"OCTAKIT shadow[{i}] == "
+                  f"{'live chooser' if i < len(positions) else '0'} "
+                  f"(0x{shadow:08x})")
+
     print("\n=== list is exactly the three real entries, and the chooser's "
           "viewport was shrunk to match so no row can read past the "
           "terminator (the hardware-test-1 garbage) ===")

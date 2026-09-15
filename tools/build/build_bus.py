@@ -725,6 +725,24 @@ def main():
                      f"long chooser list at 0x{LONG_LIST:08x}")
     for i, v in enumerate(entries):
         wr32(list_addr + i * 4, v)
+
+    # Octakit's machine-selection runtime hardcodes the stock FX2 chooser
+    # table at 0x400d6090 and accepts cursor positions 0..14. OCTABAM moves
+    # the live chooser elsewhere, so mirror the active list back into the
+    # original 15-row stock table when Octakit is present. This keeps
+    # Octakit's descriptor/payload validation coherent without modifying
+    # Octakit itself.
+    if "OCTAKIT" in REMIX.modules:
+        if len(real) > 15:
+            sys.exit(
+                "OCTAKIT supports at most 15 FX2 chooser rows: "
+                "its machine-selection runtime accepts cursor 0..14"
+            )
+
+        for i in range(16):
+            wr32(FX2_LIST + i * 4,
+                 entries[i] if i < len(entries) else 0)
+
     # and size the viewport: shrink it to a short list so there are no rows
     # left to pad, never grow it past the seven the screen has -- a longer
     # list scrolls, as stock's fifteen-entry list does.
