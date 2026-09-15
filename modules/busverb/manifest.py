@@ -89,11 +89,11 @@ MODULE = Module(
     ),
     params=(
         # ---- page 1 -------------------------------------------------------
-        # AUX at slot 0 on every track, hosts included: the host's own dry
+        # SEND at slot 0 on every track, hosts included: the host's own dry
         # send into the aux. Default 0 is load-bearing: a non-zero default
         # registers every idle host as a client and dilutes the real senders
         # (-6.02 dB with one sender).
-        Param(b"AUX", 0, active=True, formatter=_PLAIN,
+        Param(b"SEND", 0, active=True, formatter=_PLAIN,
               doc="this track's send into the one aux bus (delay, then reverb, back on T8)"),
         Param(b"TIME", 64, active=True, formatter=_PLAIN,
               doc="decay time -- how long the tail rings"),
@@ -115,7 +115,7 @@ MODULE = Module(
         # editor writes (docs/firmware/MAINMENU.md 9c-ii); the DSP reads $c's
         # KNOB field (bits 16-23). PLATE by default; the three wet levels sit
         # within 2 dB (ROOM -16.9, PLATE -19.1, BIG -19.0 dBFS at defaults,
-        # AUX 100).
+        # SEND 100).
         Param(b"MODE", 1, 3, active=True, formatter=_STEP,
               labels=("ROOM", "PLATE", "BIG"),
               doc="voicing: ROOM / PLATE / BIG; BIG clips first"),

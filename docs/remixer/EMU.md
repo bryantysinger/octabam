@@ -136,7 +136,7 @@ out/emu/ot_emu --image out/mainos_bus.bin --card out/card.img --set OCTABAM --pr
   transport start> <hex bytes>` or `pre <hex bytes>` (before the transport
   start, the transport stopped). Bytes go onto UART0 (`0xfc060000`, INTC0
   source 26) and the firmware's own RX ISR, framer and MIDI thread take
-  them: CC 40 = 100 on T2's channel moved T2's AUX halfword (with the
+  them: CC 40 = 100 on T2's channel moved T2's SEND halfword (with the
   page-1 slew, ~30 frames), CC 68 landed in the FX1 page-2 lane through
   the CC PAGE 2 cave, `pre C0 10` switched to bank B while stopped. A
   program change while playing waits for the pattern's end (thousands of
@@ -167,7 +167,7 @@ verify` when `OT_PROJECT` is set) does all of this for one part of a real
 project and asserts: the load completed; the live FX1/FX2 id arrays equal
 the part's; every track's record halfwords 18-26 equal its page-2 lane;
 every track with record audio has a chain output; the main out is not
-silent; CC 40 over MIDI IN moved T2's AUX and (CC PAGE 2) CC 68 reached
+silent; CC 40 over MIDI IN moved T2's SEND and (CC PAGE 2) CC 68 reached
 T1's FX1 page 2; on a one-aux remix RET at 127 over CC 38 brings T2's
 send back on T8's chain output through the delay and the reverb (−45
 dBFS at frame 900; the two engines warm up 256 blocks each, in series);

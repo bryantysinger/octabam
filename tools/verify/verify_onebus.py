@@ -187,8 +187,8 @@ def main():
     # (measured -9 dB at PING 127 with TIME 40: test artefact, not engine).
     R = lambda **k: Inst("REVERB SERVER", 0, 0, MOD=0, **k)   # noqa: E731
     D = lambda **k: Inst("DELAY SERVER", 1, 0, PING=0, **k)   # noqa: E731
-    S6 = lambda **k: Inst("SEND", 0, 1, fed=True, AUX=100, **k)   # noqa: E731
-    S2 = lambda **k: Inst("SEND", 1, 1, fed=True, AUX=100, **k)   # noqa: E731
+    S6 = lambda **k: Inst("SEND", 0, 1, fed=True, SEND=100, **k)   # noqa: E731
+    S2 = lambda **k: Inst("SEND", 1, 1, fed=True, SEND=100, **k)   # noqa: E731
     RET = lambda **k: Inst("CHARACTER", 0, 3, fx=1, RET=127, **k)  # noqa: E731  (RET by position since 13 Sep 2026: no SAT=BUS)
 
     print("== the chain: T2/T6 send, T1 delay -> T5 reverb -> T8 return ==")
@@ -261,12 +261,12 @@ def main():
     check("T1 with MIX 0 prints nothing but its (silent) dry", peak(st_h0[2][0]) == 0)
 
     print("\n== the send is refused on track 8, and only there ==")
-    t8 = [R(), S6(), RET(), Inst("SEND", 0, 3, fed=True, AUX=127), D(), S2()]
+    t8 = [R(), S6(), RET(), Inst("SEND", 0, 3, fed=True, SEND=127), D(), S2()]
     # (a SEND on T8's FX2 beside the return on its FX1: the hardware shape)
     st_8 = run(mems, t8, tag="t8")
     check("a SEND on T8 (core 0 pos 3) at AUX 127 changes the return NOT AT ALL",
           st_8[2] == ret)
-    t4 = [R(), S6(), RET(), D(), S2(), Inst("SEND", 1, 3, fed=True, AUX=127)]
+    t4 = [R(), S6(), RET(), D(), S2(), Inst("SEND", 1, 3, fed=True, SEND=127)]
     st_4 = run(mems, t4, tag="t4")
     check("a SEND on T4 (core 1 pos 3, the mirror) DOES change it", st_4[2] != ret)
 

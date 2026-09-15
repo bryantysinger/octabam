@@ -1,6 +1,6 @@
-"""SEND -- the bus client every other track runs: one AUX knob into the bus.
+"""SEND -- the bus client every other track runs: one SEND knob into the bus.
 
-It taps the audio buffer and never writes it, so a SEND at AUX 0 is
+It taps the audio buffer and never writes it, so a SEND at SEND 0 is
 indistinguishable from no effect; a fresh, unassigned track (FX2 id 0) is
 aliased to it rather than to NONE because, unlike NONE, it performs the
 per-block bus housekeeping, so no track can stall the bus.
@@ -29,7 +29,7 @@ MODULE = Module(
         build_tag=False,
     ),
     params=(
-        Param(b"AUX", 0, active=True,
+        Param(b"SEND", 0, active=True,
               doc="this track's level onto the one aux bus: delay, "
                   "then reverb, wet back on track 8"),
         _BLANK, _BLANK, _BLANK, _BLANK, _BLANK,

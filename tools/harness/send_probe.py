@@ -74,12 +74,12 @@ REVERB_ID = SERVER_ID.get("R")
 SEND_ID = SERVER_ID.get("S")
 DELAY_ID = SERVER_ID.get("D")
 
-REV_FLAGS = {"time": "TIME", "mod": "MOD", "mix": "MIX", "raux": "AUX",
+REV_FLAGS = {"time": "TIME", "mod": "MOD", "mix": "MIX", "raux": "SEND",
              "shmr": "SHMR",
              "rmode": "MODE", "width": "SHFT", "gate": "GATE", "rrate": "RATE",
              "rtone": "TONE"}
 DELAY_FLAGS = {"dtime": "TIME", "dfdbk": "FDBK", "dtone": "TONE",
-               "dping": "PING", "dmix": "MIX", "din": "AUX", "dwow": "MDEP",
+               "dping": "PING", "dmix": "MIX", "din": "SEND", "dwow": "MDEP",
                "dmode": "MODE", "drate": "MRAT", "dptch": "SIZE",
                "dspray": "MDEP", "dpitch": "PTCH", "dfrz": "FRZE"}
 

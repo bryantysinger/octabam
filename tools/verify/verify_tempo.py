@@ -65,7 +65,7 @@ def main():
     for tempo, knob, want in CASES:
         out = OUT / f"t{tempo:g}_k{knob}"
         cmd = [sys.executable, str(ROOT / "tools/harness/rig_render.py"), "--image", str(image),
-               "--remix", remix, "--tracks", "T1=D", "--set", "T1:AUX=127", "--set", f"T1:TIME={knob}",
+               "--remix", remix, "--tracks", "T1=D", "--set", "T1:SEND=127", "--set", f"T1:TIME={knob}",
                "--set", "T1:FDBK=0", "--set", "T1:MIX=127", "--set", "T1:PING=0", "--stems", str(stems),
                "--tail", "0", "--tempo", str(tempo), "--mixer", "off", "--amp", "1.0", "--out", str(out)]
         r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)

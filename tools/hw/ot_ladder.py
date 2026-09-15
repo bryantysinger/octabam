@@ -86,11 +86,11 @@ def _sends(aux, verb=False, delay=False):
     out = {}
     for t in range(1, 8):
         if t == 1 and delay:
-            out[t] = ("DELAY SERVER", {"AUX": aux.get(t, 0)})
+            out[t] = ("DELAY SERVER", {"SEND": aux.get(t, 0)})
         elif t == 5 and verb:
-            out[t] = ("REVERB SERVER", {"AUX": aux.get(t, 0)})
+            out[t] = ("REVERB SERVER", {"SEND": aux.get(t, 0)})
         else:
-            out[t] = ("SEND", {"AUX": aux.get(t, 0)})
+            out[t] = ("SEND", {"SEND": aux.get(t, 0)})
     return out
 
 
@@ -255,6 +255,8 @@ def make_ladder_project(src, dest, remix_name, pattern="A2"):
                          f"   FX2 {f2[0] if f2 else '-':14s} {f2[1] if f2 else ''}")
         lines.append("")
     (dest / "OCTABAM_LADDER_MAP.txt").write_text("\n".join(lines) + "\n")
+    import ot_project
+    ot_project.write_stored(dest)
     print(f"8 banks written and verified -> {dest}")
     print(f"map at {dest / 'OCTABAM_LADDER_MAP.txt'}")
 
@@ -675,7 +677,7 @@ def stress_script(mods, layout):
         t += dt
         ev.append((t, phase, [m for m in moves if m[1] is not None]))
 
-    aux = [(tr, _cc_for(mods, layout, tr, "fx2", "AUX"), 127) for tr in range(1, 8)]
+    aux = [(tr, _cc_for(mods, layout, tr, "fx2", "SEND"), 127) for tr in range(1, 8)]
     ret = (8, _cc_for(mods, layout, 8, "fx1", "RET"), 127)
     at(30, "sends 127", aux + [ret])
     # the delay host (T1): FDBK 127 / TONE 0, then TIME sweep

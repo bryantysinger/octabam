@@ -122,7 +122,7 @@ def sweep(a):
         tracks = f"T1={a.station}+SEND"
     else:
         tracks = f"{ttrack}={a.station},{stem_track}=SEND"
-    sets = [] if tgt == "T1:FX1" or a.tracks else ["--set", f"{stem_track}:AUX=100"]
+    sets = [] if tgt == "T1:FX1" or a.tracks else ["--set", f"{stem_track}:SEND=100"]
     for fx in a.fixed:
         sets += ["--set", f"{ttrack}:{tfx}:{fx}"]
     rendered = []

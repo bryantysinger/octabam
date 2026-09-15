@@ -224,7 +224,7 @@ instance on track 5 runs before that track's FX2 instance, and position 0
 housekeeps unconditionally, so an electing FX1 participant would flip the
 rotation twice in the first block. The layout alphabet is exhausted
 (A-W, Y, Z), so stations take digits as `layout_char`; `send_probe --feed S
---set S:AUX=100` feeds the tone to a station's own track. Every slot the
+--set S:SEND=100` feeds the tone to a station's own track. Every slot the
 sample loop touches sits below `$40` (a displacement past 63 assembles to
 the two-word form).
 

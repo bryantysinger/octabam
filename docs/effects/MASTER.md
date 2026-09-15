@@ -9,7 +9,7 @@ port or the harness only, ❓ inferred.
 ## The shape
 
 ```
-T1..T7  ──(AMP VOL, BAL)──▶ FX1 station ──▶ FX2 = SEND, one AUX knob ──(LEVEL)──┐
+T1..T7  ──(AMP VOL, BAL)──▶ FX1 station ──▶ FX2 = SEND, one SEND knob ──(LEVEL)──┐
                                                                                  │  the mix
 T1 FX2 = DELAY SERVER ─ wet ─▶ T5 FX2 = REVERB SERVER ─ wet ─▶ (the last live stage's wet)
                                                                                  │
@@ -22,9 +22,9 @@ T8 (MASTER TRACK on)  ◀──────────────────�
   sum of the other tracks' outputs after their LEVEL (✅ O9d/O14 under the
   port: T8's chain input equals T1 + T2 summed; AMP VOL and BAL are pre-FX
   on each track, LEVEL is post-FX at the mix). T8 has no FX2.
-- **One aux send per track**, the AUX knob at slot 0 of every track's FX2
+- **One aux send per track**, the SEND knob at slot 0 of every track's FX2
   (the six ordinary tracks run SEND there; T1's FX2 is the delay engine
-  and T5's the reverb engine, and both still have their AUX). The delay's
+  and T5's the reverb engine, and both still have their SEND knob). The delay's
   wet feeds the reverb (✅ flash 7). No send on T8: a loop is impossible.
 - **The return is RET on T8's Character**, slot 4, by position (dispatch
   position 3 on payload A = track 8; anywhere else RET is inert). Each
@@ -45,9 +45,9 @@ T8 (MASTER TRACK on)  ◀──────────────────�
 
 | track | FX1 | FX2 |
 |---|---|---|
-| 1 | CHARACTER, defaults | DELAY SERVER, AUX 30 |
-| 2, 3, 4, 6, 7 | SPECTRUM, defaults | SEND, AUX 40 / 30 / 40 / 50 / 40 |
-| 5 | MODULATION, defaults | REVERB SERVER, AUX 40 |
+| 1 | CHARACTER, defaults | DELAY SERVER, SEND 30 |
+| 2, 3, 4, 6, 7 | SPECTRUM, defaults | SEND, SEND 40 / 30 / 40 / 50 / 40 |
+| 5 | MODULATION, defaults | REVERB SERVER, SEND 40 |
 | 8 | CHARACTER, RET 127, COMP 40 (GLUE by position) | — |
 
 Stamp every project for the current remix before play

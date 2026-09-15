@@ -85,18 +85,45 @@ FX2 editor; CC 63 on channel 5 moved SHMR on the panel and raised the
 tail's 2-8 kHz bands 5-8 dB (image 96). Every page-2 sweep taken over the
 old cave is void.
 
+## BusDelay's SEND knob drew TIME's division labels ✅ measured
+
+**Symptom (15 Sep 2026, on the unit).** BusDelay's first knob printed
+`1/8`-style labels at some settings.
+
+**Cause.** `modules/tempo-sync` registered the TIME formatter on DELAY
+SERVER slot 0; TIME has been slot 1 since the one-aux re-slot (7 Sep
+2026), so the label cave drew the SEND knob (then named AUX) and TIME drew
+plain numbers. The value published was the knob's (the port: CC 40 on a
+host moves record halfword 12 and the host's own send registers).
+
+**Fix.** Registered on slot 1. The knob is `SEND` on every track since the
+same day (it was `AUX` on SEND, BusDelay and BusVerb alike; `MIX` on the
+engines is the stage's dry/wet on the bus).
+
+## A generated project shows as modified and RELOAD refuses ✅ measured
+
+**Symptom.** A project written by `tools/hw` loads, shows the modified
+marker at once, and RELOAD PROJECT does nothing.
+
+**Cause.** The unit's saved state is the `.strd` twin of every `.work`
+file (byte-identical in a unit-saved project); the tools wrote `.work`
+only, so there was no stored state to reload.
+
+**Fix.** `ot_project.py stored <project>` writes the twins; `rigproj` and
+`delaytest` write them. A SAVE PROJECT on the unit does the same.
+
 ## Re-selecting an effect zeroes the bus ⚠️
 
 **Symptom.** A rig that measures dead after ordinary panel work: no wet,
 soak after soak passing because nothing is connected.
 
 **Cause (measured).** A re-select loads the manifest defaults, and the two
-knobs that connect the bus both default to 0: BusVerb's AUX (0 is
+knobs that connect the bus both default to 0: BusVerb's SEND (0 is
 load-bearing: a non-zero default registers every idle host as a client)
 and Character's RET.
 
 **Fix.** Assert the connections over MIDI immediately before every
-measurement: RET `CC 36` on the master's channel, AUX `CC 40` per track.
+measurement: RET `CC 38` on the master's channel, SEND `CC 40` per track.
 
 ## A station "at its defaults" was running its default mode's view ✅ measured
 
@@ -331,8 +358,8 @@ instantiates an FX1-NONE slot.
 **Fix.** Anything in SEND that reads a knob and can cost cycles or write
 the bus gates on the slot being FX2 (`X:$213` base ≥ 0x4000, tested per
 call); the burn does (`dsp/burn_send.inc`, `verify_burn.py` check 5).
-SEND's AUX read has no such gate: whether an FX1-NONE slot with a stale
-AUX byte registers as a phantom sender on the unit is an open hardware
+SEND's SEND-knob read has no such gate: whether an FX1-NONE slot with a stale
+SEND byte registers as a phantom sender on the unit is an open hardware
 claim.
 
 ## Line-F exception on [PROJ]: a cave pinned in OS .bss
@@ -416,7 +443,7 @@ ColdFire emulator's own menu before any flash that appends rows again.
 
 ## The one-aux return never reached T8 ✅ measured under the port
 
-**Symptom (flash 6).** Sending AUX produced wet out of T1 and T5, the
+**Symptom (flash 6).** Sending (the AUX knob then) produced wet out of T1 and T5, the
 engines' own hosts; nothing arrived at T8.
 
 **Cause.** The station pinned the return to track 8 by testing `r7 &
