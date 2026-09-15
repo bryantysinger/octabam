@@ -206,6 +206,14 @@ value)` with the value in hand. `tools/verify/verify_modenames.py` (in
 `make check`) calls each MODE formatter on the emulated ColdFire and reads
 the names back out of the clone.
 
+The MODE select also names itself: its cave writes the value's word into
+its own name field before printing it, so the knob reads CLEAN / GRAIN /
+REVRS rather than MODE (Character's SAT and BusVerb's MODE declare
+`mode_slot` for this alone). Every other select keeps its name and the tick
+widget flashes the word on a turn — on image 26 SIZE / FRZE / SHFT / RATE
+reading `93MS` / `RUN` / `+12` / `1x` did not say what the knob was (Sam,
+15 Sep 2026).
+
 Two limits, inferred: the rename lands on the draw after the one that
 formats MODE if the panel draws names first (turning the encoder redraws);
 and the descriptor is shared by every track running the effect, so two

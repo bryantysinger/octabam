@@ -140,6 +140,7 @@ MODULE = Module(
               labels=("0.5x", "1x", "2x", "4x"),
               doc="MOD speed multiplier; the panel shows it 1-based"),
     ),
+    mode_slot=6,                      # MODE names itself (ROOM / PLATE / BIG)
     dsp=DspSection(
         asm="modules/busverb/reverb_server.asm",
         priority=1,                       # after SEND, before the delay

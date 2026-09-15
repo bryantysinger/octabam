@@ -1226,7 +1226,11 @@ def main():
             _mod = _MODS[name]
             _ren = (mode_names.complete(_mod)
                     if _i == _mod.mode_slot and _mod.mode_views else {})
-            _ren = mode_names.with_selfname(_ren, _i, _p.labels)
+            # Only the MODE select names itself (15 Sep 2026, image 26): a
+            # select whose word is not self-explaining (SIZE, FRZE, SHFT,
+            # RATE) keeps its name, the tick widget flashing the word.
+            if _i == _mod.mode_slot:
+                _ren = mode_names.with_selfname(_ren, _i, _p.labels)
             if _ren:
                 _desc = clone_addr[name] + mode_names.NAMES_AT
                 _bytes = mode_names.emit(_p.labels, _desc, _ren)

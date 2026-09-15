@@ -105,6 +105,7 @@ MODULE = Module(
     ),
     # SAT names itself by its value (tools/build/mode_names.with_selfname).
     # No knob changes meaning by mode.
+    mode_slot=7,                      # SAT names itself (TAPE / TUBE / INFL)
     dsp=DspSection(
         asm="modules/character/character.asm",
         ptable=TUBE_UP + TAPE_D8 + POCKEY_ENC + POCKEY_DEC,

@@ -193,13 +193,15 @@ def verify(labels: tuple[str, ...], desc: int,
 
 def with_selfname(renames: dict[int, dict[int, bytes]], slot: int,
                   labels: tuple[str, ...]) -> dict[int, dict[int, bytes]]:
-    """EVERY SELECT NAMES ITSELF. Sam, on the
-    master's SAT: "rather than sat label being static with the mode flashing
-    for a sec, can we get rid of sat and just have it showing tape | tube |
-    infl ... make that the standard for all switches". So a labelled
+    """THE MODE SELECT NAMES ITSELF. Sam, on the master's SAT: "rather
+    than sat label being static with the mode flashing for a sec, can we
+    get rid of sat and just have it showing tape | tube | infl". So the
     select's cave writes its own name field with the value's word before
-    printing it: the knob reads TAPE / TUBE / INFL, CLEAN / GRAIN / REVRS,
-    SER / PAR / RING / FM. Merged over a MODE's neighbour renames."""
+    printing it: the knob reads TAPE / TUBE / INFL, CLEAN / GRAIN / REVRS.
+    Merged over a MODE's neighbour renames. Applied to the module's
+    `mode_slot` only (15 Sep 2026, image 26: on SIZE / FRZE / SHFT / RATE
+    the word alone did not say what the knob was; those keep their names
+    and the tick widget flashes the word)."""
     out = {m: dict(v) for m, v in renames.items()}
     for value, word in enumerate(labels):
         out.setdefault(value, {})[slot] = word.encode("latin1")[:NAME_LEN - 1]
