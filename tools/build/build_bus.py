@@ -1419,6 +1419,21 @@ def main():
                              f"duplicate")
                 wr32(_slot, clone_addr[_n])
             wr32(FX1_ID2POS + _eid * 4, _pos + 1)      # past NONE at row 0
+        # Octakit's machine-selection runtime hardcodes the stock FX1 table
+        # too (0x400d6060, cursor 0..10), so the relocated list is mirrored
+        # back the same way as the FX2 one above. Unmirrored, a cursor
+        # position resolves to whatever stock row sat there: Octakit's
+        # validation passes on that descriptor and it identifies the wrong
+        # machine, silently.
+        if "OCTAKIT" in REMIX.modules:
+            if len(_new) - 1 > 11:
+                sys.exit(
+                    "OCTAKIT supports at most 11 FX1 chooser rows (NONE "
+                    "included): its machine-selection runtime accepts "
+                    "cursor 0..10"
+                )
+            for _i in range(12):
+                wr32(FX1_LIST + _i * 4, _new[_i] if _i < len(_new) else 0)
         _ours = [n for n in _fx1 if not _MODS[n].is_stock]
         print(f"  FX1 chooser = {len(_new) - 1} rows at 0x{_fx1_addr:08x} "
               f"(NONE + {', '.join(_fx1)}), {len(FX1_LIST_REFS)} refs "
