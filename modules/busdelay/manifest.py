@@ -121,8 +121,9 @@ MODULE = Module(
                            7: 0, 8: 64, 10: 64}),
         ModeView(mode=1,                        # GRAIN
                  names={7: b"SCAT", 8: b"DENS"},   # PTCH is PTCH in every mode
-                 defaults={1: 36, 2: 40, 3: 100, 4: 0, 5: 127,
-                           7: 40, 8: 127, 9: 1, 10: 64}),
+                 # Sam's recipe on the unit (15 Sep 2026): octave up, ping-pong
+                 defaults={1: 36, 2: 40, 3: 100, 4: 127, 5: 127,
+                           7: 40, 8: 127, 9: 1, 10: 96}),
         ModeView(mode=2,                        # REVERSE: centred, no wow, 371 ms
                  defaults={1: 40, 2: 60, 3: 100, 4: 0, 5: 127,   # segments (SIZE 3 = XTRM)
                            7: 0, 8: 64, 9: 3, 10: 64}),
