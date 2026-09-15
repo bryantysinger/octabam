@@ -4,7 +4,7 @@ Render real audio through BusVerb in the emulator, so voicing can be judged by
 ear without a flash.
 
     python3 tools/harness/render_reverb.py loop.wav
-    python3 tools/harness/render_reverb.py loop.wav -p TIME=100 -p SIZE=127 -p MIX=80
+    python3 tools/harness/render_reverb.py loop.wav -p TIME=100 -p SIZE=127 -p WET=80
     python3 tools/harness/render_reverb.py loop.wav --sweep SIZE=0,64,127 --wet
     python3 tools/harness/render_reverb.py loop.wav --mode all       # all three characters
     python3 tools/harness/render_reverb.py loop.wav --build          # rebuild first
@@ -84,7 +84,7 @@ FRAMES = 16              # the firmware's frame (the harness's own cap is 15: th
 WARMUP_BLOCKS = 260      # the engine stays dry for 256 CALLS; pad past it and trim
 
 PARAMS = [("SEND", 64), ("TIME", 64), ("MOD", 40), ("SIZE", 127), ("TONE", 64),
-          ("MIX", 127), ("_C", 0), ("SPEED", 0), ("DIFF", 64), ("SHFT", 0),
+          ("WET", 127), ("_C", 0), ("SPEED", 0), ("DIFF", 64), ("SHFT", 0),
           ("GATE", 0), ("RATE", 1)]
 NAMES = {n: i for i, (n, _) in enumerate(PARAMS)}
 # _C (index 6) is MODE's slot; --mode owns it, so no knob.

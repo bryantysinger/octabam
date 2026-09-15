@@ -1,6 +1,6 @@
 # `bamsep26` — The rig
 
-BusVerb + BusDelay on one aux bus, three stations on FX1, the stock delay, tempo sync, CC→page 2. The image on Sam's unit.
+BusVerb + BusDelay on one aux bus (pedals on the send: the send passes both, each WET adds), three stations on FX1, the stock delay, tempo sync, CC→page 2. The image on Sam's unit.
 
 ## What is in it
 

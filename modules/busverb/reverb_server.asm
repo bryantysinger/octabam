@@ -73,7 +73,7 @@
 ;   page 2: MODE (slot 6, $c KNOB field), SHMR ($c companion), DIFF, SHFT,
 ;   GATE, RATE ($e low bits)
 ;   core-private y:$09f1 delay-liveness grace, $09f2 this sample's chain
-;   input, $09f3 1-MIX; $09f0 the AUX level for the loop
+;   input (at unity, the passthrough); $09f0 the SEND level for the loop
 ;
 ; Every proc() call runs the position-0 rotation-flip-and-clear housekeeping
 ; modules/send/send_client.asm describes, sums the shared REVERB accumulator
@@ -964,12 +964,11 @@ mdcpy:
 
 ; ---- ER level: REMOVED -----------------------------------------
 
-; ---- IN: this track's own send into its reverb -- the RETURN conversion ---
+; ---- WET: the reverb's level on top of the chain input -------------------
         move    x:(r6+$5),x0
-        move    x0,x:(r7+$70)           ; MIX, this block
-        move    #>$7fffff,a
-        sub     x0,a
-        move    a,y:>$09f3              ; 1 - MIX
+        move    x0,x:(r7+$70)           ; WET, this block (y:$09f3 held 1-MIX
+                                        ; until 15 Sep 2026: the stage adds,
+                                        ; it no longer crossfades)
 
 ; ---- (the ->DEL level decode lived here until; see the note at
 
@@ -1551,11 +1550,9 @@ lfrol:
         mpy     x1,y1,a                 ; (unity after the asl)
         asl     #$3,a,a                 ; undo the writers' 3-bit headroom
         move    a,x:(r7+$1b)            ; the averaged input, feeding the tank
-        move    a,y0                    ; ... and its MIX passthrough term,
-        move    y:>$09f3,x0             ; in * (1 - MIX), computed once here
-        mpy     y0,x0,a                 ; (mono: the same for L and R) and
-        move    a,y:>$09f2              ; parked for the output stage ($1b is
-                                        ; scratch below; a/x0/y0 reload there)
+        move    a,y:>$09f2              ; ... and parked at unity for the
+                                        ; output stage: the chain input passes
+                                        ; ($1b is scratch below; a reloads there)
 
         move    x:(r7+$30),a            ; GCNT
         sub     #>$1,a                  ; GCNT - 1  (sets N)
@@ -2410,18 +2407,20 @@ fbB:
         move    x:(r7+$62),y0           ; GLVL (0..1); y1 still holds wet gain
         mpy     y0,x0,a                 ; signed (y0,x0): wet * gate
         move    a,x0                    ; gated wet L
-; THE STAGE OUTPUT (one-aux rig): out = in*(1-MIX) + wet*MIX,
+; THE STAGE OUTPUT (one-aux rig; add-only 15 Sep 2026): out = in + wet*WET,
 ; where `in` is this sample's chain input (the aux, or the delay's output
-; while it is live) parked at loop top. PUBLISHED to the shared buffer the
-; return station reads; the host prints wet*MIX under its dry. (The IN wet
-; makeup went with IN: a return's level is the return knob's.) Both mpys are
-; the audited-signed y0,x0 form.
-        move    x:(r7+$70),y0           ; MIX
-        mpy     y0,x0,a                 ; wet * MIX
-        move    y:>$09f2,b              ; in * (1 - MIX), parked at loop top
+; while it is live) parked at loop top at unity: a pedal on the send, the
+; send and the repeats passing through to the master and WET adding the
+; reverb (until 15 Sep 2026 it crossfaded, in*(1-MIX) + wet*MIX, which
+; faded the delay out as the reverb came in). PUBLISHED to the shared
+; buffer the return station reads; the host prints wet*WET under its dry.
+; Both mpys are the audited-signed y0,x0 form.
+        move    x:(r7+$70),y0           ; WET
+        mpy     y0,x0,a                 ; wet * WET
+        move    y:>$09f2,b              ; in, parked at loop top
         add     a,b                     ; b = stage output L
         move    x:(r7+$64),r5           ; this call's OUTPUT pointer (L, R)
-        move    a,x0                    ; x0 = wet * MIX, what the host prints
+        move    a,x0                    ; x0 = wet * WET, what the host prints
         move    b,y:(r5)+               ; -> shared REVERB OUTPUT, L
 ; THE HOST PRINT GAIN: 1/2 doubled back = exactly the wet, or 0
 ; while a return station is live on this bus (RETV, per block above).
@@ -2444,11 +2443,11 @@ fbB:
         move    x:(r7+$62),y0           ; GLVL
         mpy     y0,x0,a                 ; wet * gate
         move    a,x0                    ; gated wet R
-        move    x:(r7+$70),y0           ; MIX
-        mpy     y0,x0,a                 ; wet * MIX
-        move    y:>$09f2,b              ; in * (1 - MIX)
+        move    x:(r7+$70),y0           ; WET
+        mpy     y0,x0,a                 ; wet * WET
+        move    y:>$09f2,b              ; in
         add     a,b                     ; b = stage output R
-        move    a,x0                    ; x0 = wet * MIX
+        move    a,x0                    ; x0 = wet * WET
         move    b,y:(r5)+               ; -> shared REVERB OUTPUT, R (r5 is
                                         ; still the L write + 1: nothing
                                         ; between the two touches it)

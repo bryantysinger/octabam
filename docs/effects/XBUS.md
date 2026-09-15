@@ -10,7 +10,7 @@ The architecture record for the bus. The development logs are
 
 ```
 every track ──SEND──▶ [aux accumulator] ──▶ BusDelay (T1 FX2) ──chain──▶ BusVerb (T5 FX2) ──▶ RET on T8 (Character)
-  (SEND's one knob; the hosts' too)         stage 1, MIX                 stage 2, MIX          one level
+  (SEND's one knob; the hosts' too)         stage 1, WET                 stage 2, WET          one level
 
 CORE 0 (payload A)  tracks 5–8   BusVerb   Y:0x4000–0xBFFF (private) + Y:0x30000–0x37FFF (shared lo) = 65,536 words = 1.49 s
 CORE 1 (payload B)  tracks 1–4   BusDelay  Y:0x4000–0xBFFF (private) + Y:0x38000–0x3FFFF (shared hi) = 65,536 words = 1.49 s
@@ -45,12 +45,16 @@ CORE 1 (payload B)  tracks 1–4   BusDelay  Y:0x4000–0xBFFF (private) + Y:0x3
   chain buffer with bus gain 1/8 (the loop's `asl #3` lands the sample
   untouched); otherwise the aux accumulator with the 1/√N auto-gain.
   Delay only, reverb only, both, or neither all work.
-- MIX on each engine (slot 5): `out = in × (1 − MIX) + wet × MIX`, `in` the
-  stage's chain input. Delay MIX 0 = a clean reverb send with the delay in
-  the chain (🟡 sample-exact, residual −111 dB against a reverb-only run
-  two blocks later). Each stage publishes its output stereo, four deep
-  (`0x9da` reverb, `0xa5a` delay); the host prints `wet × MIX` under its
-  dry, or nothing while a return is live.
+- WET on each engine (slot 5): `out = in + wet × WET`, `in` the stage's
+  chain input passing at unity — a pedal on the send: the send reaches the
+  master through both stages and each WET adds its effect. Delay WET 0 = a
+  clean reverb send with the delay in the chain (sample-exact against a
+  reverb-only run two blocks later); reverb WET 0 = the delay's output at
+  the return, the reverb taking nothing out. Until 15 Sep 2026 each stage
+  crossfaded (`in × (1 − MIX) + wet × MIX`), so the reverb's MIX faded the
+  delay out and both at 0 returned the dry send alone. Each stage publishes
+  its output stereo, four deep (`0x9da` reverb, `0xa5a` delay); the host
+  prints `wet × WET` under its dry, or nothing while a return is live.
 - One return, on track 8: Character's `RET` (page-1 slot 4) returns the
   last live stage's output (the reverb's if it runs, else the delay's, else
   silence), added before the chain, and stamps both hosts quiet while it is
@@ -80,8 +84,8 @@ touches only the ids a station replaced):
 | | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | SEND | SEND | | | | | | | | | | | |
-| BusVerb | SEND | TIME | MOD | SIZE | TONE | MIX | MODE | SHMR | DIFF | SHFT | GATE | RATE |
-| BusDelay | SEND | TIME | FDBK | TONE | PING | MIX | MODE | MDEP | MRAT | SIZE | PTCH | FRZE |
+| BusVerb | SEND | TIME | MOD | SIZE | TONE | WET | MODE | SHMR | DIFF | SHFT | GATE | RATE |
+| BusDelay | SEND | TIME | FDBK | TONE | PING | WET | MODE | MDEP | MRAT | SIZE | PTCH | FRZE |
 | Character | DRV | FOLD | TXTR | COMP | RET | TONE | MIX | SAT | — | — | WDTH | — |
 
 ## What a send is
@@ -187,8 +191,10 @@ still passing), the three carriers of the housekeeping block, the election,
 against a stamp (`SAVE=1` first). `tools/verify/verify_onebus.py` (in `make
 check`) runs the chain on both cores: the return is the reverb's output and
 both hosts are silent under it; delay-only falls through; neither engine
-returns silence; delay MIX 0 == no delay two blocks later, sample-exact;
-reverb MIX 0 returns the aux itself; a SEND on core-0 position 3 at SEND 127
+returns silence; delay WET 0 == no delay two blocks later, sample-exact;
+reverb WET 0 returns the aux itself; both at WET 0 return the aux through
+both stages; delay WET 127 + reverb WET 0 returns the delay-only return; a
+SEND on core-0 position 3 at SEND 127
 changes nothing and the mirror position on core 1 does; a station with
 stored send bytes contributes nothing; the chain is identical under four
 instruction-level skews. `make verify-twocore`: SEND, delay and series hops

@@ -76,11 +76,12 @@ MODULE = Module(
         # 5: L/R = 1/feedback).
         Param(b"PING", 0, active=True, formatter=_PLAIN,
               doc="stereo ping-pong spread; 0 = centred, the alternation is in the top quarter"),
-        # MIX: the stage's crossfade. out = in*(1-MIX) + wet*MIX goes on to
-        # the reverb and to the return, so MIX 0 is a clean reverb send with
-        # the delay still in the chain. The chain itself is hardwired.
-        Param(b"MIX", 127, active=True, formatter=_PLAIN,
-              doc="stage dry/wet: 0 passes the aux through, 127 = repeats only"),
+        # WET: the repeats' level on top of the send. out = in + wet*WET goes
+        # on to the reverb and to the return: the send passes through the
+        # pedal at unity, WET adds the repeats (a crossfade until 15 Sep
+        # 2026). The chain itself is hardwired.
+        Param(b"WET", 127, active=True, formatter=_PLAIN,
+              doc="the repeats' level; the send passes through at unity"),
         # ---- page 2 -------------------------------------------------------
         # MODE on slot 6: an even slot is the one the panel's page-2 knob
         # editor writes (docs/firmware/MAINMENU.md 9c-ii). The DSP reads $c's

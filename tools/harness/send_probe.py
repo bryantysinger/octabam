@@ -74,12 +74,12 @@ REVERB_ID = SERVER_ID.get("R")
 SEND_ID = SERVER_ID.get("S")
 DELAY_ID = SERVER_ID.get("D")
 
-REV_FLAGS = {"time": "TIME", "mod": "MOD", "mix": "MIX", "raux": "SEND",
+REV_FLAGS = {"time": "TIME", "mod": "MOD", "mix": "WET", "raux": "SEND",
              "shmr": "SHMR",
              "rmode": "MODE", "width": "SHFT", "gate": "GATE", "rrate": "RATE",
              "rtone": "TONE"}
 DELAY_FLAGS = {"dtime": "TIME", "dfdbk": "FDBK", "dtone": "TONE",
-               "dping": "PING", "dmix": "MIX", "din": "SEND", "dwow": "MDEP",
+               "dping": "PING", "dmix": "WET", "din": "SEND", "dwow": "MDEP",
                "dmode": "MODE", "drate": "MRAT", "dptch": "SIZE",
                "dspray": "MDEP", "dpitch": "PTCH", "dfrz": "FRZE"}
 
@@ -152,7 +152,7 @@ def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
     """-> instance 0 (the reverb) as a list of 24-bit ints, warm-up trimmed.
 
     direct=True is the CONTROL: no SEND instance at all, the tone goes into the
-    reverb's own audio buffer. Same engine, same level, same full-wet MIX -- the
+    reverb's own audio buffer. Same engine, same level, same WET -- the
     only difference is whether the signal arrived over the bus. Without this,
     any distortion measured on the send path could just as well be the reverb
     overloading, which it would do on its own input too."""
@@ -441,10 +441,9 @@ def main():
                     help="alias of --level (there is one bus now; kept so old\n"
                          "command lines parse). If both are given --dlevel wins.")
     ap.add_argument("--mix", type=int, default=127,
-                    help="reverb MIX 0..127: the STAGE crossfade (7 Sep 2026),\n"
-                         "127 = wet-only output as before, 0 passes the chain\n"
-                         "input through. (It was IN, the host's own send, v4-v8:\n"
-                         "that is --raux now.)")
+                    help="reverb WET 0..127 (slot 5, default 127): the reverb's\n"
+                         "level on top of the chain input, which passes at\n"
+                         "unity (15 Sep 2026; a crossfade before).")
     ap.add_argument("--raux", "--rin", "--rdel", type=int, default=0, dest="raux",
                     help="reverb AUX 0..127 (slot 0): the host's own dry send\n"
                          "into the one aux bus. 0 = not a client. --rdel and\n"
@@ -463,9 +462,9 @@ def main():
                     help="DELAY WOW depth 0..127 (delay slot 6, default 0).\n"
                          "TAPE's wow/flutter depth; ignored by the other modes.")
     ap.add_argument("--dmix", type=int, default=None,
-                    help="DELAY MIX 0..127 (slot 5, default 127): the STAGE\n"
-                         "crossfade (7 Sep 2026) -- 0 passes the aux through,\n"
-                         "127 = repeats only.")
+                    help="DELAY WET 0..127 (slot 5, default 127): the repeats'\n"
+                         "level on top of the aux, which passes at unity\n"
+                         "(15 Sep 2026; a crossfade before).")
     ap.add_argument("--din", "--daux", type=int, default=None, dest="din",
                     help="DELAY AUX 0..127 (slot 0, default 0): this track's\n"
                          "OWN send into the one aux bus (the old IN / -DEL).")

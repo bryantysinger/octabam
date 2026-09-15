@@ -105,11 +105,13 @@ MODULE = Module(
         # 64..127 opens the low cut inside the loop (thin); 64 = HP 0 / LP 127.
         Param(b"TONE", 64, active=True, formatter=_PLAIN,
               doc="tail tone: below 64 darkens (high cut), above 64 thins (low cut); 64 = flat"),
-        # MIX: the stage's crossfade. out = in*(1-MIX) + wet*MIX, where `in`
-        # is the delay's output while the delay is live, else the aux. The
-        # host prints wet*MIX under its dry.
-        Param(b"MIX", 127, active=True, formatter=_PLAIN,
-              doc="stage dry/wet: 0 passes the chain input through, 127 = wet only"),
+        # WET: the reverb's level on top of the chain input (the delay's
+        # output while the delay is live, else the aux), which passes through
+        # at unity: out = in + wet*WET (a crossfade until 15 Sep 2026, which
+        # faded the delay out as the reverb came in). The host prints wet*WET
+        # under its dry.
+        Param(b"WET", 127, active=True, formatter=_PLAIN,
+              doc="the reverb's level; the chain input passes through at unity"),
         # ---- page 2 ---------------------------------------------------------
         # MODE on slot 6: an even slot is the one the panel's page-2 knob
         # editor writes (docs/firmware/MAINMENU.md 9c-ii); the DSP reads $c's

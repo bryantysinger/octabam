@@ -11,7 +11,7 @@ unit, 🟡 harness only.
 ## Signal path
 
 ```
-chain in ─► 4 series allpasses ─► ┌─ FDN tank ───────────────┐ ─► shimmer ─► gate ─► width ─► MIX
+chain in ─► 4 series allpasses ─► ┌─ FDN tank ───────────────┐ ─► shimmer ─► gate ─► width ─► WET
  (aux Σ, or the delay's    (input diffusion,     │ 8 × 4096-word lines       │
   output while it is live)  taps 641..1949)      │ interpolated LFO per line │
                                                  │ 8×8 FWHT (24 butterflies) │
@@ -45,7 +45,7 @@ chain in ─► 4 series allpasses ─► ┌─ FDN tank ───────�
 | 1 | 2 | MOD | `r6+$2` | tank LFO depth; never zero (a static tank rings) |
 | 1 | 3 | SIZE | `r6+$3` | scales all eight taps within the mode; floor `f = 0.4` (~1,810 samples, 24 Hz mode spacing) |
 | 1 | 4 | TONE | `r6+$4` | LO + HI on one knob: 0..64 = LP 0..127 with HP off, 64..127 = HP 0..126 with LP open; 64 = flat (bit-identical to the old HP 0 / LP 127) |
-| 1 | 5 | MIX | `r6+$5` | `out = in × (1 − MIX) + wet × MIX`, `in` the chain input; 127 wet only, 0 passes the chain input through |
+| 1 | 5 | WET | `r6+$5` | `out = in + wet × WET`, `in` the chain input at unity; 0 passes the chain input alone (a crossfade until 15 Sep 2026) |
 | 2 | 6 | MODE | `$c` bits 16–23 | 0 ROOM, 1 PLATE, 2 BIG; slot 6 since 4 Sep 2026 (an even slot is one the panel's page-2 editor writes) |
 | 2 | 7 | SHMR | `$c` bits 8–15 | shimmer amount, 0 off; ✅ tag 84 smooth from the companion field |
 | 2 | 8 | DIFF | `$d` bits 16–23 | allpass coefficient ~0.38–0.80 |
@@ -152,13 +152,13 @@ Every enabled slot needs an explicit in-range default (`verify_menu`).
 
 ```sh
 python3 tools/harness/render_reverb.py loop.wav                      # wet+dry
-python3 tools/harness/render_reverb.py loop.wav -p TIME=100 -p SIZE=127 -p MIX=80
+python3 tools/harness/render_reverb.py loop.wav -p TIME=100 -p SIZE=127 -p WET=80
 python3 tools/harness/render_reverb.py loop.wav --sweep SIZE=0,64,127 --wet
 python3 tools/harness/render_reverb.py loop.wav --build              # rebuild first
 ```
 
 Knobs are named: `-params` indices 0–5 are page 1, 6/8/10 the knob fields of
-`$c/$d/$e`, 7/9/11 their companions. `--wet -p MIX=0` renders digital
+`$c/$d/$e`, 7/9/11 their companions. `--wet -p WET=0` renders digital
 silence (the alignment self-check). The tank is time-varying: render
 material, not an impulse convolution. `send_probe --rmode` drives MODE
 through the parameter word; `render_reverb --mode` forces the decoded value
