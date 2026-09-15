@@ -19,7 +19,7 @@ FX2 chooser: BusVerb, BusDelay, Send, DELAY. FX1 chooser: NONE, Spectrum, Charac
 
 ## Status
 
-On Sam's MKII (image 96, 13 Sep 2026; image 25 with the WET pedal chain and image 26 with MODE DEFAULTS, 15 Sep 2026). The one-aux bus claims all pass on hardware (flash 7); the sends into the delay with the note-only tempo cave, image 24. Every other stock effect is harvested: 13 effects; a saved part naming one plays silence.
+On Sam's MKII (image 96, 13 Sep 2026; images 25-27, 15 Sep 2026: the WET pedal chain, MODE DEFAULTS, only MODE/SAT naming themselves). The one-aux bus claims all pass on hardware (flash 7); the sends into the delay with the note-only tempo cave, image 24. Every other stock effect is harvested: 13 effects; a saved part naming one plays silence.
 
 ## Build
 
