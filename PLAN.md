@@ -75,9 +75,10 @@ From `docs/remixer/PLACEMENT.md`, measured under the port unless marked.
 7. The DSP side's open items: `docs/history/PLAN_EFFECTS.md`.
 8. The reverb is closed out (15 Sep 2026, "is awesome"; its buffers and
    voicing are kept whatever else moves). Next rounds: BusDelay with the
-   32K lines (741 ms; 1/4 and 1/2T at 121 BPM; built, gated, unflashed --
-   stored TIME bytes mean twice the time, `stamp-slot <project> busdelay 1
-   20` before play), then Modulation v2 (PR #258, never heard). Sam's
+   32K lines (741 ms; 1/4 and 1/2T at 121 BPM) is image 28 on the unit,
+   "sounds fantastic now" (a stored TIME byte means twice the time:
+   `stamp-slot <project> busdelay 1 20` on any other project before play);
+   then Modulation v2 (PR #258, never heard). Sam's
    fallback if the long delay disappoints: revisit the voicing and the
    alternative delay algorithms (BBD/tape loop saturation, resonant TONE,
    ducking; `docs/firmware/CHIP.md` "The rig's load" for the cycle room).
