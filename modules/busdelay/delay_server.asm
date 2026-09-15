@@ -114,7 +114,7 @@
 ;               before the auto-gain, counted as a client while nonzero)
 ;   p1 TIME  -> delay length, 64 .. 16320 samples (~1.5 .. 370 ms), a free
 ;               dial that sticky-snaps to a tempo division (1/32T .. 1/4 of
-;               the tempo the ColdFire cave publishes at r6+$6/$7), holds it
+;               stock's tempo24 at r6+$13, ticks derived per block), holds it
 ;               through tempo changes and lets go when the knob moves; the
 ;               STICKY SNAP block in proc
 ;   p2 FDBK  -> feedback gain, 0 .. ~0.87 (FDBK=0 is a single echo)
@@ -127,7 +127,7 @@
 ;   p9 SIZE  -> slot 9 companion (r6+$d low bits): GRAIN grain length and
 ;               REVERSE segment, one select for both
 ;   p10 PTCH -> slot 10 KNOB field (r6+$e bits 16-23): GRAIN pitch, +-2 oct;
-;               a held MIDI note (r6+$9, latched) overrides
+;               a held MIDI note (r6+$1 bits 8-15, latched) overrides
 ;   p11 FRZE -> slot 11 companion (r6+$e low bits), count 2
 ; ---------------------------------------------------------------------------
 
@@ -644,12 +644,43 @@ dwarmdone:
         add     x0,a                    ; floor 64 samples (~1.45 ms)
         move    a,x:(r7+$2c)            ; TIME, 64..16320 samples
 
+; ---- samples per MIDI clock, from stock's tempo24 (15 Sep 2026) ----------
+; The frame builder stores tempo24 (BPM*24, 720..7200) into halfword 31 of
+; every track's record every frame (0x40004d6a), which an FX2 instance reads
+; at r6+$13. ticks Q12.4 = 42,336,000 / tempo24 -- the word the ColdFire
+; cave used to publish at r6+$7, and it clobbered the FX1 station's page 2
+; there (docs/remixer/FAILURE_MODES.md). 48/24 division, 24 `div` steps:
+; `div` is fractional, so a0 comes out as N/(2D) for a dividend N loaded as
+; an integer -- the dividend is loaded DOUBLED (84,672,000 = $050bfe00) and
+; a0 is the integer quotient. Measured under the port (tempo24 2901: 7296
+; from the plain constant, 14593 doubled); a halved period snaps every
+; division M <= 12 to the same TIME through 2M, so only the 1/4 case in
+; tools/verify/verify_tempo.py can see it. 0 when tempo24 reads 0 (no
+; frame yet): free-running TIME.
+        move    x:(r6+$13),a
+        and     #>$ffff00,a
+        asr     #$8,a,a                 ; tempo24, integer
+        move    a1,x0
+        clr     b
+        tst     a
+        beq     tickz                   ; 0 -> ticks 0
+        move    #>$0bfe00,x1
+        move    #>$5,a                  ; a1:a0 = 84,672,000 = $050bfe00
+        move    x1,a0
+        andi    #$fe,ccr
+        rep     #$18
+        div     x0,a
+        move    a0,b                    ; quotient, <= 58,800 (B2 clean: a0 < 2^23)
+        asl     #$8,b,b                 ; << 8, as every published word
+tickz:
+        move    b,y:>$090d
+
 ; ---- TIME: STICKY SNAP to a tempo division --
         move    x:(r7+$2c),a            ; free-running TIME, from the knob
         move    a,y1
         asr     #$4,a,a
         move    a,x1                    ; tolerance = free/16
-        move    x:(r6+$7),x0            ; ticks Q12.4 << 8 (0 = not published)
+        move    y:>$090d,x0             ; ticks Q12.4 << 8 (0 = not published)
         clr     b                       ; candidate: 0 = nothing near
 ; THE TEN DIVISIONS ARE A TABLE: M << 11 for M in {2, 3, 4,
 ; 6, 8, 9, 12, 16, 18, 24}, the manifest's SNAP_DIVS, appended to the P
@@ -681,7 +712,7 @@ snapz:
         move    b,y:>$0909
 ; ---- TIME = held ? ticks*held : free ---------------------------------------
         move    b,y0
-        move    x:(r6+$7),x0
+        move    y:>$090d,x0
         mpy     y0,x0,a                 ; 0 when free or unpublished
         move    #>16320,x1
         cmp     x1,a
@@ -818,14 +849,16 @@ snapz:
         move    a,x:(r7+$16)            ; the RAW index, 0..3
 
 ; ---- MIDI note -> latched note (branch midi, 24 Aug 2026; v5: GRAIN pitch) -
-; The ColdFire cave (modules/tempo-sync/tempo_cave.s v2) re-stores the host
-; track's held MIDI note into r6+$9 every frame (bits 8-15); 0 = released or
-; no cave. HOLD semantics: the last note LATCHES in a core-private Y slot for
-; as long as any note has ever arrived -- a track that never sees MIDI behaves
-; exactly as before. Since v5 the latched note drives GRAIN's continuous
-; pitch (2^((note-84)/12), the OT's 84 = unison) in place of the RATE knob;
-; the interval ladder it used to select died with PITCH mode.
-        move    x:(r6+$9),a
+; The ColdFire cave (modules/tempo-sync/tempo_cave.s) stores the host track's
+; held MIDI note into the low byte of record halfword 13 every frame: bits
+; 8-15 of r6+$1, under TIME's knob field (since 15 Sep 2026; r6+$9 before,
+; which was the AMP page 2's first word). 0 = released or no cave. HOLD
+; semantics: the last note LATCHES in a core-private Y slot for as long as
+; any note has ever arrived -- a track that never sees MIDI behaves exactly
+; as before. Since v5 the latched note drives GRAIN's continuous pitch
+; (2^((note-84)/12), the OT's 84 = unison) in place of the RATE knob; the
+; interval ladder it used to select died with PITCH mode.
+        move    x:(r6+$1),a
         and     #>$7f00,a               ; the note, bits 8-15
         asr     #$8,a,a
 ; DNOTE_OVERRIDE
@@ -927,8 +960,7 @@ wowlive:
 ; (24 Aug 2026: a crossfader -> FREEZE hard-lock lived here for an evening
 ; and was removed at Sam's request -- nothing is to be welded to the fader.
 ; Page 1 scene-locks morph like any stock effect; page 2 cannot be locked,
-; and that is where it stays. The cave still publishes fader+1 at r6+$8,
-; unread.)
+; and that is where it stays.)
         move    a1,x0
         move    x0,a                    ; A2-clean before the store
         move    a,x:(r7-$23)            ; 0 = running, nonzero = frozen
@@ -1024,7 +1056,7 @@ gvlag:
 ; ---- GRAIN PITCH (v5): rstep, the grain's read advance per sample, Q9 ----
 ; 512 = unity. From the RATE knob, +-2 octaves: r = 2^((RATE-64)/32), 64 =
 ; unison, 96 = +12, 32 = -12. From a latched MIDI note when one has ever
-; arrived ($6a, the tempo cave's r6+$9): r = 2^((note-84)/12), clamped to
+; arrived ($6a, the cave's r6+$1 low byte): r = 2^((note-84)/12), clamped to
 ; +-24 semitones -- the same law the retired PITCH mode drove from the note.
 ; 2^f for f in [0,1) is a cubic, 1 + f(0.6931 + f(0.2402 + 0.0558 f)), error
 ; < 0.2 cent; the octave part is a shift. Both paths meet at gvoct with

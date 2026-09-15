@@ -107,5 +107,34 @@ count.
 
 No audio, no display pixels (strings only), no key matrix; route A models
 no DSP. The C++ port (`make emu-cf`, `tools/emu/ot_emu`) runs both DSP
-cores and the host port at roughly real time and is what `make check`'s
-boot verifier uses.
+cores and the host port and is what `make check`'s boot verifier uses.
+
+## The C++ port on a project
+
+```sh
+.venv/bin/python3 tools/emu/ot_emu/stage_card.py PROJECT_DIR OCTABAM RIG --out out/card.img \
+    [--audio "SRC.wav:RIG/name.wav" --audio "SRC.ot:RIG/name.ot"]   # a sample the part plays
+out/emu/ot_emu --image out/mainos_bus.bin --card out/card.img --set OCTABAM --project RIG \
+    --sequencer --internal-clock --frames 600 --load-ms 20000 --dsp --main-level 64 \
+    [--poke-trig 2] [--audio-in tone.wav] [--block-dump F] [--audio-out PREFIX]
+```
+
+- The project's `[STATES] BANK=` is the bank that plays; `--bank N` selects
+  live and the transport start re-applies the saved bank's part over the
+  live lane (half of the live id array was the other bank's after three
+  frames, 15 Sep 2026). Write the fixture into the saved bank.
+- Samples: `stage_card.py` skips `.wav`/`.ot`; `--audio` stages one at its
+  card path. FLEX and STATIC (measured 15 Sep 2026: TSMODE 0 fits the file
+  at unity, −69 dB) both play. `--main-level` is required for any voice.
+- Cost: the 20 s load ≈ 40 s wall; ≈ 15 frames/s with both cores live.
+- A panel action: `--poke-early ADDR=BYTE` (before the call; `0x80000000`
+  is the current track), `--call ADDR,arg,...` (a firmware routine as
+  main, after the load) and `--call-at N` (the same call N frames after
+  the transport start, so the part re-apply does not erase an edit).
+  `--poke` writes after the load, before the frames.
+- Watches: `--watch-mem ADDR,LEN[;ADDR,LEN...]` (every write, with the
+  PC), `--watch-read`, `--watch-pc`, `--dsp-watch core:X|Y|P:addr`,
+  `--dsp-pcwatch core:pc`, `--dsp-peek core:X|Y|P:addr,len` (upper-case
+  space letter), `--mem-dump addr,len=file`.
+- The record a track's DSP instances read is `0x80000110 + 64·t` (32
+  halfwords, `docs/firmware/MIDI.md`); the page-2 lane `0x80000810 + 72·t`.

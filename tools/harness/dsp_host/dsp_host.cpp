@@ -114,7 +114,7 @@
 //                             perinst (default) this instance's entry
 //                             end             left past the last instance
 //                             keep            never rewritten after the inits
-//     -tempo BPM            publish tempo24 / clocks Q12.4 at r6+$6/$7 (the cave)
+//     -tempo BPM            publish tempo24 at r6+$13 (halfword 31, as the frame builder does)
 //     -params a,b,...       parameter values 0..127 (default 64); 6 fills page 1,
 //                           8 also covers the page-2 slots. Repeat the option to
 //                           give successive instances different values.
@@ -186,7 +186,7 @@ struct Args {
     int trackInst = 0;                     // -trackinst: which instance -track samples
     std::string trackOut;
     std::vector<std::pair<TWord, TWord>> pokeY;
-    double tempo = 0;                      // -tempo BPM: publish r6+$6/$7 like the ColdFire cave
+    double tempo = 0;                      // -tempo BPM: publish tempo24 at r6+$13 like the frame builder
     long skew = 0; bool interleave = false;
     std::string meterFile;
     std::vector<TWord> ctx, ctxB;          // lo,hi,exit overrides
@@ -765,14 +765,14 @@ int main(int argc, char** argv) {
             if (knob < pv.size() || comp < pv.size())
                 C.mem->set(MemArea_X, C.pblock + 0xc + w, v);
         }
-        // -tempo: what modules/tempo-sync/tempo_cave.s publishes on hardware (24 Aug 2026):
-        // r6+$6 = BPM*24, r6+$7 = 42336000/tempo24 = samples per MIDI clock
-        // in Q12.4 -- 16-bit halfwords, so <<8 like every published word.
+        // -tempo: what the stock frame builder publishes (0x40004d6a): tempo24 =
+        // BPM*24 in halfword 31 of the track's record, r6+$13 of an FX2
+        // instance, <<8 like every published word. BusDelay derives the clock
+        // period itself. (Until 15 Sep 2026 the ColdFire cave put tempo24 and
+        // the period at r6+$6/$7 -- the FX1 instance's page 2.)
         if (a.tempo > 0) {
             const TWord t24 = static_cast<TWord>(a.tempo * 24 + 0.5);
-            const TWord ticks = 42336000u / t24;
-            C.mem->set(MemArea_X, C.pblock + 6, (t24 & 0xffff) << 8);
-            C.mem->set(MemArea_X, C.pblock + 7, (ticks & 0xffff) << 8);
+            C.mem->set(MemArea_X, C.pblock + 0x13, (t24 & 0xffff) << 8);
         }
     };
 

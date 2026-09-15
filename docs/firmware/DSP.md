@@ -251,11 +251,15 @@ to `x:(r7+$17)` and works from `#$a0` / `#>$110`.
 
 ### Page 2: `r6+$b..$e` ✅
 
-Not `r6+6` and not display order. `r6+$6..$a` are read by nothing on the
-DSP (the record bytes `+0x24..+0x2c`; the frame builder rewrites them every
-frame, so a cave must re-store per pass: `MIDI.md`). Measured with
-`dsp/pagemap_probe.asm` and `dsp/page2_probe.asm` (git history), and the
-slot map in `PARAM_PAGES.md` §6:
+Not `r6+6` and not display order. Measured with `dsp/pagemap_probe.asm`
+and `dsp/page2_probe.asm` (git history), and the slot map in
+`PARAM_PAGES.md` §6. The two instances of a track overlap: the FX2 block
+starts six words after the FX1 block, so `r6_FX2+$6..$8` IS the FX1
+effect's page 2 and `r6_FX2+$9..$b` the AMP page 2 (record halfwords
+18-23). Retracted 15 Sep 2026: "`r6+$6..$a` are read by nothing on the
+DSP" -- true of every FX2 effect, and the tempo cave that relied on it
+overwrote the FX1 station's page 2 on every delay and reverb host
+(`docs/remixer/FAILURE_MODES.md`).
 
 | display slot | field |
 |---|---|
@@ -336,12 +340,17 @@ per-voice record is set, else `0xb40`; UI `0x40031d70` (bars) and
 Retracted 2 Sep 2026: `0x400060c4` as a tempo→frame site (it is the
 PICKUP recorder arm length, `EXTERNAL.md` §6).
 
-The tempo cave (`modules/tempo-sync/tempo_cave.s`) hooks `0x40004d40` in
-the per-frame voice-record writer (replaces `move.b 0xdbc(a0),d2 / ext.w d2
-/ move.w d2,0x38(a2)` with `jsr` + two `nop`s, replays them) and for FX2 ids
-6/7 stores tempo24 at record `+0x24` (`r6+$6`) and `42,336,000 / tempo24`
-(samples per MIDI clock, Q12.4; `divu.l`, guarded on zero) at `+0x26`
-(`r6+$7`); `MIDI.md` lists the published words. The cave floats past the
+The tempo reaches the DSP from stock: the per-frame voice-record writer
+stores tempo24 (`0x8000181c`, BPM*24) into halfword 31 of every track's
+record (`0x40004d6a`, `move.w %a0,0x3e(%a2)`), `r6+$13` of the FX2
+instance; BusDelay derives `42,336,000 / tempo24` (samples per MIDI clock,
+Q12.4) per block with a 24-step `div`. The note cave
+(`modules/tempo-sync/tempo_cave.s`) hooks `0x40004d40` in the same writer
+(replaces `move.b 0xdbc(a0),d2 / ext.w d2 / move.w d2,0x38(a2)` with `jsr`
++ two `nop`s, replays them) and for FX2 id 6 stores the held MIDI note
+into the low byte of halfword 13 (`r6+$1` bits 8-15); `MIDI.md`. Until
+15 Sep 2026 the cave stored tempo24 and the period at `+0x24/+0x26`
+(`r6+$6/$7`): the FX1 instance's page 2. The cave floats past the
 descriptor clones (`0x400d7000` in the shipping image). An init that built a
 division table in Y through `(r1)+` killed every voice on three flashes
 (R48–R50, 24 Aug 2026); `m1` is not guaranteed linear at init; replaced by

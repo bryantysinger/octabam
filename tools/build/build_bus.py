@@ -1757,6 +1757,9 @@ mkgo:""",
             # counter $090b (load + store) and this block's host print gain
             # $090c (store, then one load per channel in the output stage)
             n_want += 5 if "y:>$090b" in src else 0
+            # + 3 for the MIDI-clock period derived from stock's tempo24:
+            # $090d (store, then the two sticky-snap reads)
+            n_want += 3 if "y:>$090d" in src else 0
             if name == "DELAY SERVER" and n_priv != n_want:
                 sys.exit(f"XBUS: {name} expected exactly {n_want} core-private "
                          f"$09xx refs (RATE/DRV state"

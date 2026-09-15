@@ -63,7 +63,8 @@ reference.
 
   Page 2 is three words `r6+$c/$d/$e`, each a KNOB field (bits 16-23) and
   a COMPANION field (bits 8-15) (`docs/firmware/PARAM_PAGES.md`). `-tempo
-  BPM` publishes the tempo words at `r6+$6/$7` as the ColdFire cave does.
+  BPM` publishes tempo24 at `r6+$13` (record halfword 31) as the stock
+  frame builder does.
 - **Runs multiple instances the way the dispatcher does**: every init
   first, then each block handed to every instance in turn, each with its
   own r7 state block, allocator entry and audio buffer (the instance model
