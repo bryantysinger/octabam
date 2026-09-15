@@ -6,7 +6,7 @@ hides the row.
 
 | page 1 | FREQ · RES · ENV · LDP · LSP · WDTH |
 |---|---|
-| page 2 | TAME · MODE (LADR LP BP ISO VOWL) · — · — · — · — |
+| page 2 | — · MODE (LADR LP BP ISO VOWL) · — · — · — · — |
 
 - **LADR** — the linear zero-delay Moog transistor ladder (audiojs/filter
   moogLadder, MIT), 24 dB/oct; RES 127 is the edge of self-oscillation,
@@ -23,8 +23,10 @@ hides the row.
 FREQ is exponential, 60 Hz → 15 kHz, an equal step per detent (a 33-word
 P table interpolated per block). ENV (a block-peak follower, instant attack,
 LSP = release) and LDP (an LFO, LSP = speed ~0.08–9 Hz) both move the
-cutoff. TAME is the filter's own saturation (the SEM/Moog tanh), default 50.
-WDTH is mid/side width on the output.
+cutoff. WDTH is mid/side width on the output. TAME (the filters' state
+saturation, 14 Sep 2026) is gone since 15 Sep 2026 -- Sam: "tame should be
+gone"; the removal is bit-identical to TAME 0 and frees the two `div`-fed
+per-block words and six 28-word calls per channel pair.
 
 Defaults are a bit-exact passthrough (FREQ 127, RES 0, ENV 64, LDP 0): the
 engine detects that block and copies nothing, because every part that chose
@@ -48,8 +50,7 @@ limiter.
 - Cost: 954 words; 369 cycles/sample.
 - `verify_menu`, `verify_replaces`, `verify_labels` pass on the rig.
 
-On Sam's unit since flash 4; the LADR / TAME voicing (PR #254) built as
-image 21, unflashed.
+On Sam's unit since flash 4; the LADR voicing (PR #254) since image 21.
 
 ## Open
 

@@ -2,7 +2,7 @@
 ; SPECTRUM -- a filter pedal: LADR (the zero-delay Moog ladder), LP / BP (the
 ; zero-delay SEM SVF), ISO (an isolator, Airwindows Capacitor2), VOWL (three
 ; constant-peak-gain formant resonators morphed by FREQ); ENV and LFO onto
-; the cutoff; TAME (the filter's own saturation); mid/side WDTH. Insert
+; the cutoff; mid/side WDTH. Insert
 ; contract (modules/ripple/ripple_svf.asm): frames in place at
 ; x:(r0)/x:(r0+n0), knobs from r6, state in this instance's r7 block. FX1
 ; only: init reads the allocator base and an FX2 instance runs as a dry pass.
@@ -444,21 +444,6 @@ fs_mladr:
         asr     #$4,a,a
         move    a,x:(r7+$15)            ; dG
 fs_mdone:
-        move    x:(r6+$c),a
-        and     #>$7f0000,a
-        move    a,x:(r7+$39)            ; m
-        move    a,x0
-        move    #>$700000,y1            ; 7/8
-        mpy     x0,y1,a                 ; 7m/8
-        add     #>$100000,a             ; g/8 = 1/8 + 7m/8
-        move    a,x:(r7+$3a)
-        move    a,x0
-        move    #$10,a                  ; num = 1/8 (a clean load), den = g/8 >= 1/8
-        andi    #$fe,ccr
-        rep     #$18
-        div     x0,a
-        move    a0,x0
-        move    x0,x:(r7+$3b)           ; 1/g
 ; ---- WDTH (slot 5; slot 4 until LSP took it): stereo width of
 ; the output, Character's mid/side, drawn -64..+63; the knob word IS WDTH/128
 ; = the side gain HALVED (64 -> 0.5, doubled back per sample: 0 = mono, 127 =
@@ -468,7 +453,7 @@ fs_mdone:
         move    a,x:(r7+$2c)            ; ($25 is the SVF's HP tap -- 14 Sep 2026's first build put this there and every LP leaked half its HP)
 
 ; ---- BYPASS: the defaults are a bit-exact passthrough ---------------------
-; FREQ 127, RES 0, ENV 64, LDP 0, WDTH 64, MODE 0, any TAME (LSP is inert at LDP 0 / ENV 64).
+; FREQ 127, RES 0, ENV 64, LDP 0, WDTH 64, MODE 0 (LSP is inert at LDP 0 / ENV 64; slot 6 is blank).
 ; Every part that ever chose stock FILTER runs this on FX1 after the flash,
 ; so the neutral block copies nothing at all.
         clr     b
@@ -489,8 +474,8 @@ fs_mdone:
         move    x:(r6+$5),a
         cmp     x0,a
         bne     fs_live
-        move    x:(r6+$c),a             ; the MODE select; TAME's knob field is
-        and     #>$ff00,a               ; masked out (nothing for it to saturate here)
+        move    x:(r6+$c),a             ; the MODE select (the companion field;
+        and     #>$ff00,a               ; slot 6's knob field is blank since TAME went, 15 Sep 2026)
         bne     fs_live                 ; AND sets Z from A1 (a2 = a0 = 0 here)
         bra     fs_bypass
 fs_live:
@@ -555,18 +540,16 @@ fs_live:
         add     b,a                     ; bp
         move    a,x1                    ; bp, limited
         add     b,a
-        bsr     fs_sat                  ; TAME: the SEM's state tanh
         move    a,x:(r7+$34)            ; s0'
 ; q = 2*g*bp ; lp = s1 + q ; s1' = lp + q
         move    x1,x0
-        move    x:(r7+$1c),y1           ; g2 (fs_sat clobbers y1)
+        move    x:(r7+$1c),y1           ; g2
         mpy     x0,y1,b
         asl     #$1,b,b                 ; q = g*bp
         move    x:(r7+$35),a
         add     b,a                     ; lp
         move    a,x:(r7+$1b)            ; lp parked (limited)
         add     b,a
-        bsr     fs_sat
         move    a,x:(r7+$35)            ; s1'
 ; wetA = kBP*bp + kHP*hp + kLP*lp   (NOTCH = hp + lp)
         move    x1,x0
@@ -616,18 +599,16 @@ fs_live:
         add     b,a                     ; bp
         move    a,x1                    ; bp, limited
         add     b,a
-        bsr     fs_sat                  ; TAME: the SEM's state tanh
         move    a,x:(r7+$36)            ; s0'
 ; q = 2*g*bp ; lp = s1 + q ; s1' = lp + q
         move    x1,x0
-        move    x:(r7+$1c),y1           ; g2 (fs_sat clobbers y1)
+        move    x:(r7+$1c),y1           ; g2
         mpy     x0,y1,b
         asl     #$1,b,b                 ; q = g*bp
         move    x:(r7+$37),a
         add     b,a                     ; lp
         move    a,x:(r7+$1b)            ; lp parked (limited)
         add     b,a
-        bsr     fs_sat
         move    a,x:(r7+$37)            ; s1'
 ; wetA = kBP*bp + kHP*hp + kLP*lp   (NOTCH = hp + lp)
         move    x1,x0
@@ -748,7 +729,6 @@ fs_vowl:
         move    x:(r7+$48),y1           ; vg/8
         mpy     x0,y1,a
         asl     #$3,a,a                 ; wetA * vg, the store limits
-        bsr     fs_sat                  ; TAME
         move    a,x:(r0)                ; out L (limited)
 ; ===================== channel R =====================
         move    x:(r0+n0),x0
@@ -841,7 +821,6 @@ fs_vowl:
         move    x:(r7+$48),y1           ; vg/8
         mpy     x0,y1,a
         asl     #$3,a,a                 ; wetA * vg, the store limits
-        bsr     fs_sat                  ; TAME
         move    a,x:(r0+n0)             ; out R (limited)
         bra     fs_join
 ; MODEFORK_MID -- alternative 3: LADR, the linear zero-delay Moog ladder
@@ -1045,34 +1024,6 @@ fs_ccore:
         move    x:(r7+$29),y1           ; trim/2
         mpy     x0,y1,a
         asl     #$1,a,a                 ; out = x trim
-; TAME, inlined (a callee may not call a callee: the pricer's straight-line rule)
-        move    a,x:(r7+$3c)            ; v (limited)
-        move    a,x0
-        move    x:(r7+$3a),y1           ; g/8
-        mpy     x0,y1,a
-        asl     #$3,a,a                 ; v g
-        move    a,x:(r7+$3d)            ; v' = clamp(v g): the store limits
-        move    x:(r7+$3d),x0
-        move    x:(r7+$3d),y1
-        mpy     x0,y1,a                 ; v'^2
-        move    a,y1
-        mpy     x0,y1,a                 ; v'^3
-        move    a,x0
-        move    #>$2aaaab,y1            ; 1/3
-        mpy     x0,y1,a                 ; v'^3/3
-        move    x:(r7+$3d),x0
-        neg     a
-        add     x0,a                    ; sc = v' - v'^3/3, |sc| <= 2/3
-        move    a,x0
-        move    x:(r7+$3b),y1           ; 1/g
-        mpy     x0,y1,a                 ; sc/g
-        move    x:(r7+$3c),x0
-        sub     x0,a                    ; sc/g - v
-        move    a,x0
-        move    x:(r7+$39),y1           ; m
-        mpy     x0,y1,a                 ; m (sc/g - v): exactly 0 at TAME 0
-        move    x:(r7+$3c),x0
-        add     x0,a
         rts
 
 ; ---- fs_lcore: the ladder's per-channel core (LADR) ----------
@@ -1121,34 +1072,6 @@ fs_lcore:
         move    x:(r7+$14),y1           ; d/2
         mpy     x0,y1,a                 ; (x - k S) d / 64
         asl     #$5,a,a                 ; u/2
-; TAME, inlined (a callee may not call a callee: the pricer's straight-line rule)
-        move    a,x:(r7+$3c)            ; v (limited)
-        move    a,x0
-        move    x:(r7+$3a),y1           ; g/8
-        mpy     x0,y1,a
-        asl     #$3,a,a                 ; v g
-        move    a,x:(r7+$3d)            ; v' = clamp(v g): the store limits
-        move    x:(r7+$3d),x0
-        move    x:(r7+$3d),y1
-        mpy     x0,y1,a                 ; v'^2
-        move    a,y1
-        mpy     x0,y1,a                 ; v'^3
-        move    a,x0
-        move    #>$2aaaab,y1            ; 1/3
-        mpy     x0,y1,a                 ; v'^3/3
-        move    x:(r7+$3d),x0
-        neg     a
-        add     x0,a                    ; sc = v' - v'^3/3, |sc| <= 2/3
-        move    a,x0
-        move    x:(r7+$3b),y1           ; 1/g
-        mpy     x0,y1,a                 ; sc/g
-        move    x:(r7+$3c),x0
-        sub     x0,a                    ; sc/g - v
-        move    a,x0
-        move    x:(r7+$39),y1           ; m
-        mpy     x0,y1,a                 ; m (sc/g - v): exactly 0 at TAME 0
-        move    x:(r7+$3c),x0
-        add     x0,a
         move    a,x1                    ; v/2 (limited: u within +-2)
         move    x:(r7+$1c),y1           ; G' for the four stages
 ; stage 0: y/2 = G'(v-s)/2 + s/2 ; s'/2 = y - s/2  (x1 = v/2 in, y/2 out)
@@ -1215,39 +1138,3 @@ fs_lcore:
 fs_bypass:
         rts
 
-;  ---------------------------------------------------------------------------
-; fs_sat -- TAME's saturation for one value. In: a = v (any
-; accumulator value; the first store limits it). Out: a = v + m (sc(clamp(v g))
-; / g - v), sc(x) = x - x^3/3, with m, g/8, 1/g at $39/$3a/$3b per block.
-; STRAIGHT-LINE, LAST in the file: every bsr to it is forward (dsp_asm has no
-; backward short bsr). Clobbers x0, y1; parks at $3c (v) and $3d (clamp(v g)).
-; ---------------------------------------------------------------------------
-fs_sat:
-        move    a,x:(r7+$3c)            ; v (limited)
-        move    a,x0
-        move    x:(r7+$3a),y1           ; g/8
-        mpy     x0,y1,a
-        asl     #$3,a,a                 ; v g
-        move    a,x:(r7+$3d)            ; v' = clamp(v g): the store limits
-        move    x:(r7+$3d),x0
-        move    x:(r7+$3d),y1
-        mpy     x0,y1,a                 ; v'^2
-        move    a,y1
-        mpy     x0,y1,a                 ; v'^3
-        move    a,x0
-        move    #>$2aaaab,y1            ; 1/3
-        mpy     x0,y1,a                 ; v'^3/3
-        move    x:(r7+$3d),x0
-        neg     a
-        add     x0,a                    ; sc = v' - v'^3/3, |sc| <= 2/3
-        move    a,x0
-        move    x:(r7+$3b),y1           ; 1/g
-        mpy     x0,y1,a                 ; sc/g
-        move    x:(r7+$3c),x0
-        sub     x0,a                    ; sc/g - v
-        move    a,x0
-        move    x:(r7+$39),y1           ; m
-        mpy     x0,y1,a                 ; m (sc/g - v): exactly 0 at TAME 0
-        move    x:(r7+$3c),x0
-        add     x0,a
-        rts
