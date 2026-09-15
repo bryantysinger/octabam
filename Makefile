@@ -177,6 +177,9 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	python3 tools/verify/verify_twocore.py
 	python3 tools/verify/verify_onebus.py
 	python3 tools/verify/verify_tempo.py $(REMIX)
+	@# A real project on the built image under the ColdFire port (ids, page-2
+	@# delivery, chain audio, the main out); SKIPs without OT_PROJECT=<dir>.
+	python3 tools/verify/verify_set.py $(REMIX)
 
 .PHONY: verify-roll
 verify-roll: ## Prove an alternate REVERB engine is bit-identical: make verify-roll CAND=cand.asm [REF=modules/busverb/reverb_server.asm]
@@ -220,7 +223,7 @@ burn-image: burn ## Repack the RIG BURN build into a card-flashable .bin (BUILD=
 	@echo "  MIDI image: out/OCTATRACK_OS1.40C_$(VERSION)B.syx"
 
 .PHONY: check
-check: bus cycles verify ## Everything that can be checked without hardware
+check: bus cycles verify ## Everything that can be checked without hardware (OT_PROJECT=<project dir> adds the set under the port)
 	@# verify_burn.py shells out to build_bus.py twice -- with and without
 	@# BURN=1, neither with XBUS/SPEC -- and each run overwrites
 	@# out/mainos_bus.bin. Left alone, `make check` finishes by leaving a

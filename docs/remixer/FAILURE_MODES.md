@@ -122,7 +122,10 @@ copy keeps the donor's index.
 **Fix.** Write `p % 4` into byte 8 after any whole-record copy
 (`ot_ladder.PART_INDEX_OFF`); the generator's read-back checks every
 record. The other known parse error: `project.work` edited in text mode
-loses its CRLF.
+loses its CRLF. Under the port the load completes and the firmware logs
+`Couldn't read bank file '...bank01.work' ('PARSE ERROR')` to the card's
+`LOG 000000.txt` (`verify_set`, `ot_emu --card-out`): a generated project
+is checked before it goes near the card.
 
 ## The set went silent after a test flash: the firmware reset the project 🟡
 
@@ -136,7 +139,10 @@ null stub on the master).
 
 **Inferred.** The firmware sanitises part records whose FX ids are not in
 the running image's tables and writes the .work files back. Never load
-the set under a test image.
+the set under a test image. Not reproduced by LOAD PROJECT under the port
+(15 Sep 2026: OCTABAM88 bank B under the `bus` image, which carries none
+of the station ids, kept the ids live and rewrote no file; `verify_set`
+reads the card back), so the rewrite happens on another action.
 
 **Recovery.** Regenerate from the material (`ot_project.py rigproj … +
 lfo-clear … all`), copy the banks over the card's project in place, keep

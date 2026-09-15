@@ -56,6 +56,8 @@ namespace ot
 		}
 		uint64_t sectorsRead() const { return m_reads; }
 		uint64_t sectorsWritten() const { return m_writes; }
+		// The image as the firmware left it: every WRITE landed here (--card-out).
+		const std::vector<uint8_t>& image() const { return m_img; }
 
 		// The INTRQ rules live in `Rtos::attachCard` and need these three.
 		uint32_t status() const { return m_status; }
