@@ -40,7 +40,9 @@ programme this grew out of, with its open items.
   the firmware left it and the firmware's own LOG. 18 checks on
   OCTABAM88 bank B / `bamsep26`, ~80 s. It found the T1 page-2 defect's
   cause (the tempo cave over the FX1 page 2 of every bus host, PR #271)
-  — fixed, unflashed.
+  — fixed; image 24 (15 Sep 2026) confirmed the sends into the delay on
+  the unit, image 25 (SEND on every track, the WET pedal chain, PR #277)
+  is what the rig runs now.
 
 ## The ground
 
@@ -70,8 +72,9 @@ From `docs/remixer/PLACEMENT.md`, measured under the port unless marked.
 6. octamax (mxldyn): ported on branch `octamax-deferred` (`d952976`), parked
    pending a conversation with the author.
 7. The DSP side's open items: `docs/history/PLAN_EFFECTS.md`.
-8. Flash the tempo-cave fix (PR #271, `bamsep26`): FX1 page 2 on T1/T5 on
-   the unit; `OCTABAM89` plays as stamped.
+8. Voicing rounds for the bus engines on image 25 (the live-round
+   protocol: level-match first, transport stopped at the end of every
+   test), then Modulation v2 (PR #258, unflashed, never heard).
 9. Under the port the transport start re-applies the saved bank's FX ids
    for T1-T3, T7 and T8 only (T4-T6 keep the load's bank A ids, by
    `--bank` or by a program change); `verify_set` stages the tested bank
