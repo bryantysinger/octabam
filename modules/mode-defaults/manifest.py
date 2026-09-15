@@ -16,8 +16,9 @@ page-1 slots through the stock page-1 writer 0x40054cd8(track, flat,
 value), page-2 slots with the editor's own stores (Part, shadow, live
 lane, the slot's redraw flag). SEND (slot 0 of the bus engines) is never
 in a view. The table is generated per remix from every module in the
-image that declares ModeViews; a MODE reached over MIDI (CC PAGE 2) does
-not pass through the editors and is not re-defaulted (open).
+image that declares ModeViews. A MODE over MIDI (CC PAGE 2) is
+re-defaulted too: its cave calls CC_MODEDEF2 / CC_MODEDEF1 here after its
+write.
 
 Measured under the port (tools/verify/verify_modedefaults.py, in make
 verify when OT_PROJECT is set): the FX2 editor called on T1 with MODE ->

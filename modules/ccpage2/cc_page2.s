@@ -40,6 +40,11 @@
         .set    P1P2OFF,  0x8f07e      | FX1 page-2 Part store: DB+part*6322+track*30+slot (0x4003acac)
         .set    SHADOW1,  0x100a51cc   | FX1 page-2 shadow: +part*6322+track*30+slot (0x4003acb4)
         .set    LANE1,    0x32         | FX1 page-2 live lane offset in the 72-byte block (0x80000842)
+| CC_MODEDEF2 / CC_MODEDEF1: after a page-2 write, the MODE DEFAULTS unit
+| (when it is in the image: the build resolves the symbol to its cc_fx2 /
+| cc_fx1; otherwise to a stock `rts`, 0x40027e1a) applies the landed
+| mode's view -- a2 = slot2, d2 = the clamped value, d4 = track, d5 = part,
+| everything preserved but d0/d1/a0/a1.
 
         .text
 | ---- CAVE(msg): dispatch entry (jsr'd), msg* at %sp@(4) ------------------
@@ -194,6 +199,7 @@ wpos:   | d2 = clamped value (>=0 by construction)
         moveq   #1,%d1
         movel   %d1,%a0@               | DB+0x9b332 = 1
         movel   %d1,GCHG               | 0x100f8598 = 1 -- the GLOBAL changed flag
+        bsr.w   modedef2               | a landed MODE re-defaults its neighbours
         rts
 
 | ---- wtrk1: FX1 page-2 slot (d4-6) = value d5 for track d6 --
@@ -276,7 +282,35 @@ w1ok:   | d2 = clamped value; d0 = DB + part*6322
         addal   #LANE1,%a0
         addal   %d3,%a0
         moveb   %d2,%a0@
+        bsr.w   modedef1
 w1skip: rts
+
+| ---- the MODE DEFAULTS adapters: this cave's (d4 = slot, d2 = value,
+| d6 = track) into the unit's (a2 = slot2, d2, d4 = track, d5 = part).
+modedef2:
+        lea     %sp@(-16),%sp
+        movem.l %d4-%d6/%a2,%sp@
+        moveal  %d4,%a2                | slot2 (0..5)
+        movel   %d6,%d4                | track
+        moveq   #0,%d5
+        moveb   PARTB,%d5              | part
+        jsr     (CC_MODEDEF2).l
+        movem.l %sp@,%d4-%d6/%a2
+        lea     %sp@(16),%sp
+        rts
+modedef1:
+        lea     %sp@(-16),%sp
+        movem.l %d4-%d6/%a2,%sp@
+        movel   %d4,%d5
+        subql   #6,%d5
+        moveal  %d5,%a2                | slot2 = (cc-62) - 6
+        movel   %d6,%d4                | track
+        moveq   #0,%d5
+        moveb   PARTB,%d5              | part
+        jsr     (CC_MODEDEF1).l
+        movem.l %sp@,%d4-%d6/%a2
+        lea     %sp@(16),%sp
+        rts
 
 | ---- per-engine page-2 value counts, slot2 order (slots 6..11) -----------
 | Must match the engines' manifests (busverb / busdelay page-2 counts);
