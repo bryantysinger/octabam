@@ -46,6 +46,7 @@ is the pattern.
 ```bash
 make modules                    # the index, the compatibility matrix, the remixes
 make check REMIX=<name>         # build + cycles + every gate + boot under the port, no hardware
+OT_PROJECT=<dir> [OT_BANK=2] make check REMIX=<name>   # + that project on the image under the port: ids, page-2 delivery, chain audio, main out
 make bus REMIX=<name>           # THE build (XBUS=1 SPEC=1) -> out/mainos_bus.bin
 make render                     # hear the bus locally, ~6x real time
 make reverb IN=loop.wav ARGS='--wet --mode all'

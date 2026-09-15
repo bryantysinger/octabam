@@ -1,0 +1,284 @@
+#!/usr/bin/env python3
+"""A real project on the built image under the ColdFire port: the routing
+facts a flash used to be the first test of.
+
+    python3 tools/verify/verify_set.py bamsep26 --project ~/octa/backups/.../OCTABAM88 [--bank 2] [--frames 400]
+    OT_PROJECT=... [OT_BANK=2] make check REMIX=bamsep26   # the same, from make verify
+
+Stages the project (banks, project.work with [STATES] BANK= set to the
+tested bank, and every STATIC/FLEX sample the tested part's tracks name)
+onto a card image, boots the remix's image in `ot_emu`, LOAD PROJECTs, runs
+the sequencer with both DSP cores live and tones on the inputs, and reads
+the machine back:
+
+  load      LOAD PROJECT completed and the frames ran to the target
+  ids       the live FX1/FX2 id arrays (0x80000ec4/0x80000ecc) == the part's
+  page 2    every track's DSP record carries its page-2 lane: halfwords
+            18-20 = FX1 p2, 21-23 = AMP p2, 24-26 = FX2 p2 (the tempo cave
+            wrote over 18-21 on every bus host until 15 Sep 2026)
+  audio     every track whose record carries audio has a chain output
+            (the read-back slot), and the main out is not silent
+  card      the card as the firmware left it (--card-out, read back with
+            emu_card.extract_image): which project files it rewrote, and
+            its own LOG 000000.txt -- every ERROR line that is not a FILE
+            NOT FOUND for a sample the gate did not stage is a failure
+            (a PART record with the wrong index byte logs "Couldn't read
+            bank file ... ('PARSE ERROR')" here, as the unit does)
+
+SKIPs without a project (OT_PROJECT / --project), without the port
+(`make emu-cf`) or without the emulator .venv. What it cannot see: the
+panel (edits arrive by --call), cross-core timing, the cycle wall.
+"""
+import argparse, math, os, pathlib, re, shutil, subprocess, sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
+from remix import registry  # noqa: E402
+import ot_project as otp  # noqa: E402
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+EMU = ROOT / "out/emu/ot_emu"
+PY = ROOT / ".venv/bin/python3"
+OUT = ROOT / "out/setverify"
+LIVE_IDS, RECORDS, LANES = 0x80000ec4, 0x80000110, 0x80000810
+TYPE_NAME = {0: "STATIC", 1: "FLEX", 2: "THRU", 3: "NEIGH", 4: "PICKUP"}
+# lane offset -> record halfword: the copier 0x4000cae8 (PARAM_PAGES.md 5c)
+P2_LANES = (("FX1 p2", 0x32, 18), ("AMP p2", 0x2c, 21), ("FX2 p2", 0x38, 24))
+
+
+def db(x):
+    return 20 * math.log10(x / 8388608) if x > 0 else -200.0
+
+
+def rms(v):
+    return math.sqrt(sum(x * x for x in v) / len(v)) if v else 0.0
+
+
+def part_of(pdir, bank, part):
+    """The tested part's ids, machine types and sample slots (0-based), and
+    the pattern->part map of the bank."""
+    data = (pdir / f"bank{bank:02d}.work").read_bytes()
+    pat_part, _ = otp.bank_info(pdir, bank)
+    c = data[otp.PART_BASE + (part - 1) * otp.PART_STRIDE:][:otp.PART_STRIDE]
+    return dict(fx1=list(c[otp.FX1_OFF:otp.FX1_OFF + 8]), fx2=list(c[otp.FX2_OFF:otp.FX2_OFF + 8]),
+                mtype=list(c[otp.MTYPE_OFF:otp.MTYPE_OFF + 8]),
+                static=[c[0x2d3 + t * 5] for t in range(8)], flex=[c[0x2d3 + t * 5 + 1] for t in range(8)],
+                pat_part=pat_part)
+
+
+def sample_paths(pdir):
+    """(type, slot 1-based) -> PATH= from project.work."""
+    _, slots = otp.read_project(pdir)
+    return {(s["type"], s["slot"]): s["path"] for s in slots if s["path"]}
+
+
+def stage(pdir, part, set_name, name, tree, image_mb, bank, card):
+    """A scratch copy of the project with [STATES] BANK= set to the tested
+    bank, staged by stage_card.py (under the emulator .venv) with the
+    tested part's samples at their card paths."""
+    paths = sample_paths(pdir)
+    audio, staged = [], set()
+    for t in range(8):
+        kind = TYPE_NAME.get(part["mtype"][t])
+        if kind not in ("STATIC", "FLEX"):
+            continue
+        slot = (part["static"] if kind == "STATIC" else part["flex"])[t] + 1
+        rel = paths.get((kind, slot))
+        if not rel or rel in staged:
+            continue
+        staged.add(rel)
+        src = (pdir / rel).resolve()
+        card_path = rel[3:] if rel.startswith("../") else f"{name}/{rel}"
+        for f, c in ((src, card_path), (src.with_suffix(".ot"), card_path[:-4] + ".ot")):
+            if f.is_file():
+                audio.append(f"{f}:{c}")
+    total_mb = sum(pathlib.Path(x.split(":", 1)[0]).stat().st_size for x in audio) / 2**20
+    mb = max(image_mb, 64 * math.ceil((total_mb * 1.5 + 16) / 64))
+    copy = tree.parent / "project"
+    if copy.exists():
+        shutil.rmtree(copy)
+    copy.mkdir(parents=True)
+    for f in pdir.iterdir():
+        if f.is_file() and f.suffix.lower() == ".work":
+            shutil.copy2(f, copy / f.name)
+    # The emulated load applies bank A's part and ends on bank A whatever
+    # BANK= says (RTOS_FORK.md section 7), and the transport start's
+    # refresher re-applies the saved bank's ids only for tracks it touches
+    # (T1-T3, T7, T8 of the rig; T4-T6 kept bank A's, 15 Sep 2026). The
+    # tested bank goes in as bank A too, so both paths carry its part.
+    if bank != 1:
+        shutil.copy2(copy / f"bank{bank:02d}.work", copy / "bank01.work")
+    pw = copy / "project.work"
+    raw = pw.read_bytes()
+    m = re.search(rb"\r\nBANK=(\d+)\r\n", raw)
+    if not m:
+        sys.exit("verify_set: project.work has no [STATES] BANK= line")
+    raw = raw[:m.start()] + b"\r\nBANK=%d\r\n" % (bank - 1) + raw[m.end():]
+    # Pattern 1: the part the gate reads is pattern 1's, and --poke-trig
+    # lands in pattern 1 (a saved PATTERN=1 played pattern 2 with no trig
+    # of its own and the whole set read silent, 15 Sep 2026).
+    m = re.search(rb"\r\nPATTERN=(\d+)\r\n", raw)
+    if m:
+        raw = raw[:m.start()] + b"\r\nPATTERN=0\r\n" + raw[m.end():]
+    # As port_compare: with the master track on nothing reaches TX0 under
+    # the port (ring words 0..7 all zero, T8's read-back live); unmeasured
+    # whether that is the port's or the unit's.
+    raw = raw.replace(b"MASTER_TRACK=1", b"MASTER_TRACK=0")
+    pw.write_bytes(raw)
+    cmd = [str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(copy), set_name, name,
+           "--tree", str(tree), "--out", str(card), "--image-mb", str(mb)]
+    for x in audio:
+        cmd += ["--audio", x]
+    r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+    if r.returncode:
+        sys.exit(f"verify_set: stage_card failed:\n{r.stdout[-1000:]}{r.stderr[-1000:]}")
+    return audio, mb
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("remix", nargs="?", default=registry.DEFAULT_REMIX)
+    ap.add_argument("--project", default=os.environ.get("OT_PROJECT", ""))
+    ap.add_argument("--bank", type=int, default=int(os.environ.get("OT_BANK", "0")),
+                    help="1-based (or OT_BANK); default: the project's saved bank")
+    ap.add_argument("--frames", type=int, default=400)
+    ap.add_argument("--load-ms", type=int, default=20000)
+    ap.add_argument("--set-name", default="OCTABAM")
+    ap.add_argument("--name", default="RIG")
+    ap.add_argument("--image-mb", type=int, default=64)
+    ap.add_argument("--reuse", action="store_true", help="skip the port run when its dumps are there")
+    ap.add_argument("--image", default="", help="a built image to boot instead of building the remix (a bisect)")
+    a = ap.parse_args()
+
+    if not a.project:
+        print("  [SKIP] verify_set: no project (OT_PROJECT=<dir> or --project)")
+        return 0
+    pdir = pathlib.Path(a.project).expanduser()
+    if not (pdir / "project.work").is_file():
+        sys.exit(f"verify_set: {pdir} is not an Octatrack project directory")
+    if not EMU.exists():
+        print("  [SKIP] verify_set: the ColdFire port is not built (make emu-cf)")
+        return 0
+    if not PY.exists():
+        print("  [SKIP] verify_set: no .venv (make emu-setup)")
+        return 0
+
+    raw = (pdir / "project.work").read_bytes()
+    m = re.search(rb"\r\nBANK=(\d+)\r\n", raw)
+    bank = a.bank or (int(m.group(1)) + 1 if m else 1)
+    if not (pdir / f"bank{bank:02d}.work").is_file():
+        sys.exit(f"verify_set: no bank{bank:02d}.work in {pdir}")
+    pat_part, _ = otp.bank_info(pdir, bank)
+    part_no = pat_part[0] + 1                       # the port plays pattern 1
+    part = part_of(pdir, bank, part_no)
+
+    OUT.mkdir(parents=True, exist_ok=True)
+    image = OUT / "image.bin"
+    if a.image:
+        shutil.copy2(a.image, image)
+    else:
+        env = dict(os.environ, REMIX=a.remix, XBUS="1", SPEC="1"); env.setdefault("BUILD", "0")
+        r = subprocess.run([sys.executable, str(ROOT / "tools/build/build_bus.py")], env=env,
+                           capture_output=True, text=True, cwd=ROOT)
+        if r.returncode:
+            sys.exit(f"verify_set: building {a.remix} failed:\n{(r.stdout + r.stderr)[-1500:]}")
+        shutil.copy2(ROOT / "out/mainos_bus.bin", image)
+
+    dumps = {k: OUT / f"{k}.bin" for k in ("ids", "records", "lanes")}
+    blocks, cmds, log, card_after = OUT / "port.dump", OUT / "port.cmds", OUT / "port.txt", OUT / "card_after.img"
+    if not (a.reuse and blocks.is_file() and all(p.is_file() for p in dumps.values())):
+        card = OUT / "card.img"
+        audio, mb = stage(pdir, part, a.set_name, a.name, OUT / "tree", a.image_mb, bank, card)
+        print(f"  card: {mb} MB, {len(audio)} sample file(s) staged for bank {bank} part {part_no}")
+        cmd = [str(EMU), "--image", str(image), "--card", str(card), "--set", a.set_name, "--project", a.name,
+               "--sequencer", "--internal-clock", "--frames", str(a.frames), "--load-ms", str(a.load_ms),
+               "--dsp", "--main-level", "64", "--audio-in", "tones", "--poke-trig", "2",
+               "--block-dump", str(blocks), "--cmd-log", str(cmds), "--card-out", str(card_after),
+               "--mem-dump", f"{LIVE_IDS:#x},16={dumps['ids']};{RECORDS:#x},512={dumps['records']};{LANES:#x},576={dumps['lanes']}"]
+        with open(log, "w") as f:
+            f.write(" ".join(cmd) + "\n"); f.flush()
+            r = subprocess.run(cmd, cwd=ROOT, stdout=f, stderr=subprocess.STDOUT)
+        if r.returncode:
+            sys.exit(f"verify_set: ot_emu exit {r.returncode} -- {log}")
+    text = log.read_text()
+
+    fails = 0
+    def check(label, ok, detail=""):
+        nonlocal fails
+        fails += 0 if ok else 1
+        print(f"  [{'ok' if ok else 'FAIL'}] {label}{'  ' + detail if detail else ''}")
+
+    # load
+    loaded = "LOAD PROJECT posted: yes" in text
+    ran = re.search(r"frames run : (\d+) since transport start \(target (\d+)\), run ended (\w+)", text)
+    check("load: LOAD PROJECT completed and the frames ran",
+          loaded and ran is not None and ran.group(3) == "REACHED",
+          f"frames {ran.group(1)}/{ran.group(2)} {ran.group(3)}" if ran else "no frames line")
+
+    # ids
+    ids = dumps["ids"].read_bytes()
+    live1, live2 = list(ids[:8]), list(ids[8:16])
+    check(f"ids: live FX1/FX2 == bank {bank} part {part_no}", live1 == part["fx1"] and live2 == part["fx2"],
+          f"FX1 {bytes(live1).hex(' ')} FX2 {bytes(live2).hex(' ')}"
+          + ("" if live1 == part["fx1"] and live2 == part["fx2"]
+             else f" (part: FX1 {bytes(part['fx1']).hex(' ')} FX2 {bytes(part['fx2']).hex(' ')})"))
+
+    # page 2: the record carries the lane
+    recs, lanes = dumps["records"].read_bytes(), dumps["lanes"].read_bytes()
+    for t in range(8):
+        rec, lane = recs[64 * t:64 * t + 64], lanes[72 * t:72 * t + 72]
+        bad = []
+        for what, lo, hw in P2_LANES:
+            want, got = lane[lo:lo + 6], rec[2 * hw:2 * hw + 6]
+            if want != got:
+                bad.append(f"{what} lane {want.hex()} record {got.hex()}")
+        check(f"page 2: T{t + 1} record halfwords 18-26 == the lane", not bad, "; ".join(bad))
+
+    # audio
+    import blockdump as bd, recloop as rl
+    c = bd.classes(bd.read(str(blocks)))
+    silent_chain = []
+    rows = []
+    for t in range(1, 9):
+        inL, outL = rl.track_audio(c, t), rl.readback_audio(c, t)
+        i_db, o_db = db(rms(inL[-2000:])), db(rms(outL[-2000:]))
+        kind = TYPE_NAME.get(part["mtype"][t - 1], "?")
+        rows.append(f"T{t} {kind:6} in {i_db:7.1f} out {o_db:7.1f}")
+        if i_db > -120 and o_db <= -120:
+            silent_chain.append(f"T{t}")
+    print("        " + "  ".join(rows[:4]) + "\n        " + "  ".join(rows[4:]))
+    check("audio: every track with record audio has a chain output", not silent_chain,
+          f"silent chain: {', '.join(silent_chain)}" if silent_chain else "")
+    # the report prints both cores' audio lines at the boot, the load and
+    # the end; core 0's at the end is the ESAI's, and it carries the counts
+    tx = re.findall(r"TX0 non-zero per RING WORD \(slot \+ rotation [0-9.]+\) ([0-9 ]+);", text)
+    nz = max(([int(x) for x in t.split()] for t in tx), key=sum, default=[])
+    check("audio: the main out (TX0) is not silent", bool(nz) and max(nz) > 0,
+          f"non-zero frames per ring word {nz}" if nz else "no TX0 line")
+
+    # the card as the firmware left it
+    n_writes = sum(1 for l in cmds.read_text().splitlines() if l.startswith("WRITE"))
+    r = subprocess.run([str(PY), "-c", "import sys, json, pathlib; sys.path.insert(0, 'tools'); import toolpath; "
+                        "import emu_card as ec; b = ec.extract_image(pathlib.Path(sys.argv[1]).read_bytes()); "
+                        "a = ec.extract_image(pathlib.Path(sys.argv[2]).read_bytes()); "
+                        "print(json.dumps({'changed': sorted(k for k in set(a) | set(b) if a.get(k) != b.get(k)), "
+                        "'log': a.get('LOG 000000.txt', b'').decode('latin1')}))",
+                        str(OUT / "card.img"), str(card_after)], cwd=ROOT, capture_output=True, text=True)
+    if r.returncode:
+        sys.exit(f"verify_set: reading the card back failed:\n{r.stderr[-1000:]}")
+    import json
+    cd = json.loads(r.stdout)
+    rewritten = [k for k in cd["changed"] if not k.startswith("LOG ")]
+    check("card: the load rewrote no project file", not rewritten,
+          f"{n_writes} WRITE command(s); " + (", ".join(rewritten) if rewritten else "the firmware's LOG only"))
+    unstaged = re.compile(r"Couldn't load (STATIC|FLEX)\[\d+\] with '.*' \('FILE NOT FOUND'\)")
+    errors = [l for l in cd["log"].splitlines() if " ERROR " in l and not unstaged.search(l)]
+    n_nf = sum(1 for l in cd["log"].splitlines() if unstaged.search(l))
+    check("card: the firmware's LOG has no error beyond the unstaged samples", not errors,
+          f"{n_nf} FILE NOT FOUND" + ("; " + " | ".join(l.split(" ERROR ", 1)[1] for l in errors[:4]) if errors else ""))
+
+    print(f"verify_set: bank {bank} part {part_no} of {pdir.name} on {a.remix}: {fails} failure(s) -- {OUT}")
+    return 1 if fails else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

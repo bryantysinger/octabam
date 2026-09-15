@@ -138,3 +138,25 @@ out/emu/ot_emu --image out/mainos_bus.bin --card out/card.img --set OCTABAM --pr
   space letter), `--mem-dump addr,len=file`.
 - The record a track's DSP instances read is `0x80000110 + 64·t` (32
   halfwords, `docs/firmware/MIDI.md`); the page-2 lane `0x80000810 + 72·t`.
+- `--card-out FILE` writes the card as the firmware left it;
+  `emu_card.extract_image(bytes[, out_dir])` reads any FAT16 card image
+  back ({path: bytes}, long names). The firmware writes `LOG 000000.txt`
+  in the card root during a load: one `ERROR` line per sample it could
+  not open (`Couldn't load STATIC[n] with 'x.wav' ('FILE NOT FOUND')`)
+  and `Couldn't read bank file '/SET/PROJ/bank01.work' ('PARSE ERROR')`
+  for a PART record whose index byte is wrong (measured 15 Sep 2026) —
+  the unit's PARSE ERROR, readable without a card. A load under the rig
+  image or the `bus` image rewrote no project file (257 WRITE commands =
+  the LOG and the FAT).
+
+`tools/verify/verify_set.py REMIX --project DIR [--bank N]` (in `make
+verify` when `OT_PROJECT` is set) does all of this for one part of a real
+project and asserts: the load completed; the live FX1/FX2 id arrays equal
+the part's; every track's record halfwords 18-26 equal its page-2 lane;
+every track with record audio has a chain output; the main out is not
+silent; the load rewrote no project file; the firmware's LOG carries no
+error beyond the unstaged samples. The tested bank is staged as
+bank A too and `MASTER_TRACK=0` (the emulated load ends on bank A; with
+the master on nothing reaches TX0 under the port). ~75 s. On the image
+before PR #271 it fails T1 and T5 (the tempo cave); on it, 0 failures
+(OCTABAM88 bank B, 15 Sep 2026).

@@ -251,6 +251,74 @@ def build_image(tree_dir, size_mb=64, label="OCTABAM", part_start=2048, log=None
     return bytes(img)
 
 
+def extract_image(img, out_dir=None):
+    """Read a card image back (the one `ot_emu --card-out` writes after a
+    run): {path: bytes} for every file, long names reconstructed from the
+    VFAT entries, and the tree written under `out_dir` when given. Reads
+    the BPB, so an image the firmware re-formatted still parses."""
+    part_start = struct.unpack_from("<I", img, 446 + 8)[0]
+    bpb = img[part_start * SECTOR:part_start * SECTOR + SECTOR]
+    bps, spc, reserved, nfats, root_entries, total16, _, spf = struct.unpack_from("<HBHBHHBH", bpb, 11)
+    root_sectors = root_entries * 32 // bps
+    fat_off = (part_start + reserved) * bps
+    fat = struct.unpack_from(f"<{spf * bps // 2}H", img, fat_off)
+    root_off = (part_start + reserved + nfats * spf) * bps
+    data_off = root_off + root_sectors * bps
+    cb = spc * bps
+
+    def chain(c):
+        out = []
+        while 2 <= c < 0xFFF8 and len(out) < 100000:
+            out.append(c)
+            c = fat[c]
+        return out
+
+    def cluster_bytes(c):
+        return b"".join(img[data_off + (k - 2) * cb:data_off + (k - 1) * cb] for k in chain(c))
+
+    files = {}
+
+    def walk(entries, prefix):
+        lfn = []
+        for i in range(0, len(entries), 32):
+            e = entries[i:i + 32]
+            if e[0] == 0:
+                break
+            if e[0] == 0xE5:
+                lfn = []
+                continue
+            if e[11] == 0x0F:
+                lfn.append(e)
+                continue
+            attr = e[11]
+            if lfn:
+                parts = [x[1:11] + x[14:26] + x[28:32] for x in sorted(lfn, key=lambda x: x[0] & 0x3F)]
+                name = b"".join(parts).decode("utf-16-le").split("\x00")[0].rstrip("\uffff")
+            else:
+                stem, ext = e[0:8].decode("latin1").rstrip(), e[8:11].decode("latin1").rstrip()
+                name = stem + ("." + ext if ext else "")
+            lfn = []
+            first = struct.unpack_from("<H", e, 26)[0] | (struct.unpack_from("<H", e, 20)[0] << 16)
+            size = struct.unpack_from("<I", e, 28)[0]
+            if name in (".", ".."):
+                continue
+            path = f"{prefix}/{name}" if prefix else name
+            if attr & 0x10:
+                walk(cluster_bytes(first), path)
+            elif attr & 0x08:
+                continue                                   # the volume label
+            else:
+                files[path] = cluster_bytes(first)[:size] if first else b""
+
+    walk(img[root_off:data_off], "")
+    if out_dir is not None:
+        for path, data in files.items():
+            f = pathlib.Path(out_dir) / path
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_bytes(data)
+    return files
+
+
 # ---------------------------------------------------------------------------
 # ATA task-file model
 # ---------------------------------------------------------------------------

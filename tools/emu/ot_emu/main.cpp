@@ -103,6 +103,7 @@ int main(int _argc, char** _argv)
 	int callAt = -1;			// with --sequencer: make that call this many frames AFTER the transport start instead (a panel edit while playing: the transport start re-applies the part over the live lane, so an edit made before it is gone)
 	int mainLevel = -1;			// O9b: post sys command 4 (SET MAIN LEVEL) with this level after the load; -1 = don't (the emulated load never does, and every voice then renders at gain zero)
 	std::string memDump;		// O10.21: "addr,len=path[;...]" -- ColdFire memory ranges, raw bytes, to FILE at the very end (peeks only support one word, pre-sequencer; this is a range, post-run)
+	std::string cardOut;		// the card image as the firmware left it, to FILE at the very end (the load's WRITEs: emu_card.extract_image reads it back)
 
 	for(int i = 1; i < _argc; ++i)
 	{
@@ -164,6 +165,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--coverage" && i + 1 < _argc)	coverage = _argv[++i];
 		else if(a == "--main-level" && i + 1 < _argc)	mainLevel = std::atoi(_argv[++i]);
 		else if(a == "--mem-dump" && i + 1 < _argc)	memDump = _argv[++i];
+		else if(a == "--card-out" && i + 1 < _argc)	cardOut = _argv[++i];
 		else if(a == "--poke" && i + 1 < _argc)		pokeAfterLoad = _argv[++i];
 		else if(a == "--poke-early" && i + 1 < _argc)	pokeEarly = _argv[++i];
 		else if(a == "--call" && i + 1 < _argc)		callSpec = _argv[++i];
@@ -810,6 +812,13 @@ int main(int _argc, char** _argv)
 		{
 			rtos.writeGoldenJson(golden);
 			std::printf("golden     : %s\n", golden.c_str());
+		}
+		if(!cardOut.empty() && card)
+		{
+			std::ofstream o(cardOut, std::ios::binary);
+			o.write(reinterpret_cast<const char*>(card->image().data()), static_cast<std::streamsize>(card->image().size()));
+			std::printf("card out   : %s (%zu bytes, %llu sector(s) written by the firmware)\n", cardOut.c_str(),
+				card->image().size(), static_cast<unsigned long long>(card->sectorsWritten()));
 		}
 	}
 
