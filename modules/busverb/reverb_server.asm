@@ -2398,6 +2398,9 @@ fbB:
 ; Both mpys are the audited-signed y0,x0 form.
         move    x:(r7+$70),y0           ; WET
         mpy     y0,x0,a                 ; wet * WET
+        asl     #$1,a,a                 ; x2: WET 127 = +6 dB (Sam, 16 Sep 2026:
+                                        ; "reverb is still too quiet"; the
+                                        ; stores below limit)
         move    y:>$09f2,b              ; in, parked at loop top
         add     a,b                     ; b = stage output L
         move    x:(r7+$64),r5           ; this call's OUTPUT pointer (L, R)
@@ -2426,6 +2429,7 @@ fbB:
         move    a,x0                    ; gated wet R
         move    x:(r7+$70),y0           ; WET
         mpy     y0,x0,a                 ; wet * WET
+        asl     #$1,a,a                 ; x2, as on L
         move    y:>$09f2,b              ; in
         add     a,b                     ; b = stage output R
         move    a,x0                    ; x0 = wet * WET
