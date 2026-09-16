@@ -100,14 +100,12 @@ def signal():
     return [max(-8388608, min(8388607, x + y + (838860 if i > N // 2 else 0)))
             for i, (x, y) in enumerate(zip(a, b))]
 def settings():
-    base = {k: v for k, v in dict(FREQ=64, RES=90, BASE=40, WDTH=100, DRV=60,
-                                  DPTH=90, RATE=70, SRC=2).items() if k in NAMES}
+    base = {k: v for k, v in dict(FREQ=64, RES=90, WDTH=100).items() if k in NAMES}
     out = {"defaults": {}}
-    for mode in range(5):
-        for rout in range(4):
-            out[f"mode{mode}_rout{rout}"] = dict(base, MODE=mode, ROUT=rout)
-    for src in range(3):
-        out[f"src{src}"] = dict(base, MODE=1, ROUT=1, SRC=src)
+    nmodes = MOD.params[NAMES.index("MODE")].count
+    for mode in range(nmodes):
+        out[f"mode{mode}"] = dict(base, MODE=mode)
+        out[f"mode{mode}_env"] = dict(base, MODE=mode, ENV=120, LDP=100, LSP=20)
     out["zeros"] = {n: 0 for n in NAMES if n}
     out["max"] = {n: ((MOD.params[NAMES.index(n)].count or 128) - 1) for n in NAMES if n}
     return out

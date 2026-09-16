@@ -55,7 +55,9 @@ ones — the DSP toolchain itself is plain CMake). It builds:
 | `dsp_host` | `tools/harness/dsp_host/` (staged into `vendor/dsp56300` and built there) | this project's emulator harness: runs assembled effects on the dsp56300 emulator core. `docs/remixer/HARNESS.md` |
 | `emu_bringup.py` | `tools/emu/` | Tier-0 ColdFire bring-up: boots the MAIN OS image on Unicorn's CFV4E core to the RTOS handoff (the remixer's emulator view). Needs `unicorn`: `make emu-setup` (uv, the `emu` extra). `docs/remixer/EMU.md` |
 | `ot_emu` | `tools/emu/ot_emu/` (`make emu-cf`) | the headless C++ port of the machine: boots the built image, loads a project from a staged card, runs the sequencer and both DSP cores. `docs/remixer/EMU.md`, `docs/history/COLDFIRE_PORT.md` |
-| `verify_set` | `tools/verify/verify_set.py` | a real project on the built image under the port: ids, page-2 delivery, chain audio, the main out (`OT_PROJECT=<dir> make check`) |
+| `verify_character` / `verify_spectrum` / `verify_modulation` / `verify_nimbus` / `verify_hello` | `tools/verify/verify_<module>.py` | the module rendered through `dsp_host` on the audition's scratch image against predictable arithmetic or a float reference (in `make check` since 16 Sep 2026; Character's master path reads the shipping build) |
+| `verify_spectrum_ident` | `tools/verify/verify_spectrum_ident.py` | bit-identity of a rewritten Spectrum against a saved reference (`make verify-spectrum-ident SAVE=1`, then without) |
+| `verify_set` | `tools/verify/verify_set.py` | a real project on the built image under the port: ids, page-2 delivery, chain audio, the main out (`OT_PROJECT=<dir> make check`, or the path in `~/.octabam_project`) |
 | `elektron-firmware-tool` | `vendor/elektron-firmware-tool` (patched) | packs/unpacks Elektron's OS container formats |
 
 The disassembler from the same dsp56300 project is the other half:

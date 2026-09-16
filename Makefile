@@ -23,6 +23,12 @@ VERSION ?= OCTABAM$(BUILD)
 # bus is the plain two-server image (BusVerb + BusDelay + send + tempo sync)
 # that scripts/refhash.sh proves build changes against.
 REMIX   ?= bamsep26
+# The project the set gates (verify_set, verify_modedefaults) run under the
+# port: OT_PROJECT=<dir> on the command line, else the path in
+# ~/.octabam_project (machine-local; card data never enters the repo).
+# Without either, the two gates SKIP.
+OT_PROJECT ?= $(shell cat $(HOME)/.octabam_project 2>/dev/null)
+export OT_PROJECT
 
 # The tools run on bare python3 (stdlib only). The ONE exception is the local
 # ColdFire emulator (docs/remixer/EMU.md), which needs `unicorn` from the uv-managed
@@ -58,7 +64,8 @@ bus-plain: ## Build without specialization (both servers on both cores)
 	REMIX=$(REMIX) python3 tools/build/build_bus.py
 
 .PHONY: image
-image: bus ## Repack the build into a card-flashable .bin (see docs/remixer/FLASHING.md)
+image: bus ## Repack the build into a card-flashable .bin (see docs/remixer/FLASHING.md); BUILD=N is required
+	@test "$(origin BUILD)" != "file" || { echo "make image needs BUILD=N (the version the panel shows; bump it every flash)"; exit 1; }
 	@test -f $(SYX) || { echo "missing $(SYX) — run 'make os'"; exit 1; }
 	@test -x $(EFT) || { echo "missing $(EFT) — run 'make setup'"; exit 1; }
 	EFT_EMIT_CONTAINER=out/elek_$(BUILD).bin $(EFT) \
@@ -163,31 +170,46 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	python3 tools/verify/verify_octakit.py
 	python3 tools/verify/verify_midiscenes.py
 	REMIX=$(REMIX) python3 tools/verify/verify_dram_boot.py
-	@$(PY) tools/verify/verify_labels.py $(REMIX) 2>/dev/null || \
-	  echo "  [SKIP] label check against the firmware: no .venv (make emu-setup)"
-	@$(PY) tools/verify/verify_modenames.py $(REMIX) 2>/dev/null || \
-	  echo "  [SKIP] per-mode knob names: no .venv, or this remix has none"
-	@$(PY) tools/verify/verify_ccpage2.py 2>/dev/null || \
-	  echo "  [SKIP] cc page-2 cave: no .venv"
-	@$(PY) tools/verify/verify_hidden.py $(REMIX) 2>/dev/null || \
-	  echo "  [SKIP] hidden engines: no .venv, or this remix hides nothing"
+	@# The four ColdFire-port checks need the .venv (make emu-setup). Without
+	@# it they SKIP; with it a failure FAILS (until 16 Sep 2026 `|| echo SKIP`
+	@# swallowed every exit code, and verify_modenames had been failing since
+	@# image 27 behind a SKIP line).
+	@if [ -x .venv/bin/python3 ]; then \
+	  .venv/bin/python3 tools/verify/verify_labels.py $(REMIX) && \
+	  .venv/bin/python3 tools/verify/verify_modenames.py $(REMIX) && \
+	  .venv/bin/python3 tools/verify/verify_ccpage2.py && \
+	  .venv/bin/python3 tools/verify/verify_hidden.py $(REMIX); \
+	else echo "  [SKIP] labels / mode names / cc page-2 / hidden engines: no .venv (make emu-setup)"; fi
 	python3 tools/verify/verify_grains.py $(REMIX)
+	@# The station and insert gates: each renders its module through dsp_host
+	@# on a scratch image the audition builds (remix-independent; Character's
+	@# master path reads the shipping build and SKIPs when it lacks Character).
+	@# Not in make check until 16 Sep 2026 (run by hand after each station round).
+	python3 tools/verify/verify_character.py
+	python3 tools/verify/verify_spectrum.py
+	python3 tools/verify/verify_modulation.py
+	python3 tools/verify/verify_nimbus.py
+	python3 tools/verify/verify_hello.py
 	REMIX=$(REMIX) python3 tools/verify/verify_menu.py
 	python3 tools/verify/verify_burn.py $(REMIX)
 	python3 tools/verify/verify_twocore.py
 	python3 tools/verify/verify_onebus.py
 	python3 tools/verify/verify_tempo.py $(REMIX)
 	@# A real project on the built image under the ColdFire port (ids, page-2
-	@# delivery, chain audio, the main out); SKIPs without OT_PROJECT=<dir>.
+	@# delivery, chain audio, the main out); SKIPs without OT_PROJECT (above).
 	python3 tools/verify/verify_set.py $(REMIX)
 	@# A MODE turned on the panel re-defaults its knobs (the FX1 and FX2
-	@# page-2 editors called under the port); SKIPs without OT_PROJECT=<dir>.
+	@# page-2 editors called under the port); SKIPs without OT_PROJECT (above).
 	python3 tools/verify/verify_modedefaults.py $(REMIX)
 
 .PHONY: verify-roll
 verify-roll: ## Prove an alternate REVERB engine is bit-identical: make verify-roll CAND=cand.asm [REF=modules/busverb/reverb_server.asm]
 	@test -n "$(CAND)" || { echo "usage: make verify-roll CAND=<candidate.asm> [REF=modules/busverb/reverb_server.asm]"; exit 1; }
 	python3 tools/verify/verify_roll.py $(CAND) $(if $(REF),--ref $(REF))
+
+.PHONY: verify-spectrum-ident
+verify-spectrum-ident: ## Prove a rewritten Spectrum is bit-identical to a saved reference: make verify-spectrum-ident SAVE=1 on the tree you trust, then make verify-spectrum-ident
+	python3 tools/verify/verify_spectrum_ident.py $(if $(SAVE),ref,check)
 
 .PHONY: verify-delay
 verify-delay: ## Prove an alternate DELAY engine is bit-identical: make verify-delay CAND=modules/busdelay/delay_new.asm
@@ -226,7 +248,7 @@ burn-image: burn ## Repack the RIG BURN build into a card-flashable .bin (BUILD=
 	@echo "  MIDI image: out/OCTATRACK_OS1.40C_$(VERSION)B.syx"
 
 .PHONY: check
-check: bus cycles verify ## Everything that can be checked without hardware (OT_PROJECT=<project dir> adds the set under the port)
+check: bus cycles verify ## Everything that can be checked without hardware (the set gates run under the port when OT_PROJECT or ~/.octabam_project names a project)
 	@# verify_burn.py shells out to build_bus.py twice -- with and without
 	@# BURN=1, neither with XBUS/SPEC -- and each run overwrites
 	@# out/mainos_bus.bin. Left alone, `make check` finishes by leaving a
@@ -234,7 +256,7 @@ check: bus cycles verify ## Everything that can be checked without hardware (OT_
 	@# so the file on disk is the one the checks were about.
 	@$(MAKE) --no-print-directory bus >/dev/null
 	@echo
-	@echo "  all runnable checks passed (verify_burn may report SKIPPED above); out/mainos_bus.bin restored to the shipping build"
+	@echo "  all runnable checks passed (a [SKIP] line above names what did not run); out/mainos_bus.bin restored to the shipping build"
 
 .PHONY: modules
 modules: ## List the module index and the available remixes

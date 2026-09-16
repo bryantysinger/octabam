@@ -163,7 +163,7 @@ out/emu/ot_emu --image out/mainos_bus.bin --card out/card.img --set OCTABAM --pr
   the LOG and the FAT).
 
 `tools/verify/verify_set.py REMIX --project DIR [--bank N]` (in `make
-verify` when `OT_PROJECT` is set) does all of this for one part of a real
+verify` when `OT_PROJECT` is set or `~/.octabam_project` names a project) does all of this for one part of a real
 project and asserts: the load completed; the live FX1/FX2 id arrays equal
 the part's; every track's record halfwords 18-26 equal its page-2 lane;
 every track with record audio has a chain output; the main out is not

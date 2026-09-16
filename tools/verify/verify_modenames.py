@@ -76,10 +76,15 @@ def main():
         for slot, prm in enumerate(mod.params):
             if not (prm.active and prm.labels):
                 continue
-            want = (mode_names.complete(mod)
-                    if slot == mod.mode_slot and mod.mode_views else {})
             if slot == mod.mode_slot:
+                want = mode_names.complete(mod) if mod.mode_views else {}
                 want = mode_names.with_selfname(want, slot, prm.labels)
+            else:
+                # only the MODE select names itself (image 27); every other
+                # labelled select keeps its Param name at every value and
+                # the tick widget flashes the word
+                own = prm.name[:mode_names.NAME_LEN - 1]
+                want = {v: {slot: own} for v in range(len(prm.labels))}
             work.append((key, mod, slot, want))
     for key, mod, slot, want in work:
         desc = clones.get(key)
@@ -127,7 +132,8 @@ def main():
         else:
             print(f"  [PASS] {key} slot {slot}: value 200 clamps to value 0's names")
     if not checked:
-        sys.exit(f"{name}: no labelled select in this remix")
+        print(f"  [ -- ] {name} has no labelled select -- nothing to check")
+        return 0
     print(f"\n{fails} of {checked} checks failed" if fails
           else f"\nOK ({checked} checks)")
     return 1 if fails else 0
