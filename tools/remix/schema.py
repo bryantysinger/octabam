@@ -753,8 +753,8 @@ class Module:
                              f"never written)")
         # A stepped select on page 1 was refused until 16 Sep 2026 (no module
         # had drawn one there; stock's selects are all on page 2). BusVerb's
-        # SHFT is the first (page-1 slot 4, linked to SHMR): its render on
-        # the unit is a hardware claim of the image that carries it.
+        # SHFT is the first (page-1 slot 4, linked to SHMR); image 29 drew it
+        # with its words on the unit.
 
     def view_for(self, mode: int):
         """The ModeView for a MODE value, or None. Unknown values fall back

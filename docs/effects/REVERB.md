@@ -45,7 +45,7 @@ chain in ─► 4 series allpasses ─► ┌─ FDN tank ───────�
 | 1 | 1 | TIME | `r6+$1` | feedback 0.875..0.999 via the mode's `k_mode` |
 | 1 | 2 | SIZE ⌐ | `r6+$2` | scales all eight taps within the mode; floor `f = 0.4` (~1,810 samples, 24 Hz mode spacing); drawn linked to TIME |
 | 1 | 3 | SHMR | `r6+$3` | shimmer amount, 0 off (bit-identical to no shimmer) |
-| 1 | 4 | SHFT ⌐ | `r6+$4` | shimmer interval, 4 steps: +12 / +19 / +7 / −12; drawn linked to SHMR; the first stepped select on a page 1 (🟡 render unconfirmed until image 29) |
+| 1 | 4 | SHFT ⌐ | `r6+$4` | shimmer interval, 4 steps: +12 / +19 / +7 / −12; drawn linked to SHMR; the first stepped select on a page 1 (✅ image 29: draws its words) |
 | 1 | 5 | WET | `r6+$5` | `out = in + wet × WET`, `in` the chain input at unity; 0 passes the chain input alone |
 | 2 | 6 | MODE | `$c` bits 16–23 | 0 ROOM, 1 PLATE, 2 BIG; slot 6 since 4 Sep 2026 (an even slot is one the panel's page-2 editor writes) |
 | 2 | 7 | TONE | `$c` bits 8–15 | LO + HI on one knob: 0..64 = LP 0..127 with HP off, 64..127 = HP 0..126 with LP open; 64 = flat |

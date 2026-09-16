@@ -5,7 +5,16 @@ main carries beyond the last flashed image. The version the panel shows is
 `BUILD` (`make image BUILD=N`); a git tag `OCTABAM<N>` marks the commit each
 flashed image was built from.
 
-## Unreleased (main after image 28)
+## Unreleased (main after image 29)
+
+- Modulation: MIX bottom right (page-1 slot 5), LOFI on slot 4 — the wet/dry
+  knob sits bottom right on every effect.
+
+## Image 29 — 16 Sep 2026 (`OCTABAM29`, bamsep26 at ed27afe)
+
+On the unit: the link brackets draw, SHFT draws its words on page 1, the
+`---` names draw. Before play: `stamp-defaults <project> bamsep26 --all
+--keep-mode`.
 
 - The knob pass (Sam, 16 Sep 2026): BusVerb p1 `SEND TIME⌐SIZE SHMR⌐SHFT WET`,
   p2 `MODE TONE DIFF — GATE —`; Character p1 `DRV FOLD TXTR COMP RET MIX`,
