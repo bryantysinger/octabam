@@ -12,6 +12,17 @@ the stock firmware is taken from the user's copy at build time (Octakit
 `.incbin`s 411 stock routines that way). `.gitignore` refuses `*.bin`,
 `*.syx`, `downloads/` and `out/`.
 
+What the rule does not cover (decided 16 Sep 2026): the few displaced
+instructions at a cave's hook site. A `CfPatch.hook_stock` is the six to
+ten bytes the installer overwrites with its `jsr` and the cave replays; the
+build refuses an image that does not hold them, which is the check that
+keeps a cave off the wrong OS. Those opcodes (four sites, 30 bytes in all,
+across `tempo-sync`, `recorder-spacing`, `flex-seekbind*`) are an
+instruction, not a firmware, and the community modules carry theirs the
+same way. Keep a hook to whole instructions and the minimum span; data
+tables, routines and anything longer than the displaced instructions come
+from the user's image at build time.
+
 ## A module
 
 One directory, `modules/<name>/`:
