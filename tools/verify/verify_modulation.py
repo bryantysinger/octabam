@@ -192,6 +192,14 @@ CASES = [
     ("COMB", {}, 3e-3, 1 / 3),
     ("COMB", dict(FDBK=10, DLY=120, TONE=0, MIX=127), 3e-3, 1 / 3),
     ("COMB", dict(FDBK=20, DLY=64, TONE=127, MIX=127), 3e-3, 1 / 3),      # negative: odd harmonics
+    # LOFI: the hold counter must agree to the sample (a phase slip is a gross
+    # error); the bit mask floors a Q23 word, so where the reference's float
+    # sits within its ~1e-4 of a mask boundary the two floor apart by one
+    # quantum -- the bar is one quantum (2^(bits-24)) above the linear residual.
+    ("JUNO", dict(LOFI=40, MIX=127), 5e-4, 1.0),                            # hold 7, 24 bits
+    ("PHSR", dict(LOFI=90, MIX=127), 5e-4 + 2 ** -8, 1.0),                  # hold 32, 9 bits
+    ("DIM", dict(LOFI=127, MIX=127), 5e-4 + 2 ** -4, 1.0),                  # hold 64, 5 bits
+    ("COMB", dict(LOFI=100, MIX=127), 3e-3 + 2 ** -7, 1 / 3),                # hold 40, 8 bits, through the ring
 ]
 for mode, over, bar, scale in CASES:
     kn = mode_knobs(mode, **over)
