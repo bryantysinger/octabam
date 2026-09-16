@@ -83,9 +83,9 @@ SR = 44100
 FRAMES = 16              # the firmware's frame (the harness's own cap is 15: the & 0xf
 WARMUP_BLOCKS = 260      # the engine stays dry for 256 CALLS; pad past it and trim
 
-PARAMS = [("SEND", 64), ("TIME", 64), ("SHMR", 0), ("SIZE", 127), ("TONE", 64),
-          ("WET", 127), ("_C", 0), ("_7", 0), ("DIFF", 64), ("SHFT", 0),
-          ("GATE", 0), ("_11", 0)]   # SHMR on slot 2 since 15 Sep 2026 (MOD went; slots 7/11 blank)
+PARAMS = [("SEND", 64), ("TIME", 64), ("SIZE", 127), ("SHMR", 0), ("SHFT", 0),
+          ("WET", 127), ("_C", 0), ("TONE", 64), ("DIFF", 64), ("_9", 0),
+          ("GATE", 0), ("_11", 0)]   # the 16 Sep 2026 layout: TIME-SIZE, SHMR-SHFT linked; TONE on page 2
 NAMES = {n: i for i, (n, _) in enumerate(PARAMS)}
 # _C (index 6) is MODE's slot; --mode owns it, so no knob.
 KNOBS = ", ".join(n for n, _ in PARAMS if n != "_C")

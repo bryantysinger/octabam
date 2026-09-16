@@ -114,8 +114,17 @@ class Param:
     # a comment only readers of the manifest ever see.
     doc: str | None = None             # one line, ~70 chars, for the help row
     labels: tuple[str, ...] | None = None   # one short label per select value
+    # The panel's link element: bit 1 of this slot's enable nibble draws the
+    # bracket tying this knob to the one on its LEFT (stock: STRT/LEN,
+    # BASE/WDTH, RATE/TSTR, SHVG/SHVF; PARAM_PAGES.md 3b). Display only --
+    # the two knobs stay independent. The pair must sit in one row of three
+    # (slots 0-1, 1-2, 3-4, 4-5 and the page-2 equivalents); stock never
+    # links across 2-3.
+    link: bool = False
 
     def __post_init__(self):
+        if self.link and not self.active:
+            raise ValueError(f"param {self.name!r}: link on a slot that is not drawn")
         if self.name is not None and len(self.name) > 6:
             raise ValueError(f"param name {self.name!r} exceeds 6 bytes")
         if self.labels is not None:
@@ -742,11 +751,10 @@ class Module:
                              f"caves -- they are already in the image (its "
                              f"params are READ from the stock descriptor, "
                              f"never written)")
-        for i, p in enumerate(self.params):
-            if p.formatter is Formatter.STEPPED and i < 6:
-                raise ValueError(
-                    f"{self.name}: slot {i} is stepped, but page 1 has never "
-                    f"been drawn with the tick widget -- put it on page 2")
+        # A stepped select on page 1 was refused until 16 Sep 2026 (no module
+        # had drawn one there; stock's selects are all on page 2). BusVerb's
+        # SHFT is the first (page-1 slot 4, linked to SHMR): its render on
+        # the unit is a hardware claim of the image that carries it.
 
     def view_for(self, mode: int):
         """The ModeView for a MODE value, or None. Unknown values fall back
@@ -791,6 +799,20 @@ class Module:
     def active_params(self) -> list[int]:
         """Slots the panel draws -- the enable bitmap, in index order."""
         return [i for i, p in enumerate(self.params) if p.active]
+
+    @property
+    def linked_params(self) -> list[int]:
+        """Slots whose enable nibble carries the link element (bit 1): the
+        knob is bracketed to the one on its left."""
+        out = []
+        for i, p in enumerate(self.params):
+            if not p.link:
+                continue
+            if i % 6 in (0, 3) or not self.params[i - 1].active:
+                raise ValueError(f"{self.key}: slot {i} ({p.name!r}) links to "
+                                 f"the left but has no drawn knob there in its row")
+            out.append(i)
+        return out
 
     @property
     def stepped_slots(self) -> tuple[int, ...]:

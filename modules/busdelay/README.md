@@ -44,12 +44,12 @@ label comes from its formatter cave.
 
 | | CLEAN | GRAIN | REVERSE |
 |---|---|---|---|
-| page 1: SEND · TIME · FDBK · TONE · PING · WET | the same everywhere | | |
+| page 1: SEND · TIME ⌐FDBK · TONE · PING · WET | the same everywhere | | |
 | MODE (p6) | CLEAN | GRAIN | REVRS |
-| SCAT (p7) | inert | how far apart the grains read | inert |
-| DENS (p8) | inert | density, level-flat | inert |
+| SCAT (p7) | `---` | how far apart the grains read | `---` |
+| DENS ⌐(p8) | `---` | density, level-flat | `---` |
 | SIZE (p9) | unused | grain length 46 / 93 / 23 ms, XTRM 186 ms | segment; XTRM = 371 ms |
-| PTCH (p10) | no effect | ±2 oct, 64 = unison; a held MIDI note overrides | no effect |
+| PTCH ⌐(p10) | no effect | ±2 oct, 64 = unison; a held MIDI note overrides | no effect |
 | FRZE (p11) | hold | hold (the grains keep grazing) | hold |
 
 Each mode's `ModeView` re-defaults the knobs. PING 0 by default: an aux

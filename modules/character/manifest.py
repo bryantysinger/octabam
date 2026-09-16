@@ -89,11 +89,12 @@ MODULE = Module(
               doc="compression amount; 0 = no gain reduction at any level"),
         Param(b"RET", 0, active=True, formatter=_PLAIN,
               doc="the bus return level; live on the master (T8) only, inert elsewhere"),
-        Param(b"TONE", 64, active=True, formatter=_BIPOL,
-              doc="a tilt after the saturator in every mode: 64 flat, 127 bright, 0 dark"),
-        # ---- page 2: knob / select / knob / select / knob / select ----------
-        Param(b"MIX", 127, 128, active=True, formatter=_PLAIN,
+        # MIX on page 1 and TONE on page 2 since 16 Sep 2026 (Sam's knob pass).
+        Param(b"MIX", 127, active=True, formatter=_PLAIN,
               doc="dry/wet across the whole chain; 0 = exact passthrough"),
+        # ---- page 2: knob / select / knob / select / knob / select ----------
+        Param(b"TONE", 64, 128, active=True, formatter=_BIPOL,
+              doc="a tilt after the saturator in every mode: 64 flat, 127 bright, 0 dark"),
         Param(b"SAT", 0, 3, active=True, formatter=_STEP,
               labels=("TAPE", "TUBE", "INFL"),
               doc="character: TAPE (TapeHead), TUBE (DaTube, asymmetric), INFL (OInflator). JClones, MIT"),

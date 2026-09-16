@@ -713,8 +713,8 @@ mdcpy:
         move    y1,n7                   ; the sample count back
 
     ; ---- SIZE: scale all eight tap lengths ----------------------------------
-            move    x:(r6+$3),x0            ; SIZE: slot 3 since the one-aux
-                                            ; re-slot (AUX took slot 0)
+            move    x:(r6+$2),x0            ; SIZE: page-1 slot 2 (16 Sep 2026,
+                                            ; linked to TIME on its left)
             move    #$4c,y1                 ; v77: SIZE FLOOR RAISED.
             mpy     x0,y1,a
             add     #>$333000,a                  ; 0.125 .. 0.993 ; f = 0.400 .. 0.989, was
@@ -938,10 +938,14 @@ mdcpy:
 ; 0.993 and its -0.12 dB per pass compounds over the tail. TONE 63 vs old
 ; LP 126 (no limiter involved) rendered bit-identical, which is what pins
 ; the arithmetic; TONE 64 vs old HP 0 / LP 127 is the default's own gate.
-        move    x:(r6+$4),b             ; TONE<<16 (slot 4, one-aux re-slot)
+        move    x:(r6+$c),a             ; TONE: page-2 slot 7, $c's companion
+        and     #>$7f00,a               ; field (bits 8-15) since 16 Sep 2026
+        asl     #$8,a,a                 ; TONE<<16
+        move    a,x1                    ; parked: the two loads below are MOVES
+        move    x1,b                    ; TONE<<16
         move    #$40,x0                 ; 64<<16
         sub     x0,b                    ; (TONE-64)<<16, N while TONE < 64
-        move    x:(r6+$4),a             ; TONE<<16 (moves leave the CCR alone)
+        move    x1,a                    ; TONE<<16 (moves leave the CCR alone)
         move    #>$3f8000,x0            ; 63.5<<16
         tpl     x0,a                    ; TONE >= 64 -> a = 63.5<<16
         move    #0,x0
@@ -1004,9 +1008,9 @@ mdcpy:
 ; (The WIDTH_OVERRIDE marker retired with the knob: dsp_host has driven
 ; companion fields directly since 17 Aug 2026, so the harness selects SHFT
 ; through the normal parameter path.)
-        move    x:(r6+$d),a
-        and     #>$7f00,a               ; slot 9's companion field: BITS 8-15
-        asr     #$8,a,a
+        move    x:(r6+$4),a             ; SHFT: page-1 slot 4 since 16 Sep 2026
+        and     #>$7f0000,a             ; (linked to SHMR on its left)
+        asr     #$10,a,a
         move    a1,x0
         move    x0,a                    ; SHFT index, A2-clean
         move    #>$1000,b               ; +12
@@ -1041,8 +1045,8 @@ shfst:
 
 ; ---- RATE: LFO increment, ~0.34 Hz .. ~3 Hz -----------------------------
 ; 8x what it would be per sample, because the LFO is stepped once per block.
-; ---- SHMR: page-1 slot 2 since 15 Sep 2026 (MOD's old slot) -------------
-        move    x:(r6+$2),a
+; ---- SHMR: page-1 slot 3 since 16 Sep 2026 ------------------------------
+        move    x:(r6+$3),a
         and     #>$7f0000,a             ; knob field, value<<16
         move    a1,x0                   ; SCALED TO A QUARTER. The raw knob is a
         move    #$60,y1                 ; loop gain on TOP of the tank's own

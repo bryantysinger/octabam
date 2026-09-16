@@ -43,16 +43,20 @@ chain in ─► 4 series allpasses ─► ┌─ FDN tank ───────�
 |---|---|---|---|---|
 | 1 | 0 | SEND | `r6+$0` | this host's own dry into the aux bus (3-bit headroom, counted through `Y:0x941`); default 0 |
 | 1 | 1 | TIME | `r6+$1` | feedback 0.875..0.999 via the mode's `k_mode` |
-| 1 | 2 | MOD | `r6+$2` | tank LFO depth; never zero (a static tank rings) |
-| 1 | 3 | SIZE | `r6+$3` | scales all eight taps within the mode; floor `f = 0.4` (~1,810 samples, 24 Hz mode spacing) |
-| 1 | 4 | TONE | `r6+$4` | LO + HI on one knob: 0..64 = LP 0..127 with HP off, 64..127 = HP 0..126 with LP open; 64 = flat (bit-identical to the old HP 0 / LP 127) |
-| 1 | 5 | WET | `r6+$5` | `out = in + wet × WET`, `in` the chain input at unity; 0 passes the chain input alone (a crossfade until 15 Sep 2026) |
+| 1 | 2 | SIZE ⌐ | `r6+$2` | scales all eight taps within the mode; floor `f = 0.4` (~1,810 samples, 24 Hz mode spacing); drawn linked to TIME |
+| 1 | 3 | SHMR | `r6+$3` | shimmer amount, 0 off (bit-identical to no shimmer) |
+| 1 | 4 | SHFT ⌐ | `r6+$4` | shimmer interval, 4 steps: +12 / +19 / +7 / −12; drawn linked to SHMR; the first stepped select on a page 1 (🟡 render unconfirmed until image 29) |
+| 1 | 5 | WET | `r6+$5` | `out = in + wet × WET`, `in` the chain input at unity; 0 passes the chain input alone |
 | 2 | 6 | MODE | `$c` bits 16–23 | 0 ROOM, 1 PLATE, 2 BIG; slot 6 since 4 Sep 2026 (an even slot is one the panel's page-2 editor writes) |
-| 2 | 7 | SHMR | `$c` bits 8–15 | shimmer amount, 0 off; ✅ tag 84 smooth from the companion field |
+| 2 | 7 | TONE | `$c` bits 8–15 | LO + HI on one knob: 0..64 = LP 0..127 with HP off, 64..127 = HP 0..126 with LP open; 64 = flat |
 | 2 | 8 | DIFF | `$d` bits 16–23 | allpass coefficient ~0.38–0.80 |
-| 2 | 9 | SHFT | `$d` bits 8–15 | shimmer interval, 4 steps: +12 / +19 / +7 / −12 |
+| 2 | 9 | — | | |
 | 2 | 10 | GATE | `$e` bits 16–23 | gated reverb: 0 off; hold ~46–780 ms before the wet shuts; envelope keyed on the tank input (`$1b`), fast attack, ~20 ms eased release, per-sample multiply on the wet |
-| 2 | 11 | RATE | `$e` bits 8–15 | tank LFO speed 0.5×/1×/2×/4× of the base (~2.2 Hz at scale 1.0) |
+| 2 | 11 | — | | (the tank modulation is pinned at MOD 30 / RATE 1× inside the engine since 15 Sep 2026) |
+
+The layout is the 16 Sep 2026 knob pass (before it: SEND TIME SHMR SIZE TONE
+WET / MODE — DIFF SHFT GATE —). The renders at any knob value by name are
+bit-identical across the two layouts.
 
 The page-2 field map is `docs/firmware/PARAM_PAGES.md` §6. Stock DARK reads
 its pre-delay from `$c`; BusVerb's `$c` knob field is MODE.

@@ -88,6 +88,8 @@ P_PENABLE_LO = 0x18e                    # params 0..7, one nibble each
 P_PENABLE_HI = 0x18a                    # params 8..11
 ACTIVE_PARAMS = {k: _MODS[k].active_params for k in _ORDER
                  if k not in STOCK_KEYS}
+LINKED_PARAMS = {k: _MODS[k].linked_params for k in _ORDER
+                 if k not in STOCK_KEYS}
 
 
 # P-relative: the per-parameter value-COUNT array and the defaults array.
@@ -268,6 +270,16 @@ def main():
         check(got == want,
               f"{name}: enabled knobs {sorted(got)} == expected {sorted(want)} "
               f"(lo=0x{lo:08x} hi=0x{hi:08x})")
+        # bit 1 = the link element to the left neighbour (PARAM_PAGES.md 3b):
+        # exactly the manifest's, and no other bit anywhere in a nibble
+        linked = {i for i in range(12)
+                  if ((lo if i < 8 else hi) >> (4 * (i if i < 8 else i - 8))) & 2}
+        wantl = set(LINKED_PARAMS[name])
+        check(linked == wantl,
+              f"{name}: linked knobs {sorted(linked)} == expected {sorted(wantl)}")
+        stray = {i for i in range(12)
+                 if ((lo if i < 8 else hi) >> (4 * (i if i < 8 else i - 8))) & 0xc}
+        check(not stray, f"{name}: no nibble carries bits 2/3 (stock's PLAYBACK-only flags) {sorted(stray)}")
         # a knob that is enabled but unnamed would render as a blank row
         for i in sorted(got):
             a = P + P_PARAM_NAMES + i * 6

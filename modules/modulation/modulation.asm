@@ -44,8 +44,8 @@ monoclr:
         move    r7,r5
         move    #>$ffffff,m5
         move    #$11,n5
-        move    (r5)+n5                 ; $11 .. $45
-        do      #53,>moiclz
+        move    (r5)+n5                 ; $11 .. $46
+        do      #54,>moiclz
         move    a,x:(r5)+
 moiclz:
         nop
@@ -57,8 +57,8 @@ proc:
 ; PER-BLOCK KNOB DECODE
 ; ===========================================================================
         move    #>$ffffff,m5
-; MIX; 127 = 1.0, the wet outright (the through-zero null is exact)
-        move    x:(r6+$3),a
+; MIX (page-1 slot 4); 127 = 1.0, the wet outright (the through-zero null is exact)
+        move    x:(r6+$4),a
         move    #>$7f0000,x0
         cmp     x0,a                    ; k - 127
         move    #>$7fffff,x0
@@ -73,30 +73,36 @@ proc:
         mpy     x0,y1,a
         add     #>$10,a
         move    a,x:(r7+$01)
-; WDTH -> the right channel's LFO phase offset, 0 .. half a cycle
-        move    x:(r6+$5),a             ; a knob word: bit 23 clear, so a2 = 0
-        and     #>$7f0000,a             ; ... and stays 0 through the and
-        asr     #$1,a,a
+; WDTH (page-2 slot 9, $d's companion field, bits 8-15) -> the right
+; channel's LFO phase offset, 0 .. half a cycle
+        move    x:(r6+$d),a             ; a knob word: bit 23 clear, so a2 = 0
+        and     #>$7f00,a               ; ... and stays 0 through the and
+        asl     #$7,a,a                 ; (k << 16) >> 1
         move    a,x:(r7+$06)
-; TONE -> the one-pole coefficient 0.25 + 0.75 * k/128; 127 = 1.0, an exact
-; bypass (the flanger's through-zero null needs the blend and the wet alike)
-        move    x:(r6+$4),x0
+; TONE (page-2 slot 8, $d's knob field, bits 16-23) -> the one-pole
+; coefficient 0.25 + 0.75 * k/128; 127 = 1.0, an exact bypass (the
+; flanger's through-zero null needs the blend and the wet alike). The knob
+; word is parked in $46 (COMB's FIR reads it below).
+        move    x:(r6+$d),a
+        and     #>$7f0000,a
+        move    a1,x:(r7+$46)           ; TONE << 16
+        move    a1,x0
         move    #$60,y1                 ; 0.75 (short immediate: bits 23-16)
         mpy     x0,y1,a
         add     #>$200000,a             ; + 0.25
-        move    x:(r6+$4),b
+        move    x:(r7+$46),b
         move    #>$7f0000,x0
         cmp     x0,b                    ; k - 127
         move    #>$7fffff,x0
         tge     x0,a                    ; k >= 127: open
         move    a,x:(r7+$05)
-; FDBK -> bipolar, (k - 64)/64: -1 .. +0.984
-        move    x:(r6+$2),a
+; FDBK (page-1 slot 3) -> bipolar, (k - 64)/64: -1 .. +0.984
+        move    x:(r6+$3),a
         sub     #>$400000,a             ; k/128 - 0.5
         asl     #$1,a,a
         move    a,x:(r7+$04)
-; DLY -> the centre delay in Q11.12 samples, 8 .. 1,000
-        move    x:(r6+$c),a
+; DLY (page-1 slot 2) -> the centre delay in Q11.12 samples, 8 .. 1,000
+        move    x:(r6+$2),a
         and     #>$7f0000,a
         move    a1,x0                   ; (a knob word, non-negative)
 ; $3e0000 IS 992*4096, so the product already lands in Q11.12 (no shift)
@@ -127,11 +133,11 @@ proc:
 ; the P table base (rewritten by build_bus.py; the literal appears ONCE)
         move    #>$fab1e0,r5
         move    r5,x:(r7+$0f)
-; LOFI (slot 8, the knob field of r6+$d): the hold length 1 + 64 (k/128)^2
+; LOFI (page-1 slot 5): the hold length 1 + 64 (k/128)^2
 ; samples (an integer in $42; 17 at 64, 64 at 127) and the bit mask from the
 ; 16-word table at P + 132 on k >> 3 ($45); k = 0 is hold 1 and a full
 ; mask: bit-exact (verify_modulation)
-        move    x:(r6+$d),a
+        move    x:(r6+$5),a
         and     #>$7f0000,a
         move    a1,x0
         move    a1,y1
@@ -139,7 +145,7 @@ proc:
         asr     #$11,a,a                ; x 64: an integer 0..63
         add     #>$1,a
         move    a1,x:(r7+$42)
-        move    x:(r6+$d),a
+        move    x:(r6+$5),a
         and     #>$7f0000,a
         asr     #$13,a,a                ; k >> 3: 0..15
         move    x:(r7+$0f),r5
@@ -513,7 +519,7 @@ mo_padv:
         move    a,x:(r7+$1c)
         move    a,x:(r7+$1d)
         move    a,x:(r7+$1e)
-        move    x:(r6+$c),a
+        move    x:(r6+$2),a             ; DLY (page-1 slot 2)
         and    #>$7f0000,a
         asr     #$15,a,a                ; DLY >> 5: 0..3
         move    a1,n5
@@ -673,8 +679,8 @@ mophsz:
 ; COMB -- Rings' string loop: the per-block tuning and decay, then the loop
 ; ===========================================================================
 mo_bcomb:
-; period from the table on DLY (Q11.12 samples, 1,000 .. 8)
-        move    x:(r6+$c),a
+; period from the table on DLY (page-1 slot 2; Q11.12 samples, 1,000 .. 8)
+        move    x:(r6+$2),a
         and     #>$7f0000,a
         move    #$42,n5                 ; the period table
         bsr     mo_tab
@@ -716,12 +722,12 @@ mo_bcomb:
         move    #$63,n5
         bsr     mo_tab
         move    a,x:(r7+$1a)            ; the gain per pass
-; the FIR: h0 = (1 + b)/2, h1 = (1 - b)/4, b = TONE/128
-        move    x:(r6+$4),a
+; the FIR: h0 = (1 + b)/2, h1 = (1 - b)/4, b = TONE/128 (parked in $46)
+        move    x:(r7+$46),a
         asr     #$1,a,a
         add     #>$400000,a
         move    a,x:(r7+$1b)
-        move    x:(r6+$4),a
+        move    x:(r7+$46),a
         asr     #$2,a,a
         neg     a
         add     #>$200000,a

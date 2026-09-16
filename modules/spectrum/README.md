@@ -4,7 +4,7 @@ A filter pedal on stock FILTER's id 0x04. FX1 only: an FX2 instance runs as
 a dry pass (`Claims(fx1_only=True)`, `verify_spectrum.py`); the FX2 chooser
 hides the row.
 
-| page 1 | FREQ · RES · ENV · LDP · LSP · WDTH |
+| page 1 | FREQ ⌐RES · ENV · LDP ⌐LSP · WDTH |
 |---|---|
 | page 2 | — · MODE (LADR LP BP ISO VOWL) · — · — · — · — |
 

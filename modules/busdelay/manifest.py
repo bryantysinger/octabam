@@ -71,7 +71,7 @@ MODULE = Module(
               doc="this track's send into the one aux bus (delay, then reverb, back on T8)"),
         Param(b"TIME", 20, active=True, formatter=_PLAIN,
               doc="delay time, 1.5 .. 739 ms -- a free dial that sticky-snaps to tempo divisions"),
-        Param(b"FDBK", 60, active=True, formatter=_PLAIN,
+        Param(b"FDBK", 60, active=True, formatter=_PLAIN, link=True,
               doc="feedback -- how much each repeat regenerates"),
         Param(b"TONE", 100, active=True, formatter=_PLAIN,
               doc="tone of the repeats -- lower = darker every pass"),
@@ -101,7 +101,7 @@ MODULE = Module(
         # that used these slots went 15 Sep 2026.
         Param(b"SCAT", 40, 128, active=True, formatter=_PLAIN,
               doc="GRAIN: scatter, how far apart the grains read; inert in CLEAN and REVERSE"),
-        Param(b"DENS", 127, 128, active=True, formatter=_PLAIN,
+        Param(b"DENS", 127, 128, active=True, formatter=_PLAIN, link=True,
               doc="GRAIN: density, full dial, level-flat (R61); inert in CLEAN and REVERSE"),
         # SIZE: GRAIN's grain length and REVERSE's segment, one select.
         Param(b"SIZE", 1, 4, active=True, formatter=_STEP,
@@ -109,7 +109,7 @@ MODULE = Module(
               doc="segment/grain size 46/93/23 ms; XTRM = 186 ms grains, 371 ms REVERSE segments"),
         # PTCH on page-2 slot 10: the DSP reads $e's KNOB field. GRAIN's
         # pitch; idle in other modes.
-        Param(b"PTCH", 64, 128, active=True, formatter=_PLAIN,
+        Param(b"PTCH", 64, 128, active=True, formatter=_PLAIN, link=True,
               doc="GRAIN pitch, +-2 oct, 64 = unison (a held MIDI note overrides); idle in other modes"),
         Param(b"FRZE", 0, 2, active=True, formatter=_STEP,
               labels=("RUN", "HOLD"),
@@ -125,12 +125,14 @@ MODULE = Module(
         # the 32K lines (15 Sep 2026): 20 = 5,184 samples, 18 = 4,672 -- the
         # same times the views held at 40 / 36 under the old *128 law.
         ModeView(mode=0,                        # CLEAN: centred
+                 names={7: b"---", 8: b"---"},   # SCAT / DENS are GRAIN's alone
                  defaults={1: 20, 2: 60, 3: 100, 4: 0, 5: 127, 10: 64}),
         ModeView(mode=1,                        # GRAIN: Sam's recipe on the unit
                  # (15 Sep 2026): octave up, ping-pong
                  defaults={1: 18, 2: 40, 3: 100, 4: 127, 5: 127,
                            7: 40, 8: 127, 9: 1, 10: 96}),
         ModeView(mode=2,                        # REVERSE: centred, 371 ms
+                 names={7: b"---", 8: b"---"},
                  defaults={1: 20, 2: 60, 3: 100, 4: 0, 5: 127,   # segments (SIZE 3 = XTRM)
                            9: 3, 10: 64}),
     ),

@@ -5,9 +5,9 @@ LO-FI's id 0x1c. FX1 only: an FX2 instance runs as a dry pass
 (`Claims(fx1_only=True)`, `verify_character.py`); the FX2 chooser hides the
 row.
 
-| page 1 | DRV · FOLD · TXTR · COMP · RET · TONE |
+| page 1 | DRV · FOLD · TXTR · COMP · RET · MIX |
 |---|---|
-| page 2 | MIX · SAT (TAPE TUBE INFL) · — · — · WDTH · — |
+| page 2 | TONE · SAT (TAPE TUBE INFL) · — · — · WDTH · — |
 
 Chain, fixed: fold → saturate → tilt → compress → width → mix.
 

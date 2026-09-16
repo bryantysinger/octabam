@@ -96,25 +96,23 @@ MODULE = Module(
         # (-6.02 dB with one sender).
         Param(b"SEND", 0, active=True, formatter=_PLAIN,
               doc="this track's send into the one aux bus (delay, then reverb, back on T8)"),
+        # ---- page 1 (16 Sep 2026): TIME-SIZE and SHMR-SHFT are drawn as
+        # linked pairs; TONE moved to page 2.
         Param(b"TIME", 64, active=True, formatter=_PLAIN,
               doc="decay time -- how long the tail rings"),
-        # SHMR 0 is bit-identical to the engine without shimmer. On page 1
-        # since 15 Sep 2026 (MOD's slot; the tank modulation is pinned at MOD
-        # 30 / RATE 1x inside the engine -- Sam: the modulation is the LFOs'
-        # and the station's, and a static tank rings).
+        Param(b"SIZE", 100, active=True, formatter=_PLAIN, link=True,
+              doc="room size -- scales the eight tank lines (taps up to ~89 ms)"),
+        # SHMR 0 is bit-identical to the engine without shimmer (the tank
+        # modulation is pinned at MOD 30 / RATE 1x inside the engine).
         Param(b"SHMR", 0, active=True, formatter=_PLAIN,
               doc="shimmer -- pitch-shifted regeneration in the tail; 0 = off"),
-        Param(b"SIZE", 100, active=True, formatter=_PLAIN,
-              doc="room size -- scales the eight tank lines (taps up to ~89 ms)"),
-        # TONE is HP + LP on one knob: 0..64 closes the high cut (dark),
-        # 64..127 opens the low cut inside the loop (thin); 64 = HP 0 / LP 127.
-        Param(b"TONE", 64, active=True, formatter=_PLAIN,
-              doc="tail tone: below 64 darkens (high cut), above 64 thins (low cut); 64 = flat"),
+        # SHFT selects the shimmer interval; width is pinned wide.
+        Param(b"SHFT", 0, 4, active=True, formatter=_STEP, link=True,
+              labels=("+12", "+19", "+7", "-12"),
+              doc="shimmer interval in semitones -- heard once SHMR is up"),
         # WET: the reverb's level on top of the chain input (the delay's
         # output while the delay is live, else the aux), which passes through
-        # at unity: out = in + wet*WET (a crossfade until 15 Sep 2026, which
-        # faded the delay out as the reverb came in). The host prints wet*WET
-        # under its dry.
+        # at unity: out = in + wet*WET. The host prints wet*WET under its dry.
         Param(b"WET", 127, active=True, formatter=_PLAIN,
               doc="the reverb's level; the chain input passes through at unity"),
         # ---- page 2 ---------------------------------------------------------
@@ -126,17 +124,18 @@ MODULE = Module(
         Param(b"MODE", 1, 3, active=True, formatter=_STEP,
               labels=("ROOM", "PLATE", "BIG"),
               doc="voicing: ROOM / PLATE / BIG; BIG clips first"),
-        _BLANK,                 # SHMR lived here until 15 Sep 2026 (now page-1 slot 2)
+        # TONE is HP + LP on one knob: 0..64 closes the high cut (dark),
+        # 64..127 opens the low cut inside the loop (thin); 64 = HP 0 / LP 127.
+        # Slot 7 = $c's companion field (bits 8-15).
+        Param(b"TONE", 64, 128, active=True, formatter=_PLAIN,
+              doc="tail tone: below 64 darkens (high cut), above 64 thins (low cut); 64 = flat"),
         # DIFF 80: the VintageVerb match point bracketed at ~80-90.
         Param(b"DIFF", 80, 128, active=True, formatter=_PLAIN,
               doc="diffusion -- low = discrete repeats, high = smooth wash"),
-        # SHFT selects the shimmer interval; width is pinned wide.
-        Param(b"SHFT", 0, 4, active=True, formatter=_STEP,
-              labels=("+12", "+19", "+7", "-12"),
-              doc="shimmer interval in semitones -- heard once SHMR is up"),
+        _BLANK,
         Param(b"GATE", 0, 128, active=True, formatter=_PLAIN,
               doc="gated-reverb hold -- higher holds longer; the useful range is low (8-20)"),
-        _BLANK,                 # RATE (the MOD speed select) went with the MOD knob, 15 Sep 2026
+        _BLANK,
     ),
     mode_slot=6,                      # MODE names itself (ROOM / PLATE / BIG)
     dsp=DspSection(

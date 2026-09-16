@@ -7,6 +7,15 @@ flashed image was built from.
 
 ## Unreleased (main after image 28)
 
+- The knob pass (Sam, 16 Sep 2026): BusVerb p1 `SEND TIME⌐SIZE SHMR⌐SHFT WET`,
+  p2 `MODE TONE DIFF — GATE —`; Character p1 `DRV FOLD TXTR COMP RET MIX`,
+  p2 `TONE SAT — — WDTH —`; Modulation p1 `RATE⌐DPTH DLY FDBK MIX LOFI`,
+  p2 `— MODE TONE WDTH — —`; links on BusDelay TIME⌐FDBK, SCAT⌐DENS,
+  SIZE⌐PTCH and Spectrum FREQ⌐RES, LDP⌐LSP; BusDelay's SCAT/DENS read `---`
+  outside GRAIN. `⌐` = the panel's link element (`Param(link=True)`, bit 1 of
+  the enable nibble); first use by a module, and the first stepped select on a
+  page 1 (SHFT). Renders bit-identical by knob name across the layouts.
+  `stamp-defaults --all --keep-mode` before play.
 - Modulation: ENS (the Solina) removed; MODE = JUNO DIM FLNG COMB PHSR; FLNG's
   view RATE 8; per-mode output trims (DIM −8, FLNG −7, PHSR −2, COMB −12 dB);
   a LOFI knob on page-2 slot 8 (the delay line clocked coarse and quantised).
