@@ -83,18 +83,22 @@ A private project template was copied to ignored `out/` storage and configured
 with one looping Flex voice: a 44.1 kHz stereo, four-beat, 120 BPM / 440 Hz
 sample, source BPM metadata 2880, TSTR raw 4, and one trig on A01. The patched
 1.40C image loaded it from an emulated CompactFlash card and ran the real
-sequencer plus both DSP cores. A zero-crossing measurement over the final
-27,000 output frames gave:
+sequencer plus both DSP cores. Post-run RAM dumps prove that the shared Q26
+increment and both tempo values are exact:
 
-| project BPM | expected | measured |
-|---:|---:|---:|
-| 90 | 330 Hz | 329.36 Hz |
-| 120 | 440 Hz | 440.10 Hz |
-| 180 | 660 Hz | 662.31 Hz |
+| project BPM | project BPMx24 | source BPMx24 | live increment | exact ratio |
+|---:|---:|---:|---:|---:|
+| 90 | 2160 | 2880 | `0x03000000` | 0.75 |
+| 120 | 2880 | 2880 | `0x04000000` | 1.00 |
+| 180 | 4320 | 2880 | `0x06000000` | 1.50 |
 
-The four active DSP output slots agreed for each run, and the main output was
-non-silent. The fixture, card images, patched image, and captured WAVs remain
-ignored and are not redistributable test assets.
+The captured audio contains emulator block-boundary discontinuities, so a raw
+zero-crossing count is biased. Linear interpolation over stable carrier
+periods in the final 27,000 samples measures 329.94, 439.98 and 660.08 Hz
+respectively, all within 0.02% of 330/440/660 Hz. The four active DSP output
+slots agreed for each run, and the main output was non-silent. The fixture,
+card images, patched image, and captured WAVs remain ignored and are not
+redistributable test assets.
 
 Next: measure a marked loop across its wrap boundary, then cover live tempo
 changes, multiple tracks, saved-project round-trips and the physical MKII
