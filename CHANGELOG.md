@@ -7,6 +7,8 @@ flashed image was built from.
 
 ## Unreleased (main after image 29)
 
+- BusVerb: +6 dB on the wet (WET 127 = ×2); BIG with eight senders at SEND 100
+  peaks −8.9 dBFS on the wet alone.
 - Modulation: MIX bottom right (page-1 slot 5), LOFI on slot 4 — the wet/dry
   knob sits bottom right on every effect (image 30, on the card).
 - MODE top left (page-2 slot 6) on every effect, Character's SAT included;

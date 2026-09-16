@@ -114,7 +114,7 @@ MODULE = Module(
         # output while the delay is live, else the aux), which passes through
         # at unity: out = in + wet*WET. The host prints wet*WET under its dry.
         Param(b"WET", 127, active=True, formatter=_PLAIN,
-              doc="the reverb's level; the chain input passes through at unity"),
+              doc="the reverb's level (127 = the wet at +6 dB); the chain input passes through at unity"),
         # ---- page 2 ---------------------------------------------------------
         # MODE on slot 6: an even slot is the one the panel's page-2 knob
         # editor writes (docs/firmware/MAINMENU.md 9c-ii); the DSP reads $c's
