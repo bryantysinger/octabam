@@ -422,7 +422,14 @@ def stamp_defaults(pdir, remix_name, replaced_only=True, guard=True, keep_mode=F
         num = int(bank.name[4:6])
         done = []
 
+        # _bank_write runs mut() on .work AND its .strd twin, and with
+        # --keep-mode the two can hold different MODE bytes, so each file's
+        # writes are kept apart: a shared list made .work's read-back fail
+        # against .strd's entries (OCTABAM89 bank03 part 2 T5, 16 Sep 2026).
+        done_by = {}
+
         def mut(data):
+            mine = done_by.setdefault(bytes(data[:0x10]) + len(done_by).to_bytes(1, "big"), [])
             for p in range(NPARTS_ALL):
                 off = PART_BASE + p * PART_STRIDE
                 for t in range(NTRACKS):
@@ -440,20 +447,24 @@ def stamp_defaults(pdir, remix_name, replaced_only=True, guard=True, keep_mode=F
                                 d = module_defaults(m, {ms: stored})
                         data[a:a + 6] = d[:6]
                         data[b:b + 6] = d[6:]
-                        done.append((p, t, sub, fid, d))
+                        mine.append((p, t, sub, fid, d))
 
         _bank_write(pdir, num, mut, guard=guard)
         # READ IT BACK, as testproj does: a write this tool cannot verify is
-        # a write you find out about on the unit.
-        data = bank.read_bytes()
-        if int.from_bytes(data[-2:], "big") != (sum(data[0x10:-2]) & 0xFFFF):
-            sys.exit(f"{bank.name}: checksum did not take -- do NOT use this")
-        for p, t, sub, fid, d in done:
-            off = PART_BASE + p * PART_STRIDE
-            a = off + P1_OFF + t * TRACK_STRIDE + sub
-            b = off + P2_OFF + t * P2_STRIDE + sub
-            if data[a:a + 6] + data[b:b + 6] != d:
-                sys.exit(f"{bank.name} part {p+1} T{t+1}: read-back disagrees")
+        # a write you find out about on the unit. Both files, each against
+        # its own writes (mut ran on .work first, then .strd).
+        files = [bank] + ([bank.with_suffix(".strd")] if bank.with_suffix(".strd").is_file() else [])
+        for path, done in zip(files, done_by.values()):
+            data = path.read_bytes()
+            if int.from_bytes(data[-2:], "big") != (sum(data[0x10:-2]) & 0xFFFF):
+                sys.exit(f"{path.name}: checksum did not take -- do NOT use this")
+            for p, t, sub, fid, d in done:
+                off = PART_BASE + p * PART_STRIDE
+                a = off + P1_OFF + t * TRACK_STRIDE + sub
+                b = off + P2_OFF + t * P2_STRIDE + sub
+                if data[a:a + 6] + data[b:b + 6] != d:
+                    sys.exit(f"{path.name} part {p+1} T{t+1}: read-back disagrees")
+        done = next(iter(done_by.values()), [])
         total += len(done)
         if done:
             print(f"bank{num:02d}: {len(done)} slots stamped with our defaults")
