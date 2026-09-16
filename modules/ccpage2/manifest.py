@@ -2,7 +2,7 @@
 the FX1 effect's.
 
 Stock incoming CC reaches only FX2 page 1 (CC 40-45; the handler admits
-cc-16 < 30, docs/firmware/midi_re_cc.md). The MIDI dispatch table entry
+cc-16 < 30, docs/firmware/MIDI.md appendix A). The MIDI dispatch table entry
 0x400d6474[0xB] (the CC vector) is repointed from the stock handler
 0x4000e79c to the cave. The cave reads the CC number; anything but 62-73
 tail-calls CC_NEXT (stock, or Octakit's handler under the SCENES KITS

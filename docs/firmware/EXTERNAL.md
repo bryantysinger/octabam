@@ -251,7 +251,7 @@ running on an Octatrack MKI through our loader since 11 Sep 2026.
 | ours | theirs | verdict |
 |---|---|---|
 | trig masks `0x40`/`0x48` "not masks, a run of `0xaa`" | `0x40` = swing trigs (default `0xaa…`), `0x48` = slide trigs; diffed bank files on the unit | ✅ adopted (`RTOS_FORK.md`, `tools/hw/ot_project.py`) |
-| `midi_re_cc.md`: PLAYBACK page-1 `Part + 0x8edaa + track*30 + machine*7 + slot` | `machine*6` | ✅ re-verified from the writer `0x40054d7e..88` (`d1 = (m<<3) − m*2`) |
+| `MIDI.md` appendix A (was `midi_re_cc.md`): PLAYBACK page-1 `Part + 0x8edaa + track*30 + machine*7 + slot` | `machine*6` | ✅ re-verified from the writer `0x40054d7e..88` (`d1 = (m<<3) − m*2`) |
 | `ot_project.py`: a STATIC PATH must be bare, `../AUDIO/…` loads empty | the unit writes nested STATIC paths itself; the "empty" slot is one with no `markers.work` record (§9.4) | 🟡 adopted; `tools/hw/` never writes `markers.work` |
 | `MAINMENU.md`: list-descriptor `+0x08..+0x14` uninterpreted | cursor / absolute selection / visible-row count / count; boot init `0x4007ec60` from `0x40064c70..` | ✅ re-verified |
 | `MAINMENU.md`: root window descriptors uninterpreted | the category icon, 19 × 9 | 🟡 adopted |

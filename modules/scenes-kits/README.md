@@ -20,7 +20,7 @@ The apply_part entry (`0x40009094`) needed bridging until midisc 1.40MSCN6
 
 ## Measured
 
-- `mods`, `kits`, `rig-*` and `mutables-*` build and pass every gate; the
+- `mods`, `kits` and `rig-*` build and pass every gate; the
   `octakit`-alone identities are untouched.
 - Under the ColdFire port (`docs/remixer/PLACEMENT.md`): every `apply_part`
   during a project load goes to her entry; her fatal never runs.

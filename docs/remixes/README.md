@@ -24,7 +24,6 @@ A remix is a named selection of modules; `make image REMIX=<name>` builds it int
 | [`mutables`](mutables.md) | WarpFold, Ripple, Rungs, Streamz, BodeShift | no |
 | [`nimbus`](nimbus.md) | Nimbus alone | no |
 | [`rig-scenes`](rig-scenes.md) / [`rig-kits`](rig-kits.md) / [`rig-mods`](rig-mods.md) | the rig + a family | no |
-| [`mutables-scenes`](mutables-scenes.md) / [`mutables-kits`](mutables-kits.md) / [`mutables-mods`](mutables-mods.md) | the five inserts + a family | no |
 
 ## Reference
 
