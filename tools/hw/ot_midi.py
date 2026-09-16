@@ -8,7 +8,7 @@
     python3 tools/hw/ot_midi.py -p A start | stop
     python3 tools/hw/ot_midi.py -p A listen [seconds]          # dump incoming
 
-OT map (manual + docs/firmware/midi_re_cc.md): FX2 params 1-6 = CC 40-45 on the
+OT map (manual + docs/firmware/MIDI.md appendix A): FX2 params 1-6 = CC 40-45 on the
 track's channel (SEND: 40 = -DEL, 41 = -VRB); FX1 = CC 34-39; level CC 7;
 mute/solo CC 49/50; crossfader CC 48; sample trig = note 36+track;
 chromatic = notes 72-96 (84 = unison).
