@@ -1,7 +1,8 @@
 # Repitch development
 
-Status: first selectable firmware implementation builds and passes synthetic
-emulator contracts; not hardware-tested. Target hardware: user's MKII.
+Status: first selectable firmware implementation builds, passes synthetic
+contracts, and passes complete ColdFire + dual-DSP Flex playback at three
+tempos; not hardware-tested. Target hardware: user's MKII.
 
 ## Behavior
 
@@ -61,8 +62,9 @@ exact quotient/remainder calculation of
 stock increment unchanged. The remixer asserts every displaced byte and grows
 the three descriptor counts without renumbering stock values.
 
-This is not yet hardware-ready. The emulator proves these isolated contracts,
-not complete transport/audio behavior or the physical display width.
+The complete emulator now also proves project load, transport, Flex sample
+playback, and audible ratio changes through both firmware cores. It still does
+not prove physical display width or behavior unique to the MKII hardware.
 
 ## Tests
 
@@ -77,9 +79,25 @@ all five formatter values, both dry/granular gates, unchanged stock modes and
 exact shared increments at 60/90/120/180/240 BPM against a 120 BPM source.
 All nine emulator tests and the five offline reference tests pass.
 
-Next: execute a complete Flex voice and compare source consumption, pitch,
-duration and wraps; then cover live tempo changes, multiple tracks, saved
-project round-trips and the physical MKII screen. There is no synthetic project
-generator verified for this task yet. The repository's complete check still
-stops on its pre-existing Octakit `runtime.S:438` assembler error while building
-other remixes; the REPITCH build and focused gates complete before that point.
+A private project template was copied to ignored `out/` storage and configured
+with one looping Flex voice: a 44.1 kHz stereo, four-beat, 120 BPM / 440 Hz
+sample, source BPM metadata 2880, TSTR raw 4, and one trig on A01. The patched
+1.40C image loaded it from an emulated CompactFlash card and ran the real
+sequencer plus both DSP cores. A zero-crossing measurement over the final
+27,000 output frames gave:
+
+| project BPM | expected | measured |
+|---:|---:|---:|
+| 90 | 330 Hz | 329.36 Hz |
+| 120 | 440 Hz | 440.10 Hz |
+| 180 | 660 Hz | 662.31 Hz |
+
+The four active DSP output slots agreed for each run, and the main output was
+non-silent. The fixture, card images, patched image, and captured WAVs remain
+ignored and are not redistributable test assets.
+
+Next: measure a marked loop across its wrap boundary, then cover live tempo
+changes, multiple tracks, saved-project round-trips and the physical MKII
+screen. The repository's complete check still stops on its pre-existing
+Octakit `runtime.S:438` assembler error while building other remixes; the
+REPITCH build and focused gates complete before that point.
