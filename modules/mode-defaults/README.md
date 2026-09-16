@@ -45,7 +45,7 @@ per module in the image with views: `id, mode slot, nviews`, then per view
 
 `tools/verify/verify_modedefaults.py` (in `make verify` with `OT_PROJECT`):
 the FX2 editor called on T1 (BusDelay, CLEAN -> GRAIN) and the FX1 editor
-on T2 (Modulation, JUNO -> ENS) under the port leave every pair of the
+on T2 (Modulation, JUNO -> DIM) under the port leave every pair of the
 landed view in the live lane, page 1 and page 2, and the untouched slots
 at the fixture's bytes. The editor takes encoder ticks of 256 units
 against a per-slot step (`0x46c7dede + slot2*20 + 8`; 0x10e for a 3-way

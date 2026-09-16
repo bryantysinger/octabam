@@ -1,9 +1,9 @@
 ; ---------------------------------------------------------------------------
-; MODULATION -- a modulation pedal: JUNO, DIM, ENS, FLNG, COMB, PHSR, each a
+; MODULATION -- a modulation pedal: JUNO, DIM, FLNG, COMB, PHSR, each a
 ; transcription of the source modules/modulation/modulation_ref.py names
-; (docs/effects/PORTS.md), proven against that float reference. Four sample
+; (docs/effects/PORTS.md), proven against that float reference. Three sample
 ; loops, one chosen per block: LINE (JUNO, DIM and FLNG differ only in five
-; per-block mix weights bl bd ff kc kb), ENS, PHSR, COMB. Insert contract
+; per-block mix weights bl bd ff kc kb), PHSR, COMB. Insert contract
 ; (modules/ripple/ripple_svf.asm). FX1 only: init reads the allocator base
 ; (X:0x213 -> this instance's entry, valid at init and nowhere else); a base
 ; >= 0x4000 is an FX2 slot and proc runs the dry path, which writes nothing
@@ -148,7 +148,7 @@ mo_msame:
         move    x:(r7+$40),a
         asr     #$8,a,a
         move    a1,x0
-        move    x0,a                    ; the mode, 0..5, clean
+        move    x0,a                    ; the mode, 0..4, clean
         move    a,x:(r7+$0c)
 ; ---- the dry path: an FX2 slot, or MIX at zero ---------------------------
         move    x:(r7+$0d),a            ; the FX2 flag from init
@@ -162,14 +162,12 @@ mo_msame:
         cmp     #>$1,a
         beq     mo_bdim
         cmp     #>$2,a
-        beq     mo_bens
-        cmp     #>$3,a
         beq     mo_bflng
-        cmp     #>$4,a
+        cmp     #>$3,a
         beq     mo_bcomb
-        cmp     #>$5,a
+        cmp     #>$4,a
         beq     mo_bphsr
-; JUNO (and any stored value past 5): bl 0, bd 0, ff 1, kc 0, kb 0
+; JUNO (and any stored value past 4): bl 0, bd 0, ff 1, kc 0, kb 0
         clr     a
         move    #>$7fffff,x0
         move    a,x:(r7+$07)
@@ -180,25 +178,27 @@ mo_msame:
         bra     mo_line
 mo_bdim:
 ; DIM: bl 0, bd 1, ff 0.25, kc -1, kb 0.5 (OURS: the SDD-320's amounts are
-; unpublished; the highpass and the lift's lowpass are one-poles at 200 Hz)
+; unpublished; the highpass and the lift's lowpass are one-poles at 200 Hz),
+; all x 0.398: the -8 dB trim that levels it with JUNO at the views
         clr     a
         move    a,x:(r7+$07)
-        move    #>$7fffff,x0
+        move    #>$32f52d,x0            ; 0.398
         move    x0,x:(r7+$08)
-        move    #>$200000,x0
+        move    #>$0cbd4b,x0            ; 0.0995
         move    x0,x:(r7+$09)
-        move    #>$800000,x0            ; -1.0
+        move    #>$cd0ad3,x0            ; -0.398
         move    x0,x:(r7+$0a)
-        move    #>$400000,x0
+        move    #>$197a96,x0            ; 0.199
         move    x0,x:(r7+$0b)
         bra     mo_line
 mo_bflng:
-; FLNG: bl 0.7071, bd 0, ff -0.7071, kc 0, kb 0 (Dattorro Table 6)
+; FLNG: bl 0.7071, bd 0, ff -0.7071, kc 0, kb 0 (Dattorro Table 6); bl and
+; ff x 0.447, the -7 dB trim (the feedback is FDBK's, untrimmed)
         clr     a
-        move    #>$5a8279,x0            ; 0.7071
+        move    #>$286dc6,x0            ; 0.7071 x 0.447
         move    x0,x:(r7+$07)
         move    a,x:(r7+$08)
-        move    #>$a57d87,x0            ; -0.7071
+        move    #>$d7923a,x0            ; -0.7071 x 0.447
         move    x0,x:(r7+$09)
         move    a,x:(r7+$0a)
         move    a,x:(r7+$0b)
@@ -410,174 +410,6 @@ molinz:
         rts
 
 ; ===========================================================================
-; ENS -- the Solina: three taps on the mono line, two three-phase LFOs
-; ===========================================================================
-mo_bens:
-        move    #$1,n0
-        do      n7,>moensz
-; ---- the two phases advance: slow by inc, fast by 10 inc ---------------------
-        move    x:(r7+$21),a
-        move    x:(r7+$01),x0
-        add     x0,a
-        and     #>$7fffff,a
-        move    a1,x:(r7+$21)
-        move    x:(r7+$22),a
-        move    x:(r7+$01),x0
-        add     x0,a
-        add     x0,a
-        add     x0,a
-        add     x0,a
-        add     x0,a
-        add     x0,a
-        add     x0,a
-        add     x0,a
-        add     x0,a
-        add     x0,a
-        and     #>$7fffff,a
-        move    a1,x:(r7+$22)
-; ---- advance the write phase ----------------------------------------------
-        move    x:(r7+$20),a
-        add     #>$1,a
-        and     #>$3ff,a
-        move    a1,x:(r7+$20)
-; ---- tap 1 (phase offset 0), the one-pole at $25, parked in $3d ---------------
-        move    x:(r7+$21),a
-        bsr     mo_para
-        move    a,x:(r7+$1c)            ; the slow sine
-        move    x:(r7+$22),a
-        bsr     mo_para
-        asr     #$1,a,a
-        move    x:(r7+$1c),b
-        asr     #$1,b,b
-        add     b,a                     ; mod = (slow + fast)/2
-        move    a,x0
-        move    x:(r7+$03),y1
-        mpy     x0,y1,a
-        move    x:(r7+$02),x0
-        add     x0,a
-        clr     b
-        move    b,y0
-        bsr     mo_tap
-        move    x:(r7+$25),b
-        sub     b,a
-        asr     #$1,a,a
-        move    a,x0
-        move    x:(r7+$05),y1
-        mpy     x0,y1,a
-        asl     #$1,a,a
-        add     b,a
-        move    a,x:(r7+$25)
-        move    a,x:(r7+$3d)            ; t1
-; ---- tap 2 (+ 1/3), the one-pole at $26, parked in $3e -------------------------
-        move    #>$2aaaaa,x0
-        move    x:(r7+$21),a
-        add     x0,a
-        and     #>$7fffff,a
-        bsr     mo_para
-        move    a,x:(r7+$1c)
-        move    #>$2aaaaa,x0
-        move    x:(r7+$22),a
-        add     x0,a
-        and     #>$7fffff,a
-        bsr     mo_para
-        asr     #$1,a,a
-        move    x:(r7+$1c),b
-        asr     #$1,b,b
-        add     b,a
-        move    a,x0
-        move    x:(r7+$03),y1
-        mpy     x0,y1,a
-        move    x:(r7+$02),x0
-        add     x0,a
-        clr     b
-        move    b,y0
-        bsr     mo_tap
-        move    x:(r7+$26),b
-        sub     b,a
-        asr     #$1,a,a
-        move    a,x0
-        move    x:(r7+$05),y1
-        mpy     x0,y1,a
-        asl     #$1,a,a
-        add     b,a
-        move    a,x:(r7+$26)
-        move    a,x:(r7+$3e)            ; t2
-; ---- tap 3 (+ 2/3), the one-pole at $27, parked in $1b -------------------------
-        move    #>$555555,x0
-        move    x:(r7+$21),a
-        add     x0,a
-        and     #>$7fffff,a
-        bsr     mo_para
-        move    a,x:(r7+$1c)
-        move    #>$555555,x0
-        move    x:(r7+$22),a
-        add     x0,a
-        and     #>$7fffff,a
-        bsr     mo_para
-        asr     #$1,a,a
-        move    x:(r7+$1c),b
-        asr     #$1,b,b
-        add     b,a
-        move    a,x0
-        move    x:(r7+$03),y1
-        mpy     x0,y1,a
-        move    x:(r7+$02),x0
-        add     x0,a
-        clr     b
-        move    b,y0
-        bsr     mo_tap
-        move    x:(r7+$27),b
-        sub     b,a
-        asr     #$1,a,a
-        move    a,x0
-        move    x:(r7+$05),y1
-        mpy     x0,y1,a
-        asl     #$1,a,a
-        add     b,a
-        move    a,x:(r7+$27)
-        move    a,x:(r7+$1b)            ; t3
-; ---- the line write: LPi((L + R)/2) --------------------------------------------
-        move    x:(r0),a
-        move    x:(r0+n0),x0
-        add     x0,a
-        asr     #$1,a,a
-        move    x:(r7+$23),b
-        sub     b,a
-        asr     #$1,a,a
-        move    a,x0
-        move    x:(r7+$05),y1
-        mpy     x0,y1,a
-        asl     #$1,a,a
-        add     b,a
-        move    a,x:(r7+$23)
-        move    a,x:(r7+$10)
-        move    x:(r7+$20),a
-        move    x:(r7+$0e),x0
-        add     x0,a
-        move    a,r5
-        move    x:(r7+$10),a
-        move    a,y:(r5)
-; ---- L = t1 + t2 - t3 ; R = t1 - t2 - t3 (limiting stores) -------------------
-        move    x:(r7+$3d),a
-        move    x:(r7+$3e),x0
-        add     x0,a
-        move    x:(r7+$1b),x0
-        sub     x0,a
-        move    x:(r7+$3d),b
-        move    x:(r7+$3e),x0
-        sub     x0,b
-        move    x:(r7+$1b),x0
-        sub     x0,b
-        move    a,x:(r7+$3d)
-        move    b,x:(r7+$3e)
-        bsr     momixs
-        move    (r0)+n0
-        move    (r0)+n0
-moensz:
-        nop
-        rts
-
-; ===========================================================================
 ; PHSR -- ChowPhaser: the per-block LFO and tables, then the loop
 ; ===========================================================================
 mo_bphsr:
@@ -651,7 +483,7 @@ mo_padv:
         tlt     x0,a
         move    a,x:(r7+$1a)
 ; STGS on DLY: the tap weights for 2 / 4 / 6 / 8 stages by quarters. Only one
-; is 1.0; the loop sums all four (branch-free). $1b w2  $1c w4  $1d w6  $1e w8
+; is set (0.794, the trim); the loop sums all four (branch-free). $1b w2  $1c w4  $1d w6  $1e w8
         clr     a
         move    a,x:(r7+$1b)
         move    a,x:(r7+$1c)
@@ -665,7 +497,7 @@ mo_padv:
         move    (r5)+n5
         move    #$1b,n5
         move    (r5)+n5
-        move    #>$7fffff,x0
+        move    #>$65ac8c,x0            ; 0.794: the -2 dB trim
         move    x0,x:(r5)
 ; ---- the loop --------------------------------------------------------------
         move    #$1,n0
@@ -947,6 +779,14 @@ mo_bcomb:
         move    a,r5
         move    x:(r7+$3e),a
         move    a,y:(r5)
+; the -12 dB output trim, after the line writes so the ring is untouched
+        move    x:(r7+$3d),x0
+        move    #>$2026f3,y1            ; 0.251
+        mpy     x0,y1,a
+        move    a,x:(r7+$3d)
+        move    x:(r7+$3e),x0
+        mpy     x0,y1,a
+        move    a,x:(r7+$3e)
         bsr     momixs
         move    (r0)+n0
         move    (r0)+n0

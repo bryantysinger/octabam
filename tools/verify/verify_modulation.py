@@ -139,7 +139,7 @@ for name, m in MODES.items():
         ok = False
         check(f"FX1 MIX=0 passthrough in {name}", False,
               f"first diff at {next(i for i,(a,b) in enumerate(zip(L,ramp)) if a!=b)}")
-check("FX1: MIX=0 is a bit-exact passthrough in all six modes", ok)
+check("FX1: MIX=0 is a bit-exact passthrough in all five modes", ok)
 
 # ---- 2. THE FX1-ONLY PROMISE: an FX2 instance is dry, whatever the knobs -----
 ok = True
@@ -148,7 +148,7 @@ for name, m in MODES.items():
     if L != ramp or R != ramp:
         ok = False
         check(f"FX2 instance is dry in {name}", False, "it processed the frame")
-check("FX2 instance is a bit-exact DRY PASS in all six modes, at any setting", ok)
+check("FX2 instance is a bit-exact DRY PASS in all five modes, at any setting", ok)
 
 # ---- 3. ... and writes nothing: dsp_host's guard --------------------------------
 render(ramp, slot="fx2", guard=True, MODE=1, MIX=127, DPTH=127, FDBK=100)
@@ -185,8 +185,6 @@ CASES = [
     ("JUNO", dict(RATE=127, DPTH=6, WDTH=0, DLY=12, FDBK=100, TONE=20, MIX=127), 5e-4, 1.0),   # I+II, with feedback, dark
     ("DIM", {}, 5e-4, 1.0),
     ("DIM", dict(RATE=60, DPTH=90, DLY=100, MIX=90), 5e-4, 1.0),
-    ("ENS", {}, 5e-4, 1.0),
-    ("ENS", dict(RATE=64, DPTH=40, TONE=0, MIX=127), 5e-4, 1.0),
     ("FLNG", {}, 5e-4, 1.0),
     ("FLNG", dict(FDBK=120, DPTH=127, DLY=40, WDTH=64, MIX=100), 5e-4, 1.0),
     ("PHSR", {}, 5e-4, 1.0),
@@ -238,10 +236,11 @@ check("FLNG: at the through-zero point the wet nulls (DPTH 0: blend - feedforwar
 # ---- 7. PHSR: unity magnitude ----------------------------------------------------------
 # An allpass chain passes a tone at unity, wherever the notches sit, once the
 # feedback is off (FDBK 64) -- measured at a slow rate over a few periods.
+# The mode's output trim is -2 dB (16 Sep 2026), so unity reads -2.0.
 src = tone(440, 0.3)
 L, R = render(src, **mode_knobs("PHSR", FDBK=64, MIX=127, RATE=40))
-check("PHSR: unity magnitude at FDBK 64 (an allpass chain)",
-      abs(rms_db(L) - rms_db(src)) < 0.5, f"{rms_db(L) - rms_db(src):+.2f} dB")
+check("PHSR: unity magnitude at FDBK 64 (an allpass chain), through the -2 dB trim",
+      abs(rms_db(L) - rms_db(src) + 2.0) < 0.5, f"{rms_db(L) - rms_db(src):+.2f} dB")
 
 # ---- 8. COMB: DLY tunes the ring ---------------------------------------------------------
 # An impulse rings at the loop's period; the autocorrelation's first peak
