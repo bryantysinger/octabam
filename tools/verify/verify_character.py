@@ -26,7 +26,7 @@ contains this station beside SEND:
     python3 tools/remix/audition.py character out/dry/drums_110.wav
     python3 tools/verify/verify_character.py
 """
-import math, pathlib, struct, subprocess, sys
+import math, os, pathlib, struct, subprocess, sys
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 import send_probe  # reuse its dispatch-table entry resolution
@@ -41,6 +41,7 @@ MEM = f"out/dsp/_audition_{MOD.name}_A.mem"
 # [REVERB] == INIT_TABLE[SEND], which is what the audition's scratch image
 # has. Those renders come from the shipping build's own payload A instead.
 RIG_IMAGE = "out/mainos_bus.bin"
+RIG_REMIX = "bamsep26"                   # the rig: Character beside the reverb on payload A
 RIG_MEM = "out/dsp/_verify_character_rig_A.mem"
 HOST = "vendor/dsp56300/build/source/dsp_host/dsp_host"
 FXID = MOD.menu.fx2_id
@@ -94,8 +95,18 @@ def render(samples, slot="fx1", guard=False, **kw):
     mem, ini, prc = MEM, init, proc
     if slot == "master":
         import pathlib as _pl
-        if not getattr(render, "dumped", False):    # once per run, never a cached dump (a stale
-            send_probe.dump_mem(RIG_IMAGE, RIG_MEM, "A")   # one measured a probe build, 16 Sep 2026)
+        if not getattr(render, "dumped", False):
+            # Build the rig here and dump it at once: out/mainos_bus.bin is
+            # whatever wrote it last (the selftest leaves its LAST remix there,
+            # and a cached dump measured verify_burn's probe build mid-check on
+            # 16 Sep 2026 -- both read as "GLUE inert").
+            env = dict(os.environ, REMIX=RIG_REMIX, XBUS="1", SPEC="1")
+            env.setdefault("BUILD", "0")
+            r = subprocess.run([sys.executable, "tools/build/build_bus.py"], env=env,
+                               capture_output=True, text=True)
+            if r.returncode:
+                sys.exit(f"verify_character: building {RIG_REMIX} failed:\n{(r.stdout + r.stderr)[-1500:]}")
+            send_probe.dump_mem(RIG_IMAGE, RIG_MEM, "A")
             render.dumped = True
         mem = RIG_MEM
         ini, prc = send_probe.entry_points(mem, FXID)
