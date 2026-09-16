@@ -294,7 +294,7 @@ BusDelay or BusVerb -- "ones that would tax it, like changing times" --
 sometimes brings in static and crackle that stays. Triggered "pretty
 reliably" with the reverb host's SEND up and both WETs up; a transport
 restart clears it, after which it takes a few knob moves on either engine
-to bring back. Not reproducible on demand later the same session. One
+to bring back. Not reproducible on demand afterwards. One
 10 s capture while it was audible (`out/hw/voicing25/noise_now.wav`):
 HF above 8 kHz −77 dB against −85..−91 dB after CC toggles of the delay's
 WET, with no clean A/B on the same material.

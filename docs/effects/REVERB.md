@@ -103,7 +103,7 @@ blocks and outputs dry until warm. One BusVerb per bank (role lock); a
 second instance returns as a passthrough. Every address register is
 committed in the sample loop; the rolled tank loops walk the Y state table.
 
-## Engine rules (each cost a flash or a session)
+## Engine rules
 
 - Interpolation fraction: integer part via `asl #n`, fraction masked with
   `2^(24−n)−1` and shifted by `n−1`, never `n` (a shift by `n` reads
