@@ -4,9 +4,11 @@ Measured 16 Sep 2026 on OCTABAM90 (five saves from the unit, one change
 each, byte-diffed): a bank file is a FORM/BANK header, 16 PTRN records
 (stride 0x8eec), each carrying 8 TRAC audio-track records (stride 0x922)
 and 8 MTRA MIDI-track records (stride 0x8b9), then the 8 PART records
-ot_project.py writes. In a TRAC record: an 8-byte trig mask at +0x10
-(bit = step, 64 steps) and, at +0x62, 64 step records of 32 bytes, one
-byte per lockable parameter, 0xff = no lock. Lock slots: 12-17 AMP (VOL =
+ot_project.py writes. A TRAC record's data starts 9 bytes after its tag
+(ot_project.trac_off, settled against RAM): eight 8-byte step masks
+first, BIG-endian -- step s (1-based) is byte 7 - (s-1)//8, bit (s-1)%8;
+mask 0 is the trigs -- then, at data+0x59 (tag+0x62), 64 step records of
+32 bytes, one byte per lockable parameter, 0xff = no lock. Lock slots: 12-17 AMP (VOL =
 15), 18-23 FX1 page 1, 24-29 FX2 page 1 (knob A..F); 0-11 are PLAYBACK and
 LFO in an order not yet pinned, 30-31 unseen. A bipolar knob stores its
 panel value + 64.
@@ -20,7 +22,8 @@ import pathlib, sys
 
 PTRN_BASE, PTRN_STRIDE, NPATTERNS = 0x16, 0x8eec, 16
 TRAC_OFF, TRAC_STRIDE, NTRACKS = 0x08, 0x922, 8        # TRAC records inside a PTRN
-TRIG_MASK, LOCKS, NSTEPS, LOCK_LEN = 0x10, 0x62, 64, 32
+DATA, MASK_LEN, NMASKS = 9, 8, 8                        # tag + length + pad, then the masks
+LOCKS, NSTEPS, LOCK_LEN = 0x62, 64, 32                  # from the tag
 PAGES = {"amp": range(12, 18), "fx1": range(18, 24), "fx2": range(24, 30)}
 NOLOCK = 0xff
 
@@ -40,10 +43,20 @@ def check_tags(data):
                 sys.exit(f"no TRAC tag for pattern {p + 1} track {t + 1}")
 
 
+def mask(data, pattern, track, which=0):
+    """One of the eight 64-step masks as an int, bit s = step s (0-based)."""
+    a = trac(pattern, track) + DATA + which * MASK_LEN
+    return int.from_bytes(data[a:a + MASK_LEN], "big")
+
+
+def set_mask(data, pattern, track, value, which=0):
+    a = trac(pattern, track) + DATA + which * MASK_LEN
+    data[a:a + MASK_LEN] = int(value).to_bytes(MASK_LEN, "big")
+
+
 def trigs(data, pattern, track):
-    a = trac(pattern, track) + TRIG_MASK
-    mask = int.from_bytes(data[a:a + 8], "little")
-    return [s for s in range(NSTEPS) if mask >> s & 1]
+    m = mask(data, pattern, track, 0)
+    return [s for s in range(NSTEPS) if m >> s & 1]
 
 
 def locks(data, pattern, track):
