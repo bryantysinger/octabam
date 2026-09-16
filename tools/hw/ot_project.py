@@ -13,6 +13,7 @@
     python3 tools/hw/ot_project.py thru-track PROJECT_DIR TRACK [--page HEX14]
     python3 tools/hw/ot_project.py stored PROJECT_DIR                  # .strd twins (the unit's saved state)
     python3 tools/hw/ot_project.py delaytest SRC_DIR DEST_DIR [SENDER]  # only the delay bus: T1 host, the rest SEND
+    python3 tools/hw/ot_project.py clean SRC_DIR DEST_DIR              # a copy with FX1/FX2 = NONE everywhere, pages zero
 
 Writes edit GAIN= lines only, preserve CRLF and byte length discipline of the
 rest of the file, and refuse to run without a same-day backup directory
@@ -827,6 +828,51 @@ def write_stored(pdir):
     return n
 
 
+def make_clean_project(src, dest):
+    """Copy a project and blank every effect: FX1 and FX2 = NONE (id 0) on
+    every track of every part of every bank, every page byte zero. Patterns,
+    samples, mixer and the rest untouched. The image runs id 0 as SEND at
+    level 0, so the bus carries nothing. A clean baseline for the ear
+    (Sam, 16 Sep 2026: "so I can test it clean")."""
+    import shutil
+    src, dest = pathlib.Path(src), pathlib.Path(dest)
+    if dest.exists():
+        sys.exit(f"{dest} exists -- refusing to overwrite")
+    shutil.copytree(src, dest)
+    for bank in sorted(dest.glob("bank*.work")):
+        num = int(bank.name[4:6])
+
+        def mut(data):
+            for p in range(NPARTS_ALL):
+                off = PART_BASE + p * PART_STRIDE
+                for i in range(NTRACKS):
+                    data[off + FX1_OFF + i] = 0
+                    data[off + FX2_OFF + i] = 0
+                    a = off + P1_OFF + i * TRACK_STRIDE
+                    b = off + P2_OFF + i * P2_STRIDE
+                    data[a:a + 12] = bytes(12)
+                    data[b:b + 12] = bytes(12)
+
+        _bank_write(dest, num, mut, guard=False)
+        for path in (bank, bank.with_suffix(".strd")):
+            if not path.is_file():
+                continue
+            data = path.read_bytes()
+            if int.from_bytes(data[-2:], "big") != (sum(data[0x10:-2]) & 0xFFFF):
+                sys.exit(f"{path.name}: checksum did not take -- do NOT use this")
+            for p in range(NPARTS_ALL):
+                off = PART_BASE + p * PART_STRIDE
+                if any(data[off + FX1_OFF:off + FX1_OFF + 8]) or any(data[off + FX2_OFF:off + FX2_OFF + 8]):
+                    sys.exit(f"{path.name} part {p+1}: an id survived")
+                for i in range(NTRACKS):
+                    a = off + P1_OFF + i * TRACK_STRIDE
+                    b = off + P2_OFF + i * P2_STRIDE
+                    if any(data[a:a + 12]) or any(data[b:b + 12]):
+                        sys.exit(f"{path.name} part {p+1} T{i+1}: a page byte survived")
+    write_stored(dest)
+    print(f"{dest}: every FX1/FX2 = NONE, every page zero, in every part of every bank; .strd twins in step")
+
+
 def make_delay_test_project(src, dest, remix_name="bamsep26", sender=3):
     """Copy a project (samples included) and put ONLY the delay bus in it:
     T1 = DELAY SERVER on FX2, every other track = SEND on FX2, FX1 = NONE
@@ -959,6 +1005,7 @@ if __name__ == "__main__":
     elif cmd == "testproj": make_test_project(sys.argv[2], sys.argv[3], sys.argv[4])
     elif cmd == "rigproj": make_rig_project(sys.argv[2], sys.argv[3], sys.argv[4]); write_stored(sys.argv[3])
     elif cmd == "stored": write_stored(pdir)                                # .strd twins for every .work
+    elif cmd == "clean": make_clean_project(sys.argv[2], sys.argv[3])       # <src> <dest>: no effects anywhere
     elif cmd == "delaytest":                                                # <src> <dest> [sender track]
         make_delay_test_project(sys.argv[2], sys.argv[3], sender=int(sys.argv[4]) if len(sys.argv) > 4 else 3)
     elif cmd == "lfo": lfo_report(pdir)                                      # every live LFO, per part
