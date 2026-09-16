@@ -57,8 +57,9 @@ proc:
 ; PER-BLOCK KNOB DECODE
 ; ===========================================================================
         move    #>$ffffff,m5
-; MIX (page-1 slot 4); 127 = 1.0, the wet outright (the through-zero null is exact)
-        move    x:(r6+$4),a
+; MIX (page-1 slot 5, bottom right on every effect); 127 = 1.0, the wet
+; outright (the through-zero null is exact)
+        move    x:(r6+$5),a
         move    #>$7f0000,x0
         cmp     x0,a                    ; k - 127
         move    #>$7fffff,x0
@@ -133,11 +134,11 @@ proc:
 ; the P table base (rewritten by build_bus.py; the literal appears ONCE)
         move    #>$fab1e0,r5
         move    r5,x:(r7+$0f)
-; LOFI (page-1 slot 5): the hold length 1 + 64 (k/128)^2
+; LOFI (page-1 slot 4): the hold length 1 + 64 (k/128)^2
 ; samples (an integer in $42; 17 at 64, 64 at 127) and the bit mask from the
 ; 16-word table at P + 132 on k >> 3 ($45); k = 0 is hold 1 and a full
 ; mask: bit-exact (verify_modulation)
-        move    x:(r6+$5),a
+        move    x:(r6+$4),a
         and     #>$7f0000,a
         move    a1,x0
         move    a1,y1
@@ -145,7 +146,7 @@ proc:
         asr     #$11,a,a                ; x 64: an integer 0..63
         add     #>$1,a
         move    a1,x:(r7+$42)
-        move    x:(r6+$5),a
+        move    x:(r6+$4),a
         and     #>$7f0000,a
         asr     #$13,a,a                ; k >> 3: 0..15
         move    x:(r7+$0f),r5
