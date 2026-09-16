@@ -291,9 +291,11 @@ through a station per knob value and reports the −3 dB corner, the peak of
   modelled, so a part carrying stock DELAY renders no repeats under
   `ot_emu` (inferred from the silence).
 - **What only ears catch.** GRAIN's right-channel hiss passed every
-  automated check and was found by listening. `docs/history/VOICING.md`
-  has the listening protocol.
+  automated check and was found by listening. The listening protocol:
+  one file per play, say what it is and what to listen for before it plays,
+  level-match (active RMS) before any A/B, judge modes wet-only, ~9 s of a
+  sustained source, A/B/A/B.
 
-`docs/history/TESTPASS.md` is the functional baseline; `docs/history/CAPTURE_18AUG.md`
-the protocol for measurements that need hardware; `docs/firmware/DSP.md`
-§6b the bring-up of `dsp_host` and the ABI.
+`docs/firmware/DSP.md` §6b is the bring-up of `dsp_host` and the ABI; the
+functional baseline (`TESTPASS.md`) and the hardware-measurement protocol
+(`CAPTURE_18AUG.md`) are in git history (`git show 3ceba41:docs/history/<name>`).

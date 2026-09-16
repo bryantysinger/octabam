@@ -5,7 +5,7 @@ shimmer, a gate and mid/side width. Hosted on payload A (core 0), which
 serves tracks 5–8 (measured; test it on track 5). Stage 2 of the one aux bus.
 
 Structure, parameters and memory layout: [`docs/effects/REVERB.md`](../../docs/effects/REVERB.md).
-Voicing: [`docs/history/VOICING.md`](../../docs/history/VOICING.md).
+Voicing rounds up to 16 Sep 2026: `git show 3ceba41:docs/history/VOICING.md`.
 
 ## Measured
 

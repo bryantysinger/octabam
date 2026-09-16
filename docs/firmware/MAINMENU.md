@@ -7,7 +7,7 @@ disassembly or driven under the emulator / on the unit, 🟡 inferred.
 Addresses are SDRAM addresses, `address = 0x40000400 + file offset` into
 `out/raw/section_3_MAIN_OS.bin`. The full record of the shortcut and
 bus-screen work (modules `menushortcut` and `busscreen`, both retired and
-in git history) is `docs/history/MAINMENU_BUSSCREEN.md`.
+in git history) is `MAINMENU_BUSSCREEN.md` (`git show 3ceba41:docs/history/MAINMENU_BUSSCREEN.md`).
 
 ## 1. Record types ✅
 

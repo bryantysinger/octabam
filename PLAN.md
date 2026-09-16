@@ -3,7 +3,7 @@
 octabam is a remixer for the Octatrack's OS: a mod is a module, a remix is
 a selection of modules, and the build turns a remix and the user's own
 1.40C into one image. `docs/remixer/PLACEMENT.md` is the architecture record
-for where code goes; `docs/history/PLAN_EFFECTS.md` is the DSP-effects
+for where code goes.
 programme this grew out of, with its open items.
 
 ## Where it stands (15 Sep 2026)
@@ -72,7 +72,7 @@ From `docs/remixer/PLACEMENT.md`, measured under the port unless marked.
    running before anyone places there.
 6. octamax (mxldyn): ported on branch `octamax-deferred` (`d952976`), parked
    pending a conversation with the author.
-7. The DSP side's open items: `docs/history/PLAN_EFFECTS.md`.
+7. The DSP side's open items: each module's README, `## Open`.
 8. The reverb is closed out (15 Sep 2026, "is awesome"; its buffers and
    voicing are kept whatever else moves). Next rounds: BusDelay with the
    32K lines (741 ms; 1/4 and 1/2T at 121 BPM) is image 28 on the unit,
