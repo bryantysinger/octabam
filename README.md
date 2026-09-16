@@ -92,7 +92,7 @@ recipe pins, and refuses on any drift. `CONTRIBUTING.md` is the contract;
 The DSP side renders locally on the assembled instruction stream (`make
 render`, `make render-rig`; `docs/remixer/HARNESS.md`); the ColdFire side
 boots the built image under a headless port of the machine (`make emu-cf`;
-`docs/history/COLDFIRE_PORT.md`) and, for the firmware's own screens, under
+`docs/remixer/EMU.md`) and, for the firmware's own screens, under
 Unicorn (`docs/remixer/EMU.md`). What the emulators cannot see — caches, the
 recorder, cross-core timing — is listed beside every gate that is blind to
 it.
@@ -138,7 +138,6 @@ dsp/               shared DSP infrastructure: the null stub and the probes
 docs/remixer/      using and extending the remixer: MODULES, PLACEMENT, REMIXER, TOOLING, FLASHING
 docs/firmware/     the firmware, reverse-engineered: ARCHITECTURE, KERNEL, DSP, CHIP, TABLES, PARAM_PAGES, MAINMENU, MIDI, EXTERNAL
 docs/effects/      the effects: XBUS (the bus), REVERB, MASTER, PORTS
-docs/history/      closed records, kept for provenance
 ```
 
 ## Credit

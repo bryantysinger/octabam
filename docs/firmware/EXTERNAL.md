@@ -6,7 +6,8 @@ are Bryan T's (Discord); §7 scans two parallel projects; §9 is nordseele's
 octalab. All were derived from the officially distributed OS 1.40C
 (`section_3_MAIN_OS.bin` SHA-256 `164f3122…`, base `0x40000400`). The full
 ingest record, including the frame-phase model, the notes exchanged and
-Bryan's xtables note verbatim, is `docs/history/EXTERNAL_INGEST.md`.
+Bryan's xtables note verbatim, is `EXTERNAL_INGEST.md` in git history
+(`git show 3ceba41:docs/history/EXTERNAL_INGEST.md`).
 
 Status key: ✅ re-verified here · 🟡 adopted on their evidence · ❌ retracts
 something we had written.

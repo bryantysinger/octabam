@@ -4,9 +4,7 @@
 Octatrack's OS that composes the community's modifications and this
 project's own into one image built from the user's own 1.40C — where that
 stands, what is measured about the ground, and the work order.
-`docs/remixer/PLACEMENT.md` is the architecture record for where code goes;
-`docs/history/PLAN_EFFECTS.md` is the DSP-effects programme this grew out of,
-still open where it says it is.
+`docs/remixer/PLACEMENT.md` is the architecture record for where code goes.
 
 The repo is organised as **modules** (`modules/<name>/manifest.py` declares one
 contribution) composed into **remixes** (`remixes/<name>.py` selects a set).
@@ -552,6 +550,11 @@ how the number was obtained, which is the opposite of the point.
 
 On 10 Sep 2026 the tree was regrouped for the remixer: `tools/` into
 `build/ verify/ harness/ emu/ hw/ patches/` (plus `remix/` and `scratch/`),
-`docs/` into `remixer/ firmware/ effects/ history/`, and the effects-era
-`PLAN.md` moved to `docs/history/PLAN_EFFECTS.md`. `git log --follow` crosses
+`docs/` into `remixer/ firmware/ effects/ history/`. `git log --follow` crosses
 the moves; older commit messages and memory notes name the flat paths.
+
+On 16 Sep 2026 `docs/history/` (18 closed records: BUS, RTOS_FORK,
+COLDFIRE_PORT, VOICING, NOTES, REVERB_LOG, XBUS_LOG, EXTERNAL_INGEST, ...)
+was removed. A citation of the form `docs/history/RTOS_FORK.md §10.16` in a
+comment or a doc is still the provenance of what it sits beside; read it
+with `git show 3ceba41:docs/history/RTOS_FORK.md`.

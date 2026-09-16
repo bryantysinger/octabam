@@ -2,8 +2,8 @@
 
 Read byte-exact from the image 6 Sep 2026 (`scripts/disasm.sh emac`) and
 measured under the firmware's own scheduler (`tools/emu/emu_rtos.py`, route
-A; the log is `docs/history/RTOS_FORK.md`, the C++ port's log
-`docs/history/COLDFIRE_PORT.md`, the tools `docs/remixer/EMU.md`). ✅
+A; the logs `RTOS_FORK.md` and `COLDFIRE_PORT.md` are in git history under
+`docs/history/`, `git show 3ceba41:docs/history/<name>`; the tools `docs/remixer/EMU.md`). ✅
 measured or byte-exact, 🟡 inferred, ❓ open.
 
 ## Scheduler ✅

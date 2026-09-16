@@ -38,5 +38,5 @@ flashed image was built from.
   (note-only cave; the DSP reads tempo from stock).
 
 Earlier images (the 13 Sep 96–100 series, flash 7 = `OCTABAM21`, and before)
-are recorded in `docs/history/VOICING.md`, `docs/remixer/FAILURE_MODES.md`
-and the git log.
+are in `docs/remixer/FAILURE_MODES.md`, the module READMEs and the git log
+(`git show 3ceba41:docs/history/VOICING.md` for the ear rounds up to 16 Sep 2026).

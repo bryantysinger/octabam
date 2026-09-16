@@ -3,7 +3,7 @@
 What track 8 does, in what order, with which knobs. The bus and the returns:
 `docs/effects/XBUS.md`; the chain line by line:
 `modules/character/character.asm`; the listening log:
-`docs/history/VOICING.md`. ✅ measured on the unit, 🟡 measured under the
+`docs/history/VOICING.md` (git history, `git show 3ceba41:docs/history/VOICING.md`). ✅ measured on the unit, 🟡 measured under the
 port or the harness only, ❓ inferred.
 
 ## The shape

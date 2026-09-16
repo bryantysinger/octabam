@@ -1,9 +1,9 @@
 # The cross-core bus: one aux, delay into reverb, return on T8
 
-The architecture record for the bus. The development logs are
-`docs/history/XBUS_LOG.md` (the cross-core race) and `docs/history/BUS.md`
-(the per-bank two-bus design this replaced, and the one-aux build of 7 Sep
-2026). ✅ measured on the unit, 🟡 measured under the port or the harness,
+The architecture record for the bus. The development logs, `XBUS_LOG.md`
+(the cross-core race) and `BUS.md` (the per-bank two-bus design this
+replaced, and the one-aux build of 7 Sep 2026), are in git history under
+`docs/history/` (`git show 3ceba41:docs/history/<name>`). ✅ measured on the unit, 🟡 measured under the port or the harness,
 ❓ inferred.
 
 ## The shape

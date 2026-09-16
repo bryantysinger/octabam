@@ -91,5 +91,5 @@ How to read the results:
     load into Ghidra/radare2 as m68k/ColdFire big-endian.
 
 The extracted MAIN OS section is what `make bus` patches.
-Disassembly notes: docs/history/NOTES.md
+Disassembly notes: docs/firmware/ (ARCHITECTURE, KERNEL, DSP, TABLES, PARAM_PAGES, MAINMENU, MIDI)
 EOF

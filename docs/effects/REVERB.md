@@ -5,7 +5,8 @@ on T5's FX2 in the rig. Source `modules/busverb/reverb_server.asm`, manifest
 `modules/busverb/manifest.py` (the MODE rows), built by
 `tools/build/build_bus.py`. The development record (the four-line engine,
 the 32K re-layout, the crackle, the voicing rounds) is
-`docs/history/REVERB.md` and `docs/history/VOICING.md`. ✅ measured on the
+`REVERB.md` and `VOICING.md` under `docs/history/` in git history
+(`git show 3ceba41:docs/history/<name>`). ✅ measured on the
 unit, 🟡 harness only.
 
 ## Signal path
