@@ -403,6 +403,20 @@ SEND's SEND-knob read has no such gate: whether an FX1-NONE slot with a stale
 SEND byte registers as a phantom sender on the unit is an open hardware
 claim.
 
+**Second instance (image 32B, 16 Sep 2026): step 1 forever on two projects
+with every stored page byte zero.** Under the port (`--dsp-pcwatch` on the
+burn's `do`, core 0) the word the burn read at `x:(r6+$1)` was `0x378f00`
+with every byte 0 and `0x69f400` with one track's byte at 100 — the same
+word on every SEND track, and the same with SEND cloned from DARK REV
+instead of FILTER: the firmware computes page-1 slot 1's word for this
+effect from one place, not from the track's byte. 7,111 loop iterations at
+"0" and the frame never finished. What computes it is not located. The
+burn now reads page-2 slot 6 (`$c`'s knob field, CC 62), the delivery
+`verify_set` proves raw for every track on a real project; unflashed. The
+stamper writes SEND's defaults into every id-0 slot (both FX1 and FX2)
+since the same day, which also closes the phantom-sender claim above for a
+stamped project.
+
 ## Line-F exception on [PROJ]: a cave pinned in OS .bss
 
 **Symptom.** PROJECT throws an exception and wedges.
