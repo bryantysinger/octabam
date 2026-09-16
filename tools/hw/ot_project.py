@@ -31,6 +31,7 @@ FX1_OFF, FX2_OFF, NTRACKS = 0x009, 0x011, 8
 P1_OFF, P2_OFF, TRACK_STRIDE = 0x12f, 0x331, 24     # RETRACTED for page 2, see below
 P2_OFF, P2_STRIDE = 0x307, 30
 FX_NAMES = {0x06: "BusDelay", 0x07: "BusVerb", 0x09: "SEND", 0x00: "-"}
+SEND_ID = 0x09                    # FX2 id 0 (NONE) runs SEND's code (the image aliases it)
 
 def read_project(pdir):
     raw = (pdir / "project.work").read_bytes().decode("latin1")
@@ -435,6 +436,13 @@ def stamp_defaults(pdir, remix_name, replaced_only=True, guard=True, keep_mode=F
                 for t in range(NTRACKS):
                     for idoff, sub in ((FX1_OFF, 0), (FX2_OFF, 6)):
                         fid = data[off + idoff + t]
+                        # Id 0 (NONE, on either slot) is aliased to SEND in
+                        # every image, so SEND's code runs on that slot with
+                        # r6 on its stored page: stamp it with SEND's defaults
+                        # (all zero). A stale slot-1 byte there was BURN on the
+                        # burn image, 16 Sep 2026: step 1 forever.
+                        if fid == 0 and SEND_ID in defaults:
+                            fid = SEND_ID
                         if fid not in defaults:
                             continue
                         d = defaults[fid]

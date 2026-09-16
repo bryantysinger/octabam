@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Prove the RIG BURN image is the shipping image plus an inert, exact knob.
+"""Prove the RIG BURN image is the shipping image plus an inert, exact knob
+(SEND's page-2 slot 6 since 16 Sep 2026; P6 below).
 
   1. INERT WHEN OFF.   BURN=1 SPEC=1 at BURN 0 renders BIT-IDENTICALLY to
      the shipping build. Not "sounds the same" -- byte for byte, the mix
@@ -59,7 +60,7 @@ def render(image, remix, out, burn, aux=100):
                "--stem", "T2=out/test_audio/loop.wav", "--stem", "T6=out/test_audio/pad.wav",
                "--tail", "0.5", "--seconds", "1.5", "--frames", "16",
                "--set", f"T2:SEND={aux}", "--set", f"T6:SEND={aux}",
-               "--set", f"T2:FX2:P1={burn}", "--set", f"T6:FX2:P1={burn}", "--out", str(out)])
+               "--set", f"T2:FX2:P6={burn}", "--set", f"T6:FX2:P6={burn}", "--out", str(out)])
     meters = {}
     for m in re.finditer(r"core (\d) meter: max (\d+) instructions", txt):
         meters[int(m.group(1))] = int(m.group(2))
@@ -71,7 +72,7 @@ def render_fx1(image, remix, out, burn):
     txt = run([sys.executable, "tools/harness/rig_render.py", "--image", str(image), "--remix", remix,
                "--tracks", "T1=DELAY SERVER,T2=SEND+SEND",
                "--stem", "T2=out/test_audio/loop.wav", "--tail", "0", "--seconds", "1", "--frames", "16",
-               "--set", "T2:SEND=100", "--set", f"T2:FX1:P1={burn}", "--out", str(out)])
+               "--set", "T2:SEND=100", "--set", f"T2:FX1:P6={burn}", "--out", str(out)])
     return {int(m.group(1)): int(m.group(2)) for m in re.finditer(r"core (\d) meter: max (\d+) instructions", txt)}
 
 

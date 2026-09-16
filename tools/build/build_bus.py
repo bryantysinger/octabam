@@ -317,9 +317,18 @@ if RIG_BURN and "SEND" not in ACTIVE_PARAMS:
     sys.exit(f"BURN=1 SPEC=1: remix {REMIX.name!r} carries no SEND -- the rig burn "
              f"has no knob to sit on; nothing to build")
 if RIG_BURN:
-    RENAMES["SEND"] = [(i, v) for i, v in RENAMES.get("SEND", []) if i != 1] + [(1, b"BURN")]
-    ACTIVE_PARAMS["SEND"] = sorted(set(ACTIVE_PARAMS["SEND"]) | {1})
-    DEFAULTS["SEND"] = [(i, v) for i, v in DEFAULTS.get("SEND", []) if i != 1] + [(1, 0)]
+    # BURN is SEND's PAGE-2 slot 6 ($c's knob field, CC 62). It was page-1
+    # slot 1 until 16 Sep 2026 (image 32B, step 1 forever on two stamped
+    # projects): under the port the word at x:(r6+$1) read 0x378f00 with
+    # every stored byte 0 and 0x69f400 with one track's byte at 100 -- the
+    # same word on every track, whatever the donor -- so the burn ran 7,111
+    # loops at "0" and the frame never finished. A page-2 knob field is what
+    # verify_set proves raw, byte for byte, for every track of a real project.
+    RENAMES["SEND"] = [(i, v) for i, v in RENAMES.get("SEND", []) if i != 6] + [(6, b"BURN")]
+    ACTIVE_PARAMS["SEND"] = sorted(set(ACTIVE_PARAMS["SEND"]) | {6})
+    DEFAULTS["SEND"] = [(i, v) for i, v in DEFAULTS.get("SEND", []) if i != 6] + [(6, 0)]
+    PAGE2_COUNTS.setdefault("SEND", {})[6] = 128
+
     FULLNAME["SEND"] = b"SendBurn" + BUILD_TAG
 elif os.environ.get("BURN") == "1":
     FULLNAME["REVERB SERVER"] = b"BurnProb" + BUILD_TAG
@@ -1607,7 +1616,7 @@ def main():
             sys.exit(f"RIG BURN: the SEND anchor appears {send_src.count(_anchor)} "
                      f"times in {ASM_SRC['SEND']}, expected exactly 1 -- re-cut it")
         send_src = send_src.replace(_anchor, pathlib.Path("dsp/burn_send.inc").read_text() + _anchor, 1)
-        print("  RIG BURN: cycle burn injected into SEND (both cores); p1 = BURN, 24 cycles/step")
+        print("  RIG BURN: cycle burn injected into SEND (both cores); page-2 slot 6 = BURN, 24 cycles/step")
 
     # ---- MARKER=1: inject the staged audible execution marks ---------------
     # See the MARKER MODE naming block above. Three marks, three sites in

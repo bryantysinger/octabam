@@ -14,7 +14,7 @@
 ; instance base; >= 0x4000 is an FX2 slot. Tested here, not at init: an
 ; alias instance never ran init, so a flag slot would be garbage.
 ;
-; burn = 24 * p1 cycles/sample: (8 * p1 * n7) iterations of a THREE-word
+; burn = 24 * BURN cycles/sample: (8 * BURN * n7) iterations of a THREE-word
 ; body over n7 samples (the reverb's block used four nops for 32/step).
 ; The alignment is the reverb block's: mpy is fractional, so n7 (an integer
 ; in x0) times the raw knob word p1<<16 (y1) leaves n7*p1*2^17 in A[47:0],
@@ -25,7 +25,9 @@
         move    x:(r4),a                ; the global linear invariant)
         add     #>$ffc000,a             ; base - 0x4000
         bmi     sbnoburn                ; < 0x4000: an FX1 slot, no burn
-        move    x:(r6+$1),y1            ; p1 = BURN, the raw value<<16 word
+        move    x:(r6+$c),a             ; BURN: page-2 slot 6, $c's knob field
+        and     #>$7f0000,a             ; (bits 16-23; page-1 slot 1's word is
+        move    a1,y1                   ; not the stored byte -- see build_bus)
         move    n7,x0                   ; frames on THIS call
         mpy     x0,y1,a
         asl     #$a,a,a                 ; A1 = 8 * p1 * n7; Z if either is 0
