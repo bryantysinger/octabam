@@ -27,7 +27,8 @@ and lock values are the stored byte, 0-127; a bipolar knob stores panel
 value + 64. Lock steps are 1-based; a lock on a step without a trig is a
 trigless lock, so "trigs" decides whether it fires. "trigs": "clear" empties
 the trig mask; "locks": {"fx1": "clear"} clears that page's locks on every
-step. Everything else in the file is left as it is.
+step; "locks": {"all": "clear"} clears every lock slot, PLAYBACK and LFO
+included. Everything else in the file is left as it is.
 
 Layout: tools/hw/ot_project.py (parts), tools/hw/ot_bank.py (patterns).
 Every bank written is checksummed and read back, .work and .strd, and the
@@ -43,6 +44,7 @@ from remix import registry  # noqa: E402
 
 AMP = ("ATK", "HOLD", "REL", "VOL", "BAL", "XVOL")       # lock slots 12-17
 LOCK_PAGES = {"amp": 12, "fx1": 18, "fx2": 24}
+LOCK_SPAN = {"amp": 6, "fx1": 6, "fx2": 6, "all": 32}   # "all": every slot 0-31, "clear" only
 SEND_ID, NONE_ID = 0x09, 0x00
 
 
@@ -294,10 +296,12 @@ def apply(pdir, spec):
                         ob.set_mask(data, pt - 1, t - 1, m, 0)
                     base = ob.trac(pt - 1, t - 1) + ob.LOCKS
                     for page, lk in (ts.get("locks") or {}).items():
-                        lo = LOCK_PAGES[page]
+                        lo, span = LOCK_PAGES.get(page, 0), LOCK_SPAN[page]
+                        if page == "all" and lk != "clear":
+                            sys.exit('locks "all" takes "clear" only (slots 0-11 have no names yet)')
                         if lk == "clear" or (isinstance(lk, dict) and lk.get("_clear")):
                             for s in range(ob.NSTEPS):
-                                for i in range(lo, lo + 6):
+                                for i in range(lo, lo + span):
                                     data[base + s * ob.LOCK_LEN + i] = ob.NOLOCK
                         if lk == "clear":
                             continue
@@ -329,9 +333,9 @@ def apply(pdir, spec):
                         sys.exit(f"{path.name} pattern {pt + 1} T{t + 1}: trigs read back {ob.trigs(data, pt, t)}")
                 lk = ob.locks(data, pt, t)
                 for page, spec_l in (ts.get("locks") or {}).items():
-                    lo = LOCK_PAGES[page]
+                    lo, span = LOCK_PAGES.get(page, 0), LOCK_SPAN[page]
                     if spec_l == "clear":
-                        if any(i in range(lo, lo + 6) for st in lk.values() for i in st):
+                        if any(i in range(lo, lo + span) for st in lk.values() for i in st):
                             sys.exit(f"{path.name} pattern {pt + 1} T{t + 1}: a {page} lock survived")
                     elif isinstance(spec_l, dict):
                         fid1, fid2, _, _ = part_read(data, 0, t)
