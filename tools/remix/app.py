@@ -133,7 +133,9 @@ def disp(mod) -> str:
     reads on the unit."""
     if mod.menu is not None:
         return titlecase(mod.menu.fullname.decode("latin1") or mod.name)
-    return titlecase(mod.name)
+    # No panel name: the KEY (the build report's, the remix file's), not the
+    # directory slug -- "Midi Scenes", not "Midi-Scenes".
+    return titlecase(mod.key)
 
 
 def placeable(sel, total, used, harvest=None):
@@ -627,8 +629,9 @@ class RemixerScreen(Screen):
 
     # ---- the rows each pane walks ---------------------------------------
     # Group order for the library pane: the way you meet them -- the two big
-    # bus effects, then the inserts that stack, then plumbing, then stock.
-    _GROUPS = (rig.SERVER, rig.INSERT, rig.SYSTEM)
+    # bus effects, then the inserts that stack, then the firmware mods, then
+    # plumbing, then stock.
+    _GROUPS = (rig.SERVER, rig.INSERT, rig.MOD, rig.SYSTEM)
 
     def avail_rows(self):
         """Everything that COULD be in an image: our modules, then stock."""
@@ -846,13 +849,54 @@ class RemixerScreen(Screen):
         return [f"[reverse bold] {escape(text)} [/]" if on
                 else f"[bold]{escape(text)}[/]", ""]
 
+    def _mod_verdicts(self, st):
+        """For every firmware mod: None when it can share the image with
+        the current selection, else the name of what it collides with.
+
+        The ledger is asked once per mod (~2.4 ms a call) against the loaded
+        set plus the candidate -- a loaded mod against the set as it is --
+        and the answer is cached on the selection, so a keystroke that
+        changes nothing pays nothing.
+        """
+        key = tuple(st.order)
+        cache = getattr(self, "_verdict_cache", None)
+        if cache is not None and cache[0] == key:
+            return cache[1]
+        from remix import ledger
+        out = {}
+        loaded = st.selected
+        mods = [m for m in registry.modules().values()
+                if not m.is_stock and rig.category(m) == rig.MOD]
+        bridges = [b for b in mods if b.overrides and b.key not in st.sel]
+        for m in mods:
+            sel = loaded if m.key in st.sel else loaded + [m]
+            probs = ledger.check(sel)
+            mine = [p_ for p_ in probs if m.name in p_]
+            if not mine:
+                continue
+            # "what: A and B both claim ..." -- name the OTHER party.
+            who = mine[0].split(":", 1)[-1].split(" both claim")[0]
+            parts = [x.strip() for x in who.split(" and ")]
+            other = next((x for x in parts if m.name not in x), parts[0])
+            verdict = other.split("'s ")[0].split(" (")[0]
+            # A bridge that clears it is the fix, so say so beside the clash.
+            fix = next((b for b in bridges if b is not m
+                        and not ledger.check(sel + [b])), None)
+            if fix is not None:
+                verdict += f" · add {disp(fix)}"
+            out[m.key] = verdict
+        self._verdict_cache = (key, out)
+        return out
+
     def _pane_available(self, st):
         rows = self.avail_rows()
         out = self._head("Available", AVAILABLE)
         head = len(out)
         cur_line, group = head, None
+        verdicts = self._mod_verdicts(st)
         for i, m in enumerate(rows):
-            g = "Stock Effects" if m.is_stock else titlecase(rig.category(m))
+            cat = rig.STOCK if m.is_stock else rig.category(m)
+            g = rig.GROUP_TITLE[cat]
             if g != group:
                 group = g
                 out.append(f"[dim {WARN}]── {g} ──[/]")
@@ -863,10 +907,19 @@ class RemixerScreen(Screen):
             # effect off both menus is the decision to give up its words.
             mark = ((f"[{OK}]✓[/]" if m.key in st.sel else " ")
                     + (f"[{WARN}]⌁[/]" if m.key in st.harvest else " "))
-            menus = "+".join(rig.menus(m, st.fx1)) or "—"
             nm = disp(m) if m.is_stock else f"[{OURS}]{disp(m)}[/]"
-            pad = " " * max(0, 13 - len(disp(m)))
-            line = f" {mark}{nm}{pad} [dim]{menus}[/]"
+            pad = " " * max(0, 18 - len(disp(m)))
+            if cat == rig.MOD:
+                # A firmware mod has no chooser column; its column is the
+                # ledger's verdict against what is loaded: ✓ shares the
+                # image, x names the module it collides with (by name, the
+                # same call the build refuses on).
+                v = verdicts.get(m.key)
+                tail = (f"[{OK}]✓[/]" if v is None
+                        else f"[{BAD}]x {escape(v)}[/]")
+            else:
+                tail = f"[dim]{'+'.join(rig.menus(m, st.fx1)) or '—'}[/]"
+            line = f" {mark}{nm}{pad} {tail}"
             if here:
                 cur_line = len(out)
             out.append(f"[reverse]{line}[/]" if here else line)
@@ -984,8 +1037,14 @@ class RemixerScreen(Screen):
             # reverbs is the worst kind of wrong.
             first = next((p_ for p_ in probs
                           if p_.startswith("every stock effect")), None)
-            return (f"[bold {BAD}]⚠ "
-                    f"{escape(first or self._clash(probs) or probs[0])}[/]")
+            text = first or self._clash(probs) or probs[0]
+            # The rest are one keystroke away (`?`), but their COUNT is not:
+            # a line that says one clash while the build will refuse on three
+            # sends the operator fixing them one build at a time.
+            more = len(probs) - 1
+            if more > 0 and not first:
+                text += f"  (+{more} more; the unit pane lists a module's)"
+            return f"[bold {BAD}]⚠ {escape(text)}[/]"
         if self.syncing is not None or self.synced != self.gen:
             return f"[dim {WARN}]building…[/]"
         if self.sync_error:
@@ -1560,7 +1619,7 @@ class RemixerScreen(Screen):
                         self._head("Unit", UNIT) + ["[dim]nothing selected[/]"])
             return
         out = self._head(disp(mod), UNIT)
-        bits = [titlecase(rig.category(mod))]
+        bits = [rig.GROUP_TITLE[rig.category(mod)]]
         if mod.menu:
             bits.append(f"id 0x{mod.menu.fx2_id:02x}")
             bits.append("+".join(rig.menus(mod, st.fx1)))
@@ -1569,6 +1628,11 @@ class RemixerScreen(Screen):
             bits.append(f"tracks {tr.start}-{tr.stop - 1}")
         out.append(f"[dim]{' · '.join(bits)}[/]")
         out.append(f"[dim]{escape(mod.doc)}[/]")
+        # Every ledger line this module is party to, in full: the status
+        # line under the choosers carries one and a count.
+        for p_ in probs:
+            if mod.name in p_:
+                out.append(f"[{BAD}]⚠ {escape(p_)}[/]")
         res = rig.resources(mod, st.words.get(mod.key), st.fx1,
                             mod.key in st.sel, st.harvest)
         for line in res:
@@ -2247,8 +2311,8 @@ class RemixerScreen(Screen):
     def action_render(self, mark=None):
         app, st = self.app, self.app.state
         mod = self.selected_module()
-        if mod is None or rig.category(mod) == rig.SYSTEM:
-            st.msg = "that module is plumbing — nothing to hear"
+        if mod is None or rig.category(mod) in (rig.MOD, rig.SYSTEM):
+            st.msg = "that module is not an effect — nothing to hear"
         elif app.source is None:
             st.msg = f"no source wav in {source_dir()} — d changes folder"
         elif app.rendering:

@@ -41,8 +41,8 @@ midisc's author on his own unit.
 | **Hello World / Hello DRAM** | the two reference modules, one DSP knob and one DRAM unit, kept building as canaries. |
 
 `make modules` prints the index, the compatibility matrix (which ColdFire
-modules can share an image, from the same check the build makes) and every
-remix.
+modules can share an image, from the same check the build makes; `✓*` is a
+pair that needs the named bridge) and every remix.
 
 ## Quick start
 

@@ -49,10 +49,16 @@ build and every check stay dependency-free. Playback is `afplay`
 | `?` / `q` | help / quit |
 
 **AVAILABLE** is everything that could be in an image: modules grouped
-bus / insert / system, then the stock effects the unit ships. `✓` marks
-what the selection holds; the `FX1+FX2` column is which choosers the effect
-*can* appear on (`stock.fx1_ids()` from the pristine image). `enter` adds
-and displaces nothing.
+bus / inserts / firmware mods / system, then the stock effects the unit
+ships. `✓` marks what the selection holds; for an effect the `FX1+FX2`
+column is which choosers it *can* appear on (`stock.fx1_ids()` from the
+pristine image). A firmware mod (midisc, Octakit, the bridges, the fixes)
+has no chooser; its column is the ledger's verdict against what is loaded
+— `✓` shares the image, `x octakit` names what it collides with, and
+`· add Kits Reload` names the bridge that would clear it (the same
+`ledger.check` the build refuses on). The unit pane lists every ledger
+line the pointed-at module is party to. `enter` adds and displaces
+nothing.
 
 **CHOOSERS** holds both of the unit's effect menus, stacked, in panel row
 order; `left`/`right` is a real edit. FX2 starts empty (every row is one

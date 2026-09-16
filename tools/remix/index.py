@@ -15,11 +15,7 @@ from remix import registry  # noqa: E402
 from remix.schema import Kind  # noqa: E402
 
 
-def touches_coldfire(m) -> bool:
-    """Does this module change the OS image outside its own chooser row --
-    caves, linked units, detours, pokes, grown tables or a runtime?"""
-    return bool(m.cf_patches or m.linked or m.detours or m.pokes
-                or m.tables or m.runtime is not None)
+from remix.rig import touches_coldfire  # noqa: E402
 
 
 def matrix(mods):
@@ -33,34 +29,52 @@ def matrix(mods):
                 key=lambda m: m.name)
     if len(cf) < 2:
         return
+    # A BRIDGE (schema.Override) exists to let two other modules share a
+    # site, and is refused unless both are in the remix. So a bridge's cell
+    # is checked with its parties present, and a pair that a bridge joins is
+    # marked ✓* -- refused alone, clean with the bridge.
+    parties = {m.key: [mods[o.module] for o in (m.overrides or ())
+                       if o.module in mods] for m in cf}
+    bridges = [m for m in cf if parties[m.key]]
     print("COMPATIBILITY  (the ledger, pairwise: which ColdFire-side modules "
           "can share an image)\n")
     short = [m.name[:9] for m in cf]
     w = max(len(s) for s in short)
     print("  " + " " * (w + 2) + " ".join(f"{s[:3]:>3}" for s in short))
-    reasons = {}
+    reasons, joined = {}, {}
     for a in cf:
         row = []
         for b in cf:
             if a is b:
                 row.append("  ·")
                 continue
-            probs = ledger.check([a, b])
+            sel = {m.key: m for m in [a, b] + parties[a.key] + parties[b.key]}
+            probs = ledger.check(list(sel.values()))
+            key = tuple(sorted((a.name, b.name)))
             if probs:
-                row.append("  x")
-                key = tuple(sorted((a.name, b.name)))
-                reasons.setdefault(key, probs[0])
+                fix = next((br for br in bridges if br not in (a, b)
+                            and not ledger.check(list({**sel, br.key: br}.values()))),
+                           None)
+                if fix is not None:
+                    row.append(" ✓*")
+                    joined.setdefault(key, fix.name)
+                else:
+                    row.append("  x")
+                    reasons.setdefault(key, probs[0])
             else:
                 row.append("  ✓")
         print(f"  {a.name[:9]:<{w + 2}}" + " ".join(row))
     print()
     for (a, b), why in sorted(reasons.items()):
         print(f"  x {a} + {b}: {why}")
-    if reasons:
+    for (a, b), br in sorted(joined.items()):
+        print(f"  ✓* {a} + {b}: with {br}")
+    if reasons or joined:
         print()
-    print("  (a x is refused at build time, by name; anything not listed here "
-          "is a DSP effect,\n   which the ledger checks by FX2 id, buffer "
-          "region and private Y instead)\n")
+    print("  (a x is refused at build time, by name; ✓* needs the named bridge; "
+          "a bridge's own row is\n   checked with the modules it bridges present. "
+          "Anything not listed here is a DSP effect,\n   which the ledger checks "
+          "by FX2 id, buffer region and private Y instead)\n")
 
 
 def main():
