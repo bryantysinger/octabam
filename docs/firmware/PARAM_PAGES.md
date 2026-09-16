@@ -375,7 +375,7 @@ SHMR needed `$c`'s knob field, not `$b`'s; slot 11 was dead for both
 effects while it read bits 0–7 (fixed `7a4f96b`). Retracted 4 Sep 2026: "a
 stepped control can only live on 7, 9 or 11" (stock puts CHORUS TAPS on 6,
 FILTER HP/ENV/Q2 on 6/8/10, 128-value knobs on 9 and 11). Both bus
-engines' MODE moved to slot 6 that day because the main-menu page-2 knob
+engines' MODE moved to slot 6 (4 Sep 2026) because the main-menu page-2 knob
 editor (`MAINMENU.md` §9c-ii) writes even slots only; ✅ tag 84: MODE steps
 as a select on slot 6, SHMR/MDEP sweep 0–127 from slot 7 (a count-128 knob
 in a companion field works; the 10 Aug "near-boolean companion" reading was
