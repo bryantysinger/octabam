@@ -96,28 +96,30 @@ MODULE = Module(
         build_tag=True,
     ),
     params=(
-        # ---- page 1: the performance surface, scene/CC-reachable -----------
+        # ---- page 1 (16 Sep 2026): the sweep's three knobs together, RATE
+        # and DPTH drawn as a linked pair; MIX and LOFI beside them.
         Param(b"RATE", 26, active=True, formatter=_PLAIN,
               doc="LFO speed, 0.08 .. 10 Hz on a squared taper (26 = the Juno's 0.5 Hz)"),
-        Param(b"DPTH", 21, active=True, formatter=_PLAIN,
+        Param(b"DPTH", 21, active=True, formatter=_PLAIN, link=True,
               doc="the sweep, 0 .. 480 samples either side of DLY; in PHSR the LFO's reach"),
+        Param(b"DLY", 18, active=True, formatter=_PLAIN,
+              doc="the sweep's centre, 0.2 .. 23 ms; COMB's pitch; PHSR's stage count (2/4/6/8 by quarters)"),
         Param(b"FDBK", 64, 128, active=True, formatter=_BIPOL,
               doc="bipolar, 64 = none: feedback from the swept tap; PHSR regen; COMB decay time and polarity"),
         Param(b"MIX", 0, active=True, formatter=_PLAIN,
               doc="dry/wet; 0 = exact passthrough, 127 = the wet alone"),
-        Param(b"TONE", 80, active=True, formatter=_PLAIN,
-              doc="the BBD filters in and out of the line: 0 dark (2 kHz), 127 open; COMB brightness; no PHSR"),
-        Param(b"WDTH", 127, active=True, formatter=_PLAIN,
-              doc="the right channel LFO lag: 0 mono, 64 quadrature, 127 antiphase (Juno, DIM); not COMB"),
-        # ---- page 2: knob / select / knob / select / knob / select ----------
-        Param(b"DLY", 18, 128, active=True, formatter=_PLAIN,
-              doc="the sweep's centre, 0.2 .. 23 ms; COMB's pitch; PHSR's stage count (2/4/6/8 by quarters)"),
+        Param(b"LOFI", 0, active=True, formatter=_PLAIN,
+              doc="the line clocked coarse and quantised: hold 1 + 64 (k/128)^2 samples, 24 bits then 16..5"),
+        # ---- page 2: MODE on slot 7 (every station's), TONE and WDTH -------
+        _BLANK,
         Param(b"MODE", 0, 5, active=True, formatter=_STEP,
               labels=("JUNO", "DIM", "FLNG", "COMB", "PHSR"),
               doc="which pedal"),
-        Param(b"LOFI", 0, active=True, formatter=_PLAIN,
-              doc="the line clocked coarse and quantised: hold 1 + 64 (k/128)^2 samples, 24 bits then 16..5"),
-        _BLANK, _BLANK, _BLANK,
+        Param(b"TONE", 80, 128, active=True, formatter=_PLAIN,
+              doc="the BBD filters in and out of the line: 0 dark (2 kHz), 127 open; COMB brightness; no PHSR"),
+        Param(b"WDTH", 127, 128, active=True, formatter=_PLAIN,
+              doc="the right channel LFO lag: 0 mono, 64 quadrature, 127 antiphase (Juno, DIM); not COMB"),
+        _BLANK, _BLANK,
     ),
     # ---- what each MODE renames and re-defaults ---------------------------
     # The defaults are each source's own numbers: the Juno's I (0.513 Hz,
@@ -128,18 +130,18 @@ MODULE = Module(
     mode_slot=7,
     mode_views=(
         ModeView(mode=0,                        # JUNO
-                 defaults={0: 26, 1: 21, 2: 64, 3: 70, 4: 80, 5: 127, 6: 18}),
+                 defaults={0: 26, 1: 21, 2: 18, 3: 64, 4: 70, 8: 80, 9: 127}),
         ModeView(mode=1,                        # DIM
-                 defaults={0: 18, 1: 41, 2: 64, 3: 127, 4: 80, 5: 127, 6: 47}),
+                 defaults={0: 18, 1: 41, 2: 47, 3: 64, 4: 127, 8: 80, 9: 127}),
         ModeView(mode=2,                        # FLNG
-                 names={6: b"MANL"},
-                 defaults={0: 8, 1: 59, 2: 19, 3: 127, 4: 127, 5: 0, 6: 27}),   # RATE 8 = 0.12 Hz (Sam, 16 Sep: 14 too fast)
+                 names={2: b"MANL"},
+                 defaults={0: 8, 1: 59, 2: 27, 3: 19, 4: 127, 8: 127, 9: 0}),   # RATE 8 = 0.12 Hz (Sam, 16 Sep: 14 too fast)
         ModeView(mode=3,                        # COMB
-                 names={2: b"DCAY", 6: b"PTCH"},
-                 defaults={0: 0, 1: 0, 2: 82, 3: 64, 4: 100, 5: 0, 6: 64}),   # FDBK 82: rt60 ~ 1 s
+                 names={3: b"DCAY", 2: b"PTCH"},
+                 defaults={0: 0, 1: 0, 2: 64, 3: 82, 4: 64, 8: 100, 9: 0}),   # FDBK 82: rt60 ~ 1 s
         ModeView(mode=4,                        # PHSR (last: dropping it
-                 names={6: b"STGS"},            # would move no other mode)
-                 defaults={0: 28, 1: 121, 2: 64, 3: 64, 4: 127, 5: 64, 6: 127}),
+                 names={2: b"STGS"},            # would move no other mode)
+                 defaults={0: 28, 1: 121, 2: 127, 3: 64, 4: 64, 8: 127, 9: 64}),
     ),
     dsp=DspSection(
         asm="modules/modulation/modulation.asm",

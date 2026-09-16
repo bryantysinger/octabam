@@ -172,9 +172,8 @@ ch_offok:
 ; ===========================================================================
 ; PER-BLOCK KNOB DECODE
 ; ===========================================================================
-; MIX: page-2 slot 6, the KNOB field of r6+$c (the word SAT's select shares)
-        move    x:(r6+$c),a             ; a knob word: bit 23 clear, a2 = 0
-        and     #>$7f0000,a
+; MIX: page-1 slot 5 since 16 Sep 2026 (TONE took its page-2 slot 6)
+        move    x:(r6+$5),a             ; a knob word: bit 23 clear, a2 = 0
         move    a1,x:(r7+$20)           ; m (a1 straight to memory)
         move    x:(r6+$1),x0            ; the knob word IS FOLD/128 in Q23
         move    #$5e,y1                 ; 47/64 (short immediate: bits 23-16)
@@ -201,8 +200,8 @@ ch_offok:
         tst     a
         teq     x0,b                    ; DRV == 0 -> skip flag 1
         move    b,x:(r7+$4d)
-        move    x:(r6+$5),a
-        and     #>$7f0000,a
+        move    x:(r6+$c),a             ; TONE: page-2 slot 6, $c's KNOB field
+        and     #>$7f0000,a             ; (bits 16-23; SAT's select is below it)
         sub     #>$400000,a
         move    a,x:(r7+$24)            ; t/2, -0.5 .. +0.49
 ; COMP amount, straight from the knob

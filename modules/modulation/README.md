@@ -4,9 +4,9 @@ A modulation pedal on stock CHORUS's id 0x12, FX1 only. Every mode is a
 transcription of a published, permissively licensed source; the survey,
 licences and laws are in `docs/effects/PORTS.md`.
 
-| page 1 | RATE · DPTH · FDBK · MIX · TONE · WDTH |
+| page 1 | RATE ⌐DPTH · DLY · FDBK · MIX · LOFI |
 |---|---|
-| page 2 | DLY · MODE (JUNO DIM FLNG COMB PHSR) · LOFI |
+| page 2 | — · MODE (JUNO DIM FLNG COMB PHSR) · TONE · WDTH · — · — |
 
 | mode | source | licence | what it is |
 |---|---|---|---|

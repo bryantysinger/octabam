@@ -141,11 +141,12 @@ def fmt(combo):
 # loop"; knobs that gate work (a send at 0 registers nothing, MIX 0 can
 # short-circuit a stage) go to their maximum so nothing is skipped.
 DEAR = {
-    "CHARACTER": {"DRV": 127, "FOLD": 127, "CRSH": 127, "COMP": 127, "MIX": 127, "RING": 127, "WDTH": 127, "SRR": 3},
-    "SPECTRUM": {"RES": 127, "MODE": 4, "ROUT": 3, "SRC": 2, "DPTH": 127},   # DRV retired 13 Sep 2026
-    "MODULATION": {"MIX": 127, "FDBK": 127, "DPTH": 127, "MODE": 2},   # MODE 2 = COMB since 13 Sep 2026 (PHSR/TREM/VIB/PAN retired); STGS gone
+    # (the knob sets follow the manifests of 16 Sep 2026; rig_render refuses a name it does not know)
+    "CHARACTER": {"DRV": 127, "FOLD": 127, "TXTR": 127, "COMP": 127, "MIX": 127, "WDTH": 127, "SAT": 0},
+    "SPECTRUM": {"RES": 127, "MODE": 4, "ENV": 127, "LDP": 127},
+    "MODULATION": {"MIX": 127, "FDBK": 127, "DPTH": 127, "MODE": 4, "LOFI": 127},   # MODE 4 = PHSR, the dearest loop
     "DELAY SERVER": {"SEND": 100, "FDBK": 100, "MODE": 1, "SCAT": 127, "DENS": 127, "WET": 127, "FRZE": 0},
-    "REVERB SERVER": {"SEND": 100, "MODE": 2, "SHMR": 127, "DIFF": 127, "GATE": 0, "WET": 127, "MOD": 127},
+    "REVERB SERVER": {"SEND": 100, "MODE": 2, "SHMR": 127, "DIFF": 127, "GATE": 0, "WET": 127},
     "SEND": {"SEND": 100},
 }
 LETTER_TRACKS = {0: (5, 6, 7, 8), 1: (1, 2, 3, 4)}

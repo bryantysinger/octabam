@@ -127,6 +127,11 @@ state things you might assume:
   renderer against the count.
 - **A `name` of `None` inherits the donor's; `b""` blanks it.** Write the
   name explicitly even when the donor has it: the harness reads these.
+- **`link=True` draws the panel's link element** between this knob and the
+  one on its left (stock's STRT/LEN, BASE/WDTH): bit 1 of the slot's enable
+  nibble (`PARAM_PAGES.md` §3b). Display only; the pair must sit in one row
+  of three (never across slots 2–3 or 8–9), and the left knob must be drawn.
+  `verify_menu` checks the bit against the manifest.
 - **A default outside its own value count is used as an index** and stalls
   the sequencer; the schema rejects it at construction. **A stored value
   does the same, and the schema cannot see it**: a part saved under an

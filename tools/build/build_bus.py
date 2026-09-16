@@ -195,6 +195,7 @@ DEFAULTS = {m.key: [(i, p.default) for i, p in enumerate(m.params)
 # inverse of the trap that a slot can draw a knob and publish nothing. Both
 # have shipped.
 ACTIVE_PARAMS = {m.key: m.active_params for m in _CLONED}
+LINKED_PARAMS = {m.key: m.linked_params for m in _CLONED}
 # Value counts. Page 2 pairs a knob field and a companion field per word (any
 # count on either -- stock puts selects on even slots and knobs on odd; see
 # docs/firmware/MAINMENU.md 9e). Historically "three knobs and three selects": the knob fields take
@@ -224,13 +225,16 @@ P_PARAM_NAMES, P_DEFAULTS = 0x16, 0x5e
 P_PENABLE_LO, P_PENABLE_HI = 0x18e, 0x18a
 
 
-def penable(active):
+def penable(active, linked=()):
+    """The two enable words: bit 0 of a slot's nibble draws it, bit 1 draws
+    the link element to its left neighbour (PARAM_PAGES.md 3b)."""
     lo = hi = 0
     for i in active:
+        bits = 3 if i in linked else 1
         if i < 8:
-            lo |= 1 << (4 * i)
+            lo |= bits << (4 * i)
         else:
-            hi |= 1 << (4 * (i - 8))
+            hi |= bits << (4 * (i - 8))
     return lo, hi
 
 
@@ -616,7 +620,7 @@ def main():
             for idx, cnt in PROBE_COUNTS.items():
                 wr32(clone_P + 0x9a + idx * 4, cnt)
                 wr32(clone_P + 0x6a + idx * 4, 0)   # min 0: slot 7 showed -64   # P+0x9a = count array
-        lo, hi = penable(ACTIVE_PARAMS[name])
+        lo, hi = penable(ACTIVE_PARAMS[name], LINKED_PARAMS.get(name, ()))
         wr32(clone_P + P_PENABLE_LO, lo)
         wr32(clone_P + P_PENABLE_HI, hi)
         clone_addr[name] = clone_P
