@@ -12,7 +12,7 @@
 #
 [project]
 name = "octabam"
-version = "0.0.0"
+version = "0.1.0.dev0"
 description = "A remixer for the Elektron Octatrack's OS: community modifications and custom DSP effects composed into one image"
 requires-python = ">=3.9"
 dependencies = []

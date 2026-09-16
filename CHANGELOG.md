@@ -1,0 +1,42 @@
+# Changelog
+
+One entry per image that reached a unit, newest first; `Unreleased` is what
+main carries beyond the last flashed image. The version the panel shows is
+`BUILD` (`make image BUILD=N`); a git tag `OCTABAM<N>` marks the commit each
+flashed image was built from.
+
+## Unreleased (main after image 28)
+
+- Modulation: ENS (the Solina) removed; MODE = JUNO DIM FLNG COMB PHSR; FLNG's
+  view RATE 8; per-mode output trims (DIM −8, FLNG −7, PHSR −2, COMB −12 dB);
+  a LOFI knob on page-2 slot 8 (the delay line clocked coarse and quantised).
+  Stored MODE bytes 3..5 read one mode lower: `stamp-defaults` before play.
+- BusDelay: the tape wow knobs removed (slots 7/8 are GRAIN's SCAT/DENS).
+- BusVerb: MOD / RATE knobs removed, tank modulation pinned; SHMR on page-1
+  slot 2 (`stamp-slot <project> busverb 2 0` before play).
+- `make check`: the ColdFire-port gates no longer masked as SKIP; the module
+  gates (character, spectrum, modulation, nimbus, hello) run; the set gates
+  read `~/.octabam_project`; `make image` requires `BUILD=N`.
+
+## Image 28 — 15 Sep 2026 (`OCTABAM28`, bamsep26 at 7b5da98)
+
+- BusDelay: two 32K lines, TIME to 741 ms (1/4 and 1/2T at 121 BPM); a
+  stored TIME byte means twice the time.
+- Spectrum: TAME removed.
+- MODE set over CC 62/68 re-defaults the mode's knobs, as the panel does.
+
+## Images 25–27 — 15 Sep 2026
+
+- 25: the bus engines are add-only pedals with WET knobs; SEND on every
+  track; host print only while no return.
+- 26: MODE DEFAULTS — a MODE turned on the panel re-defaults its knobs.
+- 27: only the MODE select names itself (SIZE / FRZE / SHFT keep their names).
+
+## Image 24 — 15 Sep 2026
+
+- The tempo cave no longer clobbers an FX1 station's page 2 on a bus host
+  (note-only cave; the DSP reads tempo from stock).
+
+Earlier images (the 13 Sep 96–100 series, flash 7 = `OCTABAM21`, and before)
+are recorded in `docs/history/VOICING.md`, `docs/remixer/FAILURE_MODES.md`
+and the git log.

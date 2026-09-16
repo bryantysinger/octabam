@@ -174,3 +174,6 @@ this repository's log.
 not extend to Elektron's firmware, which is not distributed here, nor to
 the community repositories referenced as submodules, which remain their
 authors' under their own terms.
+[THIRD_PARTY.md](THIRD_PARTY.md) lists every transcribed DSP source
+(Airwindows, JClones, Mutable Instruments, ChowDSP, jpcima, audiojs), the
+submodules and the vendored tools, each with its licence.

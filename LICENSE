@@ -27,6 +27,9 @@ SOFTWARE.
 ---
 
 This license covers this repository's own source code and documentation only.
+Transcribed third-party DSP sources, the community modifications carried as
+submodules and the tools fetched by `make setup` are listed with their own
+licences in THIRD_PARTY.md.
 
 It does not extend to any Elektron Music Machines firmware, which is not
 distributed here and remains the property of its copyright holder. Users

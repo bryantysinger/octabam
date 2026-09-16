@@ -83,7 +83,12 @@ make check REMIX=ok-ms      # build + every gate + boot under the emulator
 ```
 
 `make check` builds every remix in turn, so it takes several minutes.
-Without `make emu-cf` the boot gate reports `[SKIP]`.
+Without `make emu-setup` (the `.venv`) the four firmware-label gates report
+`[SKIP]`; without `make emu-cf` the set gates do. Run from a fresh clone on
+16 Sep 2026: `scripts/setup.sh` → `make os` → `make recon` →
+`make check REMIX=bamsep26` green with exactly those SKIP lines (Homebrew
+tools already installed on that machine; the `brew install` branch was not
+exercised).
 
 ## 4. Back up
 
