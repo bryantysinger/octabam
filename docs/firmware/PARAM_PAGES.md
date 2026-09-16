@@ -151,37 +151,48 @@ raw 1 (= ONE2) and 0 (= `-`); the fixup is not located.
 ## 3b. Enable bitmaps
 
 `P+0x18e` = parameters 0–7, `P+0x18a` = 8–11, one nibble each, low nibble
-first; bit 0 = the parameter exists. `FUN_400326d4` (staging a value) and
-`FUN_40037590` (drawing the knob) both call
-`FUN_400a6994(*(u32*)(P+0x18a), *(u32*)(P+0x18e), paramIndex)` and gate on
-bit 0: a zero nibble is neither staged nor drawn. ✅ Every stock `---` slot
-has nibble 0 and every named knob has bit 0 set (four effects checked;
-SPRING REV `TIME --- --- HP LP MIX | TYPE BAL --- --- --- ---` =
-`P+0x18e = 0x11111001`, `P+0x18a = 0`; NONE all zero). Some slots carry
-`3` (DARK SHVF, FILTER WDTH); `FUN_40037590` tests bit 2 for a display
-flag; the rest is not decoded.
+first. `FUN_400326d4` (staging a value) and `FUN_40037590` (drawing the
+knob) both call `FUN_400a6994(*(u32*)(P+0x18a), *(u32*)(P+0x18e),
+4·paramIndex)` and gate on bit 0. The accessor (✅ objdump, 16 Sep 2026) is
+a 64-bit arithmetic right shift of the pair by its third argument, low half
+returned in D1, high in D0, with a second path for shifts ≥ 32 (params
+8–11); it masks nothing, so every bit decision is made at the call site (26
+direct calls, 3 through a register, 2 sites read the words inline;
+`EXTERNAL.md` §11). Every nibble in the table is one of `0 1 3 5 7 8`; all
+31 rows and Bryan T's bit reading were re-read from our image 16 Sep 2026.
 
-The bitmap governs only the generic page renderer. A page drawn by bespoke
-code ignores it: descriptor 7 (MIXER) marks `p0 MAIN` and `p1 DIR` as not
-drawn and the unit shows both (photographed). "No knob" below means the
-generic renderer skips it, not that the parameter is unused.
+| bit | value | meaning | status |
+|---|---|---|---|
+| 0 | 1 | drawn by the generic renderer and staged by `FUN_400326d4`; a zero nibble is neither | ✅ (31 rows; PICKUP page 2 `0,0,0,0,1,1` draws TSTR and TSNS only, THRU/NEIGHBOR page 2 blank, on the unit) |
+| 1 | 2 | a link element tying this knob to the one on its left: STRT/LEN, RTRG/RTIM, RATE/TSTR (STATIC and FLEX), INAB/VOL and INCD/VOL (THRU), BASE/WDTH (FILTER), SHVG/SHVF (DARK REV) | ✅ on the unit (Bryan T, MKII); the drawer is not located |
+| 2 | 4 | PLAYBACK page 2 only: LOOP, RATE, TSTR on STATIC and FLEX, SLIC on FLEX alone. At `0x4003780e` the drawer passes `8` (else `0`) as the flags word of the knob renderer `0x400479b4`, which loads it into CCR and takes the `bpl`-not-taken layout at `0x40047ab0` instead of the one at `0x40047b4a` that offsets the dial by `max(0, (0x46c7d244 + 20·index)+4)` (0..3); a record field > 3 or flags bit 0 takes the `0x40047ab0` layout regardless | 🟡 read in objdump 16 Sep 2026, not run; on the unit the six page-2 knobs look identical to each other and SLIC looks the same on STATIC and FLEX (Bryan T) |
+| 3 | 8 | AMP p5 XVOL only, bit 0 clear: absent from the AMP page, drawn while a scene button is held; six call sites test mask `0x9` | 🟡 one slot, one mask pattern; the `0x9` sites are not traced to the scene UI |
 
-| page | `p0..p7` / `p8..p11` | no knob |
+| page | `p0..p7` / `p8..p11` | nibble 0 |
 |---|---|---|
-| PLAYBACK 0 | `15311311` / `00001751` | none |
-| PLAYBACK 1 | `55311311` / `00001751` | none |
-| PLAYBACK 2 | `00031031` / `00000000` | p0 p1 p2 p5 p8 p9 p10 p11 |
-| PLAYBACK 3 | `00000000` / `00000000` | all |
-| PLAYBACK 4 | `00110111` / `00001100` | p0 p1 p4 p10 p11 |
+| PLAYBACK 0 (STATIC) | `15311311` / `00001751` | none |
+| PLAYBACK 1 (FLEX) | `55311311` / `00001751` | none |
+| PLAYBACK 2 (THRU) | `00031031` / `00000000` | p2, p5–p11 (all `---`) |
+| PLAYBACK 3 (NEIGHBOR) | `00000000` / `00000000` | all |
+| PLAYBACK 4 (PICKUP) | `00110111` / `00001100` | p3 RATE, p6–p9 (`---`) |
 | LFO (audio) | `11111111` / `00001111` | none |
-| AMP | `11811111` / `00000111` | p8 |
-| MIXER | `00111111` / `00001000` | p0 p1 p9 p10 p11 (drawn anyway) |
+| AMP | `11811111` / `00000111` | p11 TRIG (p5 XVOL is `8`) |
+| MIXER | `00111111` / `00001000` | p6 MIX, p7–p10 (`----`); p11 is blank-named and `1` |
 | recorder | `11111111` / `00001111` | none |
-| NOTE | `11111111` / `00000101` | p8 p10 |
-| ARP | `00111111` / `00001001` | p0 p1 p9 p10 |
+| NOTE | `11111111` / `00000101` | p9, p11 (`----`) |
+| ARP | `00111111` / `00001001` | p6, p7, p9, p10 (`-----`) |
 | LFO (MIDI) | `11111111` / `00001111` | none |
-| CONTROL 1 | `00111111` / `00001111` | p0 p1 |
+| CONTROL 1 | `00111111` / `00001111` | p6, p7 (`----`) |
 | CONTROL 2 | `11111111` / `00001111` | none |
+
+Named slots with nibble 0: PICKUP p3 RATE, AMP p11 TRIG, MIXER p6 MIX,
+LO-FI p1 NOIS. Effect rows are in `EXTERNAL.md` §11's table; each `---`
+is 0 and each named knob is 1 except FILTER WDTH and DARK REV SHVF (`3`).
+Until 16 Sep 2026 this section's derived lists read `P+0x18e` high nibble
+first (ARP "p0 p1 p9 p10", NOTE "p8 p10", MIXER "p0 p1 …", AMP REL `8`);
+the hex words were right. The MIXER "drawn anyway" counterexample rested
+on that reversed read — MAIN and DIR are `1` — so whether a bespoke page
+handler consults the bitmap is unmeasured.
 
 AMP (per track, present for every machine type):
 
@@ -189,22 +200,20 @@ AMP (per track, present for every machine type):
 |---|---|---|---|---|---|
 | p0 | ATK | 0 | 128 | 1 | 0 |
 | p1 | HOLD | 127 | 128 | 1 | `0x4003b3d0` |
-| p2 | REL | 127 | 128 | 8 | `0x4003b408` |
+| p2 | REL | 127 | 128 | 1 | `0x4003b408` |
 | p3 | VOL | 64 | 128 | 1 | `0x4003c7a0` |
 | p4 | BAL | 64 | 128 | 1 | `0x4003c7a0` |
-| p5 | XVOL | 127 | 128 | 1 | `0x4003b484` |
+| p5 | XVOL | 127 | 128 | 8 | `0x4003b484` |
 | p6 | AMP | 1 | 4 | 1 | `0x4003b6fc` |
 | p7 | SYNC | 1 | 2 | 1 | `0x4003c14c` |
-| p8 | ATCK | 0 | 2 | 0 | `0x4003b754` |
+| p8 | ATCK | 0 | 2 | 1 | `0x4003b754` |
 | p9 | FX1 | 0 | 4 | 1 | `0x4003b6fc` |
 | p10 | FX2 | 0 | 4 | 1 | `0x4003b6fc` |
-| p11 | TRIG | 0 | 5 | 1 | `0x4003bdd8` |
+| p11 | TRIG | 0 | 5 | 0 | `0x4003bdd8` |
 
-`p8 ATCK` is the only un-drawn AMP slot; count 2. `XVOL` is enabled and
-does not appear in the GUI; 🟡 crossfader volume, consumed by the engine.
-Whether an AMP-page value reaches the DSP record, and whether enabling p8
-gives it storage and publication, are unmeasured; a default outside its
-count stalls the sequencer (`CLAUDE.md`).
+`p11 TRIG` is the un-drawn AMP slot. Whether an AMP-page value reaches the
+DSP record, and whether enabling p11 gives it storage and publication, are
+unmeasured; a default outside its count stalls the sequencer (`CLAUDE.md`).
 
 ## 4. Page class handlers
 
@@ -427,7 +436,10 @@ chars; ours ≤ 5, "1/16T"); whether A is consulted where B's count matters.
 - The six `E+0x00` pointers (🟡 one per encoder).
 - Why the effects split across two page classes.
 - What `0x800000a0` (PERSONALIZE) switches.
-- Bits above bit 0 in the enable nibbles.
+- Enable-nibble bit 2 (what the `0x40047ab0` layout changes on screen) and
+  bit 3 (whether the six mask-`0x9` sites are the scene-edit path); the
+  link-element drawer for bit 1; the four undecoded `0x4004exxx` call
+  sites (§3b, `EXTERNAL.md` §11).
 - Which staged index and live-lane bytes an FX1 page-2 edit uses when
   opened from the page key (`0x4005a5b0`, the 4→3 remap; no emulator
   drives it): a hardware read (turn a station's MODE, SAVE, read the part

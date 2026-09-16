@@ -4,7 +4,7 @@ Reverse-engineering results **from outside this project**, recorded here so
 that what we adopted, what we verified, and what we merely repeated are three
 distinguishable things.
 
-**§1–§6 and §8 are by Bryan T**, shared on Discord; §7 scans two parallel
+**§1–§6, §8, §10 and §11 are by Bryan T**, shared on Discord; §7 scans two parallel
 projects and **§9 is nordseele's octalab** (13 Sep 2026). None of it is
 octabam's finding, and it is recorded here as such — the status key below
 marks what we independently confirmed versus what we adopted on their
@@ -1496,3 +1496,516 @@ scratch.
 > Happy to send the patch if it is useful, or to leave it in my fork if you would
 > rather solve it differently. It touches `schema.py` and `build_bus.py`, so it
 > is your call more than mine.
+
+## 11. Bryan T: the parameter enable nibbles (received 16 Sep 2026)
+
+`~/Downloads/enable-nibbles.md`. Summary and the re-verification are
+`docs/firmware/EXTERNAL.md` §11; `PARAM_PAGES.md` §3b carries the result.
+
+### 11.1 ✅ Re-verified here, 16 Sep 2026, from our own image
+
+All 31 rows of his §3 table, E-based (`P = E + 0x38`):
+
+```python
+import struct
+img = open('out/raw/section_3_MAIN_OS.bin', 'rb').read()
+BASE = 0x40000400
+rd32 = lambda a: struct.unpack('>I', img[a - BASE:a - BASE + 4])[0]
+for k in range(-1, 30):
+    P = 0x400d2e52 + (k + 1) * 0x192 + 0x38
+    lo, hi = rd32(P + 0x18e), rd32(P + 0x18a)
+    nib = [(lo >> 4 * i) & 0xf for i in range(8)] + [(hi >> 4 * i) & 0xf for i in range(4)]
+    print(k, ''.join('%x' % n for n in nib))
+```
+
+31/31 equal. `scripts/disasm.sh emac 0x400a6994 72` gives the accessor;
+`0x4003780e`, `0x40052b82` and `0x40053810` were disassembled for their
+masks; `0x400479b4` (the knob renderer the bit-2 flag reaches) was read
+to `0x40047be8`.
+
+### 11.2 The note as received
+
+> # The parameter enable nibbles (OS 1.40C)
+>
+> What the per-parameter enable bitmap in the parameter-page descriptor
+> actually encodes, read out of `section_3_MAIN_OS.bin`
+> (SHA-256 `164f3122…af0a84e`, 1,112,560 bytes), base `0x40000400`,
+> `file_offset = vaddr - 0x40000400`.
+>
+> Markers: ✅ read out of the image or observed on hardware, 🟡 inferred,
+> ⬜ open. Instruction readings below were **hand-decoded from raw bytes,
+> not verified against objdump**, and are marked 🟡 accordingly. The data
+> tables are machine-extracted and are ✅.
+>
+> Hardware observations are Bryan Tysinger's, on an MKII. The prior state of
+> this question is `docs/firmware/PARAM_PAGES.md` §3b, which several findings
+> here correct.
+>
+> ## 1. Layout ✅
+>
+> Each descriptor carries two u32 words holding one nibble per parameter:
+>
+> ```
+> P+0x18e   parameters 0..7    low nibble = p0
+> P+0x18a   parameters 8..11   low nibble = p8
+> ```
+>
+> Confirmed two independent ways. First, the nibbles agree slot-for-slot with
+> the descriptor's own `---` parameter names across all 31 entries, with five
+> exceptions listed in §6. Second, from the accessor's arithmetic (§4), which
+> shifts a 64-bit pair right by `4 x index`.
+>
+> Only six nibble values occur anywhere in the table: `0`, `1`, `3`, `5`, `7`,
+> `8`. So at most four bits are in use and bit 3 never combines with anything.
+>
+> ## 2. Bit semantics
+>
+> | bit | value | meaning | status |
+> |---|---|---|---|
+> | 0 | 1 | the generic renderer draws this parameter, and `FUN_400326d4` stages it | ✅ |
+> | 1 | 2 | draw a linking element tying this parameter to the one on its left | ✅ hardware |
+> | 2 | 4 | tested by three call sites; no visible effect found | ⬜ |
+> | 3 | 8 | visible only in the scene-edit path, not in ordinary drawing | 🟡 |
+>
+> ### Bit 0 ✅
+>
+> `FUN_400326d4` (staging a value) and `FUN_40037590` (drawing the knob) both
+> gate on it, so a zero nibble is neither drawn nor editable.
+>
+> Confirmed against the panel across all five PLAYBACK machine types. THRU and
+> NEIGHBOR have every nibble at 0 and show no page-2 parameters at all;
+> NEIGHBOR shows none on either page. PICKUP's page-2 nibbles are
+> `0,0,0,0,1,1`, and the panel shows TSTR and TSNS alone. PICKUP's TSTR value
+> count in the descriptor is 3 against 4 on STATIC/FLEX, matching the observed
+> AUTO/NORM/BEAT.
+>
+> ### Bit 1: the link element ✅
+>
+> Set on exactly six distinct slots in the whole table. Every one sits
+> immediately to the right of the parameter it qualifies, and on the panel
+> each draws an element visually tying the two controls together.
+>
+> | page | slot | links to | nibble |
+> |---|---|---|---|
+> | PLAYBACK STATIC | p2 `LEN` | `STRT` | `3` |
+> | PLAYBACK STATIC | p5 `RTIM` | `RTRG` | `3` |
+> | PLAYBACK STATIC | p10 `TSTR` | `RATE` | `7` |
+> | PLAYBACK FLEX | p2 `LEN` | `STRT` | `3` |
+> | PLAYBACK FLEX | p5 `RTIM` | `RTRG` | `3` |
+> | PLAYBACK FLEX | p10 `TSTR` | `RATE` | `7` |
+> | PLAYBACK THRU | p1 `VOL` | `INAB` | `3` |
+> | PLAYBACK THRU | p4 `VOL` | `INCD` | `3` |
+> | FILTER | p1 `WDTH` | `BASE` | `3` |
+> | DARK REV | p2 `SHVF` | `SHVG` | `3` |
+>
+> (The STATIC and FLEX rows are the same three slots in two descriptors.)
+>
+> The pairs are semantically exact: STRT/LEN, RTRG/RTIM, RATE/TSTR, input
+> AB and its volume, input CD and its volume, FILTER's BASE and WDTH, DARK
+> REV's SHVG and SHVF. FILTER WDTH and DARK REV SHVF were the two slots
+> whose appearance was checked first, and the four PLAYBACK slots were then
+> predicted from the data before being confirmed.
+>
+> ### Bit 3: scene-only visibility 🟡
+>
+> | page | slot | nibble |
+> |---|---|---|
+> | AMP | p5 `XVOL` | `8` |
+>
+> AMP's XVOL is the only slot in the entire table with nibble 8, and it is
+> the only one where bit 0 is clear while another bit is set. On the panel
+> XVOL does not appear on the AMP page at all; it appears only while a scene
+> button (A or B) is held.
+>
+> Six call sites test mask `0x9` rather than bit 0 alone (§5), i.e. they
+> accept bit 3 as an alternative route to visibility. One slot and one
+> matching test pattern is a strong correlation, not a proof; nobody has
+> traced those six sites to the scene UI.
+>
+> ### Bit 2 ⬜ open
+>
+> | page | slot | nibble |
+> |---|---|---|
+> | PLAYBACK STATIC | p6 `LOOP` | `5` |
+> | PLAYBACK STATIC | p9 `RATE` | `5` |
+> | PLAYBACK STATIC | p10 `TSTR` | `7` |
+> | PLAYBACK FLEX | p6 `LOOP` | `5` |
+> | PLAYBACK FLEX | p7 `SLIC` | `5` |
+> | PLAYBACK FLEX | p9 `RATE` | `5` |
+> | PLAYBACK FLEX | p10 `TSTR` | `7` |
+>
+> Set on seven slots, all of them PLAYBACK page 2, and nowhere else in the
+> table. Never on page 1, never on any effect. TSTR carries `7`, so link-left
+> and bit 2 together. SLIC carries it on FLEX and not on STATIC.
+>
+> Three call sites test it (§5), two of them inside the range attributed to
+> the knob drawer `FUN_40037590`, which is the origin of the existing
+> "tests bit 2 for a display flag" reading.
+>
+> Against that reading: on hardware LOOP, SLIC, LEN, RATE, TSTR and TSNS all
+> look identical to each other on both STATIC and FLEX tracks, and SLIC in
+> particular looks the same on both machine types despite differing in bit 2.
+> So whatever bit 2 gates, it is not a visible difference between those two
+> machines.
+>
+> Hypotheses examined and rejected:
+>
+> - **A display/greying flag.** Contradicted by the panel observation above.
+> - **Scene or p-lock eligibility.** On the Octatrack no page-2 parameter can
+>   be p-locked or scene-locked, so all six PLAYBACK page-2 slots are equally
+>   ineligible while only four carry the bit.
+> - **"Changing this restages the voice."** Page-2 LEN is the loop length and
+>   changes how the sample is read, yet carries no bit 2.
+>
+> The FLEX-only SLIC asymmetry is the strongest remaining clue, since it is
+> the only place the bit varies between two otherwise near-identical
+> descriptors.
+>
+> ## 3. The data ✅
+>
+> `nibbles` reads p0 first (left to right = p0..p11).
+>
+> | # | descriptor | id | page | nibbles p0..p11 | `P+0x18e` | `P+0x18a` |
+> |---|---|---|---|---|---|---|
+> | -1 | `0x400d2e52` | -- | (blank / master track) | `000000000000` | `0x00000000` | `0x00000000` |
+> | 0 | `0x400d2fe4` | -- | PLAYBACK STATIC | `113113511571` | `0x15311311` | `0x00001751` |
+> | 1 | `0x400d3176` | -- | PLAYBACK FLEX | `113113551571` | `0x55311311` | `0x00001751` |
+> | 2 | `0x400d3308` | -- | PLAYBACK THRU | `130130000000` | `0x00031031` | `0x00000000` |
+> | 3 | `0x400d349a` | -- | PLAYBACK NEIGHBOR | `000000000000` | `0x00000000` | `0x00000000` |
+> | 4 | `0x400d362c` | -- | PLAYBACK PICKUP | `111011000011` | `0x00110111` | `0x00001100` |
+> | 5 | `0x400d37be` | -- | LFO | `111111111111` | `0x11111111` | `0x00001111` |
+> | 6 | `0x400d3950` | -- | AMP | `111118111110` | `0x11811111` | `0x00000111` |
+> | 7 | `0x400d3ae2` | -- | (MIXER) | `111111000001` | `0x00111111` | `0x00001000` |
+> | 8 | `0x400d3c74` | -- | (track recorder) | `111111111111` | `0x11111111` | `0x00001111` |
+> | 9 | `0x400d3e06` | -- | NOTE | `111111111010` | `0x11111111` | `0x00000101` |
+> | 10 | `0x400d3f98` | -- | ARPEGGIATOR | `111111001001` | `0x00111111` | `0x00001001` |
+> | 11 | `0x400d412a` | -- | LFO | `111111111111` | `0x11111111` | `0x00001111` |
+> | 12 | `0x400d42bc` | -- | CONTROL 1 | `111111001111` | `0x00111111` | `0x00001111` |
+> | 13 | `0x400d444e` | -- | CONTROL 2 | `111111111111` | `0x11111111` | `0x00001111` |
+> | 14 | `0x400d45e0` | -- | NONE | `000000000000` | `0x00000000` | `0x00000000` |
+> | 15 | `0x400d4772` | `0x04` | FILTER | `131111111111` | `0x11111131` | `0x00001111` |
+> | 16 | `0x400d4904` | `0x05` | SPATIALIZER | `111111010111` | `0x10111111` | `0x00001110` |
+> | 17 | `0x400d4a96` | `0x08` | DELAY | `111111111111` | `0x11111111` | `0x00001111` |
+> | 18 | `0x400d4c28` | `0x0c` | EQUALIZER | `111111100100` | `0x01111111` | `0x00000010` |
+> | 19 | `0x400d4dba` | `0x0d` | DJ EQUALIZER | `101111000000` | `0x00111101` | `0x00000000` |
+> | 20 | `0x400d4f4c` | `0x10` | PHASER | `111111010000` | `0x10111111` | `0x00000000` |
+> | 21 | `0x400d50de` | `0x11` | FLANGER | `111111000000` | `0x00111111` | `0x00000000` |
+> | 22 | `0x400d5270` | `0x12` | CHORUS | `111111100100` | `0x01111111` | `0x00000010` |
+> | 23 | `0x400d5402` | `0x13` | COMB FILTER | `111101000000` | `0x00101111` | `0x00000000` |
+> | 24 | `0x400d5594` | `0x14` | PLATE REV | `111111111001` | `0x11111111` | `0x00001001` |
+> | 25 | `0x400d5726` | `0x15` | SPRING REV | `100111110000` | `0x11111001` | `0x00000000` |
+> | 26 | `0x400d58b8` | `0x16` | DARK REV | `113111111001` | `0x11111311` | `0x00001001` |
+> | 27 | `0x400d5a4a` | `0x18` | COMPRESSOR | `111111100000` | `0x01111111` | `0x00000000` |
+> | 28 | `0x400d5bdc` | `0x19` | MULTIBCOMP | `101111000000` | `0x00111101` | `0x00000000` |
+> | 29 | `0x400d5d6e` | `0x1c` | LO-FI | `101111001000` | `0x00111101` | `0x00000001` |
+>
+> Per parameter:
+>
+> **PLAYBACK STATIC**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | PTCH | STRT | LEN  | RATE | RTRG | RTIM | LOOP | SLIC | LEN  | RATE | TSTR | TSNS |
+> | nibble | 1    | 1    | 3    | 1    | 1    | 3    | 5    | 1    | 1    | 5    | 7    | 1    |
+>
+> **PLAYBACK FLEX**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | PTCH | STRT | LEN  | RATE | RTRG | RTIM | LOOP | SLIC | LEN  | RATE | TSTR | TSNS |
+> | nibble | 1    | 1    | 3    | 1    | 1    | 3    | 5    | 5    | 1    | 5    | 7    | 1    |
+>
+> **PLAYBACK THRU**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | INAB | VOL  | ---  | INCD | VOL  | ---  | ---  | ---  | ---  | ---  | ---  | ---  |
+> | nibble | 1    | 3    | 0    | 1    | 3    | 0    | 0    | 0    | 0    | 0    | 0    | 0    |
+>
+> **PLAYBACK PICKUP**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | PTCH | DIR  | LEN  | RATE | GAIN | OP   | ---  | ---  | ---  | ---  | TSTR | TSNS |
+> | nibble | 1    | 1    | 1    | 0    | 1    | 1    | 0    | 0    | 0    | 0    | 1    | 1    |
+>
+> **LFO**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | SPD1 | SPD2 | SPD3 | DEP1 | DEP2 | DEP3 | PMTR | WAVE | MULT | TRIG | SPD  | DEP  |
+> | nibble | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    |
+>
+> **AMP**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | ATK  | HOLD | REL  | VOL  | BAL  | XVOL | AMP  | SYNC | ATCK | FX1  | FX2  | TRIG |
+> | nibble | 1    | 1    | 1    | 1    | 1    | 8    | 1    | 1    | 1    | 1    | 1    | 0    |
+>
+> **MIXER**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | MAIN | DIR  | GAIN | CUE  | DIR  | GAIN | MIX  | ---- | ---- | ---- | ---- | ---- |
+> | nibble | 1    | 1    | 1    | 1    | 1    | 1    | 0    | 0    | 0    | 0    | 0    | 1    |
+>
+> **recorder**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | INAB | INCD | RLEN | TRIG | SRC3 | LOOP | FIN  | FOUT | AB   | QREC | QPL  | CD   |
+> | nibble | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    |
+>
+> **NOTE**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | NOTE | VEL  | LEN  | NOT2 | NOT3 | NOT4 | CHAN | BANK | PROG | ---- | SBNK | ---- |
+> | nibble | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 0    | 1    | 0    |
+>
+> **ARPEGGIATOR**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | TRAN | LEG  | MODE | SPD  | RNGE | NLEN | ----- | ----- | LEN  | ----- | ----- | KEY  |
+> | nibble | 1    | 1    | 1    | 1    | 1    | 1    | 0    | 0    | 1    | 0    | 0    | 1    |
+>
+> **LFO**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | SPD1 | SPD2 | SPD3 | DEP1 | DEP2 | DEP3 | PMTR | WAVE | MULT | TRIG | SPD  | DEP  |
+> | nibble | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    |
+>
+> **CONTROL 1**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | PB   | AT   | CC1  | CC2  | CC3  | CC4  | ---- | ---- | CC1  | CC2  | CC3  | CC4  |
+> | nibble | 1    | 1    | 1    | 1    | 1    | 1    | 0    | 0    | 1    | 1    | 1    | 1    |
+>
+> **CONTROL 2**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | CC5  | CC6  | CC7  | CC8  | CC9  | CC10 | CC5  | CC6  | CC7  | CC8  | CC9  | CC10 |
+> | nibble | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    |
+>
+> **FILTER**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | BASE | WDTH | Q    | DPTH | ATK  | DEC  | HP   | LP   | ENV  | HOLD | Q    | DIST |
+> | nibble | 1    | 3    | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    |
+>
+> **SPATIALIZER**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | INP  | DPTH | WDTH | HP   | LP   | SEND | ---  | PHSE | ---  | M/S  | MG   | SG   |
+> | nibble | 1    | 1    | 1    | 1    | 1    | 1    | 0    | 1    | 0    | 1    | 1    | 1    |
+>
+> **DELAY**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | TIME | FB   | VOL  | BASE | WDTH | SEND | X    | TAPE | DIR  | SYNC | LOCK | PASS |
+> | nibble | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    |
+>
+> **EQUALIZER**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | FRQ1 | GN1  | Q1   | FRQ2 | GN2  | Q2   | TYP1 | ---  | ---  | TYP2 | ---  | ---  |
+> | nibble | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 0    | 0    | 1    | 0    | 0    |
+>
+> **DJ EQUALIZER**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | LS F | ---  | HS F | LOWG | MIDG | HI G | ---  | ---  | ---  | ---  | ---  | ---  |
+> | nibble | 1    | 0    | 1    | 1    | 1    | 1    | 0    | 0    | 0    | 0    | 0    | 0    |
+>
+> **PHASER**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | CNTR | DEP  | SPD  | FB   | WID  | MIX  | ---  | NUM  | ---  | ---  | ---  | ---  |
+> | nibble | 1    | 1    | 1    | 1    | 1    | 1    | 0    | 1    | 0    | 0    | 0    | 0    |
+>
+> **FLANGER**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | DEL  | DEP  | SPD  | FB   | WID  | MIX  | ---  | ---  | ---  | ---  | ---  | ---  |
+> | nibble | 1    | 1    | 1    | 1    | 1    | 1    | 0    | 0    | 0    | 0    | 0    | 0    |
+>
+> **CHORUS**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | DEL  | DEP  | SPD  | FB   | WID  | MIX  | TAPS | ---  | ---  | FBLP | ---  | ---  |
+> | nibble | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 0    | 0    | 1    | 0    | 0    |
+>
+> **COMB FILTER**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | PTCH | TUNE | LP   | FB   | ---  | MIX  | ---  | ---  | ---  | ---  | ---  | ---  |
+> | nibble | 1    | 1    | 1    | 1    | 0    | 1    | 0    | 0    | 0    | 0    | 0    | 0    |
+>
+> **PLATE REV**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | TIME | DAMP | GATE | HP   | LP   | MIX  | GVOL | BAL  | MONO | ---  | ---  | MIXF |
+> | nibble | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 0    | 0    | 1    |
+>
+> **SPRING REV**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | TIME | ---  | ---  | HP   | LP   | MIX  | TYPE | BAL  | ---  | ---  | ---  | ---  |
+> | nibble | 1    | 0    | 0    | 1    | 1    | 1    | 1    | 1    | 0    | 0    | 0    | 0    |
+>
+> **DARK REV**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | TIME | SHVG | SHVF | HP   | LP   | MIX  | PRE  | BAL  | MONO | ---  | ---  | MIXF |
+> | nibble | 1    | 1    | 3    | 1    | 1    | 1    | 1    | 1    | 1    | 0    | 0    | 1    |
+>
+> **COMPRESSOR**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | ATK  | REL  | THRS | RAT  | GAIN | MIX  | RMS  | ---  | ---  | ---  | ---  | ---  |
+> | nibble | 1    | 1    | 1    | 1    | 1    | 1    | 1    | 0    | 0    | 0    | 0    | 0    |
+>
+> **MULTIBCOMP**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | LS F | ---  | HS F | LOWG | MIDG | HI G | ---  | ---  | ---  | ---  | ---  | ---  |
+> | nibble | 1    | 0    | 1    | 1    | 1    | 1    | 0    | 0    | 0    | 0    | 0    | 0    |
+>
+> **LO-FI**
+>
+> | slot | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+> |---|---|---|---|---|---|---|---|---|---|---|---|---|
+> | name | DIST | NOIS | AMF  | SRR  | BRR  | AMD  | ---  | ---  | AMPH | ---  | ---  | ---  |
+> | nibble | 1    | 0    | 1    | 1    | 1    | 1    | 0    | 0    | 1    | 0    | 0    | 0    |
+>
+>
+> ## 4. The accessor `FUN_400a6994` 🟡
+>
+> Hand-decoded from bytes at `0x400a6994`:
+>
+> ```
+> 4f ef ff f4    lea     (-12,A7),A7
+> 48 d7 00 1c    movem.l D2/D3/D4,(A7)
+> 20 2f 00 10    move.l  (0x10,A7),D0      ; arg1 = P+0x18a  (params 8..11)
+> 22 2f 00 14    move.l  (0x14,A7),D1      ; arg2 = P+0x18e  (params 0..7)
+> 24 2f 00 18    move.l  (0x18,A7),D2      ; arg3 = bit index
+> 67 1a          beq.s   ...               ; index == 0: no shift
+> 26 01          move.l  D1,D3
+> 72 20          moveq   #32,D1
+> 92 82          sub.l   D2,D1             ; 32 - index
+> 4a 81          tst.l   D1
+> 6f 1a          ble.s   ...
+> 28 00          move.l  D0,D4
+> e4 a4          lsr.l   D2,D4             ; hi >> index
+> e3 a8          lsl.l   D1,D0             ; hi << (32 - index)
+> 22 00          move.l  D0,D1
+> 20 03          move.l  D3,D0
+> e4 a8          lsr.l   D2,D0             ; lo >> index
+> 82 80          or.l    D0,D1
+> 20 04          move.l  D4,D0
+> ...            restore, rts
+> ```
+>
+> It is a plain 64-bit right shift of the pair `(P+0x18a : P+0x18e)` by the
+> index, returning the shifted low half in D1 and the high half in D0. Every
+> call site multiplies the parameter index by four first (`lsl.l #2` before
+> the push), which is where the four-bits-per-parameter layout comes from.
+>
+> **The accessor does no masking.** It returns the raw shifted word, so every
+> bit decision is made at the call site. That is why the bit semantics have to
+> be recovered from 26+ separate places rather than from one function.
+>
+> ## 5. Call sites ✅ (located) / 🟡 (masks)
+>
+> Located by byte pattern: a push of `(0x18e,An)`, a push of `(0x18a,An)`,
+> then the call. 26 direct calls to `0x400a6994`, plus three indirect
+> through a register (`0x40032714`, `0x4005098e`, `0x40050c14`) and two sites
+> that skip the accessor and read the words inline (`0x40050532`,
+> `0x400506fe`; those `and.l` a caller-supplied mask against each word and
+> branch if both are zero, an "is anything in this set enabled" test).
+>
+> The mask column is the first bit test after the call, hand-decoded:
+>
+> | call site | mask | form |
+> |---|---|---|
+> | `0x400323ce` | `0x0f` | `moveq #0xf` then `and` |
+> | `0x400323f4` | `0x01` | `moveq #0x1` then `and` |
+> | `0x4003780e` | `0x04` | copy, then `moveq #0x4` |
+> | `0x400378a4` | `0x01` | `btst #0,D1` |
+> | `0x40037baa` | `0x04` | copy, then `moveq #0x4` |
+> | `0x40037c40` | `0x01` | `btst #0,D1` |
+> | `0x4003bf0a` | `0x01` | `btst #0,D1` |
+> | `0x4003c074` | `0x01` | `btst #0,D1` |
+> | `0x4003cdda` | `0x04` | copy, then `moveq #0x4` |
+> | `0x4003ce68` | `0x01` | `btst #0,D1` |
+> | `0x4004e27c` | `0x0f` | `moveq #0xf` then `and` |
+> | `0x4004e402` | ? | (not decoded) |
+> | `0x4004e452` | ? | (not decoded) |
+> | `0x4004e56c` | ? | (not decoded) |
+> | `0x4004e5a4` | `0x0f` | `moveq #0xf` then `and` |
+> | `0x4004e7fa` | ? | (not decoded) |
+> | `0x4004f674` | `0x01` | `btst #0,D1` |
+> | `0x40052b82` | `0x0f` then `and #9` | `moveq #0xf` then `and` |
+> | `0x40052d2a` | `0x0f` then `and #9` | `moveq #0xf` then `and` |
+> | `0x40053104` | `0x0f` then `and #9` | `moveq #0xf` then `and` |
+> | `0x40053810` | `0x09` | `moveq #0x9` then `and` |
+> | `0x40053ec2` | `0x0f` then `and #9` | `moveq #0xf` then `and` |
+> | `0x400547c0` | `0x0f` then `and #9` | `moveq #0xf` then `and` |
+> | `0x40054d0e` | `0x01` | `btst #0,D1` |
+> | `0x40055032` | `0x01` | `btst #0,D1` |
+> | `0x400576e6` | `0x01` | `btst #0,D1` |
+>
+> Summary: ten sites test bit 0 alone; six test mask `0x9` (bits 0 and 3);
+> three test bit 2; eight take the whole nibble and decide for themselves;
+> four in the `0x4004exxx` cluster were not decodable from short context.
+>
+> ## 6. Corrections to `PARAM_PAGES.md` §3b
+>
+> - ⬜ **The per-parameter "no knob" lists are printed in reverse for p0..p7.**
+>   The raw hex words in that section are correct; the derived slot lists read
+>   the low word most-significant-nibble first. ARPEGGIATOR is listed as
+>   "p0 p1 p9 p10"; the image gives p6, p7, p9, p10. NOTE is listed as
+>   "p8 p10"; the image gives p9 and p11, which is what the `---` names say.
+> - ✅ **The MIXER counterexample does not hold.** §3b argues the bitmap
+>   governs only the generic renderer, on the grounds that MIXER marks p0 MAIN
+>   and p1 DIR as not drawn while the unit shows both. In the image MAIN and
+>   DIR are both `1`. The un-drawn MIXER slot is p6 MIX. The claim may still be
+>   true for other reasons, but its stated evidence is a reversed read.
+> - ✅ **The AMP slot table is wrong where AMP's own hex word is right.** REL
+>   is `1`, not `8`. ATCK is `1` and is drawn. The nibble-8 slot is XVOL. The
+>   un-drawn AMP slot is p11 TRIG.
+> - ✅ **LO-FI NOIS reads `0`**, independently confirming it is not a
+>   user-facing parameter.
+>
+> Named slots with nibble 0 (drawn nowhere by the generic renderer): PICKUP
+> p3 RATE, AMP p11 TRIG, MIXER p6 MIX, LO-FI p1 NOIS. One blank-named slot
+> carries a nonzero nibble: MIXER p11.
+>
+> ## 7. Open
+>
+> - What bit 2 gates. Needs the three call sites disassembled properly, not
+>   byte-scanned.
+> - Why SLIC differs between STATIC and FLEX.
+> - The four undecoded `0x4004exxx` call sites.
+> - Whether the six mask-`0x9` sites are in fact the scene-edit path.
+> - Whether bit 1's link element is drawn by the generic renderer or by the
+>   page class handler.
