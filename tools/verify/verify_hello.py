@@ -25,7 +25,8 @@ with `FXID = 0x17` after hello moved to 0x1b, ran SEND for all six gains,
 and the GAIN=127 bit-exact gate PASSED -- because a dry passthrough is
 exactly what unity gain looks like. Only the gain-law gates dissented.
 """
-import pathlib, struct, subprocess, sys
+import pathlib
+import struct, subprocess, sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 import send_probe  # reuse its dispatch-table entry resolution
@@ -41,8 +42,13 @@ HOST = "vendor/dsp56300/build/source/dsp_host/dsp_host"
 FXID = MOD.menu.fx2_id
 FRAMES, N = 15, 4200
 
+# REBUILD THE DUMP, ALWAYS (the audition's cache is keyed on modules/ mtime
+# and a stale hit silently measures the stock effect on this id)
+pathlib.Path(MEM).unlink(missing_ok=True)
+subprocess.run([sys.executable, "tools/remix/audition.py", MOD.name,
+                "out/dry/drums_110.wav"], capture_output=True)
 if not pathlib.Path(MEM).exists():
-    sys.exit(f"no {MEM} -- build it first:\n"
+    sys.exit(f"no {MEM} -- the audition build failed:\n"
              f"  python3 tools/remix/audition.py {MOD.name} out/dry/drums_110.wav")
 
 init, proc = send_probe.entry_points(MEM, FXID)
