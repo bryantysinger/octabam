@@ -6,19 +6,29 @@ licences and laws are in `docs/effects/PORTS.md`.
 
 | page 1 | RATE · DPTH · FDBK · MIX · TONE · WDTH |
 |---|---|
-| page 2 | DLY · MODE (JUNO DIM ENS FLNG COMB PHSR) |
+| page 2 | DLY · MODE (JUNO DIM FLNG COMB PHSR) |
 
 | mode | source | licence | what it is |
 |---|---|---|---|
 | JUNO | jpcima `HeraChorus.dsp` + pendragon-andyh's Juno-60 measurements | ISC | two BBD lines on one triangle LFO, R inverted; I 0.513 Hz / II 0.863 Hz over 1.5..5.4 ms; I+II 9.75 Hz mono; dry 0.83 + wet 1.0 |
 | DIM | Roland SDD-320 service notes + measurements | laws | antiphase lines, the other side's wet through a highpass, a bass lift on the dry; 0.25 / 0.5 Hz, 5..12 ms. The amounts (0.25 same-side, −1 cross, 0.5 lift, 200 Hz one-poles) are unpublished: **ours** |
-| ENS | jpcima `string-machine` (the Solina) | BSL-1.0 | three taps on one mono line, two three-phase LFOs (0.6 + 6 Hz, equal depth), 5 ± 1 ms; L = t1 + t2 − t3, R = t1 − t2 − t3 |
 | FLNG | Dattorro, *Effect Design Part 2* (JAES 1997), Table 6 | paper | blend 0.7071 of the dry read from a FIXED tap at the sweep's centre, feedforward −0.7071 of the swept tap (through-zero: the sweep crosses the dry and nulls), feedback −0.7071 |
 | PHSR | ChowPhaser (Schulte Compact Phasing A) | BSD-3 | two RC allpasses (15 nF) with feedback, then 2/4/6/8 allpasses (25 nF) on one coefficient from the LDR's law (`R = 100k (light/0.1)^-0.75`, light = 20.1 − 20·lfo); the coefficient decoded per block from two 33-word tables and ramped per sample; the feedback closes through one sample; no tanh |
 | COMB | Mutable Instruments Rings `string.h/.cc` | MIT | a Hermite-read loop tuned by DLY, a 3-tap FIR damping filter (brightness = TONE), the per-pass gain from a DECAY TIME (rt60 = 0.07 s · 2^(8·lf), lf = d(2−d)) so every pitch rings for the same time; no IIR damping (the MIC_W build's omission), no dispersion. FDBK's sign is the polarity: **ours** |
 
 Every mode outputs the wet only and MIX blends, so MIX 0 is an exact
-passthrough and MIX 127 the wet outright.
+passthrough and MIX 127 the wet outright. Each mode carries an output trim
+that levels it with JUNO at the views (16 Sep 2026, measured on the pad and
+the loop stems): DIM −8 dB (its five weights scaled), FLNG −7 (blend and
+feedforward scaled; the feedback is FDBK's), PHSR −2 (the selected stage
+weight), COMB −12 (on the parked wet, after the line write, so the ring is
+untouched). After the trims, active RMS against JUNO: DIM −1.9 / +2.6
+(pad / loop), FLNG −1.9 / +2.8, COMB +11.8 / +2.4, PHSR −1.4 / +4.5.
+
+ENS (the Solina, jpcima `string-machine`) was mode 2 until 16 Sep 2026:
+Sam heard the 6 Hz component as "super unnatural and dominating" and the
+slow-only form as bad, and jpcima's own chorus on the same pad the same
+way ("no good, lose it"). It is in history (`git log -- modules/modulation`).
 
 ## The knobs
 
@@ -38,9 +48,9 @@ ChowPhaser's, Rings at a mid pitch).
 
 ## Structure
 
-Four sample loops, one chosen per block (the pricer takes the worst): LINE
+Three sample loops, one chosen per block (the pricer takes the worst): LINE
 (JUNO, DIM and FLNG share it — the three differ only in five per-block
-mix weights `bl bd ff kc kb`), ENS, PHSR, COMB. Straight-line callees:
+mix weights `bl bd ff kc kb`), PHSR, COMB. Straight-line callees:
 `mo_tap` (the linear read, blending toward the older sample), `mo_herm`
 (the 4-point Hermite read, scaled 1/16 inside), `mo_apst` (one allpass
 stage), `mo_para` (the parabola sine), `mo_lfo`, `mo_tab` (the table
@@ -48,7 +58,7 @@ read), `momixs`. The PHSR chain runs at half scale for headroom (an
 allpass cascade peaks above its input).
 
 PHSR is the last MODE position so that dropping it would move no other
-mode's stored byte; whether it stays is undecided (476 cycles).
+mode's stored byte; Sam kept it 16 Sep 2026 ("pretty good").
 
 Two lines of 1,024 words from the FX1 slot's allocator buffer; an FX2
 instance reads its base at init and runs as a dry pass (`Claims(fx1_only)`,
@@ -56,10 +66,10 @@ proven by the gates). A change of MODE clears every state slot.
 
 ## Measured
 
-- **1,199 words**, core A FREE 536 in the rig; **476 cycles/sample** worst
-  (PHSR 476; LINE 401, ENS 440, COMB 306) — under Character's 639, so the
+- **1,044 words** (1,199 with ENS), core A FREE 847 in the rig; **476 cycles/sample** worst
+  (PHSR 476; LINE 401, COMB 314: 306 + the trim's 8) — under Character's 639, so the
   worst core is unchanged at 3,831.
-- `tools/verify/verify_modulation.py`, **24 gates, all PASS**: MIX 0
+- `tools/verify/verify_modulation.py`, **25 gates, all PASS**: MIX 0
   bit-exact in every mode; an FX2 instance a bit-exact dry pass with the
   guard clean; every mode against `modulation_ref.py` on a stereo signal
   (max error ≤ 1e-4 where the law is linear; COMB's ring recirculates its
@@ -73,17 +83,19 @@ proven by the gates). A change of MODE clears every state slot.
 - MIX 127 and TONE 127 are pinned to 1.0 so the through-zero null and the
   flanger's blend are exact (the knob word alone is 127/128).
 
+## Heard
+
+16 Sep 2026, on the emulator (`abkit`, the pad and loop stems, level-matched,
+Sam listening): JUNO "good", DIM "good", FLNG "good" at RATE 8 (the view was
+14: "slower please"), COMB "sounds like what you describe" — kept, PHSR
+"pretty good". Not yet heard on the unit.
+
 ## Open
 
-- Unheard on the unit; unflashed. Kits for the ear in `out/ab/mod2_pad`
-  and `out/ab/mod2_loop` (`tools/harness/abkit.py`, the six modes at their
-  defaults, level-matched). Active-RMS level against JUNO's (MIX 70) before
-  matching: DIM +6 / +10 dB (pad / loop), ENS +5 / +7, FLNG +5 / +10, COMB
-  +23 / +6 (a 1 s ring resonates a sustained pad's harmonics by up to
-  1/(1 − g) ≈ +37 dB), PHSR −0.5 / +5.
 - DIM's amounts are ours; the Juno's own asymmetry (R 1.51..5.40 ms vs L
   1.54..5.15) and the I+II shape ("sine-like") are not modelled.
 - The tap read is linear (Dattorro's allpass or Airwindows' 3-point + air
   are the alternatives, `docs/effects/PORTS.md`).
-- Stored parts: TONE moved from slot 8 to 4 and WID from 10 to 5; SHPE and
-  STGS are gone. `stamp-defaults` before play.
+- Stored parts: MODE bytes 3..5 (FLNG/COMB/PHSR) mean one lower since ENS
+  went; TONE moved from slot 8 to 4 and WID from 10 to 5 in v2. `stamp-defaults`
+  before play.

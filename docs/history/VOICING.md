@@ -2655,3 +2655,32 @@ g2 −15.0 / −17.5: the two-grain makeup runs ~1–3 dB hotter (two triangle
 windows sum to exactly 1, four to 2, and the makeup doubles). Not
 level-matched; the rendered files are the material for the decision, not
 a verdict.
+
+## 16 Sep 2026 — the Modulation round on the emulator (Sam away from the unit)
+
+Kits: `abkit` MODE sweeps on `out/test_audio/pad.wav` and `loop.wav`
+(`out/ab/mod3_*`, level-matched −20 dBFS active RMS), one `afplay` per file,
+the dry pad first. Image 28's Modulation (PR #258) = the code heard.
+
+| mode | played | Sam | change |
+|---|---|---|---|
+| JUNO | view | "is good" | — |
+| DIM | view | "is good" | — |
+| ENS | view; DPTH 6; fast LFO 1/8; slow-only; jpcima's own `SolinaChorus` (digital path, 50/50, built from his repo) | "the modulation is overpowering", "the fast modulation is super unnatural and dominating", slow-only "sounds bad", jpcima's "no good lose it" | **ENS removed** (was mode 2) |
+| FLNG | view (RATE 14) → RATE 8 on a 12 s pad | "slower please" → "sounds good" | view RATE 8 (0.12 Hz) |
+| COMB | view | "sounds like what you describe" → keep | — |
+| PHSR | view | "pretty good" | kept |
+
+The ENS finding on the way: our transcription summed the 0.6 and 6 Hz LFOs at
+equal depth, which IS jpcima's default (`d1 = d2 = 50 %`); Rings runs the fast
+one at 0.1×. Neither form passed, nor his own render, so the source went.
+
+Levels at the views vs JUNO before/after the per-mode output trims (active
+RMS, pad / loop): DIM +6.1/+10.5 → −1.9/+2.6 (−8 dB), FLNG +5.0/+9.8 →
+−1.9/+2.8 (−7), COMB +23.0/+6.5 → +11.8/+2.4 (−12, on the parked wet after
+the line write), PHSR −0.5/+5.4 → −1.4/+4.5 (−2). The "jump at the end" of
+the FLNG render was the 12 s pad's 0.5 s release (−12.6 → −81 dB in 0.5 s),
+not the effect.
+
+Stored MODE bytes 3..5 now read one mode lower: `stamp-defaults` before play.
+Unheard on the unit.

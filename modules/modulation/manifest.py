@@ -1,4 +1,4 @@
-"""MODULATION -- a modulation pedal, six modes, on stock CHORUS's id 0x12.
+"""MODULATION -- a modulation pedal, five modes, on stock CHORUS's id 0x12.
 
 A per-track insert (FX1 only). Each mode transcribes a published,
 permissively licensed source (survey and licences: docs/effects/PORTS.md;
@@ -10,8 +10,6 @@ the float reference the DSP is proven against: modulation_ref.py):
     DIM   the Roland Dimension D (SDD-320): antiphase lines, cross-mixed
           through a highpass, a bass lift on the dry; 0.25 / 0.5 Hz, 5..12
           ms. The amounts are unpublished: ours
-    ENS   the Solina string ensemble (jpcima string-machine, BSL-1.0):
-          three taps on one line, two three-phase LFOs (0.6 + 6 Hz)
     FLNG  Dattorro's flanger (JAES 1997, Table 6): through-zero, the dry
           read from the sweep's centre, feedforward and feedback -0.7071
     COMB  Rings' string loop (Mutable Instruments, MIT): Hermite-read,
@@ -85,7 +83,7 @@ MODULE = Module(
     name="modulation",
     key="MODULATION",
     kind=Kind.DSP_EFFECT,
-    doc="BamSep26 station: a modulation pedal -- Juno, Dimension, Solina, flanger, phaser, comb; FX1 only.",
+    doc="BamSep26 station: a modulation pedal -- Juno, Dimension, flanger, phaser, comb; FX1 only.",
     menu=MenuEntry(
         fx2_id=0x12,
         replaces="CHORUS",
@@ -107,20 +105,20 @@ MODULE = Module(
         Param(b"TONE", 80, active=True, formatter=_PLAIN,
               doc="the BBD filters in and out of the line: 0 dark (2 kHz), 127 open; COMB brightness; no PHSR"),
         Param(b"WDTH", 127, active=True, formatter=_PLAIN,
-              doc="the right channel LFO lag: 0 mono, 64 quadrature, 127 antiphase (Juno, DIM); not ENS/COMB"),
+              doc="the right channel LFO lag: 0 mono, 64 quadrature, 127 antiphase (Juno, DIM); not COMB"),
         # ---- page 2: knob / select / knob / select / knob / select ----------
         Param(b"DLY", 18, 128, active=True, formatter=_PLAIN,
               doc="the sweep's centre, 0.2 .. 23 ms; COMB's pitch; PHSR's stage count (2/4/6/8 by quarters)"),
-        Param(b"MODE", 0, 6, active=True, formatter=_STEP,
-              labels=("JUNO", "DIM", "ENS", "FLNG", "COMB", "PHSR"),
+        Param(b"MODE", 0, 5, active=True, formatter=_STEP,
+              labels=("JUNO", "DIM", "FLNG", "COMB", "PHSR"),
               doc="which pedal"),
         _BLANK, _BLANK, _BLANK, _BLANK,
     ),
     # ---- what each MODE renames and re-defaults ---------------------------
     # The defaults are each source's own numbers: the Juno's I (0.513 Hz,
     # +-1.8 ms about 3.35 ms, antiphase, dry 0.83 + wet 1.0 ~ MIX 70), the
-    # Dimension's mode 1 (0.25 Hz, 5..12 ms), the Solina (0.6 Hz, 5 +- 1 ms),
-    # Dattorro's flanger (0.15 Hz, 0..10 ms), ChowPhaser's defaults (4 Hz,
+    # Dimension's mode 1 (0.25 Hz, 5..12 ms),
+    # Dattorro's flanger (0..10 ms; his 0.15 Hz slowed to 0.12 by ear), ChowPhaser's defaults (4 Hz,
     # depth 0.95 -> 121, 8 stages), Rings at a mid pitch with a 2 s ring.
     mode_slot=7,
     mode_views=(
@@ -128,15 +126,13 @@ MODULE = Module(
                  defaults={0: 26, 1: 21, 2: 64, 3: 70, 4: 80, 5: 127, 6: 18}),
         ModeView(mode=1,                        # DIM
                  defaults={0: 18, 1: 41, 2: 64, 3: 127, 4: 80, 5: 127, 6: 47}),
-        ModeView(mode=2,                        # ENS
-                 defaults={0: 28, 1: 12, 2: 64, 3: 100, 4: 90, 5: 0, 6: 27}),
-        ModeView(mode=3,                        # FLNG
+        ModeView(mode=2,                        # FLNG
                  names={6: b"MANL"},
-                 defaults={0: 14, 1: 59, 2: 19, 3: 127, 4: 127, 5: 0, 6: 27}),
-        ModeView(mode=4,                        # COMB
+                 defaults={0: 8, 1: 59, 2: 19, 3: 127, 4: 127, 5: 0, 6: 27}),   # RATE 8 = 0.12 Hz (Sam, 16 Sep: 14 too fast)
+        ModeView(mode=3,                        # COMB
                  names={2: b"DCAY", 6: b"PTCH"},
                  defaults={0: 0, 1: 0, 2: 82, 3: 64, 4: 100, 5: 0, 6: 64}),   # FDBK 82: rt60 ~ 1 s
-        ModeView(mode=5,                        # PHSR (last: dropping it
+        ModeView(mode=4,                        # PHSR (last: dropping it
                  names={6: b"STGS"},            # would move no other mode)
                  defaults={0: 28, 1: 121, 2: 64, 3: 64, 4: 127, 5: 64, 6: 127}),
     ),

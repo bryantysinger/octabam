@@ -9,7 +9,7 @@ bank: the emulated load applies bank A part 1), boots the remix's image in
 `ot_emu`, LOAD PROJECTs, and calls the editor as the panel would:
 
   FX2: `0x4003a9dc(0, 2 ticks)` on T1 (BusDelay: slot 6 = MODE, CLEAN -> GRAIN)
-  FX1: `0x4003abe4(1, 2 ticks)` on T2 (Modulation: slot 7 = MODE, JUNO -> ENS)
+  FX1: `0x4003abe4(1, 2 ticks)` on T2 (Modulation: slot 7 = MODE, JUNO -> DIM)
 
 then reads the live lane (`0x80000810 + t*72`: page 1 at +0x12 (FX1) /
 +0x18 (FX2), page 2 at +0x32 / +0x38) and asserts every (slot, value) of

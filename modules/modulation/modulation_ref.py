@@ -10,9 +10,6 @@ of its source's per-sample law with the station's knob decode in front:
         on one triangle LFO, 0.25 / 0.5 Hz, 5..12 ms; each output = the dry +
         a bass lift + a little same-side wet - the OTHER side's wet through a
         highpass. The mix constants are unpublished: OURS (marked).
-  ENS   jpcima string-machine (BSL-1.0), the Solina: three taps on ONE mono
-        line, delay = 5 ms + 1 ms * (0.5 sin(slow + i/3) + 0.5 sin(fast + i/3)),
-        fast = 10 x slow (6 / 0.6 Hz); L = t1 + t2 - t3, R = t1 - t2 - t3.
   FLNG  Dattorro, Effect Design Part 2 (JAES 1997) Table 6: blend 0.7071,
         feedforward 0.7071, feedback -0.7071; the dry read from a FIXED tap at
         the sweep's centre so the sweep crosses it (through-zero), the wet
@@ -41,7 +38,7 @@ FS = 44100.0
 BLOCK = 15
 LINE = 1024
 
-MODES = {"JUNO": 0, "DIM": 1, "ENS": 2, "FLNG": 3, "COMB": 4, "PHSR": 5}
+MODES = {"JUNO": 0, "DIM": 1, "FLNG": 2, "COMB": 3, "PHSR": 4}
 
 
 # ---- the knob laws (shared with the DSP's per-block decode) -------------------
@@ -158,8 +155,8 @@ class LineModes:
             the lift's LP are one-poles at 200 Hz)
     """
     W = {"JUNO": (0.0, 0.0, 1.0, 0.0, 0.0),
-         "FLNG": (0.7071, 0.0, -0.7071, 0.0, 0.0),
-         "DIM": (0.0, 1.0, 0.25, -1.0, 0.5)}
+         "FLNG": (0.7071 * 0.44668, 0.0, -0.7071 * 0.44668, 0.0, 0.0),   # -7 dB
+         "DIM": (0.0, 0.39811, 0.25 * 0.39811, -0.39811, 0.5 * 0.39811)}  # -8 dB
     C200 = 1.0 - math.exp(-2 * math.pi * 200.0 / FS)      # 0.0281
 
     def __init__(self, mode, RATE, DPTH, FDBK, MIX, TONE, WDTH, DLY):
@@ -207,49 +204,6 @@ class LineModes:
                 wet.append(clamp(w, -1.0, 1.0))      # the DSP's limiting store
             outL.append(dry[0] + self.m * (wet[0] - dry[0]))
             outR.append(dry[1] + self.m * (wet[1] - dry[1]))
-        return outL, outR
-
-
-# =============================================================================
-# ENS: the Solina tri-chorus (string-machine, BSL-1.0)
-# =============================================================================
-class Ensemble:
-    def __init__(self, RATE, DPTH, FDBK, MIX, TONE, WDTH, DLY):
-        self.k = dict(RATE=RATE, DPTH=DPTH, MIX=MIX, TONE=TONE, DLY=DLY)
-        self.line = Line()
-        self.slow = 0.0
-        self.fast = 0.0
-        c = tone_coef(TONE)
-        self.lpi = OnePole(c)
-        self.lpo = [OnePole(c) for _ in range(3)]
-
-    def block(self):
-        k = self.k
-        self.inc = rate_inc(k["RATE"])
-        centre = min(centre_samples(k["DLY"]), 1000.0)
-        depth = depth_samples(k["DPTH"])
-        depth = min(depth, centre - 8.0, 1015.0 - centre)
-        self.centre, self.depth = centre, max(depth, 0.0)
-        self.m = mix(k["MIX"])
-
-    def process(self, L, R):
-        outL, outR = [], []
-        for n in range(len(L)):
-            if n % BLOCK == 0:
-                self.block()
-            self.slow = (self.slow + self.inc) % 1.0
-            self.fast = (self.fast + 10.0 * self.inc) % 1.0
-            self.line.advance()
-            mono = 0.5 * (L[n] + R[n])
-            t = []
-            for i in range(3):
-                mod = 0.5 * para(self.slow + i / 3.0) + 0.5 * para(self.fast + i / 3.0)
-                t.append(self.lpo[i].lp(self.line.read(self.centre + self.depth * mod)))
-            self.line.write(self.lpi.lp(mono))
-            wl = clamp(t[0] + t[1] - t[2], -1.0, 1.0)
-            wr = clamp(t[0] - t[1] - t[2], -1.0, 1.0)
-            outL.append(L[n] + self.m * (wl - L[n]))
-            outR.append(R[n] + self.m * (wr - R[n]))
         return outL, outR
 
 
@@ -357,7 +311,7 @@ class Phaser:
                     y = self.mod[ch][s].run(y, bm)
                 for s in range(self.taps, self.STAGES):     # the idle stages still run (the DSP unrolls 8)
                     self.mod[ch][s].run(y, bm)
-                y = clamp(2.0 * y, -1.0, 1.0)
+                y = clamp(2.0 * 0.79433 * y, -1.0, 1.0)      # -2 dB trim
                 outs.append(x + self.m * (y - x))
             outL.append(outs[0])
             outR.append(outs[1])
@@ -424,7 +378,8 @@ class Comb:
                 self.x1[ch] = s
                 y = clamp(y, -1.0, 1.0)
                 self.lines[ch].write(y)
-                outs.append(x + self.m * (y - x))
+                w = 0.25119 * y                                 # -12 dB trim, outside the ring
+                outs.append(x + self.m * (w - x))
             outL.append(outs[0])
             outR.append(outs[1])
         return outL, outR
@@ -433,4 +388,4 @@ class Comb:
 def make(mode, **knobs):
     if mode in LineModes.W:
         return LineModes(mode, **knobs)
-    return {"ENS": Ensemble, "PHSR": Phaser, "COMB": Comb}[mode](**knobs)
+    return {"PHSR": Phaser, "COMB": Comb}[mode](**knobs)
