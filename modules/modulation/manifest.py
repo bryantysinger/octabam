@@ -116,7 +116,7 @@ MODULE = Module(
               labels=("JUNO", "DIM", "FLNG", "COMB", "PHSR"),
               doc="which pedal"),
         Param(b"LOFI", 0, active=True, formatter=_PLAIN,
-              doc="the line clocked coarse and quantised: hold 1 + 64 (k/128)^2 samples; bits 24, then 16..5 past 63"),
+              doc="the line clocked coarse and quantised: hold 1 + 64 (k/128)^2 samples, 24 bits then 16..5"),
         _BLANK, _BLANK, _BLANK,
     ),
     # ---- what each MODE renames and re-defaults ---------------------------
