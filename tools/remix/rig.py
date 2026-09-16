@@ -10,8 +10,11 @@ manifests, never declared here:
           payloads, runs on any track.
   STOCK   a stock FX2 effect the remix keeps in the chooser (Kind.STOCK,
           tools/remix/stock.py) -- code already in both payloads, any track.
-  SYSTEM  everything else: the SEND client, ColdFire patches. Plumbing the
-          image needs, never something you put on a track.
+  MOD     a ColdFire modification: no chooser row, and it changes the OS
+          image outside one -- caves, linked units, detours, pokes, grown
+          tables or a DRAM runtime (midisc, Octakit, the bridges, the fixes).
+          Never on a track; the ledger says which can share an image.
+  SYSTEM  everything else: the SEND client. Plumbing the image needs.
 """
 
 from __future__ import annotations
@@ -34,8 +37,17 @@ PAYLOAD_TRACKS = {"A": range(5, 9), "B": range(1, 5)}
 # over the bus. The module KEYS stay "REVERB SERVER"/"DELAY SERVER" -- they
 # are written into saved remixes and the build report -- and `is_server` is
 # still what the manifest declares. This is the word the operator reads.
-BUS, INSERT, STOCK, SYSTEM = "bus", "insert", "stock", "system"
+BUS, INSERT, STOCK, MOD, SYSTEM = "bus", "insert", "stock", "mod", "system"
 SERVER = BUS                    # the old name, for anything still saying it
+GROUP_TITLE = {BUS: "Bus", INSERT: "Inserts", STOCK: "Stock Effects",
+               MOD: "Firmware Mods", SYSTEM: "System"}
+
+
+def touches_coldfire(m) -> bool:
+    """Does this module change the OS image outside its own chooser row --
+    caves, linked units, detours, pokes, grown tables, overrides or a runtime?"""
+    return bool(m.cf_patches or m.linked or m.detours or m.pokes
+                or m.tables or m.overrides or m.runtime is not None)
 
 
 def category(mod) -> str:
@@ -45,6 +57,8 @@ def category(mod) -> str:
         return STOCK
     if mod.kind is Kind.DSP_EFFECT and mod.menu is not None:
         return INSERT
+    if mod.menu is None and touches_coldfire(mod):
+        return MOD
     return SYSTEM
 
 
@@ -53,7 +67,7 @@ def track_range(mod) -> range:
     cat = category(mod)
     if cat in (INSERT, STOCK):
         return TRACKS
-    if cat == SYSTEM:
+    if cat in (MOD, SYSTEM):
         return range(0)
     # A server lives in exactly one payload, and the manifest says which.
     # frozenset({"A","B"}) is the field's default, i.e. "never stated" -- a
@@ -390,10 +404,13 @@ def resources(mod, words=None, fx1_rows=(), selected=True,
         # bill is CYCLES, and it is a big one: FX1 is four more slots on the
         # same four tracks, so listing an effect on both menus can double the
         # worst per-core load. The Budget's cycles row carries the number.
-        _fx1o = (getattr(mod, "claims", None) is not None
-                 and mod.claims.fx1_only)
-        out.append("FX1  " + ((f"takes 1 of the 4 slots ({mod.claims.buffer_words:,} "
-                               f"of 3,072 words) · FX1 ONLY: passes dry on FX2")
+        _cl = getattr(mod, "claims", None)
+        _fx1o = _cl is not None and _cl.fx1_only
+        # An fx1_only module without a buffer (Spectrum, Character: stateless
+        # on FX2, the dry pass is the contract) has no words to print.
+        _bw = (f"{_cl.buffer_words:,} of 3,072 words"
+               if _fx1o and _cl.buffer_words is not None else "no buffer")
+        out.append("FX1  " + ((f"takes 1 of the 4 slots ({_bw}) · FX1 ONLY: passes dry on FX2")
                               if _fx1o else
                               "takes 1 of the 4 slots (3,072 words each)"
                               if allocates else "no buffer")
