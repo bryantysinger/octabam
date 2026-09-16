@@ -89,19 +89,16 @@ MODULE = Module(
         Param(b"WDTH", 64, 128, active=True, formatter=_BIPOL,
               doc="stereo width of the output, drawn -64..+63: 0 untouched, -64 mono, +63 double sides"),
         # ---- page 2: knob / select / knob / select / knob / select ----------
-        _BLANK,                 # TAME (the filters' state saturation) lived here 14-15 Sep 2026; Sam: "tame should be gone"
+        # MODE top left (slot 6, the knob field), as on every effect (16 Sep 2026)
         Param(b"MODE", 0, 5, active=True, formatter=_STEP,
               labels=("LADR", "LP", "BP", "ISO", "VOWL"),
               doc="LADR the Moog (first: the best one); LP/BP the SEM; ISO an isolator (Capacitor2); VOWL"),
-        _BLANK,
-        _BLANK,
-        _BLANK,
-        _BLANK,
+        _BLANK, _BLANK, _BLANK, _BLANK, _BLANK,
     ),
     # FREQ is always where, RES always the flavour; a mode labels RES for
     # what it is there. ISO's defaults land by stamp (a live re-default on
     # MODE would need a ColdFire half).
-    mode_slot=7,
+    mode_slot=6,
     mode_views=(ModeView(mode=3, names={0: b"LOW", 1: b"COLR"}, defaults={0: 127, 1: 64}),
                 ModeView(mode=4, names={1: b"SHRP"})),
     dsp=DspSection(

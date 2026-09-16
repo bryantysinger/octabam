@@ -200,8 +200,9 @@ ch_offok:
         tst     a
         teq     x0,b                    ; DRV == 0 -> skip flag 1
         move    b,x:(r7+$4d)
-        move    x:(r6+$c),a             ; TONE: page-2 slot 6, $c's KNOB field
-        and     #>$7f0000,a             ; (bits 16-23; SAT's select is below it)
+        move    x:(r6+$c),a             ; TONE: page-2 slot 7, $c's companion
+        and     #>$7f00,a               ; field (bits 8-15; SAT's select is the knob field)
+        asl     #$8,a,a                 ; TONE << 16
         sub     #>$400000,a
         move    a,x:(r7+$24)            ; t/2, -0.5 .. +0.49
 ; COMP amount, straight from the knob
@@ -241,7 +242,7 @@ ch_cset:
         move    a0,x0
         move    x0,x:(r7+$27)           ; m/4 = 0.25/den: makeup/4
 ch_cdone:
-; SAT character (slot 7 select of r6+$c) -> a MODE FLAG and per-mode words,
+; SAT character (slot 6 select of r6+$c, the knob field) -> a MODE FLAG and per-mode words,
 ; so the sample loop's SAT stage is a MODEFORK: TAPE (0) = TapeHead, TUBE (1)
 ; = DaTube, INFL (2) = OInflator (all JClones, MIT;). The tanh
 ; curve, its P table, FUZZ and the drive-keyed low-pass are gone. A stored 3
@@ -253,11 +254,11 @@ ch_cdone:
         clr     a
         move    a,x:(r7+$3e)            ; return level: 0 until RET is read below
         move    a,x:(r7+$29)            ; sat mode: 0 = TAPE
-        move    x:(r6+$c),a             ; the select field where it sits (as SRR)
-        and     #>$ff00,a
-        cmp     #>$100,a
+        move    x:(r6+$c),a             ; SAT, slot 6 = $c's knob field
+        and     #>$ff0000,a
+        cmp     #>$10000,a
         beq     ch_stube
-        cmp     #>$200,a
+        cmp     #>$20000,a
         beq     ch_sinfd
         bra     ch_sdone                ; TAPE (a stored 3, the old BUS, too)
 ch_stube:
@@ -431,7 +432,7 @@ ch_pos3:
 ; WDTH -> mid and side gains. 64 = (1, 1); 0 = (1, 0) mono; 127 = (1, ~2).
 ; side gain = WDTH/64, mid stays 1 -- widening only touches the difference,
 ; so a mono source is untouched at every setting.
-        move    x:(r6+$e),a             ; a knob word: bit 23 clear, a2 = 0
+        move    x:(r6+$d),a             ; WDTH: page-2 slot 8, $d's knob field (a knob word: bit 23 clear, a2 = 0)
         and     #>$7f0000,a
 ; ⚠️ STORED HALVED. A y1 operand is a FRACTION, and a side gain of WDTH/64
 ; tops out near 2.0, which would wrap the word. The knob's own value IS

@@ -7,7 +7,7 @@ row.
 
 | page 1 | DRV · FOLD · TXTR · COMP · RET · MIX |
 |---|---|
-| page 2 | TONE · SAT (TAPE TUBE INFL) · — · — · WDTH · — |
+| page 2 | SAT (TAPE TUBE INFL) · TONE · WDTH · — · — · — |
 
 Chain, fixed: fold → saturate → tilt → compress → width → mix.
 

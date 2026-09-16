@@ -111,8 +111,8 @@ MODULE = Module(
         # MIX bottom right, as on every effect (Sam, image 29)
         Param(b"MIX", 0, active=True, formatter=_PLAIN,
               doc="dry/wet; 0 = exact passthrough, 127 = the wet alone"),
-        # ---- page 2: MODE on slot 7 (every station's), TONE and WDTH -------
-        _BLANK,
+        # ---- page 2, filled from the top left: MODE (slot 6 as on every
+        # effect), TONE, WDTH ----------------------------------------------
         Param(b"MODE", 0, 5, active=True, formatter=_STEP,
               labels=("JUNO", "DIM", "FLNG", "COMB", "PHSR"),
               doc="which pedal"),
@@ -120,7 +120,7 @@ MODULE = Module(
               doc="the BBD filters in and out of the line: 0 dark (2 kHz), 127 open; COMB brightness; no PHSR"),
         Param(b"WDTH", 127, 128, active=True, formatter=_PLAIN,
               doc="the right channel LFO lag: 0 mono, 64 quadrature, 127 antiphase (Juno, DIM); not COMB"),
-        _BLANK, _BLANK,
+        _BLANK, _BLANK, _BLANK,
     ),
     # ---- what each MODE renames and re-defaults ---------------------------
     # The defaults are each source's own numbers: the Juno's I (0.513 Hz,
@@ -128,21 +128,21 @@ MODULE = Module(
     # Dimension's mode 1 (0.25 Hz, 5..12 ms),
     # Dattorro's flanger (0..10 ms; his 0.15 Hz slowed to 0.12 by ear), ChowPhaser's defaults (4 Hz,
     # depth 0.95 -> 121, 8 stages), Rings at a mid pitch with a 2 s ring.
-    mode_slot=7,
+    mode_slot=6,
     mode_views=(
         ModeView(mode=0,                        # JUNO
-                 defaults={0: 26, 1: 21, 2: 18, 3: 64, 5: 70, 8: 80, 9: 127}),
+                 defaults={0: 26, 1: 21, 2: 18, 3: 64, 5: 70, 7: 80, 8: 127}),
         ModeView(mode=1,                        # DIM
-                 defaults={0: 18, 1: 41, 2: 47, 3: 64, 5: 127, 8: 80, 9: 127}),
+                 defaults={0: 18, 1: 41, 2: 47, 3: 64, 5: 127, 7: 80, 8: 127}),
         ModeView(mode=2,                        # FLNG
                  names={2: b"MANL"},
-                 defaults={0: 8, 1: 59, 2: 27, 3: 19, 5: 127, 8: 127, 9: 0}),   # RATE 8 = 0.12 Hz (Sam, 16 Sep: 14 too fast)
+                 defaults={0: 8, 1: 59, 2: 27, 3: 19, 5: 127, 7: 127, 8: 0}),   # RATE 8 = 0.12 Hz (Sam, 16 Sep: 14 too fast)
         ModeView(mode=3,                        # COMB
                  names={3: b"DCAY", 2: b"PTCH"},
-                 defaults={0: 0, 1: 0, 2: 64, 3: 82, 5: 64, 8: 100, 9: 0}),   # FDBK 82: rt60 ~ 1 s
+                 defaults={0: 0, 1: 0, 2: 64, 3: 82, 5: 64, 7: 100, 8: 0}),   # FDBK 82: rt60 ~ 1 s
         ModeView(mode=4,                        # PHSR (last: dropping it
                  names={2: b"STGS"},            # would move no other mode)
-                 defaults={0: 28, 1: 121, 2: 127, 3: 64, 5: 64, 8: 127, 9: 64}),
+                 defaults={0: 28, 1: 121, 2: 127, 3: 64, 5: 64, 7: 127, 8: 64}),
     ),
     dsp=DspSection(
         asm="modules/modulation/modulation.asm",

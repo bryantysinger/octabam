@@ -74,18 +74,19 @@ proc:
         mpy     x0,y1,a
         add     #>$10,a
         move    a,x:(r7+$01)
-; WDTH (page-2 slot 9, $d's companion field, bits 8-15) -> the right
-; channel's LFO phase offset, 0 .. half a cycle
+; WDTH (page-2 slot 8, $d's knob field, bits 16-23) -> the right channel's
+; LFO phase offset, 0 .. half a cycle
         move    x:(r6+$d),a             ; a knob word: bit 23 clear, so a2 = 0
-        and     #>$7f00,a               ; ... and stays 0 through the and
-        asl     #$7,a,a                 ; (k << 16) >> 1
+        and     #>$7f0000,a             ; ... and stays 0 through the and
+        asr     #$1,a,a
         move    a,x:(r7+$06)
-; TONE (page-2 slot 8, $d's knob field, bits 16-23) -> the one-pole
+; TONE (page-2 slot 7, $c's companion field, bits 8-15) -> the one-pole
 ; coefficient 0.25 + 0.75 * k/128; 127 = 1.0, an exact bypass (the
 ; flanger's through-zero null needs the blend and the wet alike). The knob
 ; word is parked in $46 (COMB's FIR reads it below).
-        move    x:(r6+$d),a
-        and     #>$7f0000,a
+        move    x:(r6+$c),a
+        and     #>$7f00,a
+        asl     #$8,a,a
         move    a1,x:(r7+$46)           ; TONE << 16
         move    a1,x0
         move    #$60,y1                 ; 0.75 (short immediate: bits 23-16)
@@ -156,11 +157,11 @@ proc:
         move    (r5)+n5
         move    p:(r5),x0
         move    x0,x:(r7+$45)
-; ---- MODE (slot 7 select of r6+$c) ---------------------------------------
+; ---- MODE (slot 6 select of r6+$c, the knob field) ------------------------
 ; A change of mode clears every state slot $23..$3c (Spectrum's rule: a
 ; state that meant something else in the last mode is garbage in this one).
         move    x:(r6+$c),a
-        and     #>$ff00,a
+        and     #>$ff0000,a
         move    x:(r7+$40),x0           ; the last block's select ($40: above
         move    a1,x:(r7+$40)           ; the loops' slots, per block only)
         sub     x0,a                    ; (a2 = 0: both positive)
@@ -175,7 +176,7 @@ mo_mclr:
         nop
 mo_msame:
         move    x:(r7+$40),a
-        asr     #$8,a,a
+        asr     #$10,a,a
         move    a1,x0
         move    x0,a                    ; the mode, 0..4, clean
         move    a,x:(r7+$0c)

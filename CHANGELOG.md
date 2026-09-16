@@ -8,7 +8,11 @@ flashed image was built from.
 ## Unreleased (main after image 29)
 
 - Modulation: MIX bottom right (page-1 slot 5), LOFI on slot 4 — the wet/dry
-  knob sits bottom right on every effect.
+  knob sits bottom right on every effect (image 30, on the card).
+- MODE top left (page-2 slot 6) on every effect, Character's SAT included;
+  page 2 fills from the top left with no gaps: BusVerb `MODE TONE DIFF GATE`,
+  Spectrum `MODE`, Character `SAT TONE WDTH`, Modulation `MODE TONE WDTH`.
+  `stamp-defaults --all --keep-mode` before play.
 
 ## Image 29 — 16 Sep 2026 (`OCTABAM29`, bamsep26 at ed27afe)
 

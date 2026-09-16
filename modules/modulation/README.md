@@ -6,7 +6,7 @@ licences and laws are in `docs/effects/PORTS.md`.
 
 | page 1 | RATE ⌐DPTH · DLY · FDBK · LOFI · MIX |
 |---|---|
-| page 2 | — · MODE (JUNO DIM FLNG COMB PHSR) · TONE · WDTH · — · — |
+| page 2 | MODE (JUNO DIM FLNG COMB PHSR) · TONE · WDTH · — · — · — |
 
 | mode | source | licence | what it is |
 |---|---|---|---|

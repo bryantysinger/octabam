@@ -1081,9 +1081,8 @@ shfst:
 ; (the RATE speed select on slot 11 went with the MOD knob, 15 Sep 2026:
 ; the LFO runs at 1x, the default it always had)
 
-        move    x:(r6+$e),a
-        and     #>$7f0000,a             ; knob field, val<<16
-        asr     #$8,a,a                 ; -> val*256 samples
+        move    x:(r6+$d),a             ; GATE: page-2 slot 9, $d's companion
+        and     #>$7f00,a               ; field = val*256 samples as it stands
         tst     a
         beq     g_off                   ; GATE=0 -> ungated
         move    #>2048,x0

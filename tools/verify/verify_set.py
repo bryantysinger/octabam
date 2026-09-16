@@ -271,9 +271,14 @@ def main():
     check("midi: CC 40 = 100 on T2's channel reached T2's AUX halfword", (aux >> 8) == 100,
           f"halfword 12 = {aux:#06x} (knob {aux >> 8}; the lane's slew takes ~30 frames)")
     if ccpage2:
+        # the cave clamps to the slot's count from the descriptor: slot 6 is
+        # every effect's MODE since 16 Sep 2026, so 77 lands as count - 1
+        fx1_mod = registry.by_id(part["fx1"][0])
+        cnt = (fx1_mod.params[6].count or 128) if fx1_mod is not None and fx1_mod.params else 128
+        want = min(77, cnt - 1)
         lane_v, rec_v = lanes[0x32], recs[2 * 18]
-        check("midi: CC 68 = 77 on T1's channel reached T1's FX1 page-2 slot 6 (CC PAGE 2)",
-              lane_v == 77 and rec_v == 77, f"lane +0x32 = {lane_v}, record halfword 18 high byte = {rec_v}")
+        check(f"midi: CC 68 = 77 on T1's channel reached T1's FX1 page-2 slot 6 (CC PAGE 2; count {cnt} -> {want})",
+              lane_v == want and rec_v == want, f"lane +0x32 = {lane_v}, record halfword 18 high byte = {rec_v}")
     m = re.search(r"midi in    : (\d+) byte\(s\) still queued", text)
     check("midi: the firmware took every byte", m is not None and m.group(1) == "0",
           f"{m.group(1) if m else '?'} queued at the end")

@@ -50,9 +50,8 @@ chain in ─► 4 series allpasses ─► ┌─ FDN tank ───────�
 | 2 | 6 | MODE | `$c` bits 16–23 | 0 ROOM, 1 PLATE, 2 BIG; slot 6 since 4 Sep 2026 (an even slot is one the panel's page-2 editor writes) |
 | 2 | 7 | TONE | `$c` bits 8–15 | LO + HI on one knob: 0..64 = LP 0..127 with HP off, 64..127 = HP 0..126 with LP open; 64 = flat |
 | 2 | 8 | DIFF | `$d` bits 16–23 | allpass coefficient ~0.38–0.80 |
-| 2 | 9 | — | | |
-| 2 | 10 | GATE | `$e` bits 16–23 | gated reverb: 0 off; hold ~46–780 ms before the wet shuts; envelope keyed on the tank input (`$1b`), fast attack, ~20 ms eased release, per-sample multiply on the wet |
-| 2 | 11 | — | | (the tank modulation is pinned at MOD 30 / RATE 1× inside the engine since 15 Sep 2026) |
+| 2 | 9 | GATE | `$d` bits 8–15 | gated reverb: 0 off; hold ~46–780 ms before the wet shuts; envelope keyed on the tank input (`$1b`), fast attack, ~20 ms eased release, per-sample multiply on the wet |
+| 2 | 10, 11 | — | | (the tank modulation is pinned at MOD 30 / RATE 1× inside the engine since 15 Sep 2026; page 2 fills from the top left) |
 
 The layout is the 16 Sep 2026 knob pass (before it: SEND TIME SHMR SIZE TONE
 WET / MODE — DIFF SHFT GATE —). The renders at any knob value by name are
