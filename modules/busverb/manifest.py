@@ -132,10 +132,10 @@ MODULE = Module(
         # DIFF 80: the VintageVerb match point bracketed at ~80-90.
         Param(b"DIFF", 80, 128, active=True, formatter=_PLAIN,
               doc="diffusion -- low = discrete repeats, high = smooth wash"),
-        _BLANK,
+        # GATE on slot 9 ($d's companion field): page 2 fills from the top left
         Param(b"GATE", 0, 128, active=True, formatter=_PLAIN,
               doc="gated-reverb hold -- higher holds longer; the useful range is low (8-20)"),
-        _BLANK,
+        _BLANK, _BLANK,
     ),
     mode_slot=6,                      # MODE names itself (ROOM / PLATE / BIG)
     dsp=DspSection(

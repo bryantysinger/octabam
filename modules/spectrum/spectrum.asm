@@ -199,9 +199,9 @@ proc:
         move    a0,x0
         move    x0,x:(r7+$33)           ; d
 
-; ---- MODE (slot 7 select of r6+$c): tap coefficients; VOWL runs the bank ---
+; ---- MODE (slot 6 select of r6+$c, the knob field): tap coefficients; VOWL runs the bank ---
         move    x:(r6+$c),a
-        and     #>$ff00,a
+        and     #>$ff0000,a
         move    x:(r7+$38),x0
         move    a1,x:(r7+$38)
         sub     x0,a                    ; (a2 = 0: both positive)
@@ -222,14 +222,14 @@ fs_msame:
         move    a,x:(r7+$24)
         move    a,x:(r7+$25)
         move    #>$7fffff,x0
-        move    x:(r6+$c),a             ; the select field where it sits (as SRC)
-        and     #>$ff00,a               ; 0 LADR, 1 LP, 2 BP, 3 ISO, 4 VOWL
+        move    x:(r6+$c),a             ; MODE, slot 6 = $c's knob field
+        and     #>$ff0000,a             ; 0 LADR, 1 LP, 2 BP, 3 ISO, 4 VOWL
         beq     fs_mladr                ; (LADR first, 14 Sep 2026: "moog is best")
-        cmp     #>$200,a
+        cmp     #>$20000,a
         beq     fs_mbp
-        cmp     #>$300,a
+        cmp     #>$30000,a
         beq     fs_mcap
-        cmp     #>$400,a
+        cmp     #>$40000,a
         beq     fs_mvowl
         move    x0,x:(r7+$23)           ; LP, and anything unexpected
         bra     fs_mdone
@@ -474,8 +474,8 @@ fs_mdone:
         move    x:(r6+$5),a
         cmp     x0,a
         bne     fs_live
-        move    x:(r6+$c),a             ; the MODE select (the companion field;
-        and     #>$ff00,a               ; slot 6's knob field is blank since TAME went, 15 Sep 2026)
+        move    x:(r6+$c),a             ; the MODE select (slot 6, the knob field
+        and     #>$ff0000,a             ; since 16 Sep 2026)
         bne     fs_live                 ; AND sets Z from A1 (a2 = a0 = 0 here)
         bra     fs_bypass
 fs_live:

@@ -92,21 +92,20 @@ MODULE = Module(
         # MIX on page 1 and TONE on page 2 since 16 Sep 2026 (Sam's knob pass).
         Param(b"MIX", 127, active=True, formatter=_PLAIN,
               doc="dry/wet across the whole chain; 0 = exact passthrough"),
-        # ---- page 2: knob / select / knob / select / knob / select ----------
-        Param(b"TONE", 64, 128, active=True, formatter=_BIPOL,
-              doc="a tilt after the saturator in every mode: 64 flat, 127 bright, 0 dark"),
+        # ---- page 2, filled from the top left: SAT (the mode, slot 6 as on
+        # every effect), TONE, WDTH -----------------------------------------
         Param(b"SAT", 0, 3, active=True, formatter=_STEP,
               labels=("TAPE", "TUBE", "INFL"),
               doc="character: TAPE (TapeHead), TUBE (DaTube, asymmetric), INFL (OInflator). JClones, MIT"),
-        _BLANK,
-        _BLANK,
+        Param(b"TONE", 64, 128, active=True, formatter=_BIPOL,
+              doc="a tilt after the saturator in every mode: 64 flat, 127 bright, 0 dark"),
         Param(b"WDTH", 64, 128, active=True, formatter=_BIPOL,
               doc="mid/side width, drawn -64..+63: 0 = untouched, -64 = mono, +63 = double the sides"),
-        _BLANK,
+        _BLANK, _BLANK, _BLANK,
     ),
     # SAT names itself by its value (tools/build/mode_names.with_selfname).
     # No knob changes meaning by mode.
-    mode_slot=7,                      # SAT names itself (TAPE / TUBE / INFL)
+    mode_slot=6,                      # SAT names itself (TAPE / TUBE / INFL)
     dsp=DspSection(
         asm="modules/character/character.asm",
         ptable=TUBE_UP + TAPE_D8 + POCKEY_ENC + POCKEY_DEC,

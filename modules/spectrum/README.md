@@ -6,7 +6,7 @@ hides the row.
 
 | page 1 | FREQ ⌐RES · ENV · LDP ⌐LSP · WDTH |
 |---|---|
-| page 2 | — · MODE (LADR LP BP ISO VOWL) · — · — · — · — |
+| page 2 | MODE (LADR LP BP ISO VOWL) · — · — · — · — · — |
 
 - **LADR** — the linear zero-delay Moog transistor ladder (audiojs/filter
   moogLadder, MIT), 24 dB/oct; RES 127 is the edge of self-oscillation,

@@ -202,8 +202,9 @@ def main():
     print(f"  stock={reached['stock']} page2-live={l}  {'ok' if good else 'FAIL'}")
 
     # 4. FX1 page 2 via CC 68-73: every track, Character (0x1c)
-    #    on FX1, CC 69 (page-2 slot 7 = SAT, count 3) value 1 -> lands as 1
-    print("CC 69 (FX1 page-2 slot 7) on each track's own channel, FX1 = Character:")
+    #    on FX1, CC 68 (page-2 slot 6 = SAT, count 3; top left since 16 Sep
+    #    2026) value 1 -> lands as 1
+    print("CC 68 (FX1 page-2 slot 6) on each track's own channel, FX1 = Character:")
     CHAR = 0x1c
     def send1(track, fx1_id, cc, value, channel=3):
         emu.assign_fx2(r, track=track, effect_id=9)             # SEND on FX2, irrelevant here
@@ -223,19 +224,19 @@ def main():
         emu._call(uc, CAVE_AT, (MSG_AT,), count=5_000_000)
         return pa, la, ma, la2
     for track in range(8):
-        pa, la, ma, la2 = send1(track, CHAR, 69, 1)
+        pa, la, ma, la2 = send1(track, CHAR, 68, 1)
         p, l, mm, l2 = (uc.mem_read(a, 1)[0] for a in (pa, la, ma, la2))
         good = (p == 1 and l == 1 and mm == 1 and l2 == 0 and not reached["stock"])
         ok &= good
         print(f"  t{track} Character: Part={p} live={l} mirror={mm} fx2lane={l2} "
               f"stock={reached['stock']}  {'ok' if good else 'FAIL'}")
-    # the clamp from the DESCRIPTOR: SAT count 3 -> 99 clamps to 2; MIX (slot 6, count 128) passes 120
-    pa, la, ma, _ = send1(2, CHAR, 69, 99)
+    # the clamp from the DESCRIPTOR: SAT (slot 6, count 3) -> 99 clamps to 2; TONE (slot 7, count 128) passes 120
+    pa, la, ma, _ = send1(2, CHAR, 68, 99)
     l = uc.mem_read(la, 1)[0]; good = (l == 2); ok &= good
     print(f"  clamp: Character SAT (count 3) value 99 -> live={l} (want 2)  {'ok' if good else 'FAIL'}")
-    pa, la, ma, _ = send1(2, CHAR, 68, 120)
+    pa, la, ma, _ = send1(2, CHAR, 69, 120)
     l = uc.mem_read(la, 1)[0]; good = (l == 120); ok &= good
-    print(f"  knob: Character MIX (count 128) value 120 -> live={l} (want 120)  {'ok' if good else 'FAIL'}")
+    print(f"  knob: Character TONE (count 128) value 120 -> live={l} (want 120)  {'ok' if good else 'FAIL'}")
     # FX1 = NONE (id 0): nothing written anywhere
     pa, la, ma, _ = send1(5, 0x00, 69, 77)
     vals = [uc.mem_read(a, 1)[0] for a in (pa, la, ma)]
