@@ -44,8 +44,8 @@ monoclr:
         move    r7,r5
         move    #>$ffffff,m5
         move    #$11,n5
-        move    (r5)+n5                 ; $11 .. $40
-        do      #48,>moiclz
+        move    (r5)+n5                 ; $11 .. $45
+        do      #53,>moiclz
         move    a,x:(r5)+
 moiclz:
         nop
@@ -127,6 +127,28 @@ proc:
 ; the P table base (rewritten by build_bus.py; the literal appears ONCE)
         move    #>$fab1e0,r5
         move    r5,x:(r7+$0f)
+; LOFI (slot 8, the knob field of r6+$d): the hold length 1 + 64 (k/128)^2
+; samples (an integer in $42; 17 at 64, 64 at 127) and the bit mask from the
+; 16-word table at P + 132 on k >> 3 ($45); k = 0 is hold 1 and a full
+; mask: bit-exact (verify_modulation)
+        move    x:(r6+$d),a
+        and     #>$7f0000,a
+        move    a1,x0
+        move    a1,y1
+        mpy     x0,y1,a                 ; (k/128)^2, Q23
+        asr     #$11,a,a                ; x 64: an integer 0..63
+        add     #>$1,a
+        move    a1,x:(r7+$42)
+        move    x:(r6+$d),a
+        and     #>$7f0000,a
+        asr     #$13,a,a                ; k >> 3: 0..15
+        move    x:(r7+$0f),r5
+        move    #$84,n5                 ; 4 x 33 words in front of the masks
+        move    (r5)+n5
+        move    a1,n5
+        move    (r5)+n5
+        move    p:(r5),x0
+        move    x0,x:(r7+$45)
 ; ---- MODE (slot 7 select of r6+$c) ---------------------------------------
 ; A change of mode clears every state slot $23..$3c (Spectrum's rule: a
 ; state that meant something else in the last mode is garbage in this one).
@@ -259,6 +281,7 @@ mo_line:
         add     x0,a
         move    a,r5
         move    x:(r7+$10),a
+        bsr     mo_lofl
         move    a,y:(r5)                ; write line L
         move    x:(r0+n0),a             ; dry R
         move    x:(r7+$24),b            ; lpi R
@@ -282,6 +305,7 @@ mo_line:
         add     #>$400,a
         move    a,r5
         move    x:(r7+$10),a
+        bsr     mo_lofr
         move    a,y:(r5)                ; write line R
 ; ---- LPo on both taps (in place) --------------------------------------------
         move    x:(r7+$3d),a
@@ -567,6 +591,9 @@ mo_padv:
         mac     x0,y1,b
         asl     #$1,b,b                 ; back to full scale
         move    b,x:(r7+$3d)            ; wet L (limited)
+        move    x:(r7+$3d),a
+        bsr     mo_lofl                 ; no line here: the wet itself
+        move    a,x:(r7+$3d)
 ; ===== channel R =====
         move    x:(r7+$15),a
         move    x:(r7+$16),x0
@@ -632,6 +659,9 @@ mo_padv:
         mac     x0,y1,b
         asl     #$1,b,b
         move    b,x:(r7+$3e)            ; wet R (limited)
+        move    x:(r7+$3e),a
+        bsr     mo_lofr
+        move    a,x:(r7+$3e)
         bsr     momixs
         move    (r0)+n0
         move    (r0)+n0
@@ -734,6 +764,7 @@ mo_bcomb:
         move    x:(r7+$3f),x0
         move    x:(r7+$1a),y1           ; gain
         mpy     x0,y1,a
+        bsr     mo_lofl
         move    a,x:(r7+$3d)            ; wet L = the sample written
         move    x:(r7+$20),a
         move    x:(r7+$0e),x0
@@ -771,6 +802,7 @@ mo_bcomb:
         move    x:(r7+$3f),x0
         move    x:(r7+$1a),y1
         mpy     x0,y1,a
+        bsr     mo_lofr
         move    a,x:(r7+$3e)            ; wet R
         move    x:(r7+$20),a
         move    x:(r7+$0e),x0
@@ -1033,6 +1065,41 @@ mo_tab:
         move    b,y1
         mpy     x0,y1,a
         add     y0,a
+        rts
+
+; ---------------------------------------------------------------------------
+; mo_lofl / mo_lofr -- LOFI: the value in a held and masked. One counter
+; ($41) for both channels: L advances it and latches ($43) on the compare,
+; R latches ($44) on the counter reading 0. The mask keeps bit 23, so a2
+; stays consistent through the and and the store does not saturate.
+; Applied at the LINE WRITE in the line modes and COMB (the line is clocked
+; coarse and the taps read through the stairs; COMB's ring recirculates it)
+; and on the wet in PHSR, which has no line.
+; ---------------------------------------------------------------------------
+mo_lofl:
+        move    a,y0
+        move    x:(r7+$41),a
+        move    x:(r7+$42),x0
+        move    #>$0,x1
+        add     #>$1,a
+        cmp     x0,a
+        tge     x1,a
+        move    a1,x:(r7+$41)
+        move    x:(r7+$43),a
+        tge     y0,a
+        move    a,x:(r7+$43)
+        move    x:(r7+$45),x1
+        and     x1,a
+        rts
+mo_lofr:
+        move    a,y0
+        move    x:(r7+$41),a
+        tst     a
+        move    x:(r7+$44),a
+        teq     y0,a
+        move    a,x:(r7+$44)
+        move    x:(r7+$45),x1
+        and     x1,a
         rts
 
 ; ---------------------------------------------------------------------------

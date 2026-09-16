@@ -70,6 +70,9 @@ PERIOD = (
     0x01abfe, 0x01700d, 0x013c81, 0x01102d, 0x00ea0f, 0x00c947,
     0x00ad17, 0x0094d9, 0x008000,
     )
+# LOFI's bit mask by k >> 3: 24 bits below 64, then 16 12 10 9 8 7 6 5
+LOFI_BITS = (24, 24, 24, 24, 24, 24, 24, 24, 16, 12, 10, 9, 8, 7, 6, 5)
+LOFI_MASK = tuple((0xffffff << (24 - b)) & 0xffffff for b in LOFI_BITS)
 POW2 = (
     0x7fffff, 0x6ba27e, 0x5a827a, 0x4c1bf8, 0x400000, 0x35d13f,
     0x2d413d, 0x260dfc, 0x200000, 0x1ae8a0, 0x16a09e, 0x1306fe,
@@ -112,7 +115,9 @@ MODULE = Module(
         Param(b"MODE", 0, 5, active=True, formatter=_STEP,
               labels=("JUNO", "DIM", "FLNG", "COMB", "PHSR"),
               doc="which pedal"),
-        _BLANK, _BLANK, _BLANK, _BLANK,
+        Param(b"LOFI", 0, active=True, formatter=_PLAIN,
+              doc="the line clocked coarse and quantised: hold 1 + 64 (k/128)^2 samples; bits 24, then 16..5 past 63"),
+        _BLANK, _BLANK, _BLANK,
     ),
     # ---- what each MODE renames and re-defaults ---------------------------
     # The defaults are each source's own numbers: the Juno's I (0.513 Hz,
@@ -138,7 +143,7 @@ MODULE = Module(
     ),
     dsp=DspSection(
         asm="modules/modulation/modulation.asm",
-        ptable=PHSR_MOD + PHSR_FB + PERIOD + POW2,
+        ptable=PHSR_MOD + PHSR_FB + PERIOD + POW2 + LOFI_MASK,
         priority=14,                  # after the Character station
         bus_role=BusRole.NONE,        # an insert; it writes nothing to the bus
         ybase=YBase.NEVER,

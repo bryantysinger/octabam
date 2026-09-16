@@ -6,7 +6,7 @@ licences and laws are in `docs/effects/PORTS.md`.
 
 | page 1 | RATE · DPTH · FDBK · MIX · TONE · WDTH |
 |---|---|
-| page 2 | DLY · MODE (JUNO DIM FLNG COMB PHSR) |
+| page 2 | DLY · MODE (JUNO DIM FLNG COMB PHSR) · LOFI |
 
 | mode | source | licence | what it is |
 |---|---|---|---|
@@ -41,6 +41,7 @@ way ("no good, lose it"). It is in history (`git log -- modules/modulation`).
 | TONE | one-pole 0.25 + 0.75 · k/128, 127 = 1.0 (exact bypass); 0 = 2 kHz | the BBD proxy in AND out of every line (the Juno's ~10 kHz filters at 80); COMB's FIR brightness; inert in PHSR |
 | WDTH | the right channel's LFO lag, (k/128)/2 of a cycle: 0 mono, 64 quadrature, 127 antiphase | the Juno's and the Dimension's are antiphase; inert in ENS (three fixed phases) and COMB |
 | DLY | 8 + 992 · k/128 samples (0.2..23 ms), capped 1000 | the centre; MANL in FLNG; the pitch in COMB (a 33-word table, 1000..8 samples exponential = 44 Hz..5.5 kHz); STGS in PHSR (2/4/6/8 by quarters) |
+| LOFI | hold 1 + 64·(k/128)² samples (1 at 0, 17 at 64, 64 at 127 = 690 Hz); bits 24 below 64, then 16 12 10 9 8 7 6 5 by eighths of the travel | at the LINE WRITE in JUNO/DIM/FLNG (the taps read through the stairs) and COMB (the ring recirculates it); on the wet in PHSR. One hold counter for both channels. 0 is bit-exact |
 
 Each mode's ModeView re-defaults the knobs to its source's numbers (the
 Juno's I, the Dimension's mode 1, the Solina, Dattorro's flanger,
@@ -50,7 +51,10 @@ ChowPhaser's, Rings at a mid pitch).
 
 Three sample loops, one chosen per block (the pricer takes the worst): LINE
 (JUNO, DIM and FLNG share it — the three differ only in five per-block
-mix weights `bl bd ff kc kb`), PHSR, COMB. Straight-line callees:
+mix weights `bl bd ff kc kb`), PHSR, COMB. `mo_lofl`/`mo_lofr` are LOFI's
+hold + mask (L advances the shared counter and latches on its compare, R
+latches on the counter reading 0; the mask keeps bit 23 so the extension
+byte stays consistent and the store does not saturate). Straight-line callees:
 `mo_tap` (the linear read, blending toward the older sample), `mo_herm`
 (the 4-point Hermite read, scaled 1/16 inside), `mo_apst` (one allpass
 stage), `mo_para` (the parabola sine), `mo_lfo`, `mo_tab` (the table
@@ -66,16 +70,18 @@ proven by the gates). A change of MODE clears every state slot.
 
 ## Measured
 
-- **1,044 words** (1,199 with ENS), core A FREE 847 in the rig; **476 cycles/sample** worst
-  (PHSR 476; LINE 401, COMB 314: 306 + the trim's 8) — under Character's 639, so the
+- **1,119 words** (LOFI added 16 Sep 2026; 1,044 before, 1,199 with ENS), core A FREE 772 in the rig; **525 cycles/sample** worst
+  (PHSR 525; LINE 446, COMB 359 -- LOFI is ~45 of each) — under Character's 639, so the
   worst core is unchanged at 3,831.
-- `tools/verify/verify_modulation.py`, **25 gates, all PASS**: MIX 0
+- `tools/verify/verify_modulation.py`, **29 gates, all PASS**: MIX 0
   bit-exact in every mode; an FX2 instance a bit-exact dry pass with the
   guard clean; every mode against `modulation_ref.py` on a stereo signal
   (max error ≤ 1e-4 where the law is linear; COMB's ring recirculates its
   rounding, 5.5e-4 against a 3e-3 bar); the Juno's sweep 1.56..5.10 ms and
   0.5 Hz; the through-zero null −138 dB; the phaser unity at FDBK 64; the
-  comb's period at three pitches.
+  comb's period at three pitches; LOFI against the reference at hold 7 / 24 bits
+  (JUNO), hold 32 / 9 bits (PHSR), hold 64 / 5 bits (DIM), hold 40 / 8 bits
+  through the ring (COMB) — the hold to the sample, the mask within one quantum.
 
 - The LFO's increment is an integer count of 2^-23 cycles (the mpy keeps
   the integer part); the reference models that (a float increment drifts
@@ -88,7 +94,9 @@ proven by the gates). A change of MODE clears every state slot.
 16 Sep 2026, on the emulator (`abkit`, the pad and loop stems, level-matched,
 Sam listening): JUNO "good", DIM "good", FLNG "good" at RATE 8 (the view was
 14: "slower please"), COMB "sounds like what you describe" — kept, PHSR
-"pretty good". Not yet heard on the unit.
+"pretty good". LOFI (same day): two placements rendered on JUNO over the
+loop at 90 — on the wet before MIX, and at the line write — Sam: "c please"
+(the line write). Not yet heard on the unit.
 
 ## Open
 

@@ -2684,3 +2684,15 @@ not the effect.
 
 Stored MODE bytes 3..5 now read one mode lower: `stamp-defaults` before play.
 Unheard on the unit.
+
+## 16 Sep 2026 — LOFI on Modulation: two placements, Sam picked the line write
+
+Sam: "is there room to add a lofi knob" → "lets discuss options" → both
+placements rendered. The knob (page-2 slot 8, default 0 = bit-exact): hold
+1 + 64·(k/128)² samples and a bit mask by eighths (24 to 63, then 16 12 10 9
+8 7 6 5). (a) on the parked wet before MIX, dry clean; (c) at the LINE
+WRITE, the taps reading through the stairs, COMB's ring recirculating it,
+PHSR (no line) on its wet. Played JUNO over the loop at LOFI 90 (hold 32 =
+1.4 kHz, 9 bits), (a) then (c), twice: "c please". Kits `out/ab/lofi_a_*`,
+`out/ab/lofi_c_*`. Reference + 4 gates; +75 words, the hold/mask ~45
+cycles a sample.

@@ -143,6 +143,38 @@ def clamp(v, lo, hi):
 
 
 # =============================================================================
+# LOFI: hold + quantise, one counter for both channels. At the LINE WRITE in
+# the line modes and COMB (the taps read through the stairs, the ring
+# recirculates them), on the wet in PHSR. hold = 1 + floor(k^2 / 256) samples
+# (the DSP's mpy + asr 17); the mask on k >> 3 from the manifest's table. The
+# and on the 24-bit word is a floor toward -inf, as the DSP's.
+# =============================================================================
+LOFI_BITS = (24, 24, 24, 24, 24, 24, 24, 24, 16, 12, 10, 9, 8, 7, 6, 5)
+
+
+class Lofi:
+    def __init__(self, k):
+        self.hold = 1 + (k * k) // 256
+        self.mask = (0xffffff << (24 - LOFI_BITS[k >> 3])) & 0xffffff
+        self.cnt = 0
+        self.held = [0.0, 0.0]
+
+    def step(self):
+        self.cnt += 1
+        if self.cnt >= self.hold:
+            self.cnt = 0
+
+    def run(self, ch, v):
+        if self.cnt == 0:
+            self.held[ch] = v
+        i = min(int(math.floor(self.held[ch] * 2 ** 23)), 2 ** 23 - 1)   # the DSP's limiter: +1.0 is 0x7fffff
+        i = i & 0xffffff & self.mask
+        if i >= 2 ** 23:
+            i -= 2 ** 24
+        return i / 2 ** 23
+
+
+# =============================================================================
 # LINE: JUNO, DIM, FLNG -- two lines, one triangle LFO, per-mode mix weights
 # =============================================================================
 class LineModes:
@@ -159,8 +191,9 @@ class LineModes:
          "DIM": (0.0, 0.39811, 0.25 * 0.39811, -0.39811, 0.5 * 0.39811)}  # -8 dB
     C200 = 1.0 - math.exp(-2 * math.pi * 200.0 / FS)      # 0.0281
 
-    def __init__(self, mode, RATE, DPTH, FDBK, MIX, TONE, WDTH, DLY):
+    def __init__(self, mode, RATE, DPTH, FDBK, MIX, TONE, WDTH, DLY, LOFI=0):
         self.bl, self.bd, self.ff, self.kc, self.kb = self.W[mode]
+        self.lofi = Lofi(LOFI)
         self.k = dict(RATE=RATE, DPTH=DPTH, FDBK=FDBK, MIX=MIX, TONE=TONE, WDTH=WDTH, DLY=DLY)
         self.lines = (Line(), Line())
         self.phase = 0.0
@@ -194,8 +227,10 @@ class LineModes:
             taps = [self.lines[ch].read(self.centre + self.depth * lfo[ch]) for ch in (0, 1)]
             fixed = [self.lines[ch].read(self.centre) for ch in (0, 1)]
             wo = [self.lpo[ch].lp(taps[ch]) for ch in (0, 1)]
+            self.lofi.step()
             for ch in (0, 1):
-                self.lines[ch].write(clamp(self.lpi[ch].lp(dry[ch]) + self.fb * taps[ch], -1.0, 1.0))
+                v = clamp(self.lpi[ch].lp(dry[ch]) + self.fb * taps[ch], -1.0, 1.0)
+                self.lines[ch].write(self.lofi.run(ch, v))
             wet = []
             for ch in (0, 1):
                 o = 1 - ch
@@ -256,7 +291,8 @@ class Allpass1:
 class Phaser:
     STAGES = 8
 
-    def __init__(self, RATE, DPTH, FDBK, MIX, TONE, WDTH, DLY, tables=True):
+    def __init__(self, RATE, DPTH, FDBK, MIX, TONE, WDTH, DLY, tables=True, LOFI=0):
+        self.lofi = Lofi(LOFI)
         self.k = dict(RATE=RATE, DPTH=DPTH, FDBK=FDBK, MIX=MIX, WDTH=WDTH, DLY=DLY)
         self.tables = phsr_tables() if tables else None
         self.phase = 0.0
@@ -312,6 +348,9 @@ class Phaser:
                 for s in range(self.taps, self.STAGES):     # the idle stages still run (the DSP unrolls 8)
                     self.mod[ch][s].run(y, bm)
                 y = clamp(2.0 * 0.79433 * y, -1.0, 1.0)      # -2 dB trim
+                if ch == 0:
+                    self.lofi.step()
+                y = self.lofi.run(ch, y)
                 outs.append(x + self.m * (y - x))
             outL.append(outs[0])
             outR.append(outs[1])
@@ -335,7 +374,8 @@ def pow2_table(n=33):
 class Comb:
     RT60_1 = 0.07 * FS          # rt60 at lf = 0, in samples (3,087)
 
-    def __init__(self, RATE, DPTH, FDBK, MIX, TONE, WDTH, DLY, tables=True):
+    def __init__(self, RATE, DPTH, FDBK, MIX, TONE, WDTH, DLY, tables=True, LOFI=0):
+        self.lofi = Lofi(LOFI)
         self.k = dict(FDBK=FDBK, MIX=MIX, TONE=TONE, DLY=DLY)
         self.tables = (period_table(), pow2_table()) if tables else None
         self.lines = (Line(), Line())
@@ -377,6 +417,9 @@ class Comb:
                 self.x2[ch] = self.x1[ch]
                 self.x1[ch] = s
                 y = clamp(y, -1.0, 1.0)
+                if ch == 0:
+                    self.lofi.step()
+                y = self.lofi.run(ch, y)                        # the sample written
                 self.lines[ch].write(y)
                 w = 0.25119 * y                                 # -12 dB trim, outside the ring
                 outs.append(x + self.m * (w - x))
