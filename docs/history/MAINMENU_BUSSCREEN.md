@@ -196,7 +196,9 @@ the viable designs all reuse the existing descriptor pipeline
   tempo-sync + MIDI there is one free 16-bit word left (`r6+$a`, `DSP.md`).
 
 Also already ruled out elsewhere: the MIXER page as a control surface (it
-does not use the generic renderer — `PARAM_PAGES.md`).
+does not use the generic renderer — `PARAM_PAGES.md`). [16 Sep 2026: that
+evidence was a reversed nibble read; MAIN and DIR are enabled in the image
+and whether MIXER bypasses the bitmap is unmeasured, `PARAM_PAGES.md` §3b.]
 
 ## 7. The FX2-page shortcut, traced end to end (31 Aug 2026)
 

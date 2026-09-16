@@ -1,8 +1,8 @@
 # External findings
 
 Reverse-engineering results from outside this project, with what we
-re-verified, adopted, and retracted kept distinct. §1–§6, §8 and §10 are
-Bryan T's (Discord); §7 scans two parallel projects; §9 is nordseele's
+re-verified, adopted, and retracted kept distinct. §1–§6, §8, §10 and §11
+are Bryan T's (Discord); §7 scans two parallel projects; §9 is nordseele's
 octalab. All were derived from the officially distributed OS 1.40C
 (`section_3_MAIN_OS.bin` SHA-256 `164f3122…`, base `0x40000400`). The full
 ingest record, including the frame-phase model, the notes exchanged and
@@ -383,3 +383,57 @@ four-character limit on `Formatter.STEPPED` labels (a ten-character label
 threw `VEC:04` at `ADDR 4E007890`); a range check on `lua` displacements
 (seven-bit signed, `dsp_asm` wraps `lua (r7+$40),r1` to `r7-$40`;
 unverified here).
+
+## 11. The parameter enable nibbles (Bryan T, 16 Sep 2026) ✅ (❌ ours)
+
+`~/Downloads/enable-nibbles.md`; the note verbatim is
+`docs/history/EXTERNAL_INGEST.md` §11. What it establishes is now
+`PARAM_PAGES.md` §3b; this section is what was checked.
+
+Re-read from our image 16 Sep 2026: all 31 descriptors' `P+0x18e`/`P+0x18a`
+words and nibbles match his table (script in the ingest record); PICKUP
+TSTR count 3 against 4 on STATIC/FLEX. The accessor `FUN_400a6994`, which
+he hand-decoded, in objdump: `asrl` where he read `lsr.l`, and the branch
+he elided (`bles 0x400a69ce`) is the path for shifts ≥ 32 — params 8–11 —
+returning `hi >> (index−32)` in D1 and the sign of `hi` in D0. Both return
+the same nibble for every word in the table. Call-site masks checked:
+`0x40053810` (`moveq #9; andl`), `0x40052b82` (`#15` then `#9`),
+`0x4003780e` (`#4`).
+
+Effect rows (nibbles p0..p11, `-` = a `---` slot at 0):
+
+| id | page | nibbles |
+|---|---|---|
+| `0x04` | FILTER | `131111111111` (WDTH `3`) |
+| `0x05` | SPATIALIZER | `111111010111` |
+| `0x08` | DELAY | `111111111111` |
+| `0x0c` | EQUALIZER | `111111100100` |
+| `0x0d` | DJ EQUALIZER | `101111000000` |
+| `0x10` | PHASER | `111111010000` |
+| `0x11` | FLANGER | `111111000000` |
+| `0x12` | CHORUS | `111111100100` |
+| `0x13` | COMB FILTER | `111101000000` |
+| `0x14` | PLATE REV | `111111111001` |
+| `0x15` | SPRING REV | `100111110000` |
+| `0x16` | DARK REV | `113111111001` (SHVF `3`) |
+| `0x18` | COMPRESSOR | `111111100000` |
+| `0x19` | MULTIBCOMP | `101111000000` |
+| `0x1c` | LO-FI | `101111001000` (NOIS `0`) |
+
+❌ Retracted from `PARAM_PAGES.md` §3b: the derived "no knob" lists for
+p0..p7 (read high nibble first), the MIXER "drawn anyway" counterexample
+(MAIN and DIR are `1`; p6 MIX is the 0), AMP REL `8` (REL is `1`, XVOL is
+`8`, ATCK is `1`, TRIG is `0`). `build_bus.py`, `verify_menu.py`,
+`verify_hidden.py`, `rig.py` and `stock.py` shift `4·index` from the low
+nibble; every built image's bitmaps were right.
+
+Bit 2 taken one step past his note (🟡 objdump, not run): the drawer's site
+at `0x4003780e` passes `8` for it as the flags word of the knob renderer
+`0x400479b4(x, y, index, value, flags, formatter, window)`; the renderer
+does `move.w flags,%ccr`, and `bpl` at `0x40047aac` picks the layout at
+`0x40047b4a` (dial offset by the live record's `(0x46c7d244 + 20·index)+4`,
+0..3) only when bit 3 is clear, flags bit 0 is clear and that field is
+≤ 3. What differs on screen between the two layouts is open, as is bit 3's
+path and bit 1's drawer. 🟡 A module would get a link element by setting
+bit 1 on the right-hand slot (stock data + his panel reading; no module has
+tried it); `build_bus.py`'s `penable` writes bit 0 only.
