@@ -188,7 +188,27 @@ so the play-phase ratio above is ±20%). `cmake` from Intel Homebrew
 configured the port x86_64 under Rosetta; `make emu-cf` and
 `scripts/setup.sh` now pass the host architecture.
 
-What real time (~10× on play) would take, in order, none of it started:
+Direct timing of the play phase (the `cpu` report line, 18 Sep 2026):
+**14.0× off real time exact, 12.4× at `--fast 8`**; 4.7 M ColdFire
+instructions per wall second all-in. By 1 KB of code (`--profile`, the
+frames alone): 28.5% the stock delay's EMAC mix (`0x40003400..`), 22.5%
+the frame builder (`0x4000cc00..`), 7% the frame dispatcher, ~4% the
+host-port transfer state machine — real work, nothing to idle-skip.
+Unicorn's TCG (route A's core, QEMU's m68k JIT) on a store loop from this
+image with no hooks and no instruction count: 52 M instr/s, and it has
+no MAC-with-parallel-load form (route A shims it per site). Real time
+needs 66 M/s on the ColdFire plus the DSP side.
+
+**Parked 18 Sep 2026** (someone else is working on a core). The options,
+cheapest first: (1) hot-loop HLE — the two loops above are 51% of the
+play-phase instructions and `v4e.cpp` has the EMAC semantics; days, ~2×
+on the ColdFire side, verifiable bit-identical with the block dump;
+(2) Unicorn/TCG as the fast core with the RTOS glue rewritten on its
+hooks and QEMU's translate.c taught the load form; ~3× on the ColdFire
+side; (3) a custom ARM64 JIT (asmjit is vendored) with the DSP JIT and a
+thread per core — the only route to real time, weeks.
+
+What real time would take, in order, none of it started:
 
 1. a coarse-grained run mode — interrupt delivery, timers and gates every
    N instructions, the DSPs in JIT blocks with a larger quantum, no PC
