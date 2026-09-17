@@ -105,6 +105,7 @@ int main(int _argc, char** _argv)
 	int callAt = -1;			// with --sequencer: make that call this many frames AFTER the transport start instead (a panel edit while playing: the transport start re-applies the part over the live lane, so an edit made before it is gone)
 	std::string midiFile;		// with --sequencer: MIDI IN bytes onto UART0, one event per line: "<frames after the transport start> <hex byte>..." (e.g. "20 B0 28 7F" = CC 40 to 127 on channel 1) or "pre <hex byte>..." before the transport start ("pre C0 10" = program change 16 while stopped)
 	int mainLevel = -1;			// O9b: post sys command 4 (SET MAIN LEVEL) with this level after the load; -1 = don't (the emulated load never does, and every voice then renders at gain zero)
+	std::string lcd;			// the panel's 1-bpp plane (0x46c7e0ea, 1024 B) to FILE whenever it has changed, at most once per 2M instructions; tools/emu/lcd_view.py draws it
 	std::string memDump;		// O10.21: "addr,len=path[;...]" -- ColdFire memory ranges, raw bytes, to FILE at the very end (peeks only support one word, pre-sequencer; this is a range, post-run)
 	std::string cardOut;		// the card image as the firmware left it, to FILE at the very end (the load's WRITEs: emu_card.extract_image reads it back)
 
@@ -169,6 +170,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--coverage" && i + 1 < _argc)	coverage = _argv[++i];
 		else if(a == "--main-level" && i + 1 < _argc)	mainLevel = std::atoi(_argv[++i]);
 		else if(a == "--mem-dump" && i + 1 < _argc)	memDump = _argv[++i];
+		else if(a == "--lcd" && i + 1 < _argc)		lcd = _argv[++i];
 		else if(a == "--card-out" && i + 1 < _argc)	cardOut = _argv[++i];
 		else if(a == "--poke" && i + 1 < _argc)		pokeAfterLoad = _argv[++i];
 		else if(a == "--poke-early" && i + 1 < _argc)	pokeEarly = _argv[++i];
@@ -279,6 +281,42 @@ int main(int _argc, char** _argv)
 		m.setCoprocessor(dspPair.get());
 		std::printf("dsp        : two cores behind the host port, %.2f instructions per ColdFire instruction, %.0f per sample\n",
 			dspRatio, dspIps);
+	}
+	// The panel plane. The firmware draws the 128x64 screen into 1024 bytes
+	// at 0x46c7e0ea as 64 columns x 128 rows, MSB left (screen (x,y) =
+	// column 63-y, row x -- measured 17 Sep 2026 by rendering a dump: the
+	// PLAYBACK page reads upright that way and no other). A write watch
+	// marks it dirty; the file is rewritten (tmp + rename, so a reader never
+	// sees a torn frame) once 2M instructions have passed since the last
+	// flush, and once more at exit.
+	constexpr uint32_t g_lcdPlane = 0x46c7e0ea, g_lcdBytes = 0x400;
+	bool lcdDirty = false;
+	uint64_t lcdFlushed = 0, lcdFrames = 0;
+	auto lcdFlush = [&]()
+	{
+		++lcdFrames;
+		std::vector<uint8_t> buf(g_lcdBytes);
+		for(uint32_t k = 0; k < g_lcdBytes; ++k)
+			buf[k] = m.read8(g_lcdPlane + k);
+		const auto tmp = lcd + ".tmp";
+		{
+			std::ofstream f(tmp, std::ios::binary);
+			f.write(reinterpret_cast<const char*>(buf.data()), static_cast<std::streamsize>(buf.size()));
+		}
+		std::rename(tmp.c_str(), lcd.c_str());
+		lcdDirty = false;
+		lcdFlushed = m.instructions();
+	};
+	if(!lcd.empty())
+	{
+		m.addWriteWatch(g_lcdPlane, g_lcdPlane + g_lcdBytes - 1,
+			[&](const uint32_t, const uint8_t, const uint32_t, const uint32_t)
+			{
+				lcdDirty = true;
+				if(m.instructions() - lcdFlushed >= 2000000)
+					lcdFlush();
+			});
+		std::printf("lcd        : plane %#x -> %s\n", g_lcdPlane, lcd.c_str());
 	}
 	const auto stop = m.run(maxInstructions);
 
@@ -1128,6 +1166,12 @@ int main(int _argc, char** _argv)
 			}
 			std::printf("   %c %#08x size %u = %#x   (pc %#06x)\n", a.kind, a.addr, a.size, a.val, a.pc);
 		}
+	}
+	if(!lcd.empty())
+	{
+		if(lcdDirty)
+			lcdFlush();
+		std::printf("lcd        : %llu frames -> %s\n", static_cast<unsigned long long>(lcdFrames), lcd.c_str());
 	}
 	if(!memDump.empty())
 	{

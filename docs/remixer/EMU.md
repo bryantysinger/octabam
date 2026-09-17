@@ -90,6 +90,21 @@ formatters through the same machine. Item-level descent inside the menu
 `FUN_40064e64`, whose keycodes are position-dependent; repointing the
 display at a submenu descriptor directly lands the labels at a bogus x.
 
+## The screen itself (the port, 17 Sep 2026)
+
+`ot_emu --lcd FILE` writes the firmware's own 1-bpp plane (`0x46c7e0ea`,
+1,024 bytes) to FILE whenever it has changed, at most once per 2M ColdFire
+instructions, and once more at exit (tmp + rename, never a torn frame).
+`tools/emu/lcd_view.py FILE` shows it in a Tk window and follows the file;
+`--term` draws it in the terminal with half blocks; `--png out.png` takes
+one frame. The plane is 64 columns × 128 rows, 8 bytes per row, MSB left,
+and screen pixel (x, y) is column 63−y of row x — stored a quarter turn
+round; the PLAYBACK page reads upright under that layout and no other
+(`docs/firmware/PANEL.md` §1). A 400-frame sequencer run on the rig
+project flushed 12 frames: the panel redraws seldom, and the port drives
+no keys, so what you see is the page the load leaves and whatever the
+transport changes on it (BPM, the play icon, the pattern indicator).
+
 ## The card (route A)
 
 `tools/emu/emu_card.py`: a pure-Python FAT16 image builder (a SET folder
