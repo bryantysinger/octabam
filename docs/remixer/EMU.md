@@ -105,6 +105,37 @@ project flushed 12 frames: the panel redraws seldom, and the port drives
 no keys, so what you see is the page the load leaves and whatever the
 transport changes on it (BPM, the play icon, the pattern indicator).
 
+## Driving it: the panel from a FIFO (18 Sep 2026)
+
+`ot_emu --live FIFO` reads panel events while the RTOS runs and feeds
+them to the firmware over the panel link (UART1) in the controller's own
+framing (`docs/firmware/PANEL.md` §4b), and MIDI over UART0:
+
+```
+mkfifo out/panel.fifo
+./out/emu/ot_emu --image out/raw/section_3_MAIN_OS.bin --card out/card.img --set OCTABAM --project RIG \
+    --load-ms 20000 --dsp --lcd out/lcd.bin --live out/panel.fifo
+.venv/bin/python3 tools/emu/lcd_view.py out/lcd.bin --panel out/panel.fifo     # other terminal
+```
+
+Lines: `key <code> down|up`, `enc <n> <delta>`, `pot <0..255>`,
+`midi <hex>...`, `quit`. Without `--sequencer` the transport is yours
+(PLAY is `0x28`); with it the frames target still ends the run. The
+viewer's `--panel` draws keys (press/release, so FUNC + key holds), the
+seven encoders (buttons or the mouse wheel over the label) and the MAIN
+pot under the screen, with keyboard shortcuts (arrows, Return, Escape,
+space = PLAY, `1..8 q..i` = trigs, F1..F5 = pages). The FIFO is polled
+every 256 instructions and at most every 10 ms of wall time; the plane
+file is flushed from the same poll 30 ms after a redraw. Measured: a
+page key changes the screen in under a second of wall time at idle.
+
+`--fast N` evaluates timers, interrupt delivery and the stop condition
+every N instructions instead of every one. Measured on the 1200-frame
+rig run: 42.3 s exact, 36.5 s at N = 8 (block dump identical, the audio
+file's length differs by the run's end point), 35.4 s at N = 32 (block
+dump differs). It is not the exact mode and is off by default; the
+gates never use it.
+
 ## The card (route A)
 
 `tools/emu/emu_card.py`: a pure-Python FAT16 image builder (a SET folder
