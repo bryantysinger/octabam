@@ -132,7 +132,7 @@ Stock 1.40C, the rig project, `--sequencer --internal-clock --dsp`:
 |---|---|---|---|
 | boot to the handoff | 205 ms, 10.2 M instructions | 3.5 s | 17× |
 | load (`--load-ms 20000`, DSPs stepping through the idle skips) | 20 s | ~35 s | 1.7× |
-| play (400 → 1200 frames) | 290 ms of audio | 3.1 s | **~11×** |
+| play (400 → 1200 frames) | 290 ms of audio | ~2.9 s | **~10×** |
 
 The play phase runs 23,946 ColdFire instructions per 16-sample frame =
 1,497 per sample = 66 M/s for real time; the hottest loop is the stock
@@ -148,12 +148,16 @@ harness — interrupt delivery, timers, the opcode pre-read, `pc()` — 40%.
 Two changes with outputs bit-identical (audio, block dump, plane, report):
 the interrupt controllers' 22 `std::function` lines became one wires mask
 per controller (`Intc::setWires`; the lines were ~35% of the run), and
-`Machine::find` tries the last-hit region first. Together 53.0 → 39.7 s on
-the load + 400 frames run; the play phase moved from 9.8× to ~11× (noise).
-`cmake` from Intel Homebrew configured the port x86_64 under Rosetta;
-`make emu-cf` and `scripts/setup.sh` now pass the host architecture.
+`Machine::find` indexes regions by the top address byte instead of
+scanning (a last-hit cache was tried first and lost on the play phase,
+whose accesses alternate between code, data and the fast RAM). Together
+53.0 → 38.9 s on the load + 400 frames run, 55.8 → 41.2 s at 1200 frames
+(three runs each; single runs scatter by up to 10 s on a shared machine,
+so the play-phase ratio above is ±20%). `cmake` from Intel Homebrew
+configured the port x86_64 under Rosetta; `make emu-cf` and
+`scripts/setup.sh` now pass the host architecture.
 
-What real time (~11× on play) would take, in order, none of it started:
+What real time (~10× on play) would take, in order, none of it started:
 
 1. a coarse-grained run mode — interrupt delivery, timers and gates every
    N instructions, the DSPs in JIT blocks with a larger quantum, no PC
