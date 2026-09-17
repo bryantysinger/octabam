@@ -898,11 +898,15 @@ int main(int _argc, char** _argv)
 				const auto instr0 = m.instructions();
 				if(profile)
 					m.clearProfile();		// the whole-run table below then covers the frames alone
+				const auto wall0 = std::chrono::steady_clock::now();
 				const auto rs2 = rtos.runUntil(livePath.empty() ? budgetMs : 1e15, [&] { return rtos.frameCount() >= target || live.quit; });
-				std::printf("cpu        : %llu ColdFire instructions over the frames (%.0f per frame of %g samples)\n",
+				const auto wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - wall0).count();
+				const auto ran = rtos.frameCount() > frame0 ? static_cast<double>(rtos.frameCount() - frame0) : 0.0;
+				std::printf("cpu        : %llu ColdFire instructions over the frames (%.0f per frame of %g samples); %.2f s wall = %.1f M instr/s, %.1fx real time\n",
 					static_cast<unsigned long long>(m.instructions() - instr0),
-					rtos.frameCount() > frame0 ? static_cast<double>(m.instructions() - instr0) / static_cast<double>(rtos.frameCount() - frame0) : 0.0,
-					ot::g_framePeriod);
+					ran > 0 ? static_cast<double>(m.instructions() - instr0) / ran : 0.0, ot::g_framePeriod,
+					wall, static_cast<double>(m.instructions() - instr0) / wall / 1e6,
+					ran > 0 ? wall / (ran * ot::g_framePeriod / ot::g_sampleHz) : 0.0);
 				if(!midiFile.empty())
 					std::printf("midi in    : %zu byte(s) still queued at the end (0 = the firmware took them all)\n", rtos.midiPending());
 				static const char* const g_seqStop[] = {"REACHED", "TIME", "FAULT", "ILLEGAL"};
@@ -1298,6 +1302,8 @@ int main(int _argc, char** _argv)
 		std::vector<std::pair<uint32_t, uint64_t>> hot(m.profile().begin(), m.profile().end());
 		std::sort(hot.begin(), hot.end(), [](const auto& _a, const auto& _b){ return _a.second > _b.second; });
 		std::printf("hottest addresses over the frames (PC sampled every 64 instructions; the boot table above is the boot alone):\n");
+		uint64_t total = 0;
+		for(const auto& h : hot) total += h.second;
 		for(size_t i = 0; i < hot.size() && i < 24; ++i)
 		{
 			char buf[256] = {};
@@ -1305,6 +1311,16 @@ int main(int _argc, char** _argv)
 			std::printf("   %#08x  %8llu  %s\n", hot[i].first,
 				static_cast<unsigned long long>(hot[i].second), buf);
 		}
+		// The same samples by 1 KB of code, which names the loop, not the
+		// instruction: a busy-wait shows as one bucket holding most of them.
+		std::map<uint32_t, uint64_t> byKb;
+		for(const auto& h : hot) byKb[h.first & ~0x3ffu] += h.second;
+		std::vector<std::pair<uint32_t, uint64_t>> kb(byKb.begin(), byKb.end());
+		std::sort(kb.begin(), kb.end(), [](const auto& _a, const auto& _b){ return _a.second > _b.second; });
+		std::printf("by 1 KB of code (%llu samples in all):\n", static_cast<unsigned long long>(total));
+		for(size_t i = 0; i < kb.size() && i < 16; ++i)
+			std::printf("   %#08x..  %8llu  %5.1f%%\n", kb[i].first, static_cast<unsigned long long>(kb[i].second),
+				100.0 * static_cast<double>(kb[i].second) / static_cast<double>(total ? total : 1));
 	}
 	if(!lcd.empty())
 	{
