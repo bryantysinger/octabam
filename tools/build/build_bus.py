@@ -600,7 +600,12 @@ def main():
                 wr32(clone_P + 0x0fa + idx * 4, 0)
             for step_slot in STEPPED_SLOTS[name]:
                 wr32(clone_P + 0x0ca + step_slot * 4, 0x4003c718)
-                wr32(clone_P + 0x0fa + step_slot * 4, 0x40047254)
+                # CHORUS.TAPS' tick widget has five positions hard-coded and
+                # draws nothing above value 4. Wider selects use the plain
+                # dial (B=0) while their A formatter still prints each label.
+                _count = _MODS[name].params[step_slot].count
+                wr32(clone_P + 0x0fa + step_slot * 4,
+                     0x40047254 if _count is not None and _count <= 5 else 0)
             # ...and P+0x12a MUST BE ZERO for a stepped control. Surveyed all
             # 20 stepped params in stock FX2 (count < 128): every single one
             # has 0x12a = 0, no exceptions. MODE sits in slot 7 and inherited
