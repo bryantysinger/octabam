@@ -394,6 +394,7 @@ namespace ot
 		void peripheralWrite(uint32_t _addr, uint8_t _size, uint32_t _val);
 
 		std::vector<Region> m_regions;
+		size_t m_lastRegion = 0;		// the region the last access hit, tried first (an index: mapRegion grows the vector)
 		// BYTE-addressable, not word: Musashi composes a 32-bit peripheral read
 		// from two 16-bit reads, so a value stored whole and returned per
 		// access is truncated to the access width. That cost the first boot --

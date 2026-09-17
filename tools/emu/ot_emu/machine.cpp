@@ -103,9 +103,14 @@ namespace ot
 
 	Region* Machine::find(const uint32_t _addr, const uint32_t _size)
 	{
-		for(auto& r : m_regions)
-			if(r.contains(_addr, _size))
-				return &r;
+		if(m_lastRegion < m_regions.size() && m_regions[m_lastRegion].contains(_addr, _size))
+			return &m_regions[m_lastRegion];
+		for(size_t i = 0; i < m_regions.size(); ++i)
+			if(m_regions[i].contains(_addr, _size))
+			{
+				m_lastRegion = i;
+				return &m_regions[i];
+			}
 		return nullptr;
 	}
 
