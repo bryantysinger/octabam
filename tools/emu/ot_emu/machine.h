@@ -258,6 +258,7 @@ namespace ot
 
 		void setProfile(uint32_t _every) { m_profileEvery = _every; }
 		const std::unordered_map<uint32_t, uint64_t>& profile() const { return m_profile; }
+		void clearProfile() { m_profile.clear(); }
 		// Registers a borrowed call needs: main's stack pointer to push the
 		// frame onto, and D0 for the return value.
 		uint32_t getA7() const;
