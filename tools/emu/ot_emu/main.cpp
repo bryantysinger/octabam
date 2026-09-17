@@ -776,7 +776,14 @@ int main(int _argc, char** _argv)
 					else
 						rtos.midiIn(act.bytes);
 				}
+				const auto instr0 = m.instructions();
+				if(profile)
+					m.clearProfile();		// the whole-run table below then covers the frames alone
 				const auto rs2 = rtos.runUntil(budgetMs, [&] { return rtos.frameCount() >= target; });
+				std::printf("cpu        : %llu ColdFire instructions over the frames (%.0f per frame of %g samples)\n",
+					static_cast<unsigned long long>(m.instructions() - instr0),
+					rtos.frameCount() > frame0 ? static_cast<double>(m.instructions() - instr0) / static_cast<double>(rtos.frameCount() - frame0) : 0.0,
+					ot::g_framePeriod);
 				if(!midiFile.empty())
 					std::printf("midi in    : %zu byte(s) still queued at the end (0 = the firmware took them all)\n", rtos.midiPending());
 				static const char* const g_seqStop[] = {"REACHED", "TIME", "FAULT", "ILLEGAL"};
@@ -1165,6 +1172,19 @@ int main(int _argc, char** _argv)
 				break;
 			}
 			std::printf("   %c %#08x size %u = %#x   (pc %#06x)\n", a.kind, a.addr, a.size, a.val, a.pc);
+		}
+	}
+	if(profile)
+	{
+		std::vector<std::pair<uint32_t, uint64_t>> hot(m.profile().begin(), m.profile().end());
+		std::sort(hot.begin(), hot.end(), [](const auto& _a, const auto& _b){ return _a.second > _b.second; });
+		std::printf("hottest addresses over the frames (PC sampled every 64 instructions; the boot table above is the boot alone):\n");
+		for(size_t i = 0; i < hot.size() && i < 24; ++i)
+		{
+			char buf[256] = {};
+			m.disassemble(hot[i].first, buf);
+			std::printf("   %#08x  %8llu  %s\n", hot[i].first,
+				static_cast<unsigned long long>(hot[i].second), buf);
 		}
 	}
 	if(!lcd.empty())

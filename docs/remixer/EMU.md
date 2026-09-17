@@ -124,6 +124,59 @@ No audio, no display pixels (strings only), no key matrix; route A models
 no DSP. The C++ port (`make emu-cf`, `tools/emu/ot_emu`) runs both DSP
 cores and the host port and is what `make check`'s boot verifier uses.
 
+## Speed (the port, measured 17 Sep 2026, M-series Mac, native arm64)
+
+Stock 1.40C, the rig project, `--sequencer --internal-clock --dsp`:
+
+| phase | emulated | wall | ratio |
+|---|---|---|---|
+| boot to the handoff | 205 ms, 10.2 M instructions | 3.5 s | 17× |
+| load (`--load-ms 20000`, DSPs stepping through the idle skips) | 20 s | ~35 s | 1.7× |
+| play (400 → 1200 frames) | 290 ms of audio | ~2.9 s | **~10×** |
+
+The play phase runs 23,946 ColdFire instructions per 16-sample frame =
+1,497 per sample = 66 M/s for real time; the hottest loop is the stock
+delay's EMAC mix (`0x40003734`, EXTERNAL.md), real work, not a poll. The
+DSPs execute ~415 instructions per sample on core 0 after the idle skip
+(3.82 G counted, 3.44 G skipped over 917,730 samples).
+
+Where the wall time goes in the play phase (`sample`, top of stack, after
+the two changes below): Musashi itself 29%, the DSP interpreter and its
+per-instruction bookkeeping (`DspPair::stepCore`) 32%, the per-instruction
+harness — interrupt delivery, timers, the opcode pre-read, `pc()` — 40%.
+
+Two changes with outputs bit-identical (audio, block dump, plane, report):
+the interrupt controllers' 22 `std::function` lines became one wires mask
+per controller (`Intc::setWires`; the lines were ~35% of the run), and
+`Machine::find` indexes regions by the top address byte instead of
+scanning (a last-hit cache was tried first and lost on the play phase,
+whose accesses alternate between code, data and the fast RAM). Together
+53.0 → 38.9 s on the load + 400 frames run, 55.8 → 41.2 s at 1200 frames
+(three runs each; single runs scatter by up to 10 s on a shared machine,
+so the play-phase ratio above is ±20%). `cmake` from Intel Homebrew
+configured the port x86_64 under Rosetta; `make emu-cf` and
+`scripts/setup.sh` now pass the host architecture.
+
+What real time (~10× on play) would take, in order, none of it started:
+
+1. a coarse-grained run mode — interrupt delivery, timers and gates every
+   N instructions, the DSPs in JIT blocks with a larger quantum, no PC
+   ring. Not bit-identical to the exact mode (interrupt latency jitter up
+   to N), so a flag, with the exact mode staying the instrument;
+2. the EMAC/V4e path inline in Musashi rather than through the
+   illegal-instruction callback (`v4e.cpp`): 9.5% of boot instructions,
+   and the delay's mix loop is 12 EMAC of 21;
+3. Musashi's memory path: every access is a virtual call through the
+   peripheral check and region list; a flat fast path for the two SDRAM
+   regions;
+4. live input: a pipe or socket into the UART queues in place of
+   `--midi FILE`; keys need the panel link's byte protocol
+   (`0x400109bc`, `PANEL.md` §1), unread.
+
+`--profile` now prints the hottest PCs over the frames alone as well as
+over the boot, and the report carries the ColdFire instruction count over
+the frames.
+
 ## The C++ port on a project
 
 ```sh
