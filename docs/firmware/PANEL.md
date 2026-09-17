@@ -26,9 +26,17 @@ The descriptor every UI call passes (`0x400bf10a`):
 | `+16` | `0x46c7ca38` | a second buffer |
 | `+20`, `+24` | `0x90000000`, `0x10004008` | 🟡 unidentified |
 
-Two bits per pixel, four levels. Both buffers are handed to something at
-`0x40063270` / `0x40063282` (🟡 the refresh or DMA setup); every drawing
-routine below writes only `+12`.
+Both buffers are 1,024 bytes = 128 × 64 ÷ 8: two 1-bit planes. ✅ `+12`
+is the picture, and it is stored a quarter turn round: 64 columns × 128
+rows, 8 bytes per row, MSB left, screen pixel (x, y) = column 63−y of row
+x (rendered from a port dump under every candidate layout, 17 Sep 2026;
+`ot_emu --lcd` + `tools/emu/lcd_view.py`, `EMU.md`). `+16` read as all
+`0xff` after a boot and a load; the UI init at `0x40063264` clears both
+with `0x40020950(buf, 0x400)` (a memset — ~~the refresh or DMA setup~~,
+retracted 17 Sep) and then fills a 1,024-byte block from `0x40011804`
+with `-1`. Every drawing routine below writes only `+12`. What sends the
+plane to the panel controller over UART1 (`0xfc064000`; the byte queue is
+`0x40010aa4`) is not located.
 
 ## 2. Fonts — metrics records, no colour
 
@@ -150,16 +158,15 @@ unread:
   redrawn away;
 - a per-slot flag: every nibble bit is in use (§3b: bit 1 = link bracket,
   bit 2 = the PLAYBACK page-2 layout flag, bit 3 = the scene-held XVOL);
-- whether `ot_emu` can dump `0x46c7e0ea` with an FX page open — nothing in
-  `tools/emu` references it; if it can, the cell geometry is a framebuffer
-  read, not a flash.
+- the cell geometry is now a framebuffer read (`ot_emu --lcd`), once a
+  run can be left on an FX page: the port drives no keys.
 
 ## 7. Not known
 
-- `+20` / `+24` of the surface descriptor, and whether `+16` is a back
-  buffer or a second plane (nothing in these routines writes it);
+- `+20` / `+24` of the surface descriptor, and what `+16` (all `0xff`
+  after a load) is for;
 - how the two bits per pixel are composed for the display — every drawer
   here is 1-bit-per-pixel into one buffer, so the second bit comes from
-  somewhere not yet found;
+  somewhere not yet found — and the UART1 sender;
 - the window/geometry descriptor internals `MAINMENU.md` lists, a layer
   above these primitives.
