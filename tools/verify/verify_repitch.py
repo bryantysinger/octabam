@@ -211,13 +211,15 @@ def run_case(a, name, machine, tstr, tsmode, ptch, image, rate=127):
     text = log.read_text()
     if r.returncode or not re.search(r"run ended REACHED", text):
         return dict(error=f"port run failed (exit {r.returncode}) -- {log}")
-    m = re.search(r"port_core(\d)\.wav, \d+ frames x 8 slots .*?transport start at frame (\d+)", text)
     best = None
     for core in (0, 1):
         p = work / f"port_core{core}.wav"
         if not p.is_file():
             continue
-        start = int(re.search(rf"port_core{core}\.wav, .*?transport start at frame (\d+)", text).group(1))
+        m = re.search(rf"port_core{core}\.wav, .*?transport start at frame (\d+)", text)
+        if not m:
+            continue
+        start = int(m.group(1))
         for s, x in enumerate(read_wav24(p)):
             x = x[start:]
             energy = sum(v * v for v in x[:SR // 2])
@@ -295,7 +297,7 @@ def main():
             for args in ([str(ROOT / "out/raw/section_3_MAIN_OS.bin")], ["--patched", str(image)]):
                 r = subprocess.run([str(PROBE), *args], cwd=ROOT, capture_output=True, text=True)
                 for line in r.stdout.splitlines():
-                    if line.lstrip().startswith(("[PASS]", "[FAIL]")) or "failure(s)" in line:
+                    if line.lstrip().startswith(("[PASS]", "[FAIL]", "SKIP:")) or "failure(s)" in line:
                         print("  " + line.strip())
                 fails += r.returncode != 0
         else:

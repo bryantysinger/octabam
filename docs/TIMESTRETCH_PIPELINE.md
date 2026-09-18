@@ -3,6 +3,16 @@
 **Date:** 2026-07-31
 **Source:** ColdFire MCF5445x disassembly of `Voice::PlaybackProcess` @ 0x40007d2c
 
+## Retracted (18 Sep 2026)
+
+**Every address in this document is 0x400 low.** This analysis assumed the
+MAIN OS loads at `0x40000000`; it loads at `0x40000400`
+(`docs/firmware/REPITCH.md`). Add `0x400` to any address here before using
+it. Also retracted: voice `+0x18` below, called `channel_count`, is not a
+channel count -- it is the resolved TSTR value (`docs/firmware/REPITCH.md`'s
+TSTR resolution section). `docs/firmware/REPITCH.md` is the current,
+✅-marked source for REPITCH; treat this document as superseded by it.
+
 ## Architecture
 
 The timestretch is implemented as a **phase accumulator** in `Voice::PlaybackProcess`. The ColdFire computes stretched audio positions and sends them to the DSP. The DSP receives already-stretched audio — timestretch is ColdFire-side.

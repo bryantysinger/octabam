@@ -137,7 +137,14 @@ int main(int argc, char** argv)
 	}
 	Probe p;
 	p.image.assign(std::istreambuf_iterator<char>(input), {});
-	if(p.image.size() != 1112560) { std::fprintf(stderr, "Expected stock 1.40C MAIN OS\n"); return 2; }
+	// A patched image only ever grows (build_bus.py's _appends), so the
+	// patched run accepts >= stock length; the stock-only run must be exact.
+	constexpr size_t stockSize = 1112560;
+	if(patched ? p.image.size() < stockSize : p.image.size() != stockSize) {
+		std::printf("  [FAIL] %s is %zu bytes, expected %s stock 1.40C MAIN OS (%zu)\n",
+		            path.c_str(), p.image.size(), patched ? "at least the" : "exactly the", stockSize);
+		return 2;
+	}
 
 	if(!patched) {
 		std::printf("Repitch stock contracts:\n");
@@ -291,7 +298,7 @@ int main(int argc, char** argv)
 	std::ifstream stockInput("out/raw/section_3_MAIN_OS.bin", std::ios::binary);
 	Probe stock;
 	stock.image.assign(std::istreambuf_iterator<char>(stockInput), {});
-	const bool haveStock = stock.image.size() == p.image.size();
+	const bool haveStock = stock.image.size() == stockSize;
 	if(!haveStock)
 		std::printf("SKIP: the renderer and rate contracts need out/raw/section_3_MAIN_OS.bin\n");
 
