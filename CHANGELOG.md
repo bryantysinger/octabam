@@ -7,6 +7,11 @@ flashed image was built from.
 
 ## Unreleased (main after image 29)
 
+- Knob glides against the crackle on knob turns (Sam, 20 Sep 2026: TIME and
+  FDBK on the delay brought it back on a clean project): BusDelay reads its
+  tap between samples at the glide's fraction and glides FDBK/TONE/PING/WET
+  per block; BusVerb glides SIZE (1/64 per block) and TONE/DIFF/SHMR/WET, and
+  its init zeroes those slots. Inferred from the code; the unit is the test.
 - BusVerb: +6 dB on the wet (WET 127 = ×2); BIG with eight senders at SEND 100
   peaks −8.9 dBFS on the wet alone.
 - Modulation: MIX bottom right (page-1 slot 5), LOFI on slot 4 — the wet/dry

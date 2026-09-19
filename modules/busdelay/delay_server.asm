@@ -763,31 +763,62 @@ snapz:
         asr     #$a,a,a                 ; /1024 per block
         add     y0,a                    ; state += step
         move    a,y:>$0907
+        move    a,b                     ; the Q8 state, kept for the fraction
         asr     #$8,a,a                 ; back to integer samples
         move    a,x:(r7+$2c)            ; TIME, as every consumer below sees it
+; the glide's fraction (20 Sep 2026): modtap reads BETWEEN samples, so the
+; glide never skips or repeats one -- the click train Sam heard as crackle
+; while turning TIME, recirculating through FDBK. Absolute slot $41 (r7 is
+; rebased by $49 here and in the loop).
+        move    b,a
+        and     #>$ff,a                 ; the low 8 bits (a is positive: a2 stays clean)
+        asl     #$f,a,a                 ; -> Q23, 0 .. 255/256
+        move    a,x:(r7-$8)             ; TIME fraction
 
+; FDBK, TONE, PING and WET glide too (20 Sep 2026): each coefficient
+; moves an eighth of the way to its knob per block (~130 samples to settle)
+; instead of stepping -- a step on the recirculating signal was a click a
+; block while a knob turned. The state is the slot itself.
         move    x:(r6+$2),x0            ; FDBK: slot 2 (one-aux re-slot)
         move    #$70,y1  
-        mpy     x0,y1,a
-        move    a,x:(r7+$2a)            ; FDBK, 0 .. ~0.87
+        mpy     x0,y1,a                 ; target, 0 .. ~0.87
+        move    x:(r7+$2a),b            ; last block's coefficient
+        sub     b,a
+        asr     #$3,a,a
+        add     b,a
+        move    a,x:(r7+$2a)            ; FDBK, glided
 
         move    x:(r6+$3),x0            ; TONE: slot 3 (one-aux re-slot)
         move    #$70,y1  
         mpy     x0,y1,a
-        add     #>$100000,a
-        move    a,x:(r7+$29)            ; TONE, 0.125 (dark) .. 0.99 (bright)
+        add     #>$100000,a             ; target, 0.125 (dark) .. 0.99 (bright)
+        move    x:(r7+$29),b
+        sub     b,a
+        asr     #$3,a,a
+        add     b,a
+        move    a,x:(r7+$29)            ; TONE, glided
 
         move    x:(r6+$4),x0            ; PING: slot 4 (one-aux re-slot)
-        move    x0,a
-        move    a,x:(r7+$2b)            ; PING, 0 .. ~0.99
+        move    x0,a                    ; target, 0 .. ~0.99
+        move    x:(r7+$2b),b
+        sub     b,a
+        asr     #$3,a,a
+        add     b,a
+        move    a,x:(r7+$2b)            ; PING, glided
+        move    a,x0
         move    #>$7fffff,a
         sub     x0,a
         move    a,x:(r7+$37)            ; 1 - PING
 
         move    x:(r6+$5),x0            ; WET, slot 5
-        move    x0,x:(r7+$3c)           ; WET (r7+$3e held 1-MIX until 15 Sep
-                                        ; 2026: the stage adds, it no longer
-                                        ; crossfades)
+        move    x0,a                    ; target
+        move    x:(r7+$3c),b
+        sub     b,a
+        asr     #$3,a,a
+        add     b,a
+        move    a,x:(r7+$3c)            ; WET, glided (r7+$3e held 1-MIX until
+                                        ; 15 Sep 2026: the stage adds, it no
+                                        ; longer crossfades)
 
 ; ---- IN: this track's OWN send level into the delay (v3 stage 1) ---------
         move    x:(r6),a                ; AUX, slot 0 (one-aux rig, 7 Sep 2026:
@@ -1972,12 +2003,23 @@ dry:
 ; TIME + wow went with the modulation, 15 Sep 2026; at wow 0 the lerp
 ; passed t0 through exactly, so this IS that path.)
 modtap:
+; the read at lag TIME + fraction: t0 at lag, t1 one sample older, lerped
+; by the glide's fraction (20 Sep 2026). Clobbers b, x0, y1, r5.
         move    x:(r7+$2c),x0           ; TIME
         sub     x0,a
         move    x:(r7+$22),x0           ; the ring's mask
         and     x0,a
         move    a1,r5
-        move    y:(r5+n5),a             ; t0 (n5 = the line base, from the caller)
+        move    y:(r5+n5),b             ; t0 (n5 = the line base, from the caller)
+        sub     #>1,a                   ; lag + 1: one sample older
+        and     x0,a
+        move    a1,r5
+        move    y:(r5+n5),a             ; t1
+        sub     b,a                     ; t1 - t0
+        move    a,x0
+        move    x:(r7-$8),y1            ; the fraction, Q23
+        mpy     x0,y1,a                 ; (signed x0,y1) frac * (t1 - t0)
+        add     b,a                     ; t0 + frac * (t1 - t0)
         rts
 
 ; ---- satdrv: loop saturation + DRIVE blend, shared by both line writes ----
