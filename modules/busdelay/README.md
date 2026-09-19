@@ -40,6 +40,12 @@ record); the MIDI-clock period is derived per block on the DSP (24-step
 [`tempo-sync`](../tempo-sync/) note cave at `r6+$1` bits 8-15; the panel
 label comes from its formatter cave.
 
+TIME glides toward the knob (1/1024 per block) and the loop tap reads between
+samples at the glide's fraction (20 Sep 2026; the integer read since the wow
+went skipped a sample at every integer crossing -- a click per crossing,
+recirculating). FDBK, TONE, PING and WET move an eighth of the way to their
+knob per block.
+
 ## Knobs
 
 | | CLEAN | GRAIN | REVERSE |

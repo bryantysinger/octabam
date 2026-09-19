@@ -88,6 +88,15 @@
 ; LINES = 8, the tank loop bound, is hardcoded: dsp_asm has no equ.
 
 init:
+; the glided coefficients (20 Sep 2026) start from 0: a short fade-in on
+; select instead of a block of whatever the slot held
+        clr     a
+        move    a,x:(r7+$0e)            ; SHMR
+        move    a,x:(r7+$1f)            ; TONE's c
+        move    a,x:(r7+$40)            ; TONE's LO
+        move    a,x:(r7+$6d)            ; DIFF's g
+        move    a,x:(r7+$70)            ; WET
+        move    a,y:>$09f3              ; SIZE's f (the glide state)
         rts
 
 proc:
@@ -718,6 +727,24 @@ mdcpy:
             move    #$4c,y1                 ; v77: SIZE FLOOR RAISED.
             mpy     x0,y1,a
             add     #>$333000,a                  ; 0.125 .. 0.993 ; f = 0.400 .. 0.989, was
+; SIZE GLIDES (20 Sep 2026): f moves 1/64 of the way to the knob per block,
+; so the eight taps step by a sample now and then instead of all jumping
+; on a detent. The state (y:$09f3, zeroed at init) starts AT the target
+; and is clamped to f's own range, so a garbage word cannot fold a tap.
+            move    a,x0                    ; target f
+            move    y:>$09f3,b
+            tst     b
+            teq     x0,b                    ; first block: at the target
+            sub     b,a                     ; target - state (a: the target)
+            asr     #$6,a,a
+            add     b,a
+            move    #>$333000,y0
+            cmp     y0,a
+            tlt     y0,a                    ; floor
+            move    #>$7f0000,y0
+            cmp     y0,a
+            tgt     y0,a                    ; ceiling
+            move    a,y:>$09f3
             move    a,x0                    ; then scaled by MODE's tap scale,
             move    x:(r7+$6f),y1           ; so SIZE moves within a character
             mpy     x0,y1,a                 ; rather than replacing it
@@ -958,21 +985,32 @@ mdcpy:
         move    a,x1                    ; v95: scale by MODE's damping constant
         move    x:(r7+$72),y1           ; before it lands. The scale is <= 1.0,
         mpy     x1,y1,a                 ; so c stays inside its safe range and
-        move    a,x:(r7+$1f)            ; the knob still spans within a mode
+        move    x:(r7+$1f),x0           ; the knob still spans within a mode;
+        sub     x0,a                    ; glided: an eighth of the way per
+        asr     #$3,a,a                 ; block (20 Sep 2026)
+        add     x0,a
+        move    a,x:(r7+$1f)
 
 ; ---- LO: low cut inside the feedback path, on the knob LABELLED HP ($3) --
         move    b,x0                    ; x0 = (TONE-64)<<16, floored
         move    #$08,y1
         mpy     x0,y1,a
-        move    a,x:(r7+$40)            ; LO coefficient
+        move    x:(r7+$40),x0           ; LO coefficient, glided
+        sub     x0,a
+        asr     #$3,a,a
+        add     x0,a
+        move    a,x:(r7+$40)
 
 ; ---- ER level: REMOVED -----------------------------------------
 
 ; ---- WET: the reverb's level on top of the chain input -------------------
-        move    x:(r6+$5),x0
-        move    x0,x:(r7+$70)           ; WET, this block (y:$09f3 held 1-MIX
-                                        ; until 15 Sep 2026: the stage adds,
-                                        ; it no longer crossfades)
+        move    x:(r6+$5),a             ; WET target
+        move    x:(r7+$70),x0
+        sub     x0,a
+        asr     #$3,a,a
+        add     x0,a
+        move    a,x:(r7+$70)            ; WET, glided (y:$09f3 is SIZE's
+                                        ; glide state since 20 Sep 2026)
 
 ; ---- (the ->DEL level decode lived here until; see the note at
 
@@ -1041,7 +1079,11 @@ shfst:
         add     x0,a                    ; PLATE overflowed $7fffff at DIFF=127
         move    x:(r7+$3f),x0           ; and g read NEGATIVE; the others sat at
         add     x0,a                    ; 0.88-0.97, where an allpass is a
-        move    a,x:(r7+$6d)            ; g, for every allpass
+        move    x:(r7+$6d),x0           ; g, for every allpass -- glided
+        sub     x0,a
+        asr     #$3,a,a
+        add     x0,a
+        move    a,x:(r7+$6d)
 
 ; ---- RATE: LFO increment, ~0.34 Hz .. ~3 Hz -----------------------------
 ; 8x what it would be per sample, because the LFO is stepped once per block.
@@ -1051,7 +1093,11 @@ shfst:
         move    a1,x0                   ; SCALED TO A QUARTER. The raw knob is a
         move    #$60,y1                 ; loop gain on TOP of the tank's own
         mpy     x0,y1,a                 ; feedback, and by ear 25/127 raw (0.20)
-        move    a,x:(r7+$0e)            ; is the sweet spot while 45 at TIME=90
+        move    x:(r7+$0e),x0           ; is the sweet spot while 45 at TIME=90
+        sub     x0,a                    ; (glided per block, 20 Sep 2026)
+        asr     #$3,a,a
+        add     x0,a
+        move    a,x:(r7+$0e)
                                         ; already runs away. A quarter puts that
                                         ; sweet spot near the top of the travel
                                         ; instead of a fifth of the way up.
