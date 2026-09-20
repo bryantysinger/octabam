@@ -115,9 +115,10 @@ MODULE = Module(
         Param(b"WOW", 0, active=True, formatter=_PLAIN,
               doc="tape wobble on the loop tap, every mode; 127 = +-254 samples, 0.8 Hz + flutter"),
     ),
-    # ---- what each MODE re-defaults ---------------------------------------
-    # SCAT and DENS (slots 7/8) are GRAIN's alone since the wow went, so no
-    # mode renames them.
+    # ---- what each MODE re-defaults, and which knobs it names `---` ------
+    # A knob a mode never reads is named `---` there, the unused-knob
+    # convention (Sam, 20 Sep 2026: every effect, every mode). SCAT, DENS and
+    # PTCH are GRAIN's; SIZE is GRAIN's and REVERSE's; REVERSE pins PING to 0.
     mode_slot=6,
     mode_views=(
         # slots: 1 TIME, 2 FDBK, 3 TONE, 4 PING, 5 MIX, 10 PTCH; SEND at 0 is
@@ -125,14 +126,14 @@ MODULE = Module(
         # the 32K lines (15 Sep 2026): 20 = 5,184 samples, 18 = 4,672 -- the
         # same times the views held at 40 / 36 under the old *128 law.
         ModeView(mode=0,                        # CLEAN: centred
-                 names={7: b"---", 8: b"---"},   # SCAT / DENS are GRAIN's alone
+                 names={7: b"---", 8: b"---", 9: b"---", 10: b"---"},   # SCAT DENS SIZE PTCH: not read
                  defaults={1: 20, 2: 60, 3: 100, 4: 0, 5: 127, 10: 64}),
         ModeView(mode=1,                        # GRAIN: Sam's recipe on the unit
                  # (15 Sep 2026): octave up, ping-pong
                  defaults={1: 18, 2: 40, 3: 100, 4: 127, 5: 127,
                            7: 40, 8: 127, 9: 1, 10: 96}),
         ModeView(mode=2,                        # REVERSE: centred, 371 ms
-                 names={7: b"---", 8: b"---"},
+                 names={4: b"---", 7: b"---", 8: b"---", 10: b"---"},   # PING pinned 0; SCAT DENS PTCH: not read
                  defaults={1: 20, 2: 60, 3: 100, 4: 0, 5: 127,   # segments (SIZE 3 = XTRM)
                            9: 3, 10: 64}),
     ),

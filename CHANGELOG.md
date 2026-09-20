@@ -7,6 +7,16 @@ flashed image was built from.
 
 ## Unreleased (main after image 38)
 
+- Every knob a mode never reads is named `---` in that mode (Sam, 20 Sep
+  2026: "all per-mode knobs ... blank with --- titles, like the others,
+  across all effects"), from each engine's reads: BusDelay CLEAN adds SIZE
+  and PTCH, REVERSE adds PTCH and PING (the mode pins PING to 0);
+  Modulation COMB names RATE, DPTH and WDTH (it has no LFO), PHSR names
+  TONE (no line filter). Spectrum (every mode takes the modulated cutoff,
+  RES and WDTH), BusVerb and Character have no inert knob. The MODE cave
+  renames them, as SCAT/DENS since image 29; `verify_modenames` now checks
+  a non-MODE select renames nothing (its own slot's name is the mode's).
+
 - BusDelay: the TIME glide ramps within the block. Sam, 20 Sep 2026 (image
   38): "time and feedback causes crackles on delay ... reverting their
   settings doesn't fix" -- the glide's state moved once per block (up to
