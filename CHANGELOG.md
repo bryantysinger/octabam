@@ -7,6 +7,10 @@ flashed image was built from.
 
 ## Unreleased (main after image 29)
 
+- Character RET defaults to 127 and prints `---` on tracks 1-7 (Sam, 20 Sep
+  2026): a formatter cave (`modules/character/ret_fmt.s`) reads the
+  current-track byte; the DSP already clears the level off the master.
+  `verify_labels` asks the emulated firmware per track.
 - Knob glides against the crackle on knob turns (Sam, 20 Sep 2026: TIME and
   FDBK on the delay brought it back on a clean project): BusDelay reads its
   tap between samples at the glide's fraction and glides FDBK/TONE/PING/WET
