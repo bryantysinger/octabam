@@ -65,10 +65,6 @@ POCKEY_DEC = tuple(round(8388607 * (256 ** (i / 256) - 1) / 255) for i in range(
 TAPE_D8 = (0x0ccccd, 0x0ec7fd, 0x1111af, 0x13b608, 0x16c311, 0x1a48fe, 0x1e5a84, 0x230d41, 0x287a27, 0x2ebe07, 0x35fa27, 0x3e54f4, 0x47facd, 0x531ef0, 0x5ffc89, 0x6ed7eb, 0x7fffff)
 
 
-# ret_fmt.s linked (position-independent; tools/build/build_bus.py compares
-# the source against these on every build).
-RET_FMT_BYTES = bytes.fromhex("70001039800000000c8000000007661a2f2f00084879400b465d2f2f000c4eb940013a084fef000c4e75487a00102f2f00084eb940013a08508f4e752d2d2d00")
-
 MODULE = Module(
     name="character",
     key="CHARACTER",
@@ -94,9 +90,9 @@ MODULE = Module(
               doc="compression amount; 0 = no gain reduction at any level"),
         # Default 127 (Sam, 20 Sep 2026): full on the master; the DSP clears
         # the level off T8 before anything reads it, so the bypass stays
-        # bit-exact there. ret_fmt.s prints "---" on tracks 1-7.
+        # bit-exact there. ret_fmt.s blanks the name and value on tracks 1-7.
         Param(b"RET", 127, active=True, formatter=_PLAIN,
-              doc="the bus return level; live on the master (T8) only, prints --- elsewhere"),
+              doc="the bus return level; live on the master (T8) only, blank elsewhere"),
         # MIX on page 1 and TONE on page 2 since 16 Sep 2026 (Sam's knob pass).
         Param(b"MIX", 127, active=True, formatter=_PLAIN,
               doc="dry/wet across the whole chain; 0 = exact passthrough"),
@@ -135,8 +131,13 @@ MODULE = Module(
         CavePatch(
             label="ret_fmt cave",
             cave_addr=None,          # floating, like tempo-sync's time_fmt
-            pinned=RET_FMT_BYTES,
+            # The source is the bytes: CLONE_CHARACTER (this clone's
+            # descriptor, exported by the build) is linked in, so the bytes
+            # follow the clone's position. What it prints, and the name it
+            # writes, verify_labels reads back from the emulated firmware.
+            pinned=b"",
             source="modules/character/ret_fmt.s",
+            defsyms=(("CLONE_CHARACTER", 0),),
             registers_formatter=FormatterReg(module="CHARACTER", slot=4),
             report_note=", registered as Character RET's formatter",
         ),
