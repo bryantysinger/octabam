@@ -800,6 +800,9 @@ def main():
     _exports = {}                   # GLOBAL symbols of every unit linked so
                                     # far -> the --defsym set later units
                                     # resolve their cross-unit references from
+    # Every clone's descriptor address, for a cave that writes into its own
+    # module's descriptor (Character's ret_fmt.s renames its RET slot).
+    _exports.update({"CLONE_" + re.sub(r"\W", "_", _k): _a for _k, _a in clone_addr.items()})
 
     def _link(src, at, cpu, work, sections=(), defsyms=(), incdir=None):
         """Assemble `src` and link it at `at`; return (bytes, symbols,
