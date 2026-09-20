@@ -47,11 +47,17 @@ mode; measured and fixed 20 Sep 2026, `tools/harness/glide_census.py`),
 and the loop tap reads between samples at the ramp's fraction (the integer
 read since the wow went skipped a sample at every integer crossing -- a
 click per crossing, recirculating). REVERSE's lag floor and GRAIN's read
-base follow the ramp per sample. Once the remaining distance is under one step the state
-snaps onto the target, so the fraction is 0 at rest (a standing fraction is
-a two-sample average on every pass, which dulled the repeats after a TIME
-increase in image 33). FDBK, TONE, PING and WET move an eighth of the way to
-their knob per block.
+base follow the ramp per sample. The step is never smaller than 1/16
+sample per block toward the target and never past it, so the state lands
+exactly and the fraction is 0 at rest (a standing fraction is a two-sample
+average on every pass, which dulled the repeats after a TIME increase in
+image 33; images 34-39 snapped from 4 samples out instead). FDBK, TONE,
+PING and WET move an eighth of the way to their knob per block. All of it
+runs on the first call of a block only (21 Sep 2026): a trig splits the
+block into two dispatcher calls, and a glide that ran on both restarted
+the ramp at the trig -- a click at every trig while TIME moved. The glide
+state is guarded against boot garbage (negative or past the line: start
+at the target).
 
 ## Knobs
 

@@ -7,6 +7,30 @@ flashed image was built from.
 
 ## Unreleased (main after image 38)
 
+- BusDelay: the glides run once per block. A trig splits a block into two
+  dispatcher calls (a=0 before the trig, a=1 after), and the TIME glide, its
+  ramp base and the FDBK/TONE/PING/WET glides ran on both: the ramp
+  restarted from last block's state at the trig, a jump of a quarter or
+  three-quarters of the glide step (up to ~30 samples on a big TIME move)
+  -- a click at every trig while the knob moved, which `dsp_host` cannot
+  show (it never splits) and the port does. Gated on the frame offset
+  (first call only); the a=1 call keeps the ramp's running value and its
+  increment. With it: the 4-sample snap becomes a minimum step of 1/16
+  sample per block toward the target, never past it (the last 4 samples
+  take 23 ms at a slope of 1/256 instead of one block at 1/4), and the
+  glide state is guarded against boot garbage (negative, or past the line:
+  start at the target; only an exact 0 was). Bit-identical at rest
+  (`verify_delay` against image 39's source, every case); `glide_census`
+  0 / 73 / 896 as before; +33 words. Under the port, T1's chain output
+  with the sequencer's trigs (`verify_set --midi-file`, spikes per 1,000
+  samples > 0.02 FS, `port_click_census.py`): CLEAN
+  (`tools/harness/midi/delay_time_clean.midi`, TIME 20 -> 90 -> 20) 22.8 /
+  24.3 per window over each glide, max 145 / 164, on image 39's code ->
+  1.1 / 3.0, max 7 / 13, the windows at the moves themselves 98 / 127 ->
+  0 / 6; REVERSE (Sam's recipe) TIME windows 7.2 / 5.1 (max 51 / 31) ->
+  4.1 / 3.0 (max 12 / 10), level with REVERSE's own splice floor. Found
+  by the 21 Sep static audit; the census takes its marks from a recipe.
+
 - BusDelay: init zeroes the four glided coefficients (TONE, FDBK, PING,
   WET; `r7+$72..$74`, `$85`) as the reverb's init does its own -- they were
   read back from whatever the slot held for the first ~20 ms after a select
