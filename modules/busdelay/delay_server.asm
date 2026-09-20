@@ -762,6 +762,17 @@ snapz:
         sub     y0,a                    ; target - state
         asr     #$a,a,a                 ; /1024 per block
         add     y0,a                    ; state += step
+; SNAP (20 Sep 2026): once the step rounds to zero (within 4 samples) the
+; state lands ON the target, so the tap's fraction returns to 0 at rest --
+; a fraction left standing is a 2-sample average on every pass round the
+; loop, which dulls the repeats.
+        move    a,y1                    ; the glided state
+        sub     x0,a                    ; state - target
+        abs     a
+        move    #>$400,y0               ; 1024 = one step's worth
+        cmp     y0,a                    ; |state - target| - 1024
+        move    y1,a                    ; a move keeps the flags
+        tlt     x0,a                    ; within it: state = target
         move    a,y:>$0907
         move    a,b                     ; the Q8 state, kept for the fraction
         asr     #$8,a,a                 ; back to integer samples

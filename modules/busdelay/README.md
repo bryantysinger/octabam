@@ -43,8 +43,11 @@ label comes from its formatter cave.
 TIME glides toward the knob (1/1024 per block) and the loop tap reads between
 samples at the glide's fraction (20 Sep 2026; the integer read since the wow
 went skipped a sample at every integer crossing -- a click per crossing,
-recirculating). FDBK, TONE, PING and WET move an eighth of the way to their
-knob per block.
+recirculating). Once the remaining distance is under one step the state
+snaps onto the target, so the fraction is 0 at rest (a standing fraction is
+a two-sample average on every pass, which dulled the repeats after a TIME
+increase in image 33). FDBK, TONE, PING and WET move an eighth of the way to
+their knob per block.
 
 ## Knobs
 
