@@ -11,7 +11,13 @@ flashed image was built from.
   FDBK on the delay brought it back on a clean project): BusDelay reads its
   tap between samples at the glide's fraction and glides FDBK/TONE/PING/WET
   per block; BusVerb glides SIZE (1/64 per block) and TONE/DIFF/SHMR/WET, and
-  its init zeroes those slots. Inferred from the code; the unit is the test.
+  its init zeroes those slots. Image 33: the crackles gone (Sam, 20 Sep 2026).
+- BusDelay: the TIME glide snaps onto its target once within one step. In
+  image 33 a TIME increase stopped up to 4 samples short (the /1024 step
+  rounds to zero), leaving the tap between samples at rest: a two-sample
+  average on every pass round the loop, up to -10 dB at Nyquist per pass.
+  Measured: state 600/256 samples below the target stayed there for 2,940
+  blocks; with the snap both directions land exactly.
 - BusVerb: +6 dB on the wet (WET 127 = ×2); BIG with eight senders at SEND 100
   peaks −8.9 dBFS on the wet alone.
 - Modulation: MIX bottom right (page-1 slot 5), LOFI on slot 4 — the wet/dry
