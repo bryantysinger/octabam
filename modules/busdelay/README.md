@@ -57,15 +57,16 @@ their knob per block.
 
 | | CLEAN | GRAIN | REVERSE |
 |---|---|---|---|
-| page 1: SEND · TIME ⌐FDBK · TONE · PING · WET | the same everywhere | | |
+| page 1: SEND · TIME ⌐FDBK · TONE · PING · WET | the same everywhere | | PING reads `---` (the mode pins it to 0) |
 | MODE (p6) | CLEAN | GRAIN | REVRS |
 | SCAT (p7) | `---` | how far apart the grains read | `---` |
 | DENS ⌐(p8) | `---` | density, level-flat | `---` |
-| SIZE (p9) | unused | grain length 46 / 93 / 23 ms, XTRM 186 ms | segment; XTRM = 371 ms |
-| PTCH ⌐(p10) | no effect | ±2 oct, 64 = unison; a held MIDI note overrides | no effect |
+| SIZE (p9) | `---` | grain length 46 / 93 / 23 ms, XTRM 186 ms | segment; XTRM = 371 ms |
+| PTCH ⌐(p10) | `---` | ±2 oct, 64 = unison; a held MIDI note overrides | `---` |
 | WOW (p11) | tape wobble on the loop tap: 0 none, 127 = ±254 samples (wow 0.8 Hz + flutter 7.3 Hz at an eighth) | the same | the same |
 
-Each mode's `ModeView` re-defaults the knobs. PING 0 by default: an aux
+Each mode's `ModeView` re-defaults the knobs and names every knob the mode
+never reads `---` (20 Sep 2026, every effect). PING 0 by default: an aux
 delay sits still; the bounce is the knob's. The tape wow (MDEP / MRAT, a
 lerped read at TIME + wow, flutter, and a loop saturation gated on the
 depth) went 15 Sep 2026 for the crackle, whose cause was the TIME jump
