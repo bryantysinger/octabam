@@ -722,28 +722,61 @@ snapz:
         move    a,x:(r7+$2c)
 
 ; ---- TIME SLEW: glide, don't jump ---------------------------
+; ONCE PER BLOCK (21 Sep 2026): the dispatcher calls twice on a trig split
+; (a=0 for the frames before the trig, a=1 for the rest) and the glide,
+; the ramp base and the coefficient glides below ran on both calls -- the
+; ramp restarted from last block's state at the trig, a jump of up to a
+; quarter or three-quarters of the glide step (up to ~30 samples on a big
+; TIME move): a click at every trig while the knob moved. They run on the
+; first call of a block only (frame offset 0); the second sub-call keeps
+; the ramp's running value and its increment, and every coefficient slot
+; already holds this block's value.
+        move    x:(r7+$1e),a            ; this call's frame offset
+        tst     a
+        bne     slew2                   ; second sub-call: everything stands
         move    x:(r7+$2c),a            ; target, integer samples
         asl     #$8,a,a                 ; Q8
         move    a,x0
         move    y:>$0907,b              ; slewed TIME, Q8 (0 at boot)
         tst     b
         teq     x0,b                    ; boot: start AT the target
-        move    b,y0
-        move    b,x1                    ; last block's state, for the ramp below
-        sub     y0,a                    ; target - state
+        tmi     x0,b                    ; boot garbage, negative: the target
+        move    #>$7fc000,y0            ; 32752 samples in Q8, past any line
+        cmp     y0,b
+        tgt     x0,b                    ; boot garbage past the line: the target
+        move    b,y0                    ; the state
+        move    x0,a
+        sub     y0,a                    ; d = target - state
+        move    a,y1
         asr     #$a,a,a                 ; /1024 per block
-        add     y0,a                    ; state += step
-; SNAP (20 Sep 2026): once the step rounds to zero (within 4 samples) the
-; state lands ON the target, so the tap's fraction returns to 0 at rest --
-; a fraction left standing is a 2-sample average on every pass round the
-; loop, which dulls the repeats.
-        move    a,y1                    ; the glided state
-        sub     x0,a                    ; state - target
-        abs     a
-        move    #>$400,y0               ; 1024 = one step's worth
-        cmp     y0,a                    ; |state - target| - 1024
-        move    y1,a                    ; a move keeps the flags
-        tlt     x0,a                    ; within it: state = target
+        move    a,b                     ; the exponential step
+; MINIMUM STEP (21 Sep 2026): /1024 rounds to zero inside 4 samples of the
+; target, and a standing fraction is a 2-sample average on every pass round
+; the loop, which dulls the repeats; image 33's snap landed ON the target
+; from 4 samples out, a quarter-sample-per-sample ramp for one block. The
+; step is now never smaller than 1/16 sample per block toward the target
+; and never past it: the last 4 samples take 64 blocks (23 ms) at a slope
+; of 1/256, and the state lands exactly, so the fraction is 0 at rest.
+        move    y1,a
+        abs     a                       ; |d|
+        cmp     #>$10,a
+        bgt     stpbig
+        move    y1,b                    ; within 1/16 sample: land on it
+        bra     stpdn
+stpbig:
+        move    b,a
+        abs     a                       ; |step|
+        cmp     #>$10,a
+        bge     stpdn                   ; the exponential step is big enough
+        move    #>$10,x1
+        move    y1,a
+        tst     a                       ; the sign of d
+        tpl     x1,b                    ; +1/16 sample
+        move    #>$fffff0,x1
+        tmi     x1,b                    ; -1/16 sample
+stpdn:
+        move    y0,a
+        add     b,a                     ; state += step
         move    a,y:>$0907
         move    a,b                     ; the Q8 state
         asr     #$8,a,a                 ; back to integer samples
@@ -757,11 +790,12 @@ snapz:
 ; whole glide, 0 at rest). Each sample adds the wobble to the ramped Q8
 ; value and splits the sum into the lag and a fraction; modtap reads
 ; BETWEEN samples at that fraction. Raw $26 holds the running value (r7
-; is rebased by $49 here and in the loop), raw $64 the per-sample increment
-; (the return's WET write address until 20 Sep 2026). A call shorter than
-; 16 frames lands the ramp short by that fraction of one step and the next
-; call re-bases it: under two samples at the fastest glide.
-        move    x1,x:(r7-$23)           ; the ramp starts at last block's state
+; is rebased by $49 here and in the loop), raw $64 the per-sample increment.
+; A split block's two calls walk the same ramp end to end (the a=1 call
+; skips to slew2 above); the harness's 15-frame blocks land a sixteenth of
+; a step short and re-base, under two samples at the fastest glide.
+        move    y0,x1                   ; last block's state
+        move    x1,x:(r7-$23)           ; the ramp starts there
         sub     x1,b                    ; this block's step, Q8
         asr     #$4,b,b                 ; per sample, over 16
         move    b,x:(r7+$1b)            ; the increment
@@ -810,6 +844,12 @@ snapz:
         move    a,x:(r7+$3c)            ; WET, glided (r7+$3e held 1-MIX until
                                         ; 15 Sep 2026: the stage adds, it no
                                         ; longer crossfades)
+        bra     slewdn
+slew2:
+        move    x:(r7-$23),a            ; the ramp's running value, Q8
+        asr     #$8,a,a
+        move    a,x:(r7+$2c)            ; TIME for the per-block consumers below
+slewdn:
 
 ; ---- IN: this track's OWN send level into the delay (v3 stage 1) ---------
         move    x:(r6),a                ; AUX, slot 0 (one-aux rig, 7 Sep 2026:
