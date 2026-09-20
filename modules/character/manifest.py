@@ -19,9 +19,9 @@ fold -> saturate -> tilt -> compress -> width.
     own input;
   * WDTH -- mid/side width, drawn -64..+63: -64 mono, +63 2x side.
 
-Page-1 slot 4 is empty (`---`): it was the bus return level until 20 Sep
-2026, when the return left the station (each engine prints its wet on its
-own host); a stored byte there is never read."""
+Page 1: DRV FOLD TXTR COMP TONE MIX; page 2: SAT WDTH (20 Sep 2026: TONE
+back on page 1 in the return's slot; the return left the station, each
+engine prints its wet on its own host)."""
 
 from remix.schema import (BusRole, Claims, DspSection, Formatter, Harness,
                           Kind, MenuEntry, ModeView, Module, Param, YBase)
@@ -87,21 +87,21 @@ MODULE = Module(
               doc="Airwindows Pockey (MIT): the 12-bit sampler texture, both sliders at once; 0 = off"),
         Param(b"COMP", 0, active=True, formatter=_PLAIN,
               doc="compression amount; 0 = no gain reduction at any level"),
-        # Slot 4: empty since 20 Sep 2026 (the bus return level before that).
-        Param(b"---", 0, doc="unused"),
-        # MIX on page 1 and TONE on page 2 since 16 Sep 2026 (Sam's knob pass).
+        # TONE on page 1 again (20 Sep 2026, the return's slot): a tilt after
+        # the saturator, drawn -64..+63.
+        Param(b"TONE", 64, 128, active=True, formatter=_BIPOL,
+              doc="a tilt after the saturator in every mode: 64 flat, 127 bright, 0 dark"),
+        # MIX on page 1 since 16 Sep 2026 (Sam's knob pass); TONE back beside it 20 Sep.
         Param(b"MIX", 127, active=True, formatter=_PLAIN,
               doc="dry/wet across the whole chain; 0 = exact passthrough"),
         # ---- page 2, filled from the top left: SAT (the mode, slot 6 as on
-        # every effect), TONE, WDTH -----------------------------------------
+        # every effect), WDTH ------------------------------------------------
         Param(b"SAT", 0, 3, active=True, formatter=_STEP,
               labels=("TAPE", "TUBE", "INFL"),
               doc="character: TAPE (TapeHead), TUBE (DaTube, asymmetric), INFL (OInflator). JClones, MIT"),
-        Param(b"TONE", 64, 128, active=True, formatter=_BIPOL,
-              doc="a tilt after the saturator in every mode: 64 flat, 127 bright, 0 dark"),
         Param(b"WDTH", 64, 128, active=True, formatter=_BIPOL,
               doc="mid/side width, drawn -64..+63: 0 = untouched, -64 = mono, +63 = double the sides"),
-        _BLANK, _BLANK, _BLANK,
+        _BLANK, _BLANK, _BLANK, _BLANK,
     ),
     # SAT names itself by its value (tools/build/mode_names.with_selfname).
     # No knob changes meaning by mode.

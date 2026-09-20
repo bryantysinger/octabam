@@ -83,7 +83,7 @@ touches only the ids a station replaced):
 | SEND | SEND | | | | | | | | | | | |
 | BusVerb | SEND | TIME | MOD | SIZE | TONE | WET | MODE | SHMR | DIFF | SHFT | GATE | RATE |
 | BusDelay | SEND | TIME | FDBK | TONE | PING | WET | MODE | SCAT | DENS | SIZE | PTCH | WOW |
-| Character | DRV | FOLD | TXTR | COMP | — | MIX | SAT | TONE | WDTH | — | — | — |
+| Character | DRV | FOLD | TXTR | COMP | TONE | MIX | SAT | WDTH | — | — | — | — |
 
 ## What a send is
 
