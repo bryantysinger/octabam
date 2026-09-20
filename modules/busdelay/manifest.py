@@ -55,7 +55,7 @@ MODULE = Module(
     name="busdelay",
     key="DELAY SERVER",
     kind=Kind.DSP_EFFECT,
-    doc="Multi-mode delay: CLEAN / pitched GRAIN cloud / REVERSE, freeze.",
+    doc="Multi-mode delay: CLEAN / pitched GRAIN cloud / REVERSE, tape wow.",
     menu=MenuEntry(
         fx2_id=0x06,
         donor_desc=0x400d5726,        # SPRING REV
@@ -111,9 +111,9 @@ MODULE = Module(
         # pitch; idle in other modes.
         Param(b"PTCH", 64, 128, active=True, formatter=_PLAIN, link=True,
               doc="GRAIN pitch, +-2 oct, 64 = unison (a held MIDI note overrides); idle in other modes"),
-        Param(b"FRZE", 0, 2, active=True, formatter=_STEP,
-              labels=("RUN", "HOLD"),
-              doc="freeze the line as a loop -- loop length = TIME"),
+        # WOW in freeze's slot (20 Sep 2026, Sam: "wow back freeze gone").
+        Param(b"WOW", 0, active=True, formatter=_PLAIN,
+              doc="tape wobble on the loop tap, every mode; 127 = +-254 samples, 0.8 Hz + flutter"),
     ),
     # ---- what each MODE re-defaults ---------------------------------------
     # SCAT and DENS (slots 7/8) are GRAIN's alone since the wow went, so no
@@ -150,7 +150,7 @@ MODULE = Module(
         r7_latch_slot=0x86,               # payload B tracks its own rotation
         gate_label="bus_notfirst",
         override_markers=("; DMODE_OVERRIDE", "; DINT_OVERRIDE",
-                          "; DFRZ_OVERRIDE", "; DNOTE_OVERRIDE"),
+                          "; DNOTE_OVERRIDE"),
         ptable=PTABLE,
     ),
     # The source names 0901h-0903h as this module's RATE/DRV state block; the

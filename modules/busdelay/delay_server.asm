@@ -3,7 +3,7 @@
 ; low-pass inside the loop, and three engines on the same lines -- CLEAN,
 ; GRAIN (four unity-rate grain readers per line, one continuous pitch) and
 ; REVERSE (the two lines as one 32K mono ring, segments played backwards) --
-; with tape wow, a sticky tempo snap on TIME and a freeze hold in every mode.
+; with tape wow and a sticky tempo snap on TIME.
 ; CYCLES_FORWARD_BRANCHES -- the REVERSE skips of the R line are forward
 ; branches the pricer admits.
 ;
@@ -62,9 +62,10 @@
 ;   r7+$21..$23         per-sample scratch (PRNG candidate, parked age)
 ;   r7+$24/$25          shifted OUTPUT tap L / R (per sample; kept apart from
 ;                       the loop's taps so the shift never re-enters feedback)
-;   r7+$26              FREEZE flag (per block; nonzero = hold the lines)
+;   r7+$26              TIME, Q8: the glide's state this block
 ;   r7+$27/$28          wow / flutter LFO phase (persistent, masked)
-;   r7+$29..$2c         wow per-sample scratch (offset, phase, t0, fraction)
+;   r7+$29              wow's offset park (per sample)
+;   r7+$2b/$2c          this sample's loop lag: integer / Q23 fraction
 ;   r7+$2d/$2e          wow depth / flutter depth (per block)
 ;   r7+$2f/$30          per-sample scratch (the parked write value, clipped)
 ;   r7+$31              LineL base
@@ -142,7 +143,9 @@
 ;               REVERSE segment, one select for both
 ;   p10 PTCH -> slot 10 KNOB field (r6+$e bits 16-23): GRAIN pitch, +-2 oct;
 ;               a held MIDI note (r6+$1 bits 8-15, latched) overrides
-;   p11 FRZE -> slot 11 companion (r6+$e low bits), count 2
+;   p11 WOW  -> slot 11 companion (r6+$e bits 8-15): tape wobble depth,
+;               0 .. +-254 samples (wow 0.8 Hz + flutter 7.3 Hz at an
+;               eighth), on the loop tap in every mode
 ; ---------------------------------------------------------------------------
 
 init:
@@ -777,14 +780,12 @@ snapz:
         move    a,b                     ; the Q8 state, kept for the fraction
         asr     #$8,a,a                 ; back to integer samples
         move    a,x:(r7+$2c)            ; TIME, as every consumer below sees it
-; the glide's fraction (20 Sep 2026): modtap reads BETWEEN samples, so the
-; glide never skips or repeats one -- the click train Sam heard as crackle
-; while turning TIME, recirculating through FDBK. Absolute slot $41 (r7 is
-; rebased by $49 here and in the loop).
-        move    b,a
-        and     #>$ff,a                 ; the low 8 bits (a is positive: a2 stays clean)
-        asl     #$f,a,a                 ; -> Q23, 0 .. 255/256
-        move    a,x:(r7-$8)             ; TIME fraction
+; the Q8 state is the loop's: each sample adds the wobble and splits the
+; sum into the lag and a fraction, and modtap reads BETWEEN samples at that
+; fraction, so the glide never skips or repeats one -- the click train Sam
+; heard as crackle while turning TIME, recirculating through FDBK (20 Sep
+; 2026). Raw $26 (r7 is rebased by $49 here and in the loop).
+        move    b,x:(r7-$23)            ; TIME, Q8
 
 ; FDBK, TONE, PING and WET glide too (20 Sep 2026): each coefficient
 ; moves an eighth of the way to its knob per block (~130 samples to settle)
@@ -848,7 +849,7 @@ snapz:
 ; descriptor's MODE select (RENAMES/DEFAULTS/PAGE2_COUNTS in build_bus.py)
 ; lands with the second mode. DMODE=n (build_bus.py) substitutes a literal
 ; at the marker below (dsp_host can also drive companions via -params 7/9/11;
-; the override forces the decoded VALUE, so DFRZ=2 means frozen, not SYNC).
+; the override forces the decoded VALUE).
         move    x:(r6+$c),a
         and     #>$ff0000,a             ; slot 6's KNOB field (v6, 4 Sep 2026;
                                         ; slot 7's companion byte before --
@@ -866,7 +867,7 @@ snapz:
 ; are substituted into the wet AFTER the lines are written (stage 2c, so
 ; nothing shifted can re-enter the feedback). Resolving "is this such a mode"
 ; ONCE PER BLOCK instead of at the substitution point makes that per-sample
-; test a `tst`, the same shape as FREEZE's -- it costs two words fewer than
+; test a `tst` -- it costs two words fewer than
 ; the single compare it replaces and does not grow when a fourth mode wants
 ; the same treatment. Branchless: cmp sets Z, the intervening moves do not
 ; disturb it, and teq moves a CLEAN register in (never a hand-rolled mask).
@@ -948,34 +949,23 @@ snapz:
 ; station's, and the crackle gathered around these knobs. Slots 7 and 8
 ; are GRAIN's SCAT and DENS now, inert in CLEAN and REVERSE.)
 
-; ---- FREEZE select (v2 stage 3) ------------------------------------------
-; Page-2 slot 11's companion field, r6+$e LOW bits -- the same low-byte
-; select idiom as PTCH ($d low) and BusVerb's WIDTH/->DEL, count 2. Any
-; nonzero value freezes, so boot garbage in the field cannot do anything
-; worse than hold; the masked read also keeps a wild value out of the flag.
-; Decoded every block regardless of MODE: freeze is orthogonal to the engine
-; (frozen + PITCH = shifted reads over held material, PLAN 3.1 stage 3).
+; ---- WOW: tape wobble depth, page-2 slot 11 (r6+$e bits 8-15) -----------
+; knob<<13 is the depth in Q11.12: two samples per knob step, +-254 at 127
+; (~+-17 cents at 0.8 Hz). Flutter rides at an eighth of it. The per-sample
+; lag clamp below keeps TIME + wobble inside the line, so no depth is unsafe.
+; (Back 20 Sep 2026 in freeze's slot -- Sam: "wow back freeze gone". The
+; 15 Sep removal was for the crackle, whose cause was the TIME jump, since
+; glided; the wobble rides the same between-samples read.)
         move    x:(r6+$e),a
-        and     #>$7f00,a               ; slot 11's companion field: BITS 8-15. No
-                                        ; shift: $26 is only ever tested zero /
-                                        ; nonzero, so the index's scale is moot.
-                                        ; (24 Aug 2026: briefly a 4-way with a
-                                        ; SYNC bit; on the unit position 2 froze
-                                        ; too, and freeze is performative --
-                                        ; Sam: SYNC does not live here.)
-; DFRZ_OVERRIDE
-; (24 Aug 2026: a crossfader -> FREEZE hard-lock lived here for an evening
-; and was removed at Sam's request -- nothing is to be welded to the fader.
-; Page 1 scene-locks morph like any stock effect; page 2 cannot be locked,
-; and that is where it stays.)
+        and     #>$7f00,a               ; slot 11's companion field: knob<<8
+        asl     #$5,a,a                 ; knob<<13
         move    a1,x0
-        move    x0,a                    ; A2-clean before the store
-        move    a,x:(r7-$23)            ; 0 = running, nonzero = frozen
-        tst     a
-        move    y:>$0904,b              ; r (core-private, like RATE/DRV's
-        move    #>$7fffff,x0
-        teq     x0,b                    ; running -> re-arm
-        move    b,y:>$0904
+        move    x0,a                    ; A2-clean
+        move    a,x:(r7-$1c)            ; WOWD
+        asr     #$3,a,a
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7-$1b)            ; FLTD = WOWD/8
 
 ; ---- SPRAY: GRAIN scatter depth (v2 stage 5; on MDEP since v5.1) ----------
 ; Page-2 slot 7's COMPANION field (r6+$c bits 8-15, the word MODE's knob
@@ -985,7 +975,7 @@ snapz:
 ; SPRAY=0 puts every grain on the same read position -- four heads in a
 ; cluster, the most coherent and least granular end -- and 127 gives the
 ; full 0..1015-sample scatter. Decoded every block regardless of MODE, like
-; PTCH and FRZE; harmless in the modes that never read it.
+; PTCH; harmless in the modes that never read it.
         move    x:(r6+$c),a             ; MDEP's companion field: SCATTER in
         and     #>$7f00,a               ; GRAIN (v5.1 -- the mod depth is fixed there)
         move    a1,x0
@@ -1315,11 +1305,64 @@ gvrdone:
 ; what compounds the artifact, and the ear rejected it (12 Aug). If a climb
 ; is ever wanted back it belongs on a select, not as the only topology.
 ;
-; ---- LOOP taps: the read at lag TIME, EVERY mode -------------------------
-; The loop's recirculating tap is the same in every mode since stage 2c.
-; (The wow/flutter LFOs, the lerp fraction and the lag clamp went with the
-; modulation, 15 Sep 2026: modtap reads the integer sample at lag TIME.)
-; ---- Line L: the read at lag TIME --------------------------------------
+; ---- LOOP taps: the read at lag TIME + wobble, EVERY mode -----------------
+; The loop's recirculating tap is the same in every mode since stage 2c, so
+; the wobble belongs to the INSTRUMENT, not to a mode. Two LFOs at a fixed
+; non-integer ratio (wow $98/sample = 0.8 Hz, flutter $56d = 7.3 Hz) never
+; lock; WOW 0 gives a wobble of exactly 0, so the lag is the glide's state
+; and the read is the glide's own, bit for bit.
+        move    x:(r7-$22),a            ; wow phase
+        add     #>$98,a
+        and     #>$7fffff,a
+        move    a1,x0
+        move    x0,a                    ; A2-clean; boot garbage dies here
+        move    a,x:(r7-$22)
+        bsr     smoothw                 ; s = g^2*(3-2g), 0..1
+        move    a1,x0
+        move    x:(r7-$1c),y1           ; WOWD
+        mpy     x0,y1,a                 ; s*depth
+        asl     #$1,a,a
+        move    x:(r7-$1c),x0
+        sub     x0,a                    ; depth*(2s-1): centred, +-depth
+        move    a,x:(r7-$20)            ; park the wow
+
+        move    x:(r7-$21),a            ; flutter phase
+        add     #>$56d,a
+        and     #>$7fffff,a
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7-$21)
+        bsr     smoothw
+        move    a1,x0
+        move    x:(r7-$1b),y1           ; FLTD
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        move    x:(r7-$1b),x0
+        sub     x0,a
+        move    x:(r7-$20),x0
+        add     x0,a                    ; wobble = wow + flutter, Q11.12 signed
+; ---- this sample's lag: the glided TIME plus the wobble, Q8, kept inside
+; the line: never nearer the write head than 8, never past the ring's oldest
+; valid sample (32760; the hatch's 16376). Pinning at an extreme is a flat
+; spot in the wobble; a wrap would be a full-lap discontinuity.
+        asr     #$4,a,a                 ; Q11.12 -> Q8
+        move    x:(r7-$23),x0           ; TIME, Q8 (the glide's state)
+        add     x0,a
+        move    #>$800,x0               ; 8 samples
+        cmp     x0,a
+        tlt     x0,a
+        move    #>$7ff800,x0            ; 32760 samples                     ; @B
+        move    #>$3ff800,x0            ; 16376 samples                     ; @DEV
+        cmp     x0,a
+        tgt     x0,a
+        move    a,b
+        asr     #$8,a,a
+        move    a,x:(r7-$1e)            ; lag, integer samples
+        move    b,a
+        and     #>$ff,a                 ; the low 8 bits (a is positive: a2 stays clean)
+        asl     #$f,a,a                 ; -> Q23, 0 .. 255/256
+        move    a,x:(r7-$1d)            ; fraction
+; ---- Line L: the read at the lag --------------------------------------
         move    r1,a
 ; lerp read rolled into modtap: line base staged in n5, the
 ; pointer arrives in a, the tap returns in a. Same word-saving move as satdrv.
@@ -1822,27 +1865,12 @@ pdone:
 ; that cannot be knocked into a bad regime from the panel. Slot 10 is still
 ; free if the ear later asks for DRIVE.
 ;
-; TAPE ONLY, via the same Tcc substitution as the FREEZE hold and the PITCH
-; wet: cmp sets Z, moves do not disturb it, teq moves a CLEAN register in.
-; CLEAN and PITCH are untouched, which is what keeps verify-delay's
-; bit-identity gate green.
-;
-; Applied BEFORE the FREEZE substitution below on purpose: a frozen line
-; must hold its contents EXACTLY (gain 1, a copy), and re-saturating the
-; held loop every lap would grind it down instead.
+; TAPE ONLY, via the same Tcc substitution as the PITCH wet: cmp sets Z,
+; moves do not disturb it, teq moves a CLEAN register in. CLEAN and PITCH
+; are untouched, which is what keeps verify-delay's bit-identity gate green.
 ; sat + drive, SHARED: the transform is identical for both lines, so it is a
 ; bsr subroutine (satdrv, end of file) -- the roll that paid for DRIVE's
-; words. In: a = the value about to be written. Out: a. Clobbers b/x0/y0/y1
-; and $2f/$30, none live across this point in either channel.
-; FREEZE (v2 stage 3, crossfaded v6): while held, the write becomes the raw
-; tap -- unity recirculation with the input excluded, so the last TIME
-; samples loop for ever (read at wr-TIME, written at wr; the pointers must
-; keep running or the reads would stall). FDBK, PING and the input are all
-; bypassed while held; MIX, ->VERB and the PITCH heads keep working, so you
-; can play over it. The hold select and its v6 engage-crossfade live in
-; satdrv's tail (one copy for both lines); this line's raw tap rides in
-; through x1, which satdrv never touches.
-        move    x:(r7+$30),x1           ; the unshifted tap, this sample
+; words. In: a = the value about to be written. Out: a. Clobbers $2f.
         bsr     satdrv
         move    a,y:(r1)+                ; LineL write, advance
 
@@ -1858,9 +1886,7 @@ pdone:
         mac     x0,y1,a                 ; + the direct input's share
 ; sat + drive, SHARED: the transform is identical for both lines, so it is a
 ; bsr subroutine (satdrv, end of file) -- the roll that paid for DRIVE's
-; words. In: a = the value about to be written. Out: a. Clobbers b/x0/y0/y1
-; and $2f/$30, none live across this point in either channel.
-        move    x:(r7+$31),x1           ; LineR's raw tap (see the L note)
+; words. In: a = the value about to be written. Out: a. Clobbers $2f.
         bsr     satdrv
         move    a,y:(r2+n2)             ; LineR write (phase + base) -- no x_in term
         move    (r2)+                   ; advance the phase
@@ -2008,15 +2034,13 @@ dry:
                                         ; restores here were no-ops)
         rts
 
-; ---- modtap: the line read at lag TIME, shared by both lines --------------
+; ---- modtap: the line read at this sample's lag, shared by both lines -----
 ; In: a = line write pointer (LineR's is base-relative), n5 = the line's
-; base. Out: a = the sample at lag TIME. Clobbers x0/r5. (The lerp at
-; TIME + wow went with the modulation, 15 Sep 2026; at wow 0 the lerp
-; passed t0 through exactly, so this IS that path.)
+; base. Out: a = the sample at the lag: t0 at the integer lag, t1 one
+; sample older, lerped by the fraction (the glide's plus the wobble's, split
+; in the loop above). Clobbers b, x0, y1, r5.
 modtap:
-; the read at lag TIME + fraction: t0 at lag, t1 one sample older, lerped
-; by the glide's fraction (20 Sep 2026). Clobbers b, x0, y1, r5.
-        move    x:(r7+$2c),x0           ; TIME
+        move    x:(r7-$1e),x0           ; the lag, integer
         sub     x0,a
         move    x:(r7+$22),x0           ; the ring's mask
         and     x0,a
@@ -2028,49 +2052,24 @@ modtap:
         move    y:(r5+n5),a             ; t1
         sub     b,a                     ; t1 - t0
         move    a,x0
-        move    x:(r7-$8),y1            ; the fraction, Q23
+        move    x:(r7-$1d),y1           ; the fraction, Q23
         mpy     x0,y1,a                 ; (signed x0,y1) frac * (t1 - t0)
         add     b,a                     ; t0 + frac * (t1 - t0)
         rts
 
-; ---- satdrv: loop saturation + DRIVE blend, shared by both line writes ----
-; (18 Aug 2026 -- rolled when DRIVE landed; the two inline copies were the
-; word cost that had blocked a drive stage since stage 4b.) See the call
-; sites for the register/liveness contract. bsr, not jsr: dsp_asm implements
-; only the RELATIVE b-forms.
+; ---- satdrv: the limiting store, shared by both line writes ---------------
+; (18 Aug 2026 -- rolled when DRIVE landed; the freeze hold lived in its
+; tail until 20 Sep 2026.) In: a = the value about to be written. Out: a,
+; clamped to full scale. bsr, not jsr: dsp_asm implements only the RELATIVE
+; b-forms.
 satdrv:
         move    a,x:(r7-$1a)            ; park w. A LIMITING store: the sum
                                         ; can exceed full scale and a raw a1
                                         ; would WRAP where this saturates
         move    x:(r7-$1a),a            ; w, saturated (the tape's w - w^3/3
-                                        ; was gated on the wow depth, which
-                                        ; went 15 Sep 2026: this is the
-                                        ; depth-0 path, bit for bit)
-; ---- DRIVE: the blend toward the 4x-driven ----
-
-; ---- FREEZE crossfaded hold -----------------------------
-        move    a,y0                    ; live (the limiting copy applies the
-                                        ; same clamp the line store would)
-        move    y:>$0904,y1             ; r
-        sub     x1,a                    ; live - tap
-        asr     #$1,a,a                 ; /2 keeps the product path in range
-        move    a,x0
-        mpy     x0,y1,a                 ; r*(live-tap)/2  [audited-signed]
-        asl     #$1,a,a
-        add     x1,a                    ; v = tap + r*(live-tap)
-        move    a,x1                    ; v (the tap is consumed)
-        move    #>$7b7889,x0            ; g ~ 0.9646/call = 0.93/sample:
-                                        ; r reaches 1% in ~64 samples, 1.5 ms
-        mpy     x0,y1,b                 ; g*r
-        move    b,x0                    ; decayed candidate
-        move    x:(r7-$23),a            ; FREEZE flag
-        tst     a
-        move    y1,a                    ; running: r keeps its armed value
-        tne     x0,a                    ; frozen: r decays
-        move    a,y:>$0904
-        move    y0,a                    ; live
-        tne     x1,a                    ; frozen -> crossfaded hold (same Z:
-                                        ; moves and Tcc do not disturb it)
+                                        ; was gated on the wow depth until
+                                        ; 15 Sep 2026: this is the depth-0
+                                        ; path, bit for bit)
         rts
 
 ; ---- smoothw: smoothstepped triangle window from a phase (v6 roll) --------
@@ -2078,9 +2077,9 @@ satdrv:
 ; triangle fold of the phase (t/2^22; the LIMITING move clips the single
 ; peak value, exactly as every site this replaces did). Clobbers x0/y1 and
 ; the $5a park; y0/x1/b are untouched -- GRAIN's builder parks its wrap flag
-; in y0 across its call, and the freeze tap rides x1 through satdrv.
+; in y0 across its call.
 ;
-; THE ROLL THAT PAID FOR THE FREEZE CROSSFADE: this exact 17-instruction
+; THE ROLL (v6): this exact 17-instruction
 ; sequence appeared FIVE times (wow LFO, flutter LFO, GRAIN's builder,
 ; REVERSE head 0, REVERSE head 1), 21 words each -- found mechanically by
 ; scanning the built module for repeated instruction runs. 105 inline words
