@@ -7,6 +7,21 @@ flashed image was built from.
 
 ## Unreleased (main after image 29)
 
+- BusDelay: the tape wow is back and the freeze is gone (Sam, 20 Sep 2026:
+  "wow back freeze gone"). WOW on page-2 slot 11 (the freeze's), one depth
+  knob, 0 .. ±254 samples, wow 0.8 Hz + flutter 7.3 Hz at an eighth, fixed
+  rate, on the loop tap in every mode through the glide's between-samples
+  read; WOW 0 is bit-identical to the glide alone (`verify_delay`, every
+  case, against image 33's source). The freeze hold, its crossfade, the
+  `DFRZ`/`DFRZAT` build hooks and the refhash cases go; CC 67 is WOW. Delay
+  1,362 -> 1,385 words. Stamp before play: slot 11 stored 0/1 reads as WOW
+  0/1.
+- BusDelay (image 33 defect): the glide's fraction slot was raw `$41`,
+  inside GRAIN's line-L record (grain 0's window), so in GRAIN the loop tap
+  read a window value as its fraction. Found by `verify_delay` when the
+  fraction moved: image 33's source differed from itself-with-the-slot-moved
+  only in the GRAIN 23 ms +12 case. The lag and fraction are per-sample
+  slots `$2b/$2c` now.
 - Character RET defaults to 127 and prints `---` on tracks 1-7 (Sam, 20 Sep
   2026): a formatter cave (`modules/character/ret_fmt.s`) reads the
   current-track byte; the DSP already clears the level off the master.

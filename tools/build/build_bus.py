@@ -458,11 +458,11 @@ STOCK_DELAY_P = 0x400d4ace          # DELAY's E (0x400d4a96) + 0x38
 
 # ---- DEV repro hooks for outsider modules ----------------------------------
 # The three core sources have their override arms written out at the top of
-# main() (MODE, DMODE, DFRZAT and the rest). A module that arrives later needs
+# main() (MODE, DMODE, DNOTE and the rest). A module that arrives later needs
 # the same kind of lever without another special case in the placement loop,
 # so it declares a marker in its source and a rule here.
 #
-# ⚠️ EVERY HOOK HERE IS DEV-ONLY, for the reason DFRZAT is: the counter word
+# ⚠️ EVERY HOOK HERE IS DEV-ONLY: the counter word
 # lives at Y:0x37FFE in payload A's owned half of the shared window (init-
 # zeroed, above the bus scratch at 0x360d2), which is free ground in a DEV
 # layout and is NOT a promise about any shipping one.
@@ -1292,7 +1292,7 @@ def main():
             _ren = (mode_names.complete(_mod)
                     if _i == _mod.mode_slot and _mod.mode_views else {})
             # Only the MODE select names itself (15 Sep 2026, image 26): a
-            # select whose word is not self-explaining (SIZE, FRZE, SHFT,
+            # select whose word is not self-explaining (SIZE, SHFT,
             # RATE) keeps its name, the tick widget flashing the word.
             if _i == _mod.mode_slot:
                 _ren = mode_names.with_selfname(_ren, _i, _p.labels)
@@ -1580,7 +1580,7 @@ def main():
         # The overrides below splice into the delay's source. Asking for one
         # in a remix that has no delay is a mistake worth naming, not a
         # traceback.
-        _dset = [v for v in ("DMODE", "DINT", "DFRZ", "DNOTE", "DFRZAT")
+        _dset = [v for v in ("DMODE", "DINT", "DNOTE")
                  if os.environ.get(v) is not None]
         if _dset:
             sys.exit(f"{'/'.join(_dset)} set, but remix {REMIX.name!r} "
@@ -1777,25 +1777,11 @@ mkgo:""",
             "        move    #>%d,a" % int(dint_env))
         print(f"  *** DINT OVERRIDE: BusDelay PITCH interval forced to {int(dint_env)} ***")
 
-    # DFRZ=n forces BusDelay's FREEZE select (0 = running, nonzero = hold),
-    # same mechanism and reason as DMODE/DINT: slot 11 is a companion LOW-byte
-    # field (r6+$e) and dsp_host's -params cannot drive it.
-    dfrz_env = os.environ.get("DFRZ")
-    if dfrz_env is not None:
-        if delay_src.count("; DFRZ_OVERRIDE") != 1:
-            sys.exit("DFRZ=n set but the DELAY source has no single "
-                     "; DFRZ_OVERRIDE marker -- a pre-stage-3 delay_server.asm "
-                     "cannot take a freeze override")
-        delay_src = delay_src.replace(
-            "; DFRZ_OVERRIDE",
-            "        move    #>%d,a" % int(dfrz_env))
-        print(f"  *** DFRZ OVERRIDE: BusDelay FREEZE forced to {int(dfrz_env)} ***")
-
     # DNOTE=n forces the MIDI-note word the ColdFire cave publishes at r6+$9
     # (0 = no note ever; 72..96 = the OT's chromatic range, 84 = unison).
     # dsp_host has no cave, so this is the only local way to hear note ->
     # interval (branch midi). Same immediate-substitution
-    # mechanism as DMODE/DINT/DFRZ; the marker follows the asr, so the
+    # mechanism as DMODE/DINT; the marker follows the asr, so the
     # plain value (DINT's precedent).
     dnote_env = os.environ.get("DNOTE")
     if dnote_env is not None:
@@ -1805,32 +1791,6 @@ mkgo:""",
         delay_src = delay_src.replace(
             "; DNOTE_OVERRIDE", "        move    #>%d,a" % int(dnote_env))
         print(f"  *** DNOTE OVERRIDE: BusDelay MIDI note word forced to {int(dnote_env)} ***")
-
-    dfrzat_env = os.environ.get("DFRZAT")
-    if dfrzat_env is not None:
-        if dfrz_env is not None:
-            sys.exit("DFRZ and DFRZAT are mutually exclusive -- one freeze "
-                     "override at a time")
-        if os.environ.get("DEV") is None:
-            sys.exit("DFRZAT=n is a DEV-only repro hook (its counter word "
-                     "lives in payload A's shared-window half and its words "
-                     "do not fit the shipping payload B region) -- set DEV=1")
-        if delay_src.count("; DFRZ_OVERRIDE") != 1:
-            sys.exit("DFRZAT=n set but the DELAY source has no single "
-                     "; DFRZ_OVERRIDE marker")
-        delay_src = delay_src.replace(
-            "; DFRZ_OVERRIDE",
-            "        move    y:>$37ffe,a\n"
-            "        add     #>1,a\n"
-            "        move    a,y:>$37ffe\n"
-            "        move    #>%d,x0\n"
-            "        sub     x0,a\n"
-            "        move    #>0,x0\n"
-            "        tmi     x0,a\n"
-            "        move    #>1,x0\n"
-            "        tpl     x0,a" % int(dfrzat_env))
-        print(f"  *** DFRZAT OVERRIDE: BusDelay freezes after "
-              f"{int(dfrzat_env)} post-warm blocks ***")
 
     # ---- XBUS=1: move the bus scratch into the SHARED window ---------------
     if os.environ.get("XBUS") == "1":

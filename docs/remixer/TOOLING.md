@@ -107,7 +107,7 @@ the selected effects, places them into each payload's donor region in
 priority order, wires the dispatch tables, patches the ColdFire-side menu
 descriptors, installs caves, detours and the DRAM platform, and
 census-checks itself. It is driven by env flags (`DEV`, `NOSHIM`, `MODE`,
-`DFRZAT`, `TPROBE`, …; grep `environ` in the file); the render cache
+`DNOTE`, `TPROBE`, …; grep `environ` in the file); the render cache
 fingerprints every one (`docs/remixer/HARNESS.md`). `make image` repacks
 the result into a card-flashable `.bin` with the build number stamped into
 the OS version string. `docs/remixer/FLASHING.md` before writing to
