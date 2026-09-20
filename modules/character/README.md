@@ -34,7 +34,7 @@ Chain, fixed: fold → saturate → tilt → compress → width → mix.
   the delay's; stereo, four deep, two buffers back) enters at the front of
   the chain, so glue, saturation, width and tone treat dry plus wet
   together, and while RET is up the station stamps both hosts quiet. Inert
-  on every other track, where the knob draws with no name and no value
+  on every other track, where the knob is named `---` and draws no value
   (`ret_fmt.s`, a formatter cave reading the current-track byte; it writes
   the descriptor's name field the way the MODE caves rename their
   neighbours; the dial itself is the effect's, so it draws everywhere).

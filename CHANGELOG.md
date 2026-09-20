@@ -22,10 +22,10 @@ flashed image was built from.
   fraction moved: image 33's source differed from itself-with-the-slot-moved
   only in the GRAIN 23 ms +12 case. The lag and fraction are per-sample
   slots `$2b/$2c` now.
-- Character RET defaults to 127 and draws with no name and no value on
+- Character RET defaults to 127 and draws as `---` with no value on
   tracks 1-7 (Sam, 20 Sep 2026): a formatter cave
   (`modules/character/ret_fmt.s`) reads the current-track byte and writes
-  the descriptor's name field (`RET` on T8, empty elsewhere) before
+  the descriptor's name field (`RET` on T8, `---` elsewhere, Sam's ask after 35) before
   printing; the build exports every clone's address (`CLONE_<KEY>`) for a
   cave that writes its own descriptor. The DSP already clears the level off
   the master. `verify_labels` reads name and value back from the emulated

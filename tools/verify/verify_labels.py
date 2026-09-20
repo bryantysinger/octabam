@@ -25,7 +25,7 @@ IMAGE = pathlib.Path("out/mainos_bus.bin")
 # (module, slot, {track: (value, printed)}) for a formatter that reads the
 # current track.
 TRACK_FMT = (
-    ("CHARACTER", 4, {0: (127, ("", "")), 3: (64, ("", "")), 6: (127, ("", "")),
+    ("CHARACTER", 4, {0: (127, ("---", "")), 3: (64, ("---", "")), 6: (127, ("---", "")),
                       7: (127, ("RET", "127"))}),
 )
 NAMES_AT, NAME_LEN = 0x16, 6         # the descriptor's 12 x 6-byte name fields
