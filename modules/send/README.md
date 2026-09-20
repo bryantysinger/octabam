@@ -1,14 +1,15 @@
 # SEND
 
 The bus client: one knob, SEND, this track's level into the one aux bus
-(delay, then reverb, wet back on track 8).
+(delay, then reverb; each engine's wet comes out on the track that hosts it).
 
 It taps the audio buffer and never writes it, so a SEND at SEND 0 is
 indistinguishable from no effect. A fresh, unassigned track (FX2 id 0) is
 aliased to it rather than to NONE because SEND does the per-block bus
 housekeeping, so no track can stall the bus. It is also the fallback: an id
-a bus-carrying remix does not implement resolves here. The send is refused
-on track 8 by construction (the return lives there).
+a bus-carrying remix does not implement resolves here. Every track sends,
+the hosts and track 8 included (the send was refused on track 8 while the
+bus returned through a station there, 7–20 Sep 2026).
 
 ## The auto-gain
 

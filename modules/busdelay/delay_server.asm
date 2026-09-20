@@ -44,9 +44,10 @@
 ; modules/send/send_client.asm describes (copied byte for byte: a divergent
 ; copy desyncs the bus silently), sums the shared DELAY accumulator into its
 ; input, multiplies by the auto-gain 1/sqrt(N) and writes its stage output
-; to the chain buffer for the reverb and the return. The host track prints
-; the stage output (in*(1-MIX) + wet*MIX); its own audio reaches the engine
-; only through AUX.
+; (in + wet*WET, mono) to the chain buffer for the reverb. The host track
+; prints wet*WET under its dry (20 Sep 2026: the wet leaves through the
+; host and the chain and nowhere else; the published stereo stage output and
+; the T8 return went); its own audio reaches the engine only through SEND.
 ;
 ; State in the per-instance r7 block. The numbers below are raw slots; the
 ; code from `bus_mine:` to `dry:` spells them rebased -- r7 is moved $49
@@ -90,7 +91,7 @@
 ;   r7+$5f              SIZE select index, raw 0..3 (per block)
 ;   r7+$60/$61          REVERSE segment length S / phase step 2^23/S
 ;   r7+$62              REVERSE lag floor (per block)
-;   r7+$63/$64          this call's DELAY ACC read / DELAY WET write address
+;   r7+$63              this call's DELAY ACC read address
 ;   r7+$65..$67         split-aware bus bookkeeping (shared mechanism)
 ;   r7+$68              LineR base: Y:0x4000 (the hatch: LineL + 0x4000) (per block)
 ;   r7+$69              MODE, MSB-aligned select (per block; 0 = CLEAN,
@@ -100,7 +101,7 @@
 ;                       $7fff in REVERSE)
 ;   r7+$6c              skipR: 1 in REVERSE (the R line's read and write are
 ;                       skipped per sample; the output is mono to both)
-;   r7+$6e/$6f          scratch: x_in*(1-MIX), stage output L (per sample)
+;   r7+$6e/$6f          scratch: x_in (the passthrough term), stage output L (per sample)
 ;   r7+$70/$71          LineL/LineR write-pointer phase (persistent, masked
 ;                       on load and save: garbage with bit 23 set saturates
 ;                       the AGU and hangs the bus)
@@ -390,7 +391,7 @@ bus_mine:
 ; build rewrites; it may appear nowhere else in this file.
         move    #>$fab1e0,n4            ; the P table -- rewritten by build_bus.py
 
-; ---- this call's DELAY ACC read address and DELAY WET write address ------
+; ---- this call's DELAY ACC read address ----------------------------------
 ; READ is the OTHER buffer from the current write rotation -- the one every
 ; SEND client (and our own dry sum, below) finished filling last block.
 ; WRITE uses the SAME rotation clients currently write into, for a future
@@ -420,58 +421,11 @@ bus_mine:
         move    x:(r7+$1e),b            ; this call's split-aware frame offset
         add     b,a
         move    a,x:(r7+$1a)            ; this call's DELAY ACC read address
-; ---- this call's DELAY WET write address: STEREO, FOUR DEEP (3 Sep 2026) --
-; Read now, by a Character station in BUS mode -- the return on the master
-; (docs/history/BUS.md "The returns"), which is on the OTHER core -- so it takes the
-; accumulators' four-buffer rotation and carries L and R (32 words a buffer,
-; interleaved: the ping-pong image is the point of the delay). The base is
-; the reverb's wet page plus $80 -- spelled as base + offset, NOT one literal,
-; because only `$9xx` literals relocate under XBUS and a fused `$a5a` would
-; stay core-private and silently miss the bus (the shared-window base rule).
-        move    x1,a
-        add     x1,a                    ; write offset x2 (0/32/64/96)
-        add     b,a
-        add     b,a                     ; + frame offset x2
-        add     #>$9da,a
-        add     #>$80,a                 ; the DELAY's page, after the reverb's
-        move    a,x:(r7+$1b)            ; this call's WET write address (L; R at +1)
-
         move    x1,x0                   ; the full write offset, 0/16/32/48
         move    #>$901,a                ; the CHAIN buffer (one-aux rig, 7 Sep
         add     x0,a                    ; 2026): 4 x 16 mono words, the old
         add     b,a                     ; REVERB accumulator's home
         move    a,x:(r7+$3b)            ; this call's CHAIN write address
-
-; ---- RETD: is a return live on the delay's wet? (clear-on-read stamp) -----
-; The reverb's mechanism verbatim (modules/busverb/reverb_server.asm, RETV):
-; a return station stamps y:$9d9 nonzero each block it returns this bus; the
-; host prints its wet only while no stamp has arrived for 3 blocks, so with
-; no return in the rig the delay still comes out of its host, bit-identically
-; (print gain 1/2, doubled back in the guard bits). The grace counter and the
-; print gain live in CORE-PRIVATE Y, two words past the MIDI note's (r7 is
-; full, and the zero-padded spelling is what keeps the XBUS relocation off
-; them, exactly as RATE's state -- build_bus.py's census counts these five
-; refs, so this comment must not spell them).
-        move    y:>$090b,a              ; blocks of grace left
-        and     #>$3,a
-        move    a1,x0
-        move    x0,b                    ; A2-clean, boot garbage masked
-        move    #>$1,x0
-        sub     x0,b
-        move    #$0,x0 
-        tmi     x0,b                    ; floored at 0
-        move    y:>$9d9,a               ; the stamp
-        move    x0,y:>$9d9              ; clear-on-read (x0 is still 0)
-        move    #>$3,x0
-        tst     a
-        tne     x0,b                    ; stamped this block: 3 blocks of grace
-        move    b,y:>$090b
-        move    #$40,a               ; print gain 1/2 (x2 on use = exactly 1)
-        move    #$0,x0 
-        tst     b
-        tne     x0,a                    ; a return is live: print nothing
-        move    a,y:>$090c              ; this block's host print gain
-        move    x:(r7+$1e),b            ; the frame offset, back for what follows
 
 ; ---- bus auto-gain: resolve 1/sqrt(N) for this block's READ buffer --------
 ; The DELAY-bus mirror of the reverb's v121 fix (XBUS.md "Gain staging"):
@@ -654,13 +608,11 @@ dwarmc:
         bra     dry                     ; output stays dry until warm
 dwarmdone:
 ; ---- DELAY LIVE (one-aux rig, 7 Sep 2026): stamp y:$9c3 (the reverb's
-; chain-live word) and y:$9c5 (the return station's) every block this engine
-; really processes. Each is clear-on-read by its one reader. Not written
-; during the warm-up above, so a warming delay is not live: the reverb reads
-; the aux accumulator and the return falls through to the reverb.
+; chain-live word) every block this engine really processes; clear-on-read
+; by the reverb. Not written during the warm-up above, so a warming delay is
+; not live: the reverb reads the aux accumulator.
         move    #>$1,x0
         move    x0,y:>$9c3
-        move    x0,y:>$9c5
         move    x:(r7-$18),x0           ; LineL base
 
 ; ---- per-block: TIME, FDBK, TONE, PING, -VRB, IN, ... ---------------------
@@ -1934,14 +1886,14 @@ rskipw:
 ; The stage output is out = in + wet*WET per channel, where `in` is this
 ; sample's chain input x_in ($7d: the auto-gained aux, this host's SEND
 ; included) and wet is the final (drive, x1.5, ping-shelved) tap: a pedal on
-; the send, the send passing through it to the master at unity and WET
-; adding the repeats (until 15 Sep 2026 it crossfaded, in*(1-MIX) +
-; wet*MIX, and the reverb's MIX then faded the delay out). It is PUBLISHED
-; stereo to the shared DELAY OUTPUT buffer (the return station reads it two
-; buffers back) and its MONO average goes to the CHAIN buffer at $901 at
-; unity -- the reverb's input while this stage is live. The host prints
-; wet*WET under its dry, or nothing while a return is live (RETD). Every mpy
-; is an audited-signed order: y0,x0 or x0,y1.
+; the send, the send passing through it at unity and WET adding the repeats
+; (until 15 Sep 2026 it crossfaded, in*(1-MIX) + wet*MIX, and the reverb's
+; MIX then faded the delay out). Its MONO average goes to the CHAIN buffer
+; at $901 at unity -- the reverb's input while this stage is live. The host
+; prints wet*WET under its own dry (until 20 Sep 2026 the stage output was
+; also published stereo for the T8 return, and the print gated off while
+; that return was live). Every mpy is an audited-signed order: y0,x0 or
+; x0,y1.
         move    x:(r7+$34),b            ; x_in, this sample's chain input
         move    b,x:(r7+$25)            ; the passthrough term, both channels, at unity
         move    x:(r7+$32),x0           ; wet L = fL
@@ -1956,15 +1908,9 @@ rskipw:
         move    x:(r7+$25),b
         add     x0,b                    ; b = stage output L
         move    b,x:(r7+$26)            ; parked for the chain's mono average
-        move    x:(r7+$1b),a
-        move    a,r5
-        move    b,y:(r5)                ; -> shared DELAY OUTPUT, L
-        move    y:>$090c,y1             ; print gain
-        mpy     x0,y1,a                 ; (audited-signed x0,y1)
-        asl     #$1,a,a
         move    x:(r0),b                ; dry L, still in place
-        add     b,a                     ; + dry at unity (v5)
-        move    a,x:(r0)                ; L in place -- dry + wet*WET
+        add     x0,b                    ; + dry at unity (v5)
+        move    b,x:(r0)                ; L in place -- dry + wet*WET
         move    x:(r7+$33),x0           ; wet R = fR
         move    x0,a
         move    x0,b
@@ -1982,15 +1928,8 @@ rskipw:
         move    a,x0                    ; x0 = wet*WET
         move    x:(r7+$25),b
         add     x0,b                    ; b = stage output R
-        move    x:(r7+$1b),a
-        add     #>$1,a
-        move    a,r5
-        move    b,y:(r5)                ; -> shared DELAY OUTPUT, R
-        move    y:>$090c,y1             ; print gain, as on L
-        mpy     x0,y1,a
-        asl     #$1,a,a
-        move    x:(r0+n0),x0            ; dry R
-        add     x0,a
+        move    x:(r0+n0),a             ; dry R
+        add     x0,a                    ; + dry at unity
         move    a,x:(r0+n0)             ; R in place -- dry + wet*WET
 ; ---- the CHAIN buffer: mono average of the stage output, at unity --------
         move    x:(r7+$26),a            ; out L
@@ -2005,9 +1944,6 @@ rskipw:
         move    #>$1,x0
         add     x0,a
         move    a,x:(r7+$3b)            ; advance the CHAIN write pointer
-        move    x:(r7+$1b),a
-        add     #>$2,a
-        move    a,x:(r7+$1b)            ; OUTPUT pointer: one stereo frame on
 
         move    (r0)+n0                 ; advance one stereo frame: two
         move    (r0)+n0                 ; steps, n0 stays 1 (14 Sep 2026)

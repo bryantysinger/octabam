@@ -1,4 +1,4 @@
-"""CHARACTER -- the station that dirties or tightens, and the bus return.
+"""CHARACTER -- the station that dirties or tightens.
 
 A per-track insert on stock LO-FI's id 0x1c (FX1 only; an FX2 instance runs
 as a dry pass, decided from the allocator base at init). Chain order:
@@ -17,15 +17,14 @@ fold -> saturate -> tilt -> compress -> width.
   * COMP -- JClones AC1's console channel law: GLUE (slow) on the master
     by position, COMP (fast) elsewhere; the detector's key is the station's
     own input;
-  * WDTH -- mid/side width, drawn -64..+63: -64 mono, +63 2x side;
-  * RET -- the bus return level, live on the master only (T8, dispatch
-    position 3 on payload A): the last live stage's wet (the reverb's if it
-    runs, else the delay's) enters at the front of the chain, and while RET
-    is up the station stamps both hosts quiet. Inert on every other track."""
+  * WDTH -- mid/side width, drawn -64..+63: -64 mono, +63 2x side.
 
-from remix.schema import (BusRole, CavePatch, Claims, DspSection, Formatter,
-                          FormatterReg, Harness, Kind, MenuEntry, ModeView,
-                          Module, Param, YBase)
+Page-1 slot 4 is empty (`---`): it was the bus return level until 20 Sep
+2026, when the return left the station (each engine prints its wet on its
+own host); a stored byte there is never read."""
+
+from remix.schema import (BusRole, Claims, DspSection, Formatter, Harness,
+                          Kind, MenuEntry, ModeView, Module, Param, YBase)
 
 _PLAIN = Formatter.PLAIN
 _STEP = Formatter.STEPPED
@@ -69,7 +68,7 @@ MODULE = Module(
     name="character",
     key="CHARACTER",
     kind=Kind.DSP_EFFECT,
-    doc="BamSep26 station: crush, fold/ring, saturation, compressor, width, sends.",
+    doc="BamSep26 station: crush, fold/ring, saturation, compressor, width.",
     menu=MenuEntry(
         fx2_id=0x1c,
         replaces="LO-FI",
@@ -88,11 +87,8 @@ MODULE = Module(
               doc="Airwindows Pockey (MIT): the 12-bit sampler texture, both sliders at once; 0 = off"),
         Param(b"COMP", 0, active=True, formatter=_PLAIN,
               doc="compression amount; 0 = no gain reduction at any level"),
-        # Default 127 (Sam, 20 Sep 2026): full on the master; the DSP clears
-        # the level off T8 before anything reads it, so the bypass stays
-        # bit-exact there. ret_fmt.s blanks the name and value on tracks 1-7.
-        Param(b"RET", 127, active=True, formatter=_PLAIN,
-              doc="the bus return level; live on the master (T8) only, blank elsewhere"),
+        # Slot 4: empty since 20 Sep 2026 (the bus return level before that).
+        Param(b"---", 0, doc="unused"),
         # MIX on page 1 and TONE on page 2 since 16 Sep 2026 (Sam's knob pass).
         Param(b"MIX", 127, active=True, formatter=_PLAIN,
               doc="dry/wet across the whole chain; 0 = exact passthrough"),
@@ -114,11 +110,11 @@ MODULE = Module(
         asm="modules/character/character.asm",
         ptable=TUBE_UP + TAPE_D8 + POCKEY_ENC + POCKEY_DEC,
         priority=13,                  # after the Spectrum station
-        bus_role=BusRole.NONE,        # an insert that also WRITES the bus
+        bus_role=BusRole.NONE,        # an insert; never on the bus
         ybase=YBase.NEVER,            # an FX1 module may own no buffers; the
-                                      # return's payload test reads the
+                                      # master's payload test reads the
                                       # dispatch table instead
-        r7_latch_slot=0x69,           # ROTLATCH parks this block's offset here
+        r7_latch_slot=None,           # never reads the rotation
         gate_label=None,              # no housekeeping: a station never elects
     ),
     # FX1 only: the rig's cycle envelope closes only with the stations on
@@ -126,20 +122,5 @@ MODULE = Module(
     # 3,120). The FX2 chooser hides the row; verify_character proves the
     # dry pass.
     claims=Claims(fx1_only=True),
-    harness=Harness(layout_char="2", is_server=False, bus_client=True),
-    cf_patches=(
-        CavePatch(
-            label="ret_fmt cave",
-            cave_addr=None,          # floating, like tempo-sync's time_fmt
-            # The source is the bytes: CLONE_CHARACTER (this clone's
-            # descriptor, exported by the build) is linked in, so the bytes
-            # follow the clone's position. What it prints, and the name it
-            # writes, verify_labels reads back from the emulated firmware.
-            pinned=b"",
-            source="modules/character/ret_fmt.s",
-            defsyms=(("CLONE_CHARACTER", 0),),
-            registers_formatter=FormatterReg(module="CHARACTER", slot=4),
-            report_note=", registered as Character RET's formatter",
-        ),
-    ),
+    harness=Harness(layout_char="2", is_server=False, bus_client=False),
 )

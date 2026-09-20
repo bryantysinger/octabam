@@ -7,6 +7,29 @@ flashed image was built from.
 
 ## Unreleased (main after image 29)
 
+- The bus returns on its hosts (Sam, 20 Sep 2026: the T8 return "has
+  proven to be too difficult"; option (b), the chain kept). Each engine
+  prints its wet under its host's own dry: T1-4's BusDelay the repeats,
+  T5-8's BusVerb the tail (of the sends and the repeats); no return
+  anywhere else. Gone: Character's RET (page-1 slot 4 is `---`, a stored
+  byte there is never read), `ret_fmt.s`, the position pin's return half
+  (GLUE by position stays), the hosts-quiet stamps (`Y:0x9d8/0x9d9`), the
+  engines' published stage outputs (`Y:0x9da..0xad9`), the return-station
+  liveness stamps (`Y:0x9c4/0x9c5`) and the SEND refusal on T8: every
+  track sends, the hosts and T8 included (a host adds its wet in place
+  after its own send tap). Words: Character 1,138 / 1,195 -> 975 / 975,
+  BusVerb 1,963 -> 1,914, BusDelay 1,385 -> 1,326; payload A FREE 706 ->
+  931, B 1,240 -> 1,532; static cycles reverb 1,159 -> 1,135, delay 1,129
+  -> 1,109, Character 639 -> 623. `verify_onebus` rewritten for the host
+  prints (T8 sends; a stored RET byte inert); `verify_set` checks each
+  host's chain output and refuses an engine on the wrong core;
+  `ot_project.py stamp-defaults` and `ot_spec.py report` warn per part
+  about BusVerb on T1-4 / BusDelay on T5-8 (it runs as SEND there). Stamp
+  before play (slot 4 127 -> 0). Placement: Modulation moves down on both
+  payloads (A 0x17d4, B 0x133b), the shape of OCTABAM5's silence on the
+  station banks (`FAILURE_MODES.md`, cause open); if the station banks go
+  silent, pad Character back to its previous placement first.
+
 - BusDelay: the tape wow is back and the freeze is gone (Sam, 20 Sep 2026:
   "wow back freeze gone"). WOW on page-2 slot 11 (the freeze's), one depth
   knob, 0 .. ±254 samples, wow 0.8 Hz + flutter 7.3 Hz at an eighth, fixed
