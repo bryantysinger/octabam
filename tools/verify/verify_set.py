@@ -165,6 +165,9 @@ def main():
     ap.add_argument("--reuse", action="store_true", help="skip the port run when its dumps are there")
     ap.add_argument("--image", default="", help="a built image to boot instead of building the remix (a bisect)")
     ap.add_argument("--extra", default="", help="extra ot_emu arguments, e.g. '--dsp-dirty' (garbage DSP RAM, as hardware)")
+    ap.add_argument("--midi-file", default="", help="extra MIDI IN lines appended to the gate's own "
+                    "('<frame> <status> <d1> <d2>' in hex, one per line; T<n> in the status is that "
+                    "track's channel): a knob script through the panel's real path")
     a = ap.parse_args()
 
     if not a.project:
@@ -225,6 +228,15 @@ def main():
                 sys.exit(f"{key} on T{t + 1}: payload {'A' if t >= 4 else 'B'} does not carry it "
                          f"(it runs as SEND there); host it on T{cores[0] + 1}-T{cores[-1] + 1}")
             hosts.append((key, t))
+    if a.midi_file:
+        for ln in pathlib.Path(a.midi_file).read_text().splitlines():
+            ln = ln.split("#")[0].strip()
+            if not ln:
+                continue
+            m = re.match(r"(\S+)\s+B?T(\d)\s+(\S+)\s+(\S+)$", ln)
+            if m:      # "<frame> BT<n> cc val" -> that track's channel
+                ln = f"{m.group(1)} B{chans[int(m.group(2)) - 1] & 0xf:X} {m.group(3)} {m.group(4)}"
+            lines.append(ln)
     midi.write_text("\n".join(lines) + "\n")
 
     dumps = {k: OUT / f"{k}.bin" for k in ("ids", "records", "lanes")}

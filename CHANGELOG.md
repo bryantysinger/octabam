@@ -7,6 +7,27 @@ flashed image was built from.
 
 ## Unreleased (main after image 38)
 
+- BusDelay: the TIME glide ramps within the block. Sam, 20 Sep 2026 (image
+  38): "time and feedback causes crackles on delay ... reverting their
+  settings doesn't fix" -- the glide's state moved once per block (up to
+  ~17 samples a step) and the loop's tap, REVERSE's heads and GRAIN's read
+  base all jumped by the step at every block edge: a click per block for as
+  long as the step exceeded a sample (~1 s per big move, in both
+  directions, so a revert was another second of it; the exponential tail
+  takes ~3 s to settle, which is why it seemed to stay). Measured under
+  `dsp_host` (`tools/harness/glide_census.py`: 5,228 / 2,676 / 4,483
+  second-difference spikes per mode, 0 / 73 / 896 with the ramp) and under
+  the port with the recipe over MIDI (`tools/harness/port_click_census.py`,
+  `tools/harness/midi/delay_knob_moves.midi`: 24 -> 6 spikes per 1,000
+  samples during the glide in REVERSE, 0 at rest). The loop's Q8 TIME now
+  walks from last block's state to this one's a sixteenth of the step per
+  sample; REVERSE's lag floor and GRAIN's read base are re-derived per
+  sample from it. Bit-identical at rest (`verify_delay`, every case); +28
+  words. FDBK and PTCH moves measured clean before and after; the FDBK
+  "crackle" was the TIME glide's tail. `dsp_host -sched b:i:s=v` (a knob
+  move mid-render) and `-dumpcore`; `verify_set --midi-file` (a CC script
+  through the panel's real path).
+
 ## Image 38 — 20 Sep 2026 (`OCTABAM38`, bamsep26 at 60f41b0)
 
 On the unit: the reverb on T5 clean (Sam: "verb sounds clean on t5 now")

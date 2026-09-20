@@ -278,6 +278,28 @@ repeats, T5 the tail). ✅ Image 38 on the unit: the reverb on T5 is clean
 engine; which part of it (the shared-window per-sample reads, the
 rotation, the station's add) was not bisected and the code is gone.
 
+## A TIME turn on BusDelay crackles for about a second, in both directions ✅ measured, fixed (unflashed)
+
+**Symptom (Sam, 20 Sep 2026, image 38).** TIME or FDBK moves crackle;
+putting the knobs back does not clear it; re-selecting the effect does.
+
+**Cause (measured under `dsp_host` and the port).** The glide (image 33)
+stepped its Q8 state once per block, up to ~17 samples a step, and the
+loop's tap, REVERSE's lag floor and GRAIN's read base were computed from
+that per-block value: the read jumped by the step at every block edge, a
+click every 16 samples while the step exceeded a sample (~1 s after a big
+move), then a sub-sample tail for ~3 s. A revert is another glide, hence
+"doesn't fix"; init starts the state at the target, hence "re-select
+fixes". The FDBK crackle was the TIME glide's tail; FDBK's own glide and
+PTCH moves measured clean. `tools/harness/glide_census.py` /
+`port_click_census.py`.
+
+**Fix.** The Q8 TIME ramps within the block, a sixteenth of the step per
+sample; REVERSE and GRAIN re-derive their per-sample lag from it. Spikes
+per mode 5,228 / 2,676 / 4,483 -> 0 / 73 / 896 (the remainder REVERSE's
+uninterpolated heads repeating a sample as the ramp passes an integer, at
+the level of its own segment splices).
+
 ## The RET/CRSH trap ✅ removed by design
 
 **Symptom.** With T8's Character in the old BUS mode and knob 3 at 127,

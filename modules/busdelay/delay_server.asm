@@ -91,7 +91,7 @@
 ;   r7+$5f              SIZE select index, raw 0..3 (per block)
 ;   r7+$60/$61          REVERSE segment length S / phase step 2^23/S
 ;   r7+$62              REVERSE lag floor (per block)
-;   r7+$63              this call's DELAY ACC read address
+;   r7+$63/$64          this call's DELAY ACC read address / the TIME ramp's per-sample increment (Q8)
 ;   r7+$65..$67         split-aware bus bookkeeping (shared mechanism)
 ;   r7+$68              LineR base: Y:0x4000 (the hatch: LineL + 0x4000) (per block)
 ;   r7+$69              MODE, MSB-aligned select (per block; 0 = CLEAN,
@@ -118,7 +118,8 @@
 ;   r7+$83              DRIVE amount d (pinned to 0)
 ;   r7+$84              this call's CHAIN write address ($901 + rotation +
 ;                       frame offset; advances per sample)
-;   r7+$85/$87          MIX / 1-MIX (per block)
+;   r7+$85              WET coefficient, glided (per block)
+;   r7+$87              REVERSE lag cap 32704 - 2S (per block; the loop's RLAG0 source)
 ;   r7+$86              this block's resolved write offset (0/16/32/48);
 ;                       every bus address derives from it
 ;   r7+$88              last-seen rotation (the gated housekeeping block's)
@@ -714,6 +715,7 @@ snapz:
         tst     b
         teq     x0,b                    ; boot: start AT the target
         move    b,y0
+        move    b,x1                    ; last block's state, for the ramp below
         sub     y0,a                    ; target - state
         asr     #$a,a,a                 ; /1024 per block
         add     y0,a                    ; state += step
@@ -729,15 +731,26 @@ snapz:
         move    y1,a                    ; a move keeps the flags
         tlt     x0,a                    ; within it: state = target
         move    a,y:>$0907
-        move    a,b                     ; the Q8 state, kept for the fraction
+        move    a,b                     ; the Q8 state
         asr     #$8,a,a                 ; back to integer samples
         move    a,x:(r7+$2c)            ; TIME, as every consumer below sees it
-; the Q8 state is the loop's: each sample adds the wobble and splits the
-; sum into the lag and a fraction, and modtap reads BETWEEN samples at that
-; fraction, so the glide never skips or repeats one -- the click train Sam
-; heard as crackle while turning TIME, recirculating through FDBK (20 Sep
-; 2026). Raw $26 (r7 is rebased by $49 here and in the loop).
-        move    b,x:(r7-$23)            ; TIME, Q8
+; THE RAMP (20 Sep 2026, the second crackle): the loop's tap does not sit
+; at this block's state, it walks from LAST block's state to this one's a
+; sixteenth of the step per sample -- a step applied whole at the block
+; edge was a read that jumped up to 17 samples every 16, a click per block
+; for the ~1 s a big TIME move glides (measured under dsp_host and the
+; port, image 38: 24 second-difference spikes per 1,000 samples for the
+; whole glide, 0 at rest). Each sample adds the wobble to the ramped Q8
+; value and splits the sum into the lag and a fraction; modtap reads
+; BETWEEN samples at that fraction. Raw $26 holds the running value (r7
+; is rebased by $49 here and in the loop), raw $64 the per-sample increment
+; (the return's WET write address until 20 Sep 2026). A call shorter than
+; 16 frames lands the ramp short by that fraction of one step and the next
+; call re-bases it: under two samples at the fastest glide.
+        move    x1,x:(r7-$23)           ; the ramp starts at last block's state
+        sub     x1,b                    ; this block's step, Q8
+        asr     #$4,b,b                 ; per sample, over 16
+        move    b,x:(r7+$1b)            ; the increment
 
 ; FDBK, TONE, PING and WET glide too (20 Sep 2026): each coefficient
 ; moves an eighth of the way to its knob per block (~130 samples to settle)
@@ -950,6 +963,9 @@ snapz:
         move    a,x:(r7+$18)            ; REVERSE phase step
         move    p:(r5)+,a               ; 32704 - 2S
         move    a,x:(r7+$d)             ; the cap for this size
+        move    a,x:(r7+$3e)            ; ... kept for the loop ($d is its
+                                        ; lag0 scratch): REVERSE re-derives
+                                        ; RLAG0 per sample from the TIME ramp
         move    p:(r5)+,a               ; G - 1
         move    a,x:(r7-$11)            ; GRAIN mask
         move    p:(r5)+,a               ; G/4
@@ -1298,8 +1314,11 @@ gvrdone:
 ; valid sample (32760; the hatch's 16376). Pinning at an extreme is a flat
 ; spot in the wobble; a wrap would be a full-lap discontinuity.
         asr     #$4,a,a                 ; Q11.12 -> Q8
-        move    x:(r7-$23),x0           ; TIME, Q8 (the glide's state)
-        add     x0,a
+        move    x:(r7-$23),b            ; the ramped TIME, Q8
+        move    x:(r7+$1b),x0           ; this block's per-sample increment
+        add     x0,b
+        move    b,x:(r7-$23)            ; ... advanced for the next sample
+        add     b,a                     ; + the wobble
         move    #>$800,x0               ; 8 samples
         cmp     x0,a
         tlt     x0,a
@@ -1349,6 +1368,24 @@ rskipr:
 ; MODEFORK_MID -- alternative 1: GRAIN
 
 gmode:
+; the read distance base per sample from the TIME ramp (20 Sep 2026): the
+; per-block base stepped every reader by the whole glide step at each block
+; edge -- the click per block the loop's tap had. Same recipe as the block's:
+; min(TIME, 28670 - mask) + G + 2, on this sample's ramped TIME. The block's
+; own write of $-e is the first sample's starting point and is overwritten.
+        move    x:(r7-$23),a            ; the ramped TIME, Q8 (this sample's)
+        asr     #$8,a,a
+        move    #>28670,b               ; 32767 - 4096 - 1                 ; @B
+        move    #>12286,b               ; 16383 - 4096 - 1                 ; @DEV
+        move    x:(r7-$11),x0           ; mask = G - 1
+        sub     x0,b                    ; the lag cap for this G
+        move    b,x0
+        cmp     x0,a
+        tgt     x0,a                    ; min(TIME, cap) = lag
+        move    x:(r7-$11),x0
+        add     x0,a                    ; + G - 1
+        add     #>$3,a                  ; + 3 = lag + G + 2
+        move    a,x:(r7-$e)            ; the read distance base
 ; ---- PRNG advance: BusDelay's 23-bit xorshift 15/15/8 -------------------
         move    x:(r7-$31),a            ; state
         move    a1,x0
@@ -1679,6 +1716,16 @@ gvrz:
 ; audited-signed `mpy x0,y1` form; y1 carries S or a window gain, both
 ; non-negative.
 rmode:
+; RLAG0 per sample from the TIME ramp (20 Sep 2026): the per-block value
+; below stepped the heads by the whole glide step at every block edge --
+; the same click per block the loop's tap had; min(TIME, cap), the
+; per-block recipe, on this sample's ramped TIME.
+        move    x:(r7-$23),a            ; the ramped TIME, Q8 (this sample's)
+        asr     #$8,a,a
+        move    x:(r7+$3e),x0           ; the cap, 32704 - 2S
+        cmp     x0,a
+        tgt     x0,a                    ; min(TIME, cap)
+        move    a,x:(r7+$19)            ; RLAG0 for this sample
         move    x:(r7+$15),a            ; segment phase
         move    x:(r7+$18),x0           ; step = 2^23 / S
         add     x0,a
