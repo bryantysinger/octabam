@@ -57,13 +57,18 @@ CORE 1 (payload B)  tracks 1–4   BusDelay  Y:0x4000–0xBFFF (private) + Y:0x3
   From 7 to 20 Sep 2026 each stage also published its output stereo, four
   deep (`0x9da` reverb, `0xa5a` delay), Character's `RET` on track 8 (by
   dispatch position, payload A position 3, `r7 $6a00`) returned the last
-  live stage's output and stamped both hosts quiet (`0x9d8/0x9d9`), and the
-  SEND was refused on T8 (`r7 $6b00` on payload A) so the return could not
-  feed the bus. ✅ Flash 7 (OCTABAM21) measured all of that on the unit; on
-  image 35 the return was "less rich / bit-crushed" on the unit and clean
-  under the port (`FAILURE_MODES.md`), and the mechanism went. The hosts
-  add the wet in place after their own send tap, so no track can send the
-  bus's wet back into the bus; every track sends, T8 included.
+  live stage's output and stamped both hosts quiet (`0x9d8/0x9d9`). ✅
+  Flash 7 (OCTABAM21) measured all of that on the unit; on image 35 the
+  return was "less rich / bit-crushed" on the unit and clean under the port
+  (`FAILURE_MODES.md`), and the mechanism went. The hosts add the wet in
+  place after their own send tap, so a host never sends its own wet.
+- The send is refused on track 8: `SEND` at core 0's position 3 (`r7
+  $6b00` on payload A) contributes and registers nothing. T8 is the
+  master: with MASTER TRACK on its input is the mix, the hosts' wet
+  included, and a send from it would put that wet back into the bus (the
+  master loop that silenced the unit on 6 Sep 2026, `FAILURE_MODES.md`).
+  Payload B's position 3 (T4) sends normally; the payload is told apart by
+  SEND's `$30000` base literal, rewritten to `$38000` on B (`YBase.XBUS`).
 - Return balance on material (7 Sep, `out/rig/oneaux/`): drum loop −25.1 dB
   rms with the reverb at MIX 0 and −26.8 at MIX 127; pad −31.4 / −32.8; no
   makeup. (The "wet ~25 dB under the repeats" reading from the 438 Hz gate
@@ -185,8 +190,8 @@ check`) runs the chain on both cores: T5 prints the reverb (stereo) and T1
 the delay; the reverb hears the delay; delay WET 0 == no delay two blocks
 later, sample-exact; a host at WET 0 prints only its dry; T1's print is
 bit-identical with the reverb at WET 0, WET 127 or absent; a SEND at
-core-0 position 3 (T8) at SEND 127 changes T5's print and so does the
-mirror position on core 1; a Character with slot 4 stored 127 (RET in a
+core-0 position 3 (T8) at SEND 127 changes neither host and the mirror
+position on core 1 does; a Character with slot 4 stored 127 (RET in a
 pre-20-Sep part) prints nothing and changes neither host; a station with
 stored send bytes contributes nothing; the chain is identical under four
 instruction-level skews. `make verify-twocore`: SEND, delay and series hops

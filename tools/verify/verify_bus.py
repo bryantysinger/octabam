@@ -61,9 +61,10 @@ CASES = [
      dict(layout="SD", pick="D")),
     (".RS     position 0 is NEITHER -- the self-healing election takes over",
      dict(layout=".RS")),
-    # No sender at position 3 in any single-core case: the SEND was refused
-    # there (track 8 on payload A) from 7 to 20 Sep 2026 and the layouts
-    # were chosen then; the refusal is gone, the layouts stay as stamped.
+    # ⚠️ NO SENDER AT POSITION 3 in any single-core case: that is track 8
+    # on payload A (the DEV hatch IS payload A), where the SEND is refused
+    # by design -- a `..DS` layout rendered digital silence and the gate
+    # rightly refused to stamp it.
     (".DS     election takeover with the delay as the server",
      dict(layout=".DS", pick="D")),
 

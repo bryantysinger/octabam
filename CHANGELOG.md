@@ -15,13 +15,14 @@ flashed image was built from.
   byte there is never read), `ret_fmt.s`, the position pin's return half
   (GLUE by position stays), the hosts-quiet stamps (`Y:0x9d8/0x9d9`), the
   engines' published stage outputs (`Y:0x9da..0xad9`), the return-station
-  liveness stamps (`Y:0x9c4/0x9c5`) and the SEND refusal on T8: every
-  track sends, the hosts and T8 included (a host adds its wet in place
-  after its own send tap). Words: Character 1,138 / 1,195 -> 975 / 975,
+  liveness stamps (`Y:0x9c4/0x9c5`). The hosts send (a host adds its wet
+  in place after its own send tap); the SEND stays refused on T8 (Sam:
+  "we still dont want send on t8" -- with MASTER TRACK on its input is the
+  mix, the hosts' wet included). Words: Character 1,138 / 1,195 -> 975 / 975,
   BusVerb 1,963 -> 1,914, BusDelay 1,385 -> 1,326; payload A FREE 706 ->
-  931, B 1,240 -> 1,532; static cycles reverb 1,159 -> 1,135, delay 1,129
+  918, B 1,240 -> 1,519; static cycles reverb 1,159 -> 1,135, delay 1,129
   -> 1,109, Character 639 -> 623. `verify_onebus` rewritten for the host
-  prints (T8 sends; a stored RET byte inert); `verify_set` checks each
+  prints (T8 still refused; a stored RET byte inert); `verify_set` checks each
   host's chain output and refuses an engine on the wrong core;
   `ot_project.py stamp-defaults` and `ot_spec.py report` warn per part
   about BusVerb on T1-4 / BusDelay on T5-8 (it runs as SEND there). Stamp

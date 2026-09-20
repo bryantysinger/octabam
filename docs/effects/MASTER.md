@@ -16,7 +16,7 @@ T1 FX2 = DELAY SERVER: T1 prints dry + repeats ─ chain ─▶ T5 FX2 = REVERB 
                                                                                  │
 T8 (MASTER TRACK on)  ◀──────────────────────────────────────────────────────────┘
    FX1 = CHARACTER:  FOLD ▶ TXTR ▶ SAT ▶ TONE ▶ COMP (GLUE by position) ▶ WDTH ▶ MIX
-   FX2 = SEND, like every track
+   FX2 = nothing (the SEND is refused on T8: its input is the mix)
 ```
 
 - **T8 is the master.** With MASTER TRACK on, T8's effect chain sees the
@@ -30,8 +30,9 @@ T8 (MASTER TRACK on)  ◀──────────────────�
 - **Each engine's wet comes out on its host** (20 Sep 2026): T1 prints its
   dry + the repeats × WET, T5 its dry + the tail × WET, each under that
   track's LEVEL, mute and scenes, and the master hears both as ordinary
-  tracks. A host adds the wet in place after its own send tap, so the bus
-  never hears its own wet. From 7 to 20 Sep 2026 the wet returned instead
+  tracks. A host adds the wet in place after its own send tap, so a host
+  never sends its own wet; T8's send stays refused (its input is the mix,
+  the hosts' wet included). From 7 to 20 Sep 2026 the wet returned instead
   through Character's RET on T8, in front of the chain, with the hosts
   stamped quiet and the send refused on T8 (✅ flash 7); on image 35 that
   return was degraded on the unit and clean under the port
@@ -51,7 +52,7 @@ T8 (MASTER TRACK on)  ◀──────────────────�
 | 1 | CHARACTER, defaults | DELAY SERVER, SEND 30 |
 | 2, 3, 4, 6, 7 | SPECTRUM, defaults | SEND, SEND 40 / 30 / 40 / 50 / 40 |
 | 5 | MODULATION, defaults | REVERB SERVER, SEND 40 |
-| 8 | CHARACTER, COMP 40 (GLUE by position) | SEND, SEND 40 |
+| 8 | CHARACTER, COMP 40 (GLUE by position) | — (the send is refused on T8) |
 
 Stamp every project for the current remix before play
 (`tools/hw/ot_project.py stamp-defaults`); a part saved under an older slot

@@ -207,8 +207,8 @@ real payload B feeding BusVerb on payload A (the send hop, the delay hop,
 the delay→reverb series hop) render bit-identical to the same layouts on
 one core through the DEV hatch, and under four skews.
 `tools/verify/verify_onebus.py` (in `make check`): the one-aux rig's chain,
-its liveness stamp, WET passthrough, each host's print, the T8 send and
-station silence, senders and delay on payload B, reverb on payload A.
+its liveness stamp, WET passthrough, each host's print, the track-8 send
+refusal and station silence, senders and delay on payload B, reverb on payload A.
 
 ## port_compare.py
 

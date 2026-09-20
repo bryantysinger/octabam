@@ -16,11 +16,11 @@ the loop reads as silence rather than a squeal is not established. On the
 tag-93 rig (5 Sep) one instance cleared with a power-cycle; the 6 Sep
 instances did not.
 
-**Fix.** By construction: the stations have no sends, and since 20 Sep
-2026 nothing adds the bus's wet ahead of a send tap -- each engine's host
-adds its wet in place after its own send (`tools/verify/verify_onebus.py`).
-From 7 to 20 Sep 2026 the SEND was refused at track 8's dispatch position
-instead, while T8's station carried the return.
+**Fix.** By construction: the stations have no sends, and the SEND is
+refused at track 8's dispatch position on payload A whatever its knob says
+(`tools/verify/verify_onebus.py`). The refusal outlived the T8 return (20
+Sep 2026): with MASTER TRACK on, T8's input is the mix, the hosts' wet
+included, so a send from T8 would put the bus's wet back into the bus.
 
 ## The audio engine wedges with only BusVerb + the return 🔴 cause open (the return itself removed 20 Sep 2026)
 

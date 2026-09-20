@@ -21,9 +21,10 @@ a host's stream IS its engine's wet*WET); there is no return station.
   the reverb takes nothing out
                T1's print is bit-identical with the reverb at WET 0, at WET
                127 and with no reverb at all
-  T8 sends     a SEND at core-0 position 3 (track 8) with SEND 127 changes
-               T5's print (the refusal went with the return)
-  T4 sends     the mirror position on core 1 does too
+  T8 refused   a SEND at core-0 position 3 (track 8) with SEND 127 changes
+               nothing (the master's input is the mix, the hosts' wet
+               included: a send from it would loop the bus)
+  T4 sends     the mirror position on core 1 does
   old bytes    a Character with slot 4 stored 127 (RET in a pre-20-Sep
                part), on T8 or T4, prints nothing of its own and changes
                neither host; a station with the old send bytes (slots 4/5 =
@@ -244,13 +245,14 @@ def main():
     check("T1's print with the reverb at WET 0 == delay only, bit for bit", st_dr0[2] == st_d[1])
     check("T1's print with the reverb at WET 127 == delay only, bit for bit", t1 == st_d[1])
 
-    print("\n== every track sends, track 8 included ==")
+    print("\n== the send is refused on track 8, and only there ==")
     t8 = [R(), S6(), Inst("SEND", 0, 3, fed=True, SEND=127), D(), S2()]
     st_8 = run(mems, t8, tag="t8")
-    check("a SEND on T8 (core 0 pos 3) at SEND 127 changes T5's print", st_8[0] != t5)
+    check("a SEND on T8 (core 0 pos 3) at SEND 127 changes both hosts NOT AT ALL",
+          st_8[0] == t5 and st_8[3] == t1)
     t4 = [R(), S6(), D(), S2(), Inst("SEND", 1, 3, fed=True, SEND=127)]
     st_4 = run(mems, t4, tag="t4")
-    check("a SEND on T4 (core 1 pos 3, the mirror) does too", st_4[0] != t5)
+    check("a SEND on T4 (core 1 pos 3, the mirror) DOES change T5's print", st_4[0] != t5)
 
     print("\n== a stored return byte is inert ==")
     # Character page-1 slot 4 was RET until 20 Sep 2026; a pre-20-Sep part
