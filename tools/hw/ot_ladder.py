@@ -76,15 +76,15 @@ BANKS = "ABCDEFGH"
 # too); values beat the mode view's defaults, which beat the manifest's --
 # ot_project.module_defaults.
 # ---------------------------------------------------------------------------
-_RIG_AUX = {1: 30, 2: 40, 3: 30, 4: 40, 5: 40, 6: 50, 7: 40, 8: 40}   # the RIG table's sends
+_RIG_AUX = {1: 30, 2: 40, 3: 30, 4: 40, 5: 40, 6: 50, 7: 40}   # the RIG table's sends (none on T8)
 _T8 = ("CHARACTER", {})                       # the master's station at its passthrough
 _T8_GLUE = ("CHARACTER", {"COMP": 40})        # GLUE is by position since 14 Sep 2026 (no CMOD knob)
 
 
 def _sends(aux, verb=False, delay=False):
-    """FX2 for tracks 1..8: the engines on their hosts, SEND elsewhere."""
+    """FX2 for tracks 1..7: the engines on their hosts, SEND elsewhere (T8: none)."""
     out = {}
-    for t in range(1, 9):
+    for t in range(1, 8):
         if t == 1 and delay:
             out[t] = ("DELAY SERVER", {"SEND": aux.get(t, 0)})
         elif t == 5 and verb:
@@ -677,7 +677,7 @@ def stress_script(mods, layout):
         t += dt
         ev.append((t, phase, [m for m in moves if m[1] is not None]))
 
-    aux = [(tr, _cc_for(mods, layout, tr, "fx2", "SEND"), 127) for tr in range(1, 9)]
+    aux = [(tr, _cc_for(mods, layout, tr, "fx2", "SEND"), 127) for tr in range(1, 8)]
     at(30, "sends 127", aux)
     # the delay host (T1): FDBK 127 / TONE 0, then TIME sweep
     d = lambda n, v: (1, _cc_for(mods, layout, 1, "fx2", n), v)

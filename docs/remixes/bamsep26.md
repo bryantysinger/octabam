@@ -15,7 +15,7 @@ BusVerb + BusDelay on one aux bus (the send passes the delay into the reverb; ea
 - **CC PAGE 2** (octabam) — MIDI CC 62–67 reach the FX2 effect's page-2 knobs (slots 6–11) and CC 68–73 the FX1 effect's; stock reaches only page 1 over MIDI. One ColdFire cave. Confirmed on hardware 13 Sep 2026.
 - **MODE DEFAULTS** (octabam) — turning a MODE on the panel re-defaults the knobs around it to that mode's view (BusDelay's three modes, Modulation's five, Spectrum's VOWL/LADR), on FX1 and FX2; SEND is never touched. Two detours in the page-2 editors. Measured under the port (`verify_modedefaults`); confirmed on the unit, image 26 (15 Sep 2026); a MODE set over CC 62/68 is re-defaulted too since PR #291 (image 28).
 
-FX2 chooser: BusVerb, BusDelay, Send, DELAY. FX1 chooser: NONE, Spectrum, Character, Modulation. Every track sends, the hosts and track 8 included. The stations are FX1-only and default to a bit-exact passthrough, so a saved part that chose FILTER, LO-FI or CHORUS still plays.
+FX2 chooser: BusVerb, BusDelay, Send, DELAY. FX1 chooser: NONE, Spectrum, Character, Modulation. Every track but 8 sends, the hosts included; T8 is the master and its send is refused (its input is the mix, the hosts' wet included). The stations are FX1-only and default to a bit-exact passthrough, so a saved part that chose FILTER, LO-FI or CHORUS still plays.
 
 ## Status
 

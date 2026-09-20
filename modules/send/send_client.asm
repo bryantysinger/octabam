@@ -311,10 +311,28 @@ notfirst:
         move    #>$ffffff,m2
 
 ; ---- register as a bus client, once per block, PER BUS, ONLY IF SENDING ---
-; (Every track sends, track 8 included: the send was refused there while
-; the bus returned through T8's station, 7-20 Sep 2026. A host adds its
-; engine's wet in place after its own send tap, so no track can send the
-; bus's wet back into the bus.)
+; ---- THE SEND IS REFUSED ON TRACK 8 (the one-aux rig, 7 Sep 2026) --------
+; Track 8 is the master: with MASTER TRACK on, its chain input is the mix
+; of the other tracks, the hosts' wet included, so a send from it would put
+; the bus's wet back into the bus -- the master loop that silenced the unit
+; on 6 Sep 2026 (FAILURE_MODES). Refused by construction, not by
+; discipline: on PAYLOAD A, core 0's position 3 (r7 == $6b00, the FX2 slot
+; of track 8) contributes nothing and registers nothing, whatever its knob
+; says. Payload B's position 3 is track 4 and sends normally. The payload
+; is told apart by its Y base literal, which build_bus.py rewrites to
+; $38000 for payload B and leaves at $30000 for A (the same discriminator
+; the HKB diagnostic used); the literal is never used as an address here.
+; (Sam, 20 Sep 2026, after the return left T8: "we still dont want send on
+; t8".)
+        move    #>$30000,a              ; this payload's base ($38000 on B)
+        move    #>$38000,x0
+        cmp     x0,a
+        beq     send_ok                 ; payload B: every position sends
+        move    r7,a
+        move    #>$6b00,x0
+        cmp     x0,a
+        beq     send_refused            ; payload A position 3 = track 8
+send_ok:
         move    x:(r7+$67),a
         tst     a
         bne     cnt_done                ; not this block's first call
@@ -357,4 +375,5 @@ cnt_done:
 
 send_end:
         nop
+send_refused:
         rts

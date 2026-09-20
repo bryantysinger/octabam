@@ -773,7 +773,7 @@ def make_test_project(src, dest, remix_name):
 # ---- the RIG project: the set's layout --------------------------------------
 # One part = the whole rig on its eight tracks: stations on FX1 everywhere,
 # the two engines in T1's and T5's FX2 (each prints its wet on its own track
-# since 20 Sep 2026), a SEND on every other track. Every part of every bank
+# since 20 Sep 2026), a SEND on T2-T7, none on T8. Every part of every bank
 # gets the same layout, so any pattern is the rig. Knob bytes are the
 # manifest defaults with the few deliberate exceptions listed per track.
 RIG = (
@@ -784,7 +784,7 @@ RIG = (
     (5, ("MODULATION", {}),                 ("REVERB SERVER", {"SEND": 40})),
     (6, ("SPECTRUM", {}),                   ("SEND", {"SEND": 50})),
     (7, ("SPECTRUM", {}),                   ("SEND", {"SEND": 40})),    # SPECTRUM, not
-    (8, ("CHARACTER", {"COMP": 40}),        ("SEND", {"SEND": 40})),    # GLUE by position (14 Sep 2026); sends since 20 Sep
+    (8, ("CHARACTER", {"COMP": 40}),        (None, {})),   # GLUE by position (14 Sep 2026); no FX2: the SEND is refused on T8 (the master's input is the mix)
 )
 
 
@@ -1000,7 +1000,8 @@ def make_rig_project(src, dest, remix_name):
         lines.append(f"T{t}  FX1 {f1[0] or '-':20s} {f1[1]}   FX2 {f2[0] or '-':20s} {f2[1]}")
     lines += ["", "ONE AUX: every track's SEND feeds the delay (T1), then the reverb (T5);",
               "T1 prints the repeats and T5 the tail under their own dry (20 Sep 2026).",
-              "The stations have no sends."]
+              "T8 has no FX2: the SEND is refused there (the master's input is the mix,",
+              "the hosts' wet included). The stations have no sends."]
     (dest / "OCTABAM_RIG_MAP.txt").write_text("\n".join(lines) + "\n")
     print(f"{len(list(dest.glob('bank*.work')))} banks written and verified -> {dest}")
     print(f"map at {dest / 'OCTABAM_RIG_MAP.txt'}")

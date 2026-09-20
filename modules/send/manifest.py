@@ -40,9 +40,12 @@ MODULE = Module(
                                           # points at SEND's entry points, so
                                           # it must already be placed
         bus_role=BusRole.CLIENT,
-        ybase=YBase.NEVER,                # no base literal: its scratch is
-                                          # the `$9xx` bus map, relocated
-                                          # by the client treatment
+        # XBUS, not NEVER: the source carries one `$30000` literal, the
+        # payload discriminator of the track-8 send refusal (payload A keeps
+        # $30000, B is rewritten to $38000), never used as an address. In a
+        # plain (non-XBUS) build it is not rewritten and both payloads refuse
+        # position 3; plain builds do not ship.
+        ybase=YBase.XBUS,
         r7_latch_slot=0x69,
         gate_label="notfirst",
     ),
