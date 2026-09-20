@@ -34,10 +34,14 @@ Chain, fixed: fold → saturate → tilt → compress → width → mix.
   the delay's; stereo, four deep, two buffers back) enters at the front of
   the chain, so glue, saturation, width and tone treat dry plus wet
   together, and while RET is up the station stamps both hosts quiet. Inert
-  on every other track.
+  on every other track, where the knob prints `---` (`ret_fmt.s`, a
+  formatter cave reading the current-track byte; the dial itself is the
+  effect's, so it draws everywhere). Default 127 since 20 Sep 2026: the
+  master returns in full as stamped.
 
 Defaults are a bit-exact passthrough (DRV 0, FOLD 0, TONE 64, COMP 0, MIX
-127, WDTH 64, RET 0): a part that stored LO-FI runs this. A part's stored
+127, WDTH 64; RET 127 is cleared off the master before anything reads it):
+a part that stored LO-FI runs this. A part's stored
 bytes are stock LO-FI's until `ot_project.py stamp-defaults` writes ours.
 
 ## Measured

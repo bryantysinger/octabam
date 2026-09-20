@@ -517,7 +517,8 @@ ch_rvlive:
         move    x0,y:>$9d9
 ch_ndl:
 ; ---- BYPASS: the defaults are a bit-exact passthrough ---------------------
-; DRV 0, FOLD 0, TXTR 0, TONE 64, COMP 0, MIX 127, WDTH 64, RET 0. Every
+; DRV 0, FOLD 0, TXTR 0, TONE 64, COMP 0, MIX 127, WDTH 64, RET 127 (cleared
+; above off the master, so it reads 0 here on tracks 1-7). Every
 ; part that ever chose LO-FI runs this after the flash, so the neutral block
 ; does nothing at all.
         move    x:(r6+$0),a             ; DRV
