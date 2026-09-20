@@ -165,20 +165,6 @@ loader-appended DRAM runtime octabam adopted as its large-payload placement;
 `tools/remix/loader.S` is derived from hers with attribution. Her repository
 invites use as a submodule to combine with other efforts.
 
-**bkkbrls-del** wrote midisc and rebuilt it in GNU-as form for this
-remixer.
-
-**Bryan T** located the stock Echo Freeze delay (ColdFire SDRAM, eight
-1.4 MB rings), documented the timestretch architecture, the DSP data-table
-atlas and the recorders' control path (`docs/firmware/EXTERNAL.md`),
-contributed `modules/hello`, and wrote the AMF fix.
-
-**nordseele**'s octalab is a DRAM module of this remixer and its first
-hardware run.
-
-**repeat98** (Jannik Aßfalg) wrote REPITCH and validated it on his own
-MKII.
-
 This began as a fork of [mxldyn/octamax](https://github.com/mxldyn/octamax)
 by Maxolydian, whose reverse engineering of the OS format, memory map and
 parameter tables made any of this reachable; the upstream history is in
