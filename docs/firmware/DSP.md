@@ -416,7 +416,12 @@ luck, two share an entry and one writes 14K words through memory it does
 not own). `base = x:(0x255 + ((r7 − 0x6000) >> 8))` is wrong (r7 `0x6200`
 pairs with entry 1, not 2). `r7+$84..$8a` do not persist across calls
 (hangs; DARK's init steps around `$85..$8a`); `r7+$83` and `r7+$71..$78`
-do. A per-instance stash at `Y:(0x735 + (r7 >> 8))` works on payload A and
+do. 🟡 Under the port (21 Sep 2026, OCTABAM89_setgate on bamsep26, `--dsp-watch
+1:X:0x6285 --dsp-dirty`) BusDelay's WET glide state at `r7+$85` has one
+writer, its own per-block store, and reads back what it wrote across
+sixteen consecutive calls (the value converges and holds); image 38 runs it
+on the unit. The hardware hang stands as recorded; what hung, and whether
+`$84+` is written by the dispatcher on hardware, is not isolated. A per-instance stash at `Y:(0x735 + (r7 >> 8))` works on payload A and
 lands inside a live coefficient table on payload B. `dsp_host -inst N
 -guard` names a write over a loaded module. Bring-up hangs (three
 attempts, cause not isolated): executing at `P:0x2000` with low X as delay

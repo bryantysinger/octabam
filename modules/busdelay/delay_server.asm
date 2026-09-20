@@ -63,7 +63,10 @@
 ;   r7+$21..$23         per-sample scratch (PRNG candidate, parked age)
 ;   r7+$24/$25          shifted OUTPUT tap L / R (per sample; kept apart from
 ;                       the loop's taps so the shift never re-enters feedback)
-;   r7+$26              TIME, Q8: the glide's state this block
+;   r7+$26              TIME, Q8: the per-sample ramp value (last block's
+;                       glide state at the block start, + the increment per
+;                       sample); the glide state itself is the core-private
+;                       TIME word below the RATE state block
 ;   r7+$27/$28          wow / flutter LFO phase (persistent, masked)
 ;   r7+$29              wow's offset park (per sample)
 ;   r7+$2b/$2c          this sample's loop lag: integer / Q23 fraction
@@ -123,7 +126,9 @@
 ;   r7+$86              this block's resolved write offset (0/16/32/48);
 ;                       every bus address derives from it
 ;   r7+$88              last-seen rotation (the gated housekeeping block's)
-;   $84+ hangs the unit on a raw r7; nothing here is stored above $88.
+;   $84..$88 are stored above ($84/$86/$87 per call, $85 and $88 across
+;   calls); docs/firmware/DSP.md records $84..$8a as not persisting across
+;   calls on hardware (10 Aug 2026) -- see DSP.md for the measurement.
 ;
 ; Parameters (a knob arrives as value<<16, value 0..127):
 ;   p0 AUX   -> this host's own dry send into the aux (headroomed, summed
@@ -147,7 +152,8 @@
 ;               a held MIDI note (r6+$1 bits 8-15, latched) overrides
 ;   p11 WOW  -> slot 11 companion (r6+$e bits 8-15): tape wobble depth,
 ;               0 .. +-254 samples (wow 0.8 Hz + flutter 7.3 Hz at an
-;               eighth), on the loop tap in every mode
+;               eighth; ~47 + ~54 cents peak at 127, computed), on the
+;               loop tap in every mode
 ; ---------------------------------------------------------------------------
 
 init:
@@ -169,6 +175,14 @@ init:
 ; that direction DOES snap, so it is safe.
 ; build_bus.py emits a body here for PAYLOAD B ONLY -- payload A recomputes the
 ; offset from the shared word every block and has nothing to seed.
+; ---- the glided coefficients start from 0 (21 Sep 2026): a short fade-in
+; on select instead of ~20 ms of whatever the slots held (the reverb's init
+; does the same); the warm-up clear covers $27..$5e, not these. Raw r7 here.
+        clr     a
+        move    a,x:(r7+$72)            ; TONE coefficient
+        move    a,x:(r7+$73)            ; FDBK coefficient
+        move    a,x:(r7+$74)            ; PING
+        move    a,x:(r7+$85)            ; WET
 ; ROTINIT
         rts
 
@@ -915,8 +929,11 @@ snapz:
 ; are GRAIN's SCAT and DENS now, inert in CLEAN and REVERSE.)
 
 ; ---- WOW: tape wobble depth, page-2 slot 11 (r6+$e bits 8-15) -----------
-; knob<<13 is the depth in Q11.12: two samples per knob step, +-254 at 127
-; (~+-17 cents at 0.8 Hz). Flutter rides at an eighth of it. The per-sample
+; knob<<13 is the depth in Q11.12: two samples per knob step, +-254 at 127.
+; Flutter rides at an eighth of it. Peak pitch deviation at 127, from the
+; smoothstepped triangle's slope (3*depth*inc/2^22 per sample): ~47 cents
+; wow + ~54 cents flutter (computed, not measured; the old '~17 cents'
+; figure was the slope without the x3 smoothstep factor). The per-sample
 ; lag clamp below keeps TIME + wobble inside the line, so no depth is unsafe.
 ; (Back 20 Sep 2026 in freeze's slot -- Sam: "wow back freeze gone". The
 ; 15 Sep removal was for the crackle, whose cause was the TIME jump, since
@@ -1847,22 +1864,14 @@ pdone:
         mpy     x0,y1,a
         move    x:(r7+$34),x0           ; x_in
         add     x0,a
-; ---- TAPE loop saturation (v2 stage 4b) ----------------------------------
-; The record head compresses. y = w - w^3/3, applied to what each line is
-; ABOUT TO BE WRITTEN (input + feedback for LineL, crossfed feedback for
-; LineR) -- so it is in the loop, and every repeat is saturated again:
-; -0.03 dB at 0.1 FS, -0.76 at 0.5, -3.52 at full scale, and a hot repeat
-; train rounds off progressively the way tape does.
-;
-; WHY THIS CURVE AND NOT A DRIVE STAGE: small-signal gain is EXACTLY 1 and
-; the curve is monotonic with |y| <= |w| over the whole fixed-point range,
-; so it can only ever REDUCE magnitude. It therefore adds no loop gain and
-; cannot introduce self-oscillation at any FDBK -- unlike a pre-gain soft
-; clipper, which would also fold back above unity (y = u - u^3/3 turns over
-; at u = 1) and need a clamp. There is no drive knob for the same reason
-; the depth ceiling exists in the LFO block: the safe version is the one
-; that cannot be knocked into a bad regime from the panel. Slot 10 is still
-; free if the ear later asks for DRIVE.
+; ---- the line write: a limiting store ------------------------------------
+; What each line is ABOUT TO BE WRITTEN (input + feedback for LineL,
+; crossfed feedback for LineR) goes through satdrv, which since 15 Sep 2026
+; is a plain limiting store: the sum can exceed full scale and a raw a1
+; would wrap where this saturates. The cubic y = w - w^3/3 that lived here
+; (v2 stage 4b; -0.03 dB at 0.1 FS, -0.76 at 0.5, -3.52 at full scale) went
+; with the wow's depth gate. The store adds no loop gain (|y| <= |w|), so
+; no FDBK setting can self-oscillate.
 ;
 ; TAPE ONLY, via the same Tcc substitution as the PITCH wet: cmp sets Z,
 ; moves do not disturb it, teq moves a CLEAN register in. CLEAN and PITCH

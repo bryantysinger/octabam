@@ -63,7 +63,7 @@ their knob per block.
 | DENS ⌐(p8) | `---` | density, level-flat | `---` |
 | SIZE (p9) | `---` | GLEN: grain length 46 / 93 / 23 ms, XTRM 186 ms | SLEN: segment; XTRM = 371 ms |
 | PTCH ⌐(p10) | `---` | ±2 oct, 64 = unison; a held MIDI note overrides | `---` |
-| WOW (p11) | tape wobble on the loop tap: 0 none, 127 = ±254 samples (wow 0.8 Hz + flutter 7.3 Hz at an eighth) | the same | the same |
+| WOW (p11) | tape wobble on the loop tap: 0 none, 127 = ±254 samples (wow 0.8 Hz + flutter 7.3 Hz at an eighth; ≈ 47 + 54 cents peak by the LFO slopes, not measured) | the same | the same |
 
 Each mode's `ModeView` re-defaults the knobs and names every knob the mode
 never reads `---` (20 Sep 2026, every effect). PING 0 by default: an aux
@@ -104,7 +104,9 @@ DEV hatch (`make render-delay`) places the delay out of region in payload A.
   gets repeats 1, 3, 5: L/R = 1/feedback).
 - REVERSE at 371 ms: a 50 ms burst comes back reversed ~300 ms later; the
   sine is continuous at every size.
-- Cost: 2,151 words; worst path 1,757 cycles (GRAIN, rolled).
+- Cost: 1,354 words per payload; 1,126 cycles/sample static worst path
+  (`make check`, 20 Sep 2026: 1,326 after the return left, +28 for the
+  TIME ramp).
 
 On Sam's unit in every rig flash. Heard: REVERSE 371 ms over 93 ("the long
 one is better"); GRAIN DENS 32 → 127 on the loop "sounds pretty good".
