@@ -246,6 +246,32 @@ on frame one (an old part's crossed-slot byte after a layout change).
 **Fix.** Fit the layout (≤ two heavy stations per core) and stamp the
 project for the current remix before playing.
 
+## The bus return is "less rich / bit-crushed" on the unit, clean under the port — OPEN (20 Sep 2026, image 35)
+
+**Symptom.** With one track sending, WET 0 on both engines and RET 127 on
+T8, the return is duller and grainier than the dry from a fresh start;
+knob presses make it worse and it stays; STOP then PLAY resets it; RET 0
+silences it. The same with every sender on either core, at any send
+level. Reverb-only on one core (BusDelay off, T6/T7 sending): still
+degraded. The return alone (the sender muted post-FX): still degraded, so
+it is not the dry + 60-sample-late return combing at the main out. T8's
+Character reads DRV/FOLD/TXTR 0. Both engines' wets sound grainy too.
+
+**Measured elsewhere.** Under the port the same path (one sender, WET 0,
+RET 127) is the aux itself at −109 dB residual, lag 60 samples
+(`verify_set`). A four-minute `rig_render` with seven hot senders shows no
+growth over time.
+
+**Lead (unverified).** Every word on that path is in the shared window
+and read per sample; R36's per-block writes / in-loop reads there were
+dead on silicon with the emulator passing (BusDelay's RATE/DRV words).
+The engines' outputs cross the same reads.
+
+**Next.** A capture of the return alone against the dry (null: a
+block-rate comb = seam/stale reads, a broadband floor = something else),
+or a probe image with the bus scratch in core-private Y (single-core case
+only).
+
 ## The RET/CRSH trap ✅ removed by design
 
 **Symptom.** With T8's Character in the old BUS mode and knob 3 at 127,
