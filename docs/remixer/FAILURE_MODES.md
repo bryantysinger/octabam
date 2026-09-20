@@ -249,7 +249,7 @@ on frame one (an old part's crossed-slot byte after a layout change).
 **Fix.** Fit the layout (≤ two heavy stations per core) and stamp the
 project for the current remix before playing.
 
-## The bus return is "less rich / bit-crushed" on the unit, clean under the port — the return removed (20 Sep 2026, image 35)
+## The bus return is "less rich / bit-crushed" on the unit, clean under the port — ✅ gone with the return (20 Sep 2026, images 35 → 38)
 
 **Symptom.** With one track sending, WET 0 on both engines and RET 127 on
 T8, the return is duller and grainier than the dry from a fresh start;
@@ -273,11 +273,10 @@ The engines' outputs cross the same reads.
 **Outcome (20 Sep 2026).** The return went: Character has no RET, the
 engines publish no stage output, the hosts' print is ungated, the SEND is
 allowed on T8. Each engine's wet now leaves through its host only (T1 the
-repeats, T5 the tail). Whether the degradation went with the mechanism is
-unmeasured until the host print is heard on the unit; the same symptom on
-a host print points at the engines or the aux path, and the instruments
-are the ones listed under Next before this outcome (a capture null; the
-tank's THD ladder, `docs/effects/REVERB.md`).
+repeats, T5 the tail). ✅ Image 38 on the unit: the reverb on T5 is clean
+(Sam, 20 Sep 2026). The degradation was in the return path, not the
+engine; which part of it (the shared-window per-sample reads, the
+rotation, the station's add) was not bisected and the code is gone.
 
 ## The RET/CRSH trap ✅ removed by design
 
