@@ -69,9 +69,10 @@ CORE 1 (payload B)  tracks 1–4   BusDelay  Y:0x4000–0xBFFF (private) + Y:0x3
   master loop that silenced the unit on 6 Sep 2026, `FAILURE_MODES.md`).
   Payload B's position 3 (T4) sends normally; the payload is told apart by
   SEND's `$30000` base literal, rewritten to `$38000` on B (`YBase.XBUS`).
-- Return balance on material (7 Sep, `out/rig/oneaux/`): drum loop −25.1 dB
-  rms with the reverb at MIX 0 and −26.8 at MIX 127; pad −31.4 / −32.8; no
-  makeup. (The "wet ~25 dB under the repeats" reading from the 438 Hz gate
+- Return balance on material (7 Sep, `out/rig/oneaux/`, the MIX-crossfade
+  stage of the time; WET adds since 15 Sep 2026 and the wet is ×2 since 16
+  Sep): drum loop −25.1 dB rms with the reverb at MIX 0 and −26.8 at MIX
+  127; pad −31.4 / −32.8; no makeup. (The "wet ~25 dB under the repeats" reading from the 438 Hz gate
   tone was retracted the same day.)
 
 Slots (stamp every project before play, `tools/hw/ot_project.py
@@ -81,7 +82,7 @@ touches only the ids a station replaced):
 | | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | SEND | SEND | | | | | | | | | | | |
-| BusVerb | SEND | TIME | MOD | SIZE | TONE | WET | MODE | SHMR | DIFF | SHFT | GATE | RATE |
+| BusVerb | SEND | TIME | SIZE | SHMR | SHFT | WET | MODE | TONE | DIFF | GATE | — | — |
 | BusDelay | SEND | TIME | FDBK | TONE | PING | WET | MODE | SCAT | DENS | SIZE | PTCH | WOW |
 | Character | DRV | FOLD | TXTR | COMP | TONE | MIX | SAT | WDTH | — | — | — | — |
 
@@ -144,8 +145,9 @@ capture E: three senders, two 10–15 dB quieter, dropped the wet 4.8 dB
 against 1/N's predicted −9.5). The "1 through 7 senders render identically"
 measurement fed the same tone to every sender, the one case where 1/N and
 1/√N agree. Registration is gated on the send knob: a client that
-registers and contributes nothing dilutes every real sender by N/(N+1)
-(−6 dB with one sender). Every writer registers, the cross-core one
+registers and contributes nothing dilutes every real sender by
+√(N/(N+1)): −3.0 dB with one sender (the −6.02 dB measured on 17 Aug 2026
+was under 1/N). Every writer registers, the cross-core one
 included.
 
 ## The three cross-core defects

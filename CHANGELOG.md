@@ -7,6 +7,21 @@ flashed image was built from.
 
 ## Unreleased (main after image 38)
 
+- BusDelay: init zeroes the four glided coefficients (TONE, FDBK, PING,
+  WET; `r7+$72..$74`, `$85`) as the reverb's init does its own -- they were
+  read back from whatever the slot held for the first ~20 ms after a select
+  (the warm-up clear covers `$27..$5e`). Bit-identical in every gate (the
+  harness boots zeroed). Found by a static audit of the 20 Sep glide code
+  (every new Tcc, `mpy` order and A2 path clean); the same audit measured
+  under the port that the WET state at `r7+$85` has one writer and persists
+  across calls (`docs/firmware/DSP.md` §7, beside the 10 Aug hardware
+  record that `$84..$8a` do not). Docs: the wow's "~17 cents" is ≈ 47 + 54
+  cents peak by the LFO slopes (computed); Character's COMP release
+  constant is 63 ms, written as 50; the XBUS slot table, the 1/N-era
+  −6.02 dB phantom figure, three stale cost lines, the retired-cubic
+  comment above `satdrv`, REVERB.md's MOD open item and bamsep26.md's
+  status and flash notes brought to the tree.
+
 - Names per mode (Sam, 20 Sep 2026: "size is confusing"): BusDelay's SIZE
   draws GLEN in GRAIN and SLEN in REVERSE; Spectrum's FREQ draws VOWL in
   VOWL (it morphs A E I O U); Modulation's TONE draws BRIT in COMB (the

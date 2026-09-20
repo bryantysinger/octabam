@@ -438,7 +438,7 @@ pre-delay are 2048-word modulo buffers (`m5 = $7ff`); Modulation's
 `buffer_words=2048`; the firmware's PCM-pool block (`0x800` in the
 recorder's block table at `0x80003c20`). The live state that produced it
 is lost. When bisecting by hand, take slots to a stock effect, not NONE
-(id 0 is SEND). `tools/hw/rec` must be the HAL recorder.
+(id 0 is SEND). `tools/rec` (built from `tools/hw/rec.swift`) must be the HAL recorder.
 
 ## Sequencer stuck on step 1 with every effect turned off: id 0 is SEND
 
