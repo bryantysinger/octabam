@@ -4,9 +4,9 @@ The station that dirties or tightens a track, on stock LO-FI's id 0x1c. FX1 only
 (`Claims(fx1_only=True)`, `verify_character.py`); the FX2 chooser hides the
 row.
 
-| page 1 | DRV · FOLD · TXTR · COMP · — · MIX |
+| page 1 | DRV · FOLD · TXTR · COMP · TONE · MIX |
 |---|---|
-| page 2 | SAT (TAPE TUBE INFL) · TONE · WDTH · — · — · — |
+| page 2 | SAT (TAPE TUBE INFL) · WDTH · — · — · — · — |
 
 Chain, fixed: fold → saturate → tilt → compress → width → mix.
 
@@ -28,12 +28,12 @@ Chain, fixed: fold → saturate → tilt → compress → width → mix.
   the master by position, COMP (fast) on every other track. One feedforward
   detector on the mono key, the gain applied to both channels.
 - **WDTH** — mid/side: 64 untouched, 0 mono, 127 double sides.
-- Page-1 slot 4 is empty (`---`). It was RET, the bus return level, from
-  13 to 20 Sep 2026: on T8 by dispatch position the last live engine's wet
-  entered at the front of the chain and the hosts were stamped quiet. The
-  return was degraded on the unit and clean under the port
+- Page-1 slot 4 is TONE again (20 Sep 2026). It was RET, the bus return
+  level, from 13 to 20 Sep 2026: on T8 by dispatch position the last live
+  engine's wet entered at the front of the chain and the hosts were stamped
+  quiet. The return was degraded on the unit and clean under the port
   (`docs/remixer/FAILURE_MODES.md`) and went; each engine prints its wet
-  on its own host. A stored byte in slot 4 is never read.
+  on its own host. WDTH moved up to page-2 slot 7.
 
 Defaults are a bit-exact passthrough (DRV 0, FOLD 0, TONE 64, COMP 0, MIX
 127, WDTH 64): a part that stored LO-FI runs this. A part's stored

@@ -122,7 +122,7 @@ proc:
 ; ===========================================================================
 ; PER-BLOCK KNOB DECODE
 ; ===========================================================================
-; MIX: page-1 slot 5 since 16 Sep 2026 (TONE took its page-2 slot 6)
+; MIX: page-1 slot 5 since 16 Sep 2026; TONE page-1 slot 4 since 20 Sep
         move    x:(r6+$5),a             ; a knob word: bit 23 clear, a2 = 0
         move    a1,x:(r7+$20)           ; m (a1 straight to memory)
         move    x:(r6+$1),x0            ; the knob word IS FOLD/128 in Q23
@@ -150,9 +150,8 @@ proc:
         tst     a
         teq     x0,b                    ; DRV == 0 -> skip flag 1
         move    b,x:(r7+$4d)
-        move    x:(r6+$c),a             ; TONE: page-2 slot 7, $c's companion
-        and     #>$7f00,a               ; field (bits 8-15; SAT's select is the knob field)
-        asl     #$8,a,a                 ; TONE << 16
+        move    x:(r6+$4),a             ; TONE: page-1 slot 4 since 20 Sep 2026
+        and     #>$7f0000,a             ; (the return's slot); a knob word, TONE << 16
         sub     #>$400000,a
         move    a,x:(r7+$24)            ; t/2, -0.5 .. +0.49
 ; COMP amount, straight from the knob
@@ -378,8 +377,9 @@ ch_pos3:
 ; WDTH -> mid and side gains. 64 = (1, 1); 0 = (1, 0) mono; 127 = (1, ~2).
 ; side gain = WDTH/64, mid stays 1 -- widening only touches the difference,
 ; so a mono source is untouched at every setting.
-        move    x:(r6+$d),a             ; WDTH: page-2 slot 8, $d's knob field (a knob word: bit 23 clear, a2 = 0)
-        and     #>$7f0000,a
+        move    x:(r6+$c),a             ; WDTH: page-2 slot 7 since 20 Sep 2026,
+        and     #>$7f00,a               ; $c's companion field (bits 8-15; SAT's
+        asl     #$8,a,a                 ; select is the knob field) -> WDTH << 16
 ; ⚠️ STORED HALVED. A y1 operand is a FRACTION, and a side gain of WDTH/64
 ; tops out near 2.0, which would wrap the word. The knob's own value IS
 ; WDTH/128, so it is stored as-is and the product is doubled back in the

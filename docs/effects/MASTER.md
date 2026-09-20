@@ -60,9 +60,9 @@ layout feeds the new layout its old bytes.
 
 ## Character on the master, knob by knob
 
-Page 1: DRV, FOLD, TXTR, COMP, —, MIX. Page 2: SAT, TONE, WDTH, —, —, —
-(16 Sep 2026: MIX bottom right, SAT top left; page-1 slot 4 was RET until
-20 Sep 2026 and is empty).
+Page 1: DRV, FOLD, TXTR, COMP, TONE, MIX. Page 2: SAT, WDTH, —, —, —, —
+(16 Sep 2026: MIX bottom right, SAT top left; page-1 slot 4 was RET from
+13 to 20 Sep 2026 and is TONE again).
 The chain runs in the fixed order drawn above, distortion before dynamics.
 Every stage holds its level as its knob rises (the tape lifts about +2 dB
 by 127, by ear).

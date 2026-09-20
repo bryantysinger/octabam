@@ -103,7 +103,8 @@ MODULE = Module(
               doc="GRAIN: scatter, how far apart the grains read; inert in CLEAN and REVERSE"),
         Param(b"DENS", 127, 128, active=True, formatter=_PLAIN, link=True,
               doc="GRAIN: density, full dial, level-flat (R61); inert in CLEAN and REVERSE"),
-        # SIZE: GRAIN's grain length and REVERSE's segment, one select.
+        # SIZE: GRAIN's grain length and REVERSE's segment, one select; drawn
+        # GLEN in GRAIN, SLEN in REVERSE, `---` in CLEAN (the mode names it).
         Param(b"SIZE", 1, 4, active=True, formatter=_STEP,
               labels=("46MS", "93MS", "23MS", "XTRM"),
               doc="segment/grain size 46/93/23 ms; XTRM = 186 ms grains, 371 ms REVERSE segments"),
@@ -130,10 +131,11 @@ MODULE = Module(
                  defaults={1: 20, 2: 60, 3: 100, 4: 0, 5: 127, 10: 64}),
         ModeView(mode=1,                        # GRAIN: Sam's recipe on the unit
                  # (15 Sep 2026): octave up, ping-pong
+                 names={9: b"GLEN"},            # the grain length (Sam, 20 Sep 2026: "size is confusing")
                  defaults={1: 18, 2: 40, 3: 100, 4: 127, 5: 127,
                            7: 40, 8: 127, 9: 1, 10: 96}),
         ModeView(mode=2,                        # REVERSE: centred, 371 ms
-                 names={4: b"---", 7: b"---", 8: b"---", 10: b"---"},   # PING pinned 0; SCAT DENS PTCH: not read
+                 names={4: b"---", 7: b"---", 8: b"---", 9: b"SLEN", 10: b"---"},   # PING pinned 0; the segment length; SCAT DENS PTCH: not read
                  defaults={1: 20, 2: 60, 3: 100, 4: 0, 5: 127,   # segments (SIZE 3 = XTRM)
                            9: 3, 10: 64}),
     ),

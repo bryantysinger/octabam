@@ -61,7 +61,7 @@ their knob per block.
 | MODE (p6) | CLEAN | GRAIN | REVRS |
 | SCAT (p7) | `---` | how far apart the grains read | `---` |
 | DENS ⌐(p8) | `---` | density, level-flat | `---` |
-| SIZE (p9) | `---` | grain length 46 / 93 / 23 ms, XTRM 186 ms | segment; XTRM = 371 ms |
+| SIZE (p9) | `---` | GLEN: grain length 46 / 93 / 23 ms, XTRM 186 ms | SLEN: segment; XTRM = 371 ms |
 | PTCH ⌐(p10) | `---` | ±2 oct, 64 = unison; a held MIDI note overrides | `---` |
 | WOW (p11) | tape wobble on the loop tap: 0 none, 127 = ±254 samples (wow 0.8 Hz + flutter 7.3 Hz at an eighth) | the same | the same |
 

@@ -7,6 +7,15 @@ flashed image was built from.
 
 ## Unreleased (main after image 38)
 
+- Names per mode (Sam, 20 Sep 2026: "size is confusing"): BusDelay's SIZE
+  draws GLEN in GRAIN and SLEN in REVERSE; Spectrum's FREQ draws VOWL in
+  VOWL (it morphs A E I O U); Modulation's TONE draws BRIT in COMB (the
+  string's brightness). Character's TONE is back on page 1 in the return's
+  slot 4 and WDTH moves up to page-2 slot 7 (page 1 DRV FOLD TXTR COMP
+  TONE MIX, page 2 SAT WDTH); no other effect has an empty page-1 slot.
+  Stamp before play: Character slot 4 (TONE 64 over the old RET byte) and
+  slot 7 (WDTH 64); CC 38 is TONE, CC 69 WDTH.
+
 - Every knob a mode never reads is named `---` in that mode (Sam, 20 Sep
   2026: "all per-mode knobs ... blank with --- titles, like the others,
   across all effects"), from each engine's reads: BusDelay CLEAN adds SIZE
