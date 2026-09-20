@@ -4,7 +4,7 @@ A multi-mode delay: CLEAN, GRAIN (a pitched granular cloud over the delay
 lines: Nimbus's grain readers, four per line, one continuous pitch) and
 REVERSE, with a tape wow on the loop tap in every mode. Hosted
 on payload B (core 1), which serves tracks 1–4. Stage 1 of the one aux bus:
-its output goes on to BusVerb and to the return.
+its output goes on to BusVerb; the repeats come out on the host track.
 
 ## Memory: two 32K lines, 741 ms
 
@@ -110,4 +110,4 @@ one is better"); GRAIN DENS 32 → 127 on the loop "sounds pretty good".
   segment would need both lines as one ring, which they are not (LineR is
   in the private region).
 - Pitch accuracy below −1.5 octaves: finder or engine.
-- The delay return is ~4 dB quieter than the reverb at equal send.
+- The delay's wet is ~4 dB quieter than the reverb's at equal send.

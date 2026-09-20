@@ -22,13 +22,6 @@ CLONE_BASE, CLONE_STRIDE = 0x400d6b20, 0x1a0
 P_FMT_A = 0x0ca
 BUF = 0x47f00800                 # stock_labels' scratch: above the detour stack
 IMAGE = pathlib.Path("out/mainos_bus.bin")
-# (module, slot, {track: (value, printed)}) for a formatter that reads the
-# current track.
-TRACK_FMT = (
-    ("CHARACTER", 4, {0: (127, ("---", "")), 3: (64, ("---", "")), 6: (127, ("---", "")),
-                      7: (127, ("RET", "127"))}),
-)
-NAMES_AT, NAME_LEN = 0x16, 6         # the descriptor's 12 x 6-byte name fields
 
 
 def main():
@@ -90,30 +83,6 @@ def main():
                 continue
             print(f"  [PASS] {key:13} slot {i:<2} "
                   f"{p.name.decode('latin1'):<5} prints {' | '.join(got)}")
-    # A knob whose formatter reads the CURRENT TRACK: Character RET prints
-    # "---" off the master and its number on T8 (modules/character/ret_fmt.s).
-    # The current audio track is byte 0x80000000 (MAINMENU.md), 0..7.
-    for key, slot, per_track in TRACK_FMT:
-        if key not in cloned or key in remix.blanked:
-            continue
-        P = CLONE_BASE + cloned.index(key) * CLONE_STRIDE
-        fmt = rd32(P + P_FMT_A + slot * 4)
-        pname = mods[key].params[slot].name.decode("latin1")
-        got = {}
-        name_at = P + NAMES_AT + slot * NAME_LEN
-        for track, (value, want) in per_track.items():
-            uc.mem_write(0x80000000, bytes([track]))
-            uc.mem_write(BUF, b"\0" * 32)
-            emu._call(uc, fmt, (BUF, value))
-            got[track] = (emu._cstr(uc, name_at, NAME_LEN), emu._cstr(uc, BUF, 16))
-        checked += 1
-        want_all = {t: w for t, (_v, w) in per_track.items()}
-        if got != want_all:
-            fails.append(f"{key} slot {slot} {pname}: per track the firmware "
-                         f"writes (name, value) {got}, want {want_all}")
-        else:
-            print(f"  [PASS] {key:13} slot {slot:<2} {pname:<5} (name, value) "
-                  + " | ".join(f"T{t + 1}: {got[t]!r}" for t in sorted(got)))
     for f in fails:
         print(f"  [FAIL] {f}")
     if not checked:

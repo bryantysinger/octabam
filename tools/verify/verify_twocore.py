@@ -68,10 +68,9 @@ CASES = {
     "RS   send on B -> reverb on A":            [("R", 0, R), ("S", 1, S_VRB)],
     "DS   send on B -> delay on B":             [("R", 0, R), ("D", 1, D), ("S", 1, S_DEL)],
     "RDS  delay on B -> reverb on A (series)":  [("R", 0, R), ("D", 1, D), ("S", 1, S_DEL)],
-    # NOT four instances: on one core the fourth sits at position 3, which is
-    # track 8 on payload A, where the SEND is refused by design (the one-aux
-    # rig) -- so a four-instance one-core control is not the same
-    # layout. tools/verify/verify_onebus.py pins the refusal itself.
+    # NOT four instances: the layouts were chosen while the SEND was refused
+    # at position 3 on payload A (track 8, 7-20 Sep 2026) and stay as
+    # stamped.
     "SSR  a sender on each core":               [("R", 0, R), ("S", 0, S_VRB), ("S", 1, S_VRB)],
 }
 # which instance's stream each case compares (the server being measured)

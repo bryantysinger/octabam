@@ -122,7 +122,7 @@ emu-cf: ## Build and run the headless ColdFire machine (tools/emu/ot_emu) -- boo
 	./out/emu/ot_emu --image $(if $(IMAGE),$(IMAGE),out/raw/section_3_MAIN_OS.bin)
 
 .PHONY: verify-onebus
-verify-onebus: ## THE ONE AUX BUS on both cores: chain, last-live-stage return, MIX passthrough, T8 refusal, no station sends (~2 min)
+verify-onebus: ## THE ONE AUX BUS on both cores: chain, each host's print, WET passthrough, the T8 send, no station sends (~2 min)
 	python3 tools/verify/verify_onebus.py
 
 .PHONY: verify-midi

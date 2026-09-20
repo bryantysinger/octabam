@@ -68,7 +68,7 @@ MODULE = Module(
         # SEND at slot 0 on every track, hosts included: this host's own dry
         # send into the aux (headroomed, summed, counted only while nonzero).
         Param(b"SEND", 0, active=True, formatter=_PLAIN,
-              doc="this track's send into the one aux bus (delay, then reverb, back on T8)"),
+              doc="this track's send into the one aux bus (delay, then reverb; the wet on each host)"),
         Param(b"TIME", 20, active=True, formatter=_PLAIN,
               doc="delay time, 1.5 .. 739 ms -- a free dial that sticky-snaps to tempo divisions"),
         Param(b"FDBK", 60, active=True, formatter=_PLAIN, link=True,
@@ -81,12 +81,12 @@ MODULE = Module(
         # 5: L/R = 1/feedback).
         Param(b"PING", 0, active=True, formatter=_PLAIN,
               doc="stereo ping-pong spread; 0 = centred, the alternation is in the top quarter"),
-        # WET: the repeats' level on top of the send. out = in + wet*WET goes
-        # on to the reverb and to the return: the send passes through the
-        # pedal at unity, WET adds the repeats (a crossfade until 15 Sep
-        # 2026). The chain itself is hardwired.
+        # WET: the repeats' level. out = in + wet*WET goes on to the reverb
+        # (the send passes through the pedal at unity, WET adds the repeats;
+        # a crossfade until 15 Sep 2026); the host prints wet*WET under its
+        # dry. The chain itself is hardwired.
         Param(b"WET", 127, active=True, formatter=_PLAIN,
-              doc="the repeats' level; the send passes through at unity"),
+              doc="the repeats' level, on this host and into the reverb"),
         # ---- page 2 -------------------------------------------------------
         # MODE on slot 6: an even slot is the one the panel's page-2 knob
         # editor writes (docs/firmware/MAINMENU.md 9c-ii). The DSP reads $c's
