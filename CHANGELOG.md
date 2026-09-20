@@ -5,7 +5,17 @@ main carries beyond the last flashed image. The version the panel shows is
 `BUILD` (`make image BUILD=N`); a git tag `OCTABAM<N>` marks the commit each
 flashed image was built from.
 
-## Unreleased (main after image 29)
+## Unreleased (main after image 38)
+
+## Image 38 — 20 Sep 2026 (`OCTABAM38`, bamsep26 at 60f41b0)
+
+On the unit: the reverb on T5 clean (Sam: "verb sounds clean on t5 now")
+-- the "less rich / bit-crushed" return of image 35 did not follow the wet
+onto the host. Images 33, 34 and 35 were flashed on 20 Sep 2026 without a
+section here (the glides; the wow; the RET label); 30-32, 36 and 37 were
+built and not flashed. The bullets below are everything since image 29.
+Before play: `stamp-defaults <project> bamsep26 --all --keep-mode` (done on
+the card for OCTABAM89 and OCTABAM91).
 
 - The bus returns on its hosts (Sam, 20 Sep 2026: the T8 return "has
   proven to be too difficult"; option (b), the chain kept). Each engine
