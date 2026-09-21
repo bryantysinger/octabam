@@ -7,6 +7,26 @@ flashed image was built from.
 
 ## Unreleased (main after image 38)
 
+- BusDelay: nothing at `r7+$84` or above. On the unit (21 Sep 2026, images
+  40 and 39 alike) the delay on T3 with a sample playing on every step
+  printed a white-noise wash from the second pass of the pattern on -- T3's
+  LEVEL kills it, FDBK does not touch it, WET scales it, STOP does not end
+  it, PLAY does. The delay kept its WET glide state and four per-call words
+  at `r7+$84..$88`, the range DSP.md has recorded since 10 Aug 2026 as not
+  persisting across calls on hardware; every previous image had the delay
+  on T1, a THRU, which plays no voice. The five words moved to raw `$0c $20
+  $2a $6d $83` (`r7_latch_slot` 0x86 -> 0x20); bit-identical to image 40's
+  engine (`verify_delay`, 28 cases, the reference's latch read at the
+  manifest's slot: the manifest is shared, so a reference reading the old
+  slot renders garbage and fails, which is what every latch move looked
+  like until the marker-fill probe showed the engine writing exactly the
+  slots it should). `tools/harness/slot_census.py` is that probe: fill the
+  instance block, render, read back which words were written; it found
+  GRAIN's pitch words at `$3e/$3f` (spelled `-$b`/`-$a`) under a first
+  relocation that a displacement scan had called free. The port cannot see
+  the mode (`FAILURE_MODES.md`). Cause inferred from the symptom and the
+  record; image 41 is the test.
+
 - BusDelay: the glides run once per block. A trig splits a block into two
   dispatcher calls (a=0 before the trig, a=1 after), and the TIME glide, its
   ramp base and the FDBK/TONE/PING/WET glides ran on both: the ramp

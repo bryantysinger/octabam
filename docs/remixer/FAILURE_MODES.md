@@ -3,6 +3,45 @@
 Symptom → cause (measured, inferred or open) → fix. Add an entry the moment
 a mode is seen on hardware.
 
+## A white-noise wash from the delay host with a sample playing on it 🟡 cause inferred, fix built (image 41)
+
+**Symptom.** BusDelay on a sample track (T3, STATIC, a trig on every step):
+the first pass of the pattern plays clean, then from step 1 of the next
+pass a steady white-noise wash comes out of the host track. It survives
+STOP, a double STOP thins it, PLAY clears it. T3 LEVEL 0 silences it, T5
+(the reverb host, muted) changes nothing; WET scales it but does not remove
+it at 0, where a smaller, left-heavy residual stays and drifts; FDBK moves
+the repeats underneath and leaves the wash alone. The same wash appeared
+once when T1's FX2 was changed from BusDelay to SEND. Sam's MKII, 21 Sep
+2026, images 40 and 39 alike (the bisect: today's once-per-block change is
+not it). Every previous image had the delay on T1, a THRU, which plays no
+voice.
+
+**What the port sees.** Nothing: the same fixture (`ot_spec`: delay on T3,
+trigs every step, T1 a send) is flat on images 38, 39 and 40, with and
+without `--dsp-dirty`; the staged project gives T3 no voice.
+
+**Cause, inferred.** The delay kept five words at `r7+$84..$88` (the chain
+write address, the WET glide state, the resolved write offset, the REVERSE
+cap, the last-seen rotation), and `docs/firmware/DSP.md` §7 has recorded
+since 10 Aug 2026 that `r7+$84..$8a` do not persist across calls on
+hardware and that a stock effect's init steps around `$85..$8a`. On a
+track with a voice, the unit's own per-track state sits there between our
+calls: our per-block store of the WET state (0..0x7f0000) lands in it, and
+its words land in ours. FDBK-independence, the WET scaling and the survival
+through STOP all fit a voice running on a corrupted state; PLAY restarts
+the voices. Not measured: which stock structure the words belong to.
+
+**Fix (PR #346, image 41).** The five words moved below `$84` (raw `$0c
+$20 $2a $6d $83`; a first try at `$3e/$3f` landed on GRAIN's pitch words,
+spelled `-$b`/`-$a` in the source, and failed `verify_delay`); the delay writes nothing at `$84+`. Bit-identical to
+image 40's engine under `verify_delay` (a slot move). The rule for every
+DSP module: no state at `r7+$84` or above, in init or in proc, whatever the
+port shows (the port keeps those words).
+
+**Falsifier.** Image 41 on the same fixture: no wash through three loops
+with a sample on T3, and no wash on the FX2 change on T1.
+
 ## Audio engine wedged, sequencer alive: the master loop ✅ measured
 
 **Symptom.** The sequencer runs but no audio plays, sample preview is

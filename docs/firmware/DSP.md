@@ -420,8 +420,13 @@ do. 🟡 Under the port (21 Sep 2026, OCTABAM89_setgate on bamsep26, `--dsp-watc
 1:X:0x6285 --dsp-dirty`) BusDelay's WET glide state at `r7+$85` has one
 writer, its own per-block store, and reads back what it wrote across
 sixteen consecutive calls (the value converges and holds); image 38 runs it
-on the unit. The hardware hang stands as recorded; what hung, and whether
-`$84+` is written by the dispatcher on hardware, is not isolated. A per-instance stash at `Y:(0x735 + (r7 >> 8))` works on payload A and
+on the unit. The hardware hang stands as recorded, and on 21 Sep 2026 the delay hosted
+on a track with a playing sample printed a white-noise wash on images 39
+and 40 while its WET state and four per-call words sat at `$84..$88`
+(`docs/remixer/FAILURE_MODES.md`); the port never showed it. Since image
+41 no module of ours writes `r7+$84` or above. The words belong to the
+unit between calls when the track plays a voice; which structure is not
+isolated. A per-instance stash at `Y:(0x735 + (r7 >> 8))` works on payload A and
 lands inside a live coefficient table on payload B. `dsp_host -inst N
 -guard` names a write over a loaded module. Bring-up hangs (three
 attempts, cause not isolated): executing at `P:0x2000` with low X as delay
