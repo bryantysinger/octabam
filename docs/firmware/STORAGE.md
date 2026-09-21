@@ -50,7 +50,7 @@ and re-applies with `0x40009094(bank, part)` (also copies scenes A/B at
 ## 4. The card from the host (`PROJECT_FILE.md`, MKI) ✅
 
 `PATH=` bare, no quotes; the unit writes nested STATIC paths itself (❌
-ours until 13 Sep 2026: "a STATIC PATH must be bare, `../AUDIO/…` loads
+retracted 13 Sep 2026: "a STATIC PATH must be bare, `../AUDIO/…` loads
 empty" — the empty slot is one with no `markers.work` record).
 `TRIM_BARSx100 = 100 × 2^round(log2(seconds × tempo24 / 24 / 240))`,
 capped 3200 (🟡 cap from one point), never cloned. `markers.work`: 16-byte

@@ -211,8 +211,8 @@ FX1 p2 · FX2 p2 · MULT×3 TRIG×3. Designer data: `part + 0x1702 + 16·t`
 
 ## 8. Provenance: what was checked (22 Sep 2026)
 
-His handoff answered two questions of ours (a slew control; more than 19
-waveforms). Re-read in objdump against our image and matching: the engine
+Bryan T's handoff answered two open questions (a slew control; more than
+19 waveforms). Re-read in objdump against our image and matching: the engine
 at `0x4000cf84`–`0x4000d096` (inline in the frame builder, `MACSR =
 0x20`), 24 iterations, the 28-byte state record with the phase
 accumulator at `+24` (modulus `0x791fd`), the value read once at
@@ -224,7 +224,7 @@ resolver's six bases, and that `0x400074a0`/`0x40007502` are the
 recorder's FIN/FOUT fades over a `1/n` table (`a4@(6)`/`(7)`, the
 recorder page's slots 6 and 7).
 
-❌ Ours, retracted: `DSP.md`'s "LFO speed `0x400074a0`/`0x40007502`, MULT
+❌ Retracted on it: `DSP.md`'s "LFO speed `0x400074a0`/`0x40007502`, MULT
 table `0x400ab83a`" (they are the fade generator; the LFO rate is `SPD ×
 tempo24 × 4` and MULT is a shift). `PARAM_PAGES.md` §5a's page-2 display
 array at `+0x8f06c` with a machine column: his `part + 0x2f2` / `+ 0x30a`
@@ -234,7 +234,7 @@ resolved in his favour — the array starts six bytes later than we had it
 and ends on the MIDI array. `MIDI.md` Appendix C's two 🟡 rows (scene bytes
 6–11 and 12–17) are LFO p1 and AMP p1.
 
-❌ His, corrected above:
+❌ Corrected from the handoff, above (found in the re-read):
 - WAVE's count: `0x400d386c` / `0x400d41d0` hold 0. The counts are `u32`
   at `E + 0xd2 + 4·slot`; WAVE is slot 7, so `0x400d38ac` (audio) and
   `0x400d4218` (MIDI), both 19.
