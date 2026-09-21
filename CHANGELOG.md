@@ -5,7 +5,21 @@ main carries beyond the last flashed image. The version the panel shows is
 `BUILD` (`make image BUILD=N`); a git tag `OCTABAM<N>` marks the commit each
 flashed image was built from.
 
-## Unreleased (main after image 38)
+## Unreleased (main after image 42)
+
+(nothing yet)
+
+## Image 42 — 21 Sep 2026 (`OCTABAM42`, bamsep26 at d3fceaf)
+
+On the unit: the delay on a trig host clean (T2 THRU and T3 STATIC with a
+trig on every step, two loops, OCTABAM91), the fixture that washed on
+39, 40 and 41 (all three flashed 21 Sep 2026 without a section here; the
+bisect is the first bullet). Not yet heard on the unit: everything else
+below (the TIME ramp within the block, the once-per-block glides, the
+names and `---` per mode, Character's TONE on page 1, Modulation's five
+modes). The image's delay is d3fceaf's; the docs of that commit landed
+after the build. Before play: `stamp-defaults <project> bamsep26 --all
+--keep-mode` (done on the card for OCTABAM89 and OCTABAM91).
 
 - BusDelay: nothing at `r7+$84` or above. On the unit (21 Sep 2026, images
   40 and 39 alike) the delay on T3 with a sample playing on every step
