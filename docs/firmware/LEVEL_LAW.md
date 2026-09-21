@@ -7,8 +7,8 @@ is `(127/128)² = 0.98443603515625` = **-0.1362 dB**. Every level stage a
 signal passes through costs another one. This is what "127" means, not a
 calibration constant or a table.
 
-Read out of the binary and off hardware by Bryan T (21 Sep 2026,
-`~/Downloads/octatrack-level-law.md`; hardware captures his, §7). Nothing
+Read out of the binary and off hardware by Bryan T (21 Sep 2026;
+hardware captures his, §7). Nothing
 below has been run under the port.
 
 Status key as `CHIP.md`: ✅ measured (hardware or read off the firmware) ·
