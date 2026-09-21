@@ -180,7 +180,7 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	@if [ -x .venv/bin/python3 ]; then \
 	  .venv/bin/python3 tools/verify/verify_labels.py $(REMIX) && \
 	  .venv/bin/python3 tools/verify/verify_modenames.py $(REMIX) && \
-	  .venv/bin/python3 tools/verify/verify_ccpage2.py && \
+	  REMIX=$(REMIX) BUILD=$(BUILD) .venv/bin/python3 tools/verify/verify_ccpage2.py && \
 	  .venv/bin/python3 tools/verify/verify_hidden.py $(REMIX); \
 	else echo "  [SKIP] labels / mode names / cc page-2 / hidden engines: no .venv (make emu-setup)"; fi
 	python3 tools/verify/verify_grains.py $(REMIX)
@@ -193,6 +193,9 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	python3 tools/verify/verify_modulation.py
 	python3 tools/verify/verify_nimbus.py
 	python3 tools/verify/verify_hello.py
+	@# The isolated DSP gates build their own remixes over mainos_bus.bin.
+	@# Restore the selected image before inspecting its chooser tables.
+	$(MAKE) bus REMIX=$(REMIX)
 	REMIX=$(REMIX) python3 tools/verify/verify_menu.py
 	python3 tools/verify/verify_burn.py $(REMIX)
 	python3 tools/verify/verify_twocore.py
