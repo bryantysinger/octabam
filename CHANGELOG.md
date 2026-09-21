@@ -21,8 +21,15 @@ flashed image was built from.
   module and no stock code had ever run on the chip; the assembler's
   one-word patch was proven on the X form and the port decodes what the
   assembler encodes. Image 45 clears them with post-increment stores, the
-  form everything else runs; bit-identical under every gate. Image 45 is
-  the test.
+  form everything else runs; bit-identical under every gate. Image 45
+  wedged the same way. The remaining unmasked address in the new code was
+  the check's own read of the client's last write offset: an FX1 slot
+  with no effect runs SEND at an r7 below $6200, which ROTINIT deliberately
+  never seeds, so on the unit that word is boot garbage until the first
+  rotuse writes it, and the stamp read went to a wild Y address (the
+  peripheral registers are in Y). The port zeroes RAM and could not see
+  it. Image 46 masks the value (`and #>$30`) before it becomes an address,
+  the way every other tracker address is built. Image 46 is the test.
 
 ## Image 43 — 21 Sep 2026 (`OCTABAM43`, bamsep26 at b3f6471)
 

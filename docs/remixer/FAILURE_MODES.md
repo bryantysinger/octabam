@@ -46,7 +46,7 @@ second (the port: `r0 = $e` for a trig at frame 7): no state between the
 calls. Same code in SEND, BusDelay and BusVerb. The stash itself was never measured on the unit; the fix's
 effect was.
 
-## Sequencer stuck on step 1 at the first play: an instruction form the chip had never run 🟡 inferred, fix built (image 45)
+## Sequencer stuck on step 1 at the first play: images 44 and 45 🟡 two causes inferred, fix built (image 46)
 
 **Symptom.** Image 44 (21 Sep 2026): flash, load, play -- stuck on step 1,
 the standard wedge; power-cycle and reload recover. **Cause, inferred.**
@@ -56,11 +56,22 @@ clear, written as four one-word displaced Y stores (`move a,y:(r3+$1)`,
 form, the assembler's one-word displaced move was patched in on 14 Sep
 2026 and proven on the X form (`move x:(r7+$15),a` = `0257de`, 533 stock
 sites), and the port runs whatever the assembler encodes, so a chip that
-decodes that word differently is invisible locally. **Fix.** Image 45
-clears the stamps with `move a,y:(r3)+` after `m3 = $ffffff`, the form
-every module runs. Not measured: what the chip did with the word. Rule: a
-DSP instruction form with no stock precedent in the payload disassembly
-(`tools/build/dsp_disasm_all.py`) does not ship without a hardware probe.
+decodes that word differently is invisible locally. **Image 45** clears the stamps with `move a,y:(r3)+` after `m3 = $ffffff`
+and wedged the same way, so the form was not (or not only) it; the rule
+stands regardless: a DSP instruction form with no stock precedent in the
+payload disassembly (`tools/build/dsp_disasm_all.py`) does not ship without
+a hardware probe. **The second cause, inferred.** The tracker's new check
+reads the client's last write offset from its own slot and turns it into
+the stamp address. An FX1 slot with no effect runs SEND (id 0 aliases to
+SEND) at an r7 below `$6200`, which ROTINIT deliberately never seeds, so
+on the unit that slot is boot garbage until the first `rotuse` store, and
+the read went to a wild Y address -- the peripheral registers live in Y,
+and a stray read of a host-port or ESAI register stalls the handshake at
+the first block. The port zeroes RAM: the slot reads 0 there. **Image
+46** masks the value (`and #>$30`) before it becomes an address, as every
+other tracker address is built; the gate chain now runs the port with
+`--dsp-dirty` on the trig-host fixtures as well. Rule: no address from a
+word that init did not seed, unmasked.
 
 ## A white-noise wash from a THRU host past position 0 with a trig on every step 🔴 cause open, a self-healing tracker built (image 44)
 
