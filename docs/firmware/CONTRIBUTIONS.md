@@ -1,7 +1,7 @@
-# What arrived from outside: the dated index
+# Contributions received: the dated index
 
-Reverse-engineering results and notes received from outside this project,
-by date, with where each now lives. The facts themselves are in the
+Reverse-engineering results and notes contributed by others, by date, with
+where each now lives. The facts themselves are in the
 topical docs with their status markers (✅ re-verified here · 🟡 adopted on
 the author's evidence · ❌ retracts something written here) and the
 author's name beside them. Until 22 Sep 2026 this file held the findings
@@ -29,5 +29,5 @@ the officially distributed OS 1.40C (`section_3_MAIN_OS.bin` SHA-256
 | 21 Sep 2026 | Bryan T (hardware) | MAIN/CUE are `(L/128)²` | `LEVEL_LAW.md` (§7 what was checked) ✅ |
 | 22 Sep 2026 | Jannik Aßfalg (repeat98) | beside Tape Echo (PR #357): the delay routine's frame, seam and per-frame protocol; benchmarking practice for a ColdFire module | `COLDFIRE_DELAY.md` §2–4 ✅, with a retraction; `docs/remixer/MODULES.md` "Pricing a ColdFire module"; `FAILURE_MODES.md` |
 
-Community modules that arrived as code rather than notes (midisc, Octakit,
+Modules that arrived as code rather than notes (midisc, Octakit,
 octalab, REPITCH) are the README's module table and `THIRD_PARTY.md`.

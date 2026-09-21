@@ -122,7 +122,7 @@ CLEAN_STOCK_PAIR = [_stock("chorus", 0x12, True), _stock("comb", 0x13, True),
 
 
 def _submodule_preflight() -> int:
-    """Refuse early, with the fix, if a community submodule is not checked out.
+    """Refuse early, with the fix, if a module's upstream submodule is not checked out.
 
     `make check` runs EVERY remix, so a clone without submodules fails on
     somebody else's module even when the remix under test has nothing to do
@@ -137,7 +137,7 @@ def _submodule_preflight() -> int:
                      if d.is_dir() and not any(d.iterdir()))
     if not missing:
         return 0
-    print(f"  [FAIL] community submodule(s) not checked out: {', '.join(missing)}")
+    print(f"  [FAIL] upstream submodule(s) not checked out: {', '.join(missing)}")
     print("         `make check` builds EVERY remix, so these are needed even "
           "when yours does not use them.")
     print("         Fix:  git submodule update --init --recursive")

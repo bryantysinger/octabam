@@ -18,7 +18,7 @@ ten bytes the installer overwrites with its `jsr` and the cave replays; the
 build refuses an image that does not hold them, which is the check that
 keeps a cave off the wrong OS. Those opcodes (four sites, 30 bytes in all,
 across `tempo-sync`, `recorder-spacing`, `flex-seekbind*`) are an
-instruction, not a firmware, and every community module carries its own
+instruction, not a firmware, and every ColdFire module carries its own
 the same way. Keep a hook to whole instructions and the minimum span; data
 tables, routines and anything longer than the displaced instructions come
 from the user's image at build time.
@@ -53,8 +53,8 @@ units (GNU-as, symbols, no absolute addresses of its own) reached by
 `Detour`s that name those symbols, plus `Poke`s and `TableGrow`s for the
 OS-image edits — each asserted against stock before anything is written.
 `dram=True` is the default place for code: a 10 MB reserve carved off the
-unit's sample/recorder pool, placed by the build, the way the community's
-own DRAM mods live (`docs/remixer/PLACEMENT.md`). The ~8 KB of free ROM
+unit's sample/recorder pool, placed by the build, the way midisc and
+Octakit live (`docs/remixer/PLACEMENT.md`). The ~8 KB of free ROM
 inside the OS image is for what must be ROM-resident, and it is shared
 with everyone. A module that keeps its own DRAM (a `Runtime`) declares
 the pages it takes with `ArenaReserve`, and the build composes everyone's.
@@ -81,8 +81,8 @@ its output as the oracle.
 
 ## Building from an author's repository
 
-The preferred shape for a community mod, because the author keeps
-developing where they are:
+The preferred shape for a module that has a repository of its own,
+because the author keeps developing where they are:
 
 - The repo is a git submodule at `modules/<name>/upstream`, **pinned to a
   commit**; a branch is named in `.gitmodules` when the port lives on one.

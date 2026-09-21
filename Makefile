@@ -1,5 +1,5 @@
-# octabam — a remixer for the Elektron Octatrack's OS: modules (the
-# community's and our own) composed into one image from your own 1.40C.
+# octabam — a remixer for the Elektron Octatrack's OS: modules, each
+# credited to its author, composed into one image from your own 1.40C.
 #
 # Every target here is a command that was previously an incantation to
 # remember. The env-var flags are real and load-bearing; see `make help`.
