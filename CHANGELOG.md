@@ -5,7 +5,18 @@ main carries beyond the last flashed image. The version the panel shows is
 `BUILD` (`make image BUILD=N`); a git tag `OCTABAM<N>` marks the commit each
 flashed image was built from.
 
-## Unreleased (main after image 42)
+## Unreleased (main after image 43)
+
+(nothing yet)
+
+## Image 43 — 21 Sep 2026 (`OCTABAM43`, bamsep26 at b3f6471)
+
+On the unit: the sample-host wash gone (T3 STATIC, a trig every step,
+eight loops and a reload clean; the FX2 change on T1 clean). Still
+washing: a THRU host past position 0 with a trig on every step
+(`FAILURE_MODES.md`, open; not a rig configuration). Not yet heard: the
+TIME ramp, the once-per-block glides, the names and `---` per mode,
+Character's TONE on page 1, Modulation's five modes.
 
 - The bus participants take a split block's frame offset from `r0` (0 on
   a first call, 2 x split on the a=1 call, as the dispatcher passes it)
