@@ -438,7 +438,7 @@ loader (Octakit's shape). One per image.
 
 ### The oracle
 
-A port is done when the author's build and ours agree byte for byte.
+A port is done when the author's build and this repo's build agree byte for byte.
 `Linked.reference=(addr, sha256)` re-links the unit at the author's own
 address on every build and compares; a `Runtime` re-derives every identity
 its recipe pins. `tools/verify/verify_midiscenes.py` and

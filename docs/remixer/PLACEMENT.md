@@ -80,7 +80,7 @@ Hardware: an image built at origin `9a49f21` (loader at `0x4010fdf0`,
 boot site `0x4000050c`, the 10 MiB reserve at `0x40a955e0`, FX2 chooser
 rebuilt with 15 rows at `0x400d7bbc`) ran on nordseele's Octatrack MKI on
 11 Sep 2026 as octalab: the first hardware run of the DRAM platform, on
-the model we cannot test. ❌ Ours, from that run: `FLASHPLAN.md`'s
+the model we cannot test. ❌ Retracted on that run: `FLASHPLAN.md`'s
 "MEMORY reports ~75 MB" — the MEMORY page still shows 85.5 MB total while
 the Flex list reads FREE MEM 71.4 MB; the page count `0x390a` appears at
 18 sites and which one the page reads is unpinned. Their standalone cave

@@ -107,8 +107,9 @@ interpolator over a 128-word ring applying pitch only. Crossfade: a
 minimum grain body 2,048 samples. No pre-analysis: the `.ot` serializer
 persists 64 slice records, trim points and a checksum; BEAT mode's
 transients are slice markers. Segments are butt-spliced on the DSP. The
-module labels above (`P:0x3a1`, `P:0x2bf`, `func_00055a`) were his; ours
-had been "parameter unpacking", "resampler" and "gain routine".
+module labels above (`P:0x3a1`, `P:0x2bf`, `func_00055a`) are Bryan T's;
+until 30 Aug 2026 they read "parameter unpacking", "resampler" and "gain
+routine".
 
 ## 4. Disassembly ✅
 

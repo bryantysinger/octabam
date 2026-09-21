@@ -29,7 +29,7 @@ off snaps, TAPE on glides). No recursive feedback code: the ring's write
 stream contains a scaled copy of its filtered read stream. Eight tracks
 sustain 4-second delays because each has its own ring in CPU SDRAM.
 
-❌ Ours, 30 Aug 2026: "the ColdFire does no per-sample audio arithmetic"
+❌ Retracted 30 Aug 2026 on his write-up: "the ColdFire does no per-sample audio arithmetic"
 (verified only for the audio ISR `0x4000aad0`). The staged delay-time
 word `0x80005fa0` is written by the routine itself at `0x40003284..88`
 from the staged record `0x80001a00 + 96·snapshot + 12·track` (✅ 31 Aug

@@ -27,7 +27,7 @@ his evidence · ❌ retracted.
 | arm caller `0x40005ff0` | `[0x100b14cf] × 6322 + [0x46c82456] + track + 0x8eda2 == 4` gate; `a3 = 0x80000cf4 + 12·track + 96·page`; `L = table[a3@(7)]`; `addl d1,d1`; `macl d1, −[0x80001820]`; `(x+1)>>1` |
 | step ladder `0x400ab63a` | `992250 × L`, 113 entries: `0, 1..32, 34..64 by 2, 68..128 by 4, 136..256 by 8, 272..512 by 16, 544..1024 by 32` |
 
-Closed from our side: `Dr == Dq` in `4c40/1801` is `DIVS.L` (gas encodes
+Closed in the re-read here: `Dr == Dq` in `4c40/1801` is `DIVS.L` (gas encodes
 `divs.l %d2,%d1` as `4c42 1801`; objdump prints `remsl`), so
 `[0x80001820] = −2³¹/tempo24`. `[0x80001814]` = BPM × 24 (clamp 720..7200),
 so recorder lengths are 44.1 kHz samples, RLEN raw+1 is sequencer steps
@@ -39,7 +39,7 @@ so recorder lengths are 44.1 kHz samples, RLEN raw+1 is sequencer steps
 #32,%macsr`): fractional, signed, no saturation, truncating. Why the pickup
 arm reads the FOUT slot is open.
 
-❌ Ours: `0x80000003` / `0x100b14cf` are the current PART, not pattern
+❌ Retracted (2 Sep 2026): `0x80000003` / `0x100b14cf` are the current PART, not pattern
 (`0x40062120..48`: `mvzb 0x80000004` × `0x8ed8` + bank blob, byte
 `+0x8e57`); `[0x80000004]` is the pattern. Pattern records are `0x8ed8`
 bytes (16 fill `blob + 0 .. 0x8ed80`), parts `0x18b2` from `blob + 0x8ed80`.
@@ -93,11 +93,12 @@ L       = ( ((steps × 31,752,000) × Q >> 31) + 1 ) >> 1     0x40006dfc..e10
 An exact x.5 quotient rounds down (128/16 → 82,687). The truncating
 `0x4006e3b2`'s consumer is open.
 
-❌ Ours: buffers are not DMA siblings of the delay rings; the recorder
+❌ Retracted: buffers are not DMA siblings of the delay rings; the recorder
 write path is traced (still project-dependent for the emulator).
-❌ His: `0x40004860–0x40004bd0` on DMA channel 0 is the ColdFire→DSP frame
-transfer (`DSP.md` §6c), not control-surface polling; his 198/16 row was a
-transcription slip (53,454, rounded down).
+❌ Corrected from the sessions' reading: `0x40004860–0x40004bd0` on DMA
+channel 0 is the ColdFire→DSP frame transfer (`DSP.md` §6c), not
+control-surface polling; the 198/16 row was a transcription slip (53,454,
+rounded down).
 
 ## 3. The primer and the spreadsheet (Bryan T, 6 Sep 2026)
 
