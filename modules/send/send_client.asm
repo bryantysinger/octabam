@@ -45,8 +45,12 @@
 ;                       delay writes 1 every block it processes; the reverb
 ;                       reads it, clears it, keeps 3 blocks of grace and takes
 ;                       its input from the CHAIN buffer while live
-;   Y:0x9c4..0x9c6      free (0x9c4/0x9c5 were the T8 return's liveness
-;                       stamps until 20 Sep 2026)
+;   Y:0x9c4             the tracker's HOLD flag (21 Sep 2026): a core-1 client
+;                       whose stamp was wiped sets it; position 0 clears it
+;                       and skips one advance (XBUS.md "The tracker's self-check")
+;   Y:0x9c5..0x9c6      free (0x9c5 was the T8 return's liveness stamp
+;                       until 20 Sep 2026; 0x9c6 is the core's tracker under
+;                       XBUS, build_bus.py ROTLATCH)
 ;   Y:0x9c7..0x9ca      AUX send COUNT, one per accumulator buffer: how many
 ;                        clients wrote that buffer this block, indexed by the
 ;                        same rotation (a server reads last block's sum and
@@ -60,7 +64,11 @@
 ;   Y:0x9d3..0x9d7      unused, deliberately: under XBUS these are
 ;                       0x360d3-5, where per-block state was dead on hardware
 ;                       (writes and in-loop reads never met; mechanism unknown)
-;   Y:0x9d8..0xad9      free since 20 Sep 2026 (the T8 return's RETV/RETD
+;   Y:0x9d8..0x9e7      the tracker's stamps, stamps[buffer][client] (21 Sep
+;                       2026): a core-1 client writes 1 at its first call;
+;                       the housekeeper zeroes the four of the buffer it
+;                       clears; client = (r7 >> 8) & 3
+;   Y:0x9e8..0xad9      free since 20 Sep 2026 (the T8 return's RETV/RETD
 ;                       stamps and the two stereo four-deep stage-output
 ;                       buffers)
 ;
@@ -223,6 +231,16 @@ zclr:
         clr     a
         move    a,y:(r3)                ; AUX count = 0; a stays 0 for the
                                         ; locks below
+        move    r3,a                    ; ... and the four client stamps of
+        sub     #>$9c7,a                ; the same buffer (21 Sep 2026): the
+        asl     #$2,a,a                 ; tracker's check on core 1 reads them
+        add     #>$9d8,a                ; back next frame
+        move    a,r3
+        clr     a
+        move    a,y:(r3)
+        move    a,y:(r3+$1)
+        move    a,y:(r3+$2)
+        move    a,y:(r3+$3)             ; a stays 0 for the locks below
 ; ---- release both server-role locks for this block (BUS.md hardware test 3)
 ; a is still 0 from the clear loop above. Whichever of the three effects is
 ; position 0 does this, so the locks are freed exactly once per block and

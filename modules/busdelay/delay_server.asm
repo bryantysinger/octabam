@@ -309,6 +309,16 @@ bus_zclr:
         move    #>$ffffff,m3
         clr     a
         move    a,y:(r3)                ; AUX count = 0
+        move    r3,a                    ; ... and the four client stamps of
+        sub     #>$9c7,a                ; the same buffer (21 Sep 2026): the
+        asl     #$2,a,a                 ; tracker's check on core 1 reads them
+        add     #>$9d8,a                ; back next frame
+        move    a,r3
+        clr     a
+        move    a,y:(r3)
+        move    a,y:(r3+$1)
+        move    a,y:(r3+$2)
+        move    a,y:(r3+$3)
 bus_seen:
         move    y:>$900,a               ; remember this block's offset so next
         and     #>$30,a                 ; block we can tell whether anybody
@@ -356,7 +366,7 @@ bus_mine:
 ; from here on -- x:(r7-$35) is $14, x:(r7+$3f) is $88 -- and the header
 ; map and every comment keep the RAW numbers. Everything that compares or
 ; stores r7 ITSELF (the position-0 test, the role lock, the ROTLATCH /
-; ROTINIT / HOSTGUARD bodies the build substitutes) runs ABOVE this point
+; seed and host-guard bodies the build substitutes) runs ABOVE this point
 ; on the raw value; the duplicate-server rts above never reaches it; the
 ; GRAIN record bases below derive from the rebased value; `dry:` puts the
 ; raw block back before the rts. Costs 8 words a call, pays ~190.

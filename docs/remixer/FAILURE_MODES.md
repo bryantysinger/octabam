@@ -46,7 +46,7 @@ second (the port: `r0 = $e` for a trig at frame 7): no state between the
 calls. Same code in SEND, BusDelay and BusVerb. The stash itself was never measured on the unit; the fix's
 effect was.
 
-## A white-noise wash from a THRU host past position 0 with a trig on every step 🔴 cause open
+## A white-noise wash from a THRU host past position 0 with a trig on every step 🔴 cause open, a self-healing tracker built (image 44)
 
 **Symptom.** BusDelay on T2 (a THRU machine) with a trig on every step of
 T2: a white-noise wash at once, on images 40 through 43 alike (43 fixed the
@@ -59,9 +59,18 @@ configuration, not a use.
 **What the port sees.** Nothing: a THRU host with a trig every step under
 `verify_set` (`out/OCTABAM89_t2thru`, tones at the inputs) prints flat.
 
-**Open.** What a THRU trig does to the host's dispatch that a sample trig
-does not (its split, its call count, a re-init, the input path), and why
-position 0 is exempt. Next instrument: a diagnostic build whose delay
+**What the port adds (21 Sep 2026).** With `n7` in the PC watch: a THRU
+host and a sample host are dispatched identically under the port (a=0 at
+`r0 = 0`, `n7 = split`; a=1 at `r0 = 2 x split`, `n7 = 16 - split`), and
+the delay's init runs once at load. So the difference is timing the port
+cannot show. The one structural weakness on that path is the tracker's
+"T == R + 1, keep T" rule, which holds a genuine lead of one for ever
+(`XBUS.md`); image 44 gives the tracker a self-check (stamps in the
+cleared buffers, a hold flag) that takes such a lead back within a frame
+whatever caused it. Bit-identical at rest (`verify-bus`, 21 layouts).
+
+**Open.** What a THRU trig does on the unit that a sample trig does not,
+and why position 0 is exempt; whether 44's self-check ends the wash. Next instrument: a diagnostic build whose delay
 prints a marker tone when a call arrives with `r0 != 0` twice in a block,
 or with `n7 = 16` after an a=0 call; and a PC watch under the port on the
 delay's proc entry with the THRU-host fixture, for the call pattern the
