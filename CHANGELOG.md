@@ -7,7 +7,15 @@ flashed image was built from.
 
 ## Unreleased (main after image 43)
 
-(nothing yet)
+- The core-1 rotation tracker heals a lead of one within a frame. Each
+  core-1 client stamps a word in the buffer it wrote (`Y:0x9d8..0x9e7`,
+  one per buffer per client); the housekeeper zeroes the stamps of the
+  buffer it clears next; a client whose stamp is gone at its next first
+  call sets a hold flag (`Y:0x9c4`) and position 0 skips one advance.
+  Closes the tracker's documented "cannot self-correct a bad start" for
+  every cause; built for the THRU-host wash (still open on 43; `XBUS.md`
+  "The tracker's self-check"). Init stamps the seeded buffer. +~50 words
+  on B, +10 per housekeeping copy. Image 44 is the test.
 
 ## Image 43 — 21 Sep 2026 (`OCTABAM43`, bamsep26 at b3f6471)
 

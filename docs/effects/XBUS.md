@@ -141,6 +141,26 @@ first-dispatched core-0 instance (position 0 = track 5) run it.
   cleared (metallic on every core-1 sender after every power cycle).
 - The housekeeper clears the buffer that will be written next block.
 
+## The tracker's self-check (21 Sep 2026)
+
+Core 1's rotation tracker keeps a lead of one when it sees `T == R + 1`
+(a read just before core 0's flip); a client that is genuinely one step
+ahead therefore stayed ahead for ever, writing the buffer core 0 clears,
+until a re-select or a transport start made it miss blocks and snap (the
+R25 "metallic on every power cycle"; the THRU-host wash of 21 Sep 2026 has
+the same signature). Since 21 Sep 2026 every core-1 client leaves a stamp
+word after its writes, `stamps[buffer][client]` at `Y:0x9d8..0x9e7`
+(`0x360d8..` under XBUS; client = `(r7 >> 8) & 3`), and the housekeeper
+zeroes the four stamps of the buffer it clears next, beside its
+accumulator and count. At its next first call each client reads its own
+stamp back; a missing stamp sets the hold flag `Y:0x9c4`, and position 0
+then skips its advance for one frame, which takes the lead back to zero.
+A client in the legitimate pre-flip phase never loses its stamp: the buffer
+it wrote is never the one being cleared. Init stamps the seeded buffer so
+the first check passes. The stamps are single-writer words (no cross-core
+read-modify-write); a spurious hold costs one frame of sends written into
+an idle buffer and snaps back the next frame.
+
 ## Auto-gain
 
 Every writer contributes with 3 bits of headroom (`asr #3`; eight

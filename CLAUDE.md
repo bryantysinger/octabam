@@ -180,7 +180,13 @@ Writing *about* either in a comment trips the guard: both happened while
 documenting stage 5/6 (a comment explaining why mode 3's immediate must be
 decimal spelled the hex out; another explaining the override marker spelled
 the marker out). The build refuses, loudly, which is the guard working —
-describe them in prose instead of spelling them.
+describe them in prose instead of spelling them. The same goes for
+`; ROTLATCH` and `; ROTINIT`: the build substitutes a body at the FIRST
+occurrence, and on 21 Sep 2026 a housekeeping comment that said "the
+ROTLATCH check" took the tracker body while the real marker stayed a
+comment -- no client on either payload resolved its write offset, and
+`verify-bus` read it as every server's client count changing.
+`_marker_once` refuses a second occurrence now.
 
 **`SPEC=1` requires `XBUS=1`.** Without it the accumulators stay in core-private
 memory and each half of the tracks can reach only its own core's server — worse

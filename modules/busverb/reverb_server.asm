@@ -216,6 +216,16 @@ bus_zclr:
         move    a,r1
         clr     a
         move    a,y:(r1)                ; AUX count = 0
+        move    r1,a                    ; ... and the four client stamps of
+        sub     #>$9c7,a                ; the same buffer (21 Sep 2026): the
+        asl     #$2,a,a                 ; tracker's check on core 1 reads them
+        add     #>$9d8,a                ; back next frame
+        move    a,r1
+        clr     a
+        move    a,y:(r1)
+        move    a,y:(r1+$1)
+        move    a,y:(r1+$2)
+        move    a,y:(r1+$3)
 bus_seen:
         move    y:>$900,a               ; remember this block's offset so next
         and     #>$30,a                 ; block we can tell whether anybody
