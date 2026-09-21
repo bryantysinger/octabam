@@ -12,66 +12,65 @@
 ; literals only, so a buffer past the 0x900 page is spelled as `$9xx + n`,
 ; never fused into an `$axx` literal that would stay core-private.
 ;
-;   Y:0x900            this block's WRITE OFFSET into the accumulators: 0, 16,
-;                       32 or 48, the buffer index already scaled by the
-;                       16-word stride; masked on load and save (it may start
-;                       as boot garbage). Four buffers, not two: at every
-;                       instant one buffer is the write target and one the
-;                       read target, so with two the only buffer that can be
-;                       cleared is the one a skewed reader on the other core
-;                       may still be inside. With four a buffer is written at
-;                       block n, rests at n+1, read at n+2, rests at n+3 and
-;                       is cleared again at n+4, so either core may lead by
-;                       up to a block. Four rather than three because the
-;                       rotation is `+16 & $30` and the read offset `+32 &
-;                       $30`, no compare and no clamp.
-;   Y:0x901..0x940      THE CHAIN BUFFER: the delay's stage output, mono, at
-;                       unity, four buffers of 16 words at +0/+16/+32/+48,
-;                       stored (not accumulated, never cleared) by the delay
-;                       every block it runs, read two back by the reverb
-;                       while the delay is live.
-;   Y:0x941             BusVerb host's AUX knob field: the reverb writes it
+;   Y:0x900            this block's WRITE OFFSET into the accumulators, the
+;                       buffer index already scaled by the 16-word stride:
+;                       0, 16, .. 112; masked on load and save (it may start
+;                       as boot garbage). EIGHT buffers since 22 Sep 2026
+;                       (four from 17 Aug to then): a buffer is written at
+;                       block n, read at n+3 and cleared at n+6 (the
+;                       housekeeper clears the buffer two on from the one it
+;                       flips to), so a client whose label is off by one in
+;                       either direction never writes a buffer being cleared
+;                       or read, and never reads one being written. The
+;                       rotation is `+16 & $70`, the read offset `+80 & $70`
+;                       (three back == five on), no compare and no clamp.
+;   Y:0x901..0x980      THE AUX accumulator, eight buffers of 16 words: every
+;                       track's one send (SEND's AUX, the hosts' AUX)
+;   Y:0x981             BusVerb host's AUX knob field: the reverb writes it
 ;                        every block; the delay's auto-gain and the reverb's
 ;                        own count it as one more client while nonzero; the
 ;                        delay's warm-up zeroes it. A single-writer word in
 ;                        place of a cross-core count RMW.
-;   Y:0x942..0x960      dead (kept so nothing below moves)
-;   Y:0x961..0x9a0      THE AUX accumulator, four buffers of 16 words: every
-;                       track's one send (SEND's AUX, the hosts' AUX)
-;   Y:0x9a1..0x9c0      dead
+;   Y:0x982..0x9c0      free
 ;   Y:0x9c1             DELAY SERVER role owner (lock)
 ;   Y:0x9c2             REVERB SERVER role owner (lock)
 ;   Y:0x9c3             DELAY LIVE stamp for the REVERB (clear-on-read): the
 ;                       delay writes 1 every block it processes; the reverb
 ;                       reads it, clears it, keeps 3 blocks of grace and takes
 ;                       its input from the CHAIN buffer while live
-;   Y:0x9c4..0x9c6      free (0x9c4/0x9c5 were the T8 return's liveness
-;                       stamps until 20 Sep 2026)
-;   Y:0x9c7..0x9ca      AUX send COUNT, one per accumulator buffer: how many
+;   Y:0x9c4..0x9c6      free
+;   Y:0x9c7..0x9ce      AUX send COUNT, one per accumulator buffer: how many
 ;                        clients wrote that buffer this block, indexed by the
-;                        same rotation (a server reads last block's sum and
-;                        needs last block's count). SEND and BusDelay's AUX
-;                        register here, gated on their knobs (an idle client
-;                        that registers dilutes the real ones); BusVerb's AUX
-;                        is counted through Y:0x941. One word per buffer, so
-;                        these are the only sites that scale the offset back
-;                        to a bare index (`asr #$4`).
-;   Y:0x9cb..0x9d2      free
+;                        same rotation (a server reads the buffer three back
+;                        and needs that buffer's count). SEND and BusDelay's
+;                        AUX register here, gated on their knobs (an idle
+;                        client that registers dilutes the real ones);
+;                        BusVerb's AUX is counted through Y:0x981. One word
+;                        per buffer, so these are the only sites that scale
+;                        the offset back to a bare index (`asr #$4`).
+;   Y:0x9cf..0x9d2      free
 ;   Y:0x9d3..0x9d7      unused, deliberately: under XBUS these are
 ;                       0x360d3-5, where per-block state was dead on hardware
 ;                       (writes and in-loop reads never met; mechanism unknown)
-;   Y:0x9d8..0xad9      free since 20 Sep 2026 (the T8 return's RETV/RETD
-;                       stamps and the two stereo four-deep stage-output
-;                       buffers)
+;   Y:0x9d8..0xa57      THE CHAIN BUFFER: the delay's stage output, mono, at
+;                       unity, eight buffers of 16 words at +0/+16/../+112,
+;                       stored (not accumulated, never cleared) by the delay
+;                       every block it runs, read three back by the reverb
+;                       while the delay is live. Spelled `$9d8 + n` (the
+;                       XBUS rewrite moves `$9xx` literals only); the range
+;                       carried the T8 return's stage buffers until 20 Sep
+;                       2026.
+;   Y:0xa58..0xad9      free
 ;
 ; Latency: every block, whichever track is position 0 (r7 == 0x6200, the
 ; first FX2 dispatched in this bank, whatever module it runs) advances the
-; rotation and clears the new write-target buffers before anyone accumulates
-; into them; every other track reads whatever rotation that leaves. So every
-; track's send lands in the same buffer every block and reads a
-; fully-summed, one-block-old buffer back regardless of dispatch order. The
-; read target is two buffers behind the write target (the idle block on each
-; side of the reader): one extra block of bus latency, 16 samples.
+; rotation and clears the buffer two on before anyone accumulates into it;
+; core 0's other tracks read the rotation that leaves, core 1's count their
+; own blocks from a seed (ROTINIT, ROTLATCH). So every track's send lands in
+; the same buffer every block and a server reads a fully-summed buffer back
+; regardless of dispatch order. The read target is three buffers behind the
+; write target: three blocks of bus latency, 48 samples (two until 22 Sep
+; 2026).
 ;
 ; r7 slots used here: $14 (call flag), $67 (this call's frame offset; $65/$66
 ; free since 21 Sep 2026), $68
@@ -83,22 +82,17 @@
 ; ---------------------------------------------------------------------------
 
 init:
-; ---- seed the tracked rotation, so a cold boot cannot start out of step ---
-; ⚠️ THE TRACKING CANNOT SELF-CORRECT A BAD START, and the commit that added it
-; claimed otherwise. "This client legitimately read PRE-FLIP" and "this client
-; is stuck one step AHEAD" give an identical comparison result, every block,
-; forever -- no observation separates them, so a client that boots one step
-; ahead stays there. Harmless when written; NOT harmless once the clear moved
-; one block ahead, because a client stuck one step ahead then writes precisely
-; the buffer core 0 is clearing, and every core-1 sender is wiped. That was the
-; metallic on every power cycle of R25, and why re-selecting the effect cured
-; it: the instance misses blocks during the switch, falls BEHIND, and snaps.
-; If it cannot self-correct it must begin correct. init runs on instantiation
-; -- exactly what re-selecting does -- so seeding here makes a cold boot
-; deterministic. The shared word may advance one step before the first proc;
-; that direction DOES snap, so it is safe.
-; build_bus.py emits a body here for PAYLOAD B ONLY -- payload A recomputes the
-; offset from the shared word every block and has nothing to seed.
+; ---- seed this client's block label (payload B) ---------------------------
+; A core-1 client never labels a block from the shared rotation at proc
+; time: it counts its own blocks from the seed read here and checks the
+; count against the rotation once a block, keeping a difference of one
+; either way and snapping beyond that (build_bus.py ROTLATCH). The seed is
+; the rotation as read, before or after a flip, so the label runs exact or
+; one behind for the life of the instance -- either is inside the eight
+; buffers' margin (the map above). 9 Sep to 21 Sep 2026 the core tracked
+; the rotation privately and a lead of one was indistinguishable from the
+; pre-flip read, kept for ever: the R25 "metallic on every power cycle" and
+; images 40-47's washes (docs/effects/XBUS.md).
 ; ROTINIT
         rts
 
@@ -128,16 +122,16 @@ proc:
         move    r7,a
         move    #>$6100,x0
         cmp     x0,a
-        beq     send_refused
+        beq     fx1out
         move    #>$6400,x0
         cmp     x0,a
-        beq     send_refused
+        beq     fx1out
         move    #>$6700,x0
         cmp     x0,a
-        beq     send_refused
+        beq     fx1out
         move    #>$6a00,x0
         cmp     x0,a
-        beq     send_refused
+        beq     fx1out
 ; ---- this call's frame offset, from r0 (21 Sep 2026) --------------------
 ; The dispatcher passes r0 = 0 on a block's first call and r0 = 2 x split on
 ; the a=1 call of a split block (measured under the port: r0 = $e for a trig
@@ -191,7 +185,7 @@ bus_off_done:
         cmp     x0,a
         beq     bus_dohk                ; position 0: always the housekeeper
         move    y:>$900,a
-        and     #>$30,a
+        and     #>$70,a
         move    a1,x0
         move    x0,a                    ; offset now, A2-clean
         move    x:(r7+$68),x0
@@ -201,7 +195,7 @@ bus_dohk:                               ; nobody did -- take over this block
 
         move    y:>$900,a
         add     #>$10,a                     ; advance one buffer
-        and     #>$30,a                     ; mod 4 -- and the SAME mask sanitises
+        and     #>$70,a                     ; mod 4 -- and the SAME mask sanitises
                                           ; boot garbage, which is why four
                                           ; buffers cost less than three
         move    a,y:>$900               ; the new CURRENT rotation
@@ -217,11 +211,11 @@ bus_dohk:                               ; nobody did -- take over this block
 ; with four buffers there is an idle slot. The buffer written next block was
 ; last READ a full block ago and will not be WRITTEN for another full block,
 ; so clearing it now has a block of margin on both sides.
-        add     #>$10,a                 ; one further on: the NEXT block's
-        and     #>$30,a                 ; write target, idle right now
+        add     #>$20,a                 ; two on: written two blocks from now,
+        and     #>$70,a                 ; last read three blocks ago
         move    a,x0                    ; bases for the clear AND the count
 
-        move    #>$961,b                 ; ONE BUS (6 Sep 2026): the AUX
+        move    #>$901,b                 ; ONE BUS (6 Sep 2026): the AUX
         add     x0,b                     ; accumulator is the only one left.
         move    b,r2                     ; r2 = AUX ACC[new] base
         move    #>$ffffff,m2
@@ -259,7 +253,7 @@ zclr:
 
 bus_seen:
         move    y:>$900,a               ; remember this block's offset so next
-        and     #>$30,a                 ; block we can tell whether anybody
+        and     #>$70,a                 ; block we can tell whether anybody
                                         ; else housekept in between
         move    a1,x0
         move    x0,a
@@ -291,7 +285,7 @@ notfirst:
 ; in r7+$69, which every site downstream now reads instead of y:>$900.
 ; ROTLATCH
         move    a,x0
-        move    #>$961,a
+        move    #>$901,a
         add     x0,a
         move    x:(r7+$67),b             ; this call's split-aware frame offset
         add     b,a
@@ -300,9 +294,6 @@ notfirst:
                                          ; old DELAY accumulator, kept because
                                          ; the delay -- chain stage 1 -- already
                                          ; reads it, so its input never changed.
-                                         ; 0x901-0x940 and 0x9c3-0x9c6 (the old
-                                         ; REVERB accumulator and its counts) are
-                                         ; FREE and nothing writes them.
         move    #>$ffffff,m2
 
 ; ---- register as a bus client, once per block, PER BUS, ONLY IF SENDING ---
@@ -371,4 +362,6 @@ cnt_done:
 send_end:
         nop
 send_refused:
+        rts
+fx1out:                                 ; an FX1 slot: nothing above ran
         rts

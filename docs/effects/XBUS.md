@@ -28,8 +28,9 @@ CORE 1 (payload B)  tracks 1–4   BusDelay  Y:0x4000–0xBFFF (private) + Y:0x3
   stock allocator's slot table (`X:0x255`, both payloads of the raw image)
   already hands the low half to core 0 and the high half to core 1
   (`docs/firmware/DSP.md` §7).
-- Total bus latency is 2 blocks: 32 samples on hardware, 30 in the
-  harness's 15-frame blocks (`docs/history/TESTPASS.md`).
+- Total bus latency is 3 blocks since 22 Sep 2026: 48 samples on hardware,
+  45 in the harness's 15-frame blocks (2 blocks from 17 Aug to 21 Sep;
+  `docs/history/TESTPASS.md`).
 
 ## The one aux bus (7 Sep 2026; ✅ flash 7, 9 Sep 2026)
 
@@ -48,7 +49,7 @@ CORE 1 (payload B)  tracks 1–4   BusDelay  Y:0x4000–0xBFFF (private) + Y:0x3
 - WET on each engine (slot 5). The delay's stage output into the chain is
   `in + wet × WET`, `in` the aux passing at unity, so the reverb hears the
   sends and the repeats; delay WET 0 = a clean reverb send with the delay in
-  the chain (sample-exact against a reverb-only run two blocks later). Each
+  the chain (sample-exact against a reverb-only run three blocks later). Each
   host prints `wet × WET` under its own dry: T1 (the delay host) the
   repeats, T5 (the reverb host) the tail. Until 15 Sep 2026 each stage
   crossfaded (`in × (1 − MIX) + wet × MIX`), so the reverb's MIX faded the
@@ -102,29 +103,33 @@ count. Servers consume the summed previous block. Under the two-bus layout
 (until 7 Sep 2026) the client had two knobs, `x:(r6+0)` →DELAY and
 `x:(r6+1)` →REVERB; driving the wrong one renders silence.
 
-## The accumulators: four rotating buffers
+## The accumulators: eight rotating buffers (22 Sep 2026; four from 17 Aug)
 
-Each bus keeps four accumulator buffers, rotated once per block, read two
-buffers back from the write:
+The bus keeps eight accumulator buffers and eight chain buffers, rotated
+once per block; a server reads three buffers back from the write, and the
+housekeeper clears the buffer two on from the one it flips to:
 
-- Two buffers cannot be made safe at any clear time: the only clearable
-  buffer is the one transitioning read→write, which is the flip a skewed
-  reader on the other core may still be inside.
-- Four because the count is a power of two: rotation `+16 & $30`, read
-  offset `+32 & $30`, no compare, no clamp; the mask sanitises boot garbage.
-- Read-two-back puts an idle block on each side of the reader, so either
-  core may lead or lag by up to a block; it costs the second block of
-  latency.
+- A buffer is written at block n, read at n+3, cleared at n+6. A client
+  whose label is one off in either direction writes n±1: never the buffer
+  being cleared (n+2), never one being read (n−3..n−1); a reader one off
+  reads n−4..n−2, never one being written. The margin is a whole block on
+  each side, so no cross-core phase can tear a buffer.
+- Eight because the count is a power of two: rotation `+16 & $70`, read
+  offset `+80 & $70` (five on == three back), clear target `+32 & $70`; the
+  mask sanitises boot garbage.
+- Read-three-back costs a third block of latency (48 samples, 1.1 ms;
+  the chain adds three more through a live delay).
 - Both directions ride the same rotation (core 1 reading core 0's clears;
   core 1 writing into core 0's accumulator).
 
 Bus scratch, `Y:0x900..` in core 0's half of the shared window
-(`modules/send/send_client.asm` is the map): `0x900` rotation, `0x901..0x940`
-chain buffer, `0x941` BusVerb host's SEND field, `0x961..0x9a0` aux
-accumulator, `0x9c1/0x9c2` role locks, `0x9c3` the delay's liveness stamp,
-`0x9c7..0x9ca` aux send count per buffer. Role locks make the first
-instance of a server the only one: a second instance returns as a
-passthrough, so a server's cycle cost is charged once per bank.
+(`modules/send/send_client.asm` is the map): `0x900` rotation,
+`0x901..0x980` aux accumulator, `0x981` BusVerb host's SEND field,
+`0x9c1/0x9c2` role locks, `0x9c3` the delay's liveness stamp,
+`0x9c7..0x9ce` aux send count per buffer, `0x9d8..0xa57`
+the chain buffer. Role locks make the first instance of a server the only
+one: a second instance returns as a passthrough, so a server's cycle cost
+is charged once per bank.
 
 ## Housekeeping and the rotation
 
@@ -132,14 +137,23 @@ Housekeeping (flip the rotation, clear buffers) is gated to payload A;
 every bus participant carries the block, and an election makes the
 first-dispatched core-0 instance (position 0 = track 5) run it.
 
-- Clients never read the shared rotation word directly: each core tracks
-  it privately, advancing once per block (✅ 9 Sep 2026: per instance
-  until then; the port showed core 1's fourth client on the wrong buffer
-  every frame; now one tracker per core, `build_bus.py` ROTLATCH).
-- The tracked rotation is seeded at `init` and is not self-healing:
-  unseeded, a client booting one step out of phase writes the buffer being
-  cleared (metallic on every core-1 sender after every power cycle).
-- The housekeeper clears the buffer that will be written next block.
+- Core 0's clients read the rotation after their own housekeeper flipped
+  it. Core 1's clients never label a block from it: each counts its own
+  blocks from a seed read at init and, once a block, checks the count
+  against the rotation R (`build_bus.py` ROTLATCH, 22 Sep 2026). A
+  difference of one either way is kept (the seed was read before or after
+  a flip); two or more means lost blocks or boot garbage, and the count
+  snaps to R. A count cannot flap with the flip's phase, and a label one
+  off in either direction is inside the eight buffers' margin. 9 Sep to
+  21 Sep 2026 one tracker per core followed R, advancing at position 0
+  and keeping `T == R + 1` as the pre-flip phase, which could not tell a
+  genuine lead of one from it; images 40–47's washes were that lead. A
+  label from two shared words (the rotation and a word every core-0
+  client stores at the end of its proc) was tried first on 22 Sep 2026:
+  the pair reads the same before a block's flip and after its last
+  client, so a late reader labels one ahead; the port's two-core gate
+  showed it (four layouts differing from the one-core control).
+- The housekeeper clears the buffer two on from the one it flips to.
 
 ## An FX1 slot is not a client (21 Sep 2026)
 
@@ -171,11 +185,9 @@ both on images up to 47:
 
 Since image 48 SEND returns at once on an FX1 r7 (four compares at proc
 entry, before any state is touched): no registration, no write, no
-tracker call. The core-1 tracker's advance is therefore position 0's FX2
-call, so T1's FX2 must be a bus client (SEND, BusDelay, or a server id
-aliased to SEND) — with the stock DELAY there, nobody advances and every
-client snaps to whatever it reads, the straddle of the first XBUS defect.
-`ot_project.py stamp-defaults` warns when T1's FX2 is not a client.
+tracker call. Image 48 still needed position 0's FX2 to be a client for
+the core's advance; image 49's per-client count (above) needs no
+advance and no position, so T1's FX2 may be anything.
 
 Images 44–46 carried a self-check instead (a stamp per client per buffer,
 a hold flag, position 0 skipping one advance): 44 and 45 wedged on the
@@ -240,7 +252,7 @@ still passing), the three carriers of the housekeeping block, the election,
 1–7 senders per bus, both cross-sends, split blocks, compared bit-for-bit
 against a stamp (`SAVE=1` first). `tools/verify/verify_onebus.py` (in `make
 check`) runs the chain on both cores: T5 prints the reverb (stereo) and T1
-the delay; the reverb hears the delay; delay WET 0 == no delay two blocks
+the delay; the reverb hears the delay; delay WET 0 == no delay three blocks
 later, sample-exact; a host at WET 0 prints only its dry; T1's print is
 bit-identical with the reverb at WET 0, WET 127 or absent; a SEND at
 core-0 position 3 (T8) at SEND 127 changes neither host and the mirror

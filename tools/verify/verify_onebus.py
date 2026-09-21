@@ -184,7 +184,7 @@ def main():
             shutil.copy2(snap, IMAGE)
     mems = {0: A, 1: B}
     tone_file(SCRATCH / "tone.raw", BLOCKS)
-    tone_file(SCRATCH / "tone30.raw", BLOCKS, start=2 * FRAMES)
+    tone_file(SCRATCH / "tone45.raw", BLOCKS, start=3 * FRAMES)
 
     # the rig's shape: T5 reverb (core 0 pos 0), T6 send, T1 delay (core 1
     # pos 0), T2 send. Neither host is fed, so a host's stream is its
@@ -215,18 +215,18 @@ def main():
           f"rms {rms_db(st_r[0][0]):.1f} dB")
     check("both != reverb only (the reverb hears the delay)", t5 != st_r[0])
 
-    print("\n== the passthrough: delay WET 0 == no delay, two blocks later ==")
-    # The chain buffer costs two blocks, and the reverb is time-variant even
-    # at MOD 0 (a fixed-depth allpass modulator), so the reference is NOT the
-    # reverb-only output shifted -- it is the reverb-only run fed the SAME
-    # tone two blocks later, which the chain then reproduces sample for
-    # sample. What is left is one auto-gain table against the other:
+    print("\n== the passthrough: delay WET 0 == no delay, three blocks later ==")
+    # The chain buffer costs three blocks (two until 22 Sep 2026), and the
+    # reverb is time-variant even at MOD 0 (a fixed-depth allpass
+    # modulator), so the reference is NOT the reverb-only output shifted --
+    # it is the reverb-only run fed the SAME tone three blocks later, which
+    # the chain then reproduces sample for sample. What is left is one auto-gain table against the other:
     # rounding, -100 dB or so.
     pt = [R(), S6(), D(WET=0), S2()]
     st_p = run(mems, pt, tag="pass")
-    st_r30 = run(mems, ronly, tag="ronly30", tone="tone30.raw")
-    lag, db = best_lag(st_r30[0][0], st_p[0][0], lo=0, hi=2)
-    check(f"delay WET 0: T5 == reverb-only fed the tone 2 blocks later (lag {lag})",
+    st_r45 = run(mems, ronly, tag="ronly45", tone="tone45.raw")
+    lag, db = best_lag(st_r45[0][0], st_p[0][0], lo=0, hi=2)
+    check(f"delay WET 0: T5 == reverb-only fed the tone 3 blocks later (lag {lag})",
           lag == 0 and db < -80, f"residual {db:.1f} dB")
 
     print("\n== delay only, and WET 0 ==")
