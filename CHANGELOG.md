@@ -15,7 +15,14 @@ flashed image was built from.
   Closes the tracker's documented "cannot self-correct a bad start" for
   every cause; built for the THRU-host wash (still open on 43; `XBUS.md`
   "The tracker's self-check"). Init stamps the seeded buffer. +~50 words
-  on B, +10 per housekeeping copy. Image 44 is the test.
+  on B, +10 per housekeeping copy. Image 44 wedged on the first play
+  (sequencer stuck on step 1): its housekeeper cleared the stamps with
+  four one-word displaced Y stores (`move a,y:(r3+$1)` ...), a form no
+  module and no stock code had ever run on the chip; the assembler's
+  one-word patch was proven on the X form and the port decodes what the
+  assembler encodes. Image 45 clears them with post-increment stores, the
+  form everything else runs; bit-identical under every gate. Image 45 is
+  the test.
 
 ## Image 43 — 21 Sep 2026 (`OCTABAM43`, bamsep26 at b3f6471)
 

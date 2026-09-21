@@ -221,11 +221,12 @@ bus_zclr:
         asl     #$2,a,a                 ; tracker's check on core 1 reads them
         add     #>$9d8,a                ; back next frame
         move    a,r1
-        clr     a
-        move    a,y:(r1)
-        move    a,y:(r1+$1)
-        move    a,y:(r1+$2)
-        move    a,y:(r1+$3)
+        move    #>$ffffff,m1            ; linear: the four stores below
+        clr     a                       ; (post-increment, the form every
+        move    a,y:(r1)+              ; module runs; a one-word displaced Y
+        move    a,y:(r1)+              ; store, never run on the chip before,
+        move    a,y:(r1)+              ; was image 44's, which wedged)
+        move    a,y:(r1)+
 bus_seen:
         move    y:>$900,a               ; remember this block's offset so next
         and     #>$30,a                 ; block we can tell whether anybody
