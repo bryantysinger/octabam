@@ -3,44 +3,50 @@
 Symptom → cause (measured, inferred or open) → fix. Add an entry the moment
 a mode is seen on hardware.
 
-## A white-noise wash from the delay host with a sample playing on it 🟡 cause inferred, fix built (image 41)
+## A white-noise wash from the delay host with trigs on it ✅ bisected on the unit (image 42), mechanism open
 
-**Symptom.** BusDelay on a sample track (T3, STATIC, a trig on every step):
-the first pass of the pattern plays clean, then from step 1 of the next
-pass a steady white-noise wash comes out of the host track. It survives
-STOP, a double STOP thins it, PLAY clears it. T3 LEVEL 0 silences it, T5
-(the reverb host, muted) changes nothing; WET scales it but does not remove
-it at 0, where a smaller, left-heavy residual stays and drifts; FDBK moves
-the repeats underneath and leaves the wash alone. The same wash appeared
-once when T1's FX2 was changed from BusDelay to SEND. Sam's MKII, 21 Sep
-2026, images 40 and 39 alike (the bisect: today's once-per-block change is
-not it). Every previous image had the delay on T1, a THRU, which plays no
-voice.
+**Symptom.** BusDelay on a track with its own trigs, past dispatch position
+0: T3 STATIC with a trig on every step washes from the second pass of the
+pattern; T2 THRU with a trig on every step washes at once (the THRU's
+re-open clicks ride on top). A steady white-noise wash out of the host
+track: its LEVEL 0 silences it, FDBK moves the repeats underneath and
+leaves it, WET scales it without removing it, STOP does not end it, a
+double STOP thins it, PLAY clears it. T1 as host (position 0) with the same
+trigs: clicks, no wash. T1 host with trigs on a sender: nothing. The bus
+input is irrelevant (every SEND at 0: the same). Sam's MKII, 21 Sep 2026.
 
-**What the port sees.** Nothing: the same fixture (`ot_spec`: delay on T3,
-trigs every step, T1 a send) is flat on images 38, 39 and 40, with and
-without `--dsp-dirty`; the staged project gives T3 no voice.
+**Bisect on the unit, same project (OCTABAM91) and fixture.** Image 38:
+clean. 39, 40, 41: wash. 42 = 41 minus the delay's four init stores (PR
+#344: `clr a` then zero raw `$72/$73/$74/$6d`, the TONE/FDBK/PING/WET glide
+states, at `init`): clean. So the stores are the cause. 41's other change
+(the five words off `$84..$88`, PR #346) stays: right by DSP.md's record,
+and not this.
 
-**Cause, inferred.** The delay kept five words at `r7+$84..$88` (the chain
-write address, the WET glide state, the resolved write offset, the REVERSE
-cap, the last-seen rotation), and `docs/firmware/DSP.md` §7 has recorded
-since 10 Aug 2026 that `r7+$84..$8a` do not persist across calls on
-hardware and that a stock effect's init steps around `$85..$8a`. On a
-track with a voice, the unit's own per-track state sits there between our
-calls: our per-block store of the WET state (0..0x7f0000) lands in it, and
-its words land in ours. FDBK-independence, the WET scaling and the survival
-through STOP all fit a voice running on a corrupted state; PLAY restarts
-the voices. Not measured: which stock structure the words belong to.
+**What the port sees.** Nothing: the same fixture, with the host's sample
+staged and playing, with a THRU host and a trig every step, across two
+loops, with garbage RAM, is flat on every image. A PC watch on the delay's
+proc entry shows both calls of a split block arriving with the same `r7`.
 
-**Fix (PR #346, image 41).** The five words moved below `$84` (raw `$0c
-$20 $2a $6d $83`; a first try at `$3e/$3f` landed on GRAIN's pitch words,
-spelled `-$b`/`-$a` in the source, and failed `verify_delay`); the delay writes nothing at `$84+`. Bit-identical to
-image 40's engine under `verify_delay` (a slot move). The rule for every
-DSP module: no state at `r7+$84` or above, in init or in proc, whatever the
-port shows (the port keeps those words).
+**Open.** Why four stores at init do this on the unit and not under the
+port, and only past position 0 with trigs on the host. The reverb's init
+zeroes six words the same way and is fine on T5, position 0; the stations'
+inits zero their state on tracks with trigs at every position (FX1). Two
+readings, neither measured: the unit re-runs an FX2 instance's init on the
+host's trigs with an `r7` that is not the proc call's, so the stores land
+in a neighbour's block; or the init call for an FX2 instance past position
+0 runs in a context where a two-word displaced move (every one of the four
+stores; the reverb's `$6d/$70` stores too, but at position 0) misbehaves.
+The stations' init stores are all one-word. Until measured: **a DSP
+module's init stores nothing beyond what the reverb's already does, and a
+new init store is tested on a host past position 0 with a trig on every
+step before it ships.** The 20 ms of stale coefficients after a select
+that the stores were for stays as it was.
 
-**Falsifier.** Image 41 on the same fixture: no wash through three loops
-with a sample on T3, and no wash on the FX2 change on T1.
+**Under the port** (`ot_emu --dsp-pcwatch 1:0x63b`, the delay's init, T3
+host with its sample playing and a trig every step, 4,000 frames): init
+runs once, at load, with `r7 = 0x6800`, the block every proc call gets.
+The unit's own answer needs a hardware probe (a marker written by init,
+read back by proc from both candidate blocks, printed on the panel).
 
 ## Audio engine wedged, sequencer alive: the master loop ✅ measured
 

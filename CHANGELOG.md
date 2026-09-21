@@ -51,20 +51,12 @@ flashed image was built from.
   4.1 / 3.0 (max 12 / 10), level with REVERSE's own splice floor. Found
   by the 21 Sep static audit; the census takes its marks from a recipe.
 
-- BusDelay: init zeroes the four glided coefficients (TONE, FDBK, PING,
-  WET; `r7+$72..$74`, `$85`) as the reverb's init does its own -- they were
-  read back from whatever the slot held for the first ~20 ms after a select
-  (the warm-up clear covers `$27..$5e`). Bit-identical in every gate (the
-  harness boots zeroed). Found by a static audit of the 20 Sep glide code
-  (every new Tcc, `mpy` order and A2 path clean); the same audit measured
-  under the port that the WET state at `r7+$85` has one writer and persists
-  across calls (`docs/firmware/DSP.md` §7, beside the 10 Aug hardware
-  record that `$84..$8a` do not). Docs: the wow's "~17 cents" is ≈ 47 + 54
-  cents peak by the LFO slopes (computed); Character's COMP release
-  constant is 63 ms, written as 50; the XBUS slot table, the 1/N-era
-  −6.02 dB phantom figure, three stale cost lines, the retired-cubic
-  comment above `satdrv`, REVERB.md's MOD open item and bamsep26.md's
-  status and flash notes brought to the tree.
+- BusDelay: the four init stores of PR #344 (zeroing the TONE/FDBK/PING/WET
+  glide states) are gone: they were the white-noise wash on a host past
+  dispatch position 0 with trigs on it, bisected on the unit (38 clean,
+  39/40/41 wash, 42 = 41 minus the stores clean; `FAILURE_MODES.md`).
+  Mechanism open. The rest of #344 (the audit, the `$85` port measurement,
+  the doc corrections) stands.
 
 - Names per mode (Sam, 20 Sep 2026: "size is confusing"): BusDelay's SIZE
   draws GLEN in GRAIN and SLEN in REVERSE; Spectrum's FREQ draws VOWL in
