@@ -352,7 +352,14 @@ omits the module then aliases the id to SEND and takes the stock effect
 away from FX1 too. Rungs sat on EQUALIZER's `0x0c` and Nimbus on DJ EQ's
 `0x0d` from 29 Aug to 2 Sep 2026, in every local image, unflashed. The
 schema now refuses `STOCK_FX2_IDS`; the stock effects themselves are kept
-in a chooser by listing them in the remix (`tools/remix/stock.py`).
+in a chooser by listing them in the remix (`tools/remix/stock.py`). The
+same table makes FX1's NONE (id 0) run the FALLBACK's code: SEND ran on
+every empty FX1 slot at r7 0x6100/0x6400/0x6700/0x6a00, sent from an
+unseen page byte and, on core 1, compared the rotation tracker before
+position 0's advance — one step ahead for good on the unit (images 40–47,
+21 Sep 2026; `docs/effects/XBUS.md`). A client keys its slot on r7, never
+on X:$213 (stale at proc time), and `dsp_host` places FX2 slots at
+0x6200 + 0x300·pos (`verify_twocore` had 0x200·pos until image 48).
 
 **`dsp_host`'S DEFAULT AUDIO BLOCK (X:0x80) SITS INSIDE THE SCRATCH THE
 STOCK EFFECTS USE.** On hardware the dispatcher passes `r0 = 0`: the audio

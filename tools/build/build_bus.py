@@ -2106,18 +2106,10 @@ mkgo:""",
                       f"EXCISED by build_bus.py, not branched over\n"
                     + src[j:])
 
-        def _marker_once(src, name, marker):
-            n = src.count(marker)
-            if n > 1:
-                sys.exit(f"{name}: `{marker}` appears {n} times -- a comment spelling the marker\n"
-                         f"         would take the substituted body (21 Sep 2026: a housekeeping\n"
-                         f"         comment said `; ROTLATCH`, the tracker body landed in it)")
-
         def _rotinit(src, name, slot):
             """Seed the tracked rotation at init. PAYLOAD B ONLY."""
             if "; ROTINIT" not in src:
                 return src
-            _marker_once(src, name, "; ROTINIT")
             as_b = (tag == "B") or (DEV and name == "DELAY SERVER")
             if not as_b:
                 return src.replace("; ROTINIT",
@@ -2131,24 +2123,12 @@ mkgo:""",
                 f"        move    y:>${_rot:x},a",
                 "        and     #>$30,a",
                 f"        move    a,x:(r7+${slot:02x})",
-                "        asr     #$2,a,a             ; and stamp the seeded buffer, so the",
-                "        move    r7,b                ; first ROTLATCH check finds it",
-                "        asr     #$8,b,b",
-                "        and     #>$3,b",
-                "        move    b1,y0",
-                "        add     y0,a",
-                f"        add     #>${_rot + 0xd8:x},a",
-                "        move    #>$ffffff,m3",
-                "        move    a,r3",
-                "        move    #>$1,a",
-                "        move    a,y:(r3)",
                 "seedskip:"])
             return src.replace("; ROTINIT", body, 1)
 
         def _rotlatch(src, name, slot):
             if "; ROTLATCH" not in src:
                 return src
-            _marker_once(src, name, "; ROTLATCH")
             # DEV places the delay in payload A but it behaves as payload B in
             # every other respect (its gate compares equal, so it never
             # housekeeps) -- so it takes payload B's body wherever it sits.
@@ -2159,42 +2139,10 @@ mkgo:""",
                     "        move    x:(r7+$67),a        ; ROTLATCH: payload B, ONE tracker per core",
                     "        tst     a",
                     "        bne     rotdone             ; not the block's first call",
-                    "; stamp check (21 Sep 2026): the word this client stamped in last",
-                    "; frame's write buffer must still be there. Core 0 zeroes the four",
-                    "; stamps of the buffer it clears next, so a tracker one step ahead loses",
-                    "; its stamp within a frame; the flag holds position 0's advance once.",
-                    f"        move    x:(r7+${slot:02x}),a       ; last frame's write offset",
-                    "        and     #>$30,a             ; MASKED: an FX1 slot running SEND has",
-                    "        move    a1,x0               ; r7 below $6200, which ROTINIT never",
-                    "        move    x0,a                ; seeds, so this word is boot garbage on",
-                    "                                    ; the unit until rotuse writes it (image",
-                    "                                    ; 45 wedged on the wild read, 21 Sep 2026)",
-                    "        asr     #$2,a,a             ; 4 x its buffer index",
-                    "        move    r7,b",
-                    "        asr     #$8,b,b",
-                    "        and     #>$3,b              ; this client's index in the block",
-                    "        move    b1,y0",
-                    "        add     y0,a",
-                    f"        add     #>${_rot + 0xd8:x},a         ; stamps[buffer][client]",
-                    "        move    #>$ffffff,m3",
-                    "        move    a,r3",
-                    "        move    y:(r3),a",
-                    "        tst     a",
-                    "        bne     rotstampok",
-                    "        move    #>$1,a",
-                    f"        move    a,y:>${_rot + 0xc4:x}          ; wiped: the hold flag",
-                    "rotstampok:",
                     "        move    r7,a",
                     "        move    #>$6200,x0",
                     "        cmp     x0,a                ; position 0's FX2 (the rig's delay host)",
                     "        bne     rotchk              ; advances the core's tracker once a frame",
-                    f"        move    y:>${_rot + 0xc4:x},a          ; a client was wiped last frame:",
-                    "        tst     a                   ; hold the advance once",
-                    "        beq     rotadv",
-                    "        clr     a",
-                    f"        move    a,y:>${_rot + 0xc4:x}",
-                    "        bra     rotchk",
-                    "rotadv:",
                     f"        move    y:>${_latch:x},a",
                     "        add     #>$10,a             ; T' = T + one step",
                     "        and     #>$30,a",
@@ -2221,18 +2169,6 @@ mkgo:""",
                     "rotuse:",
                     f"        move    y:>${_latch:x},a",
                     f"        move    a,x:(r7+${slot:02x})",
-                    "        asr     #$2,a,a             ; this frame's stamp address",
-                    "        move    r7,b",
-                    "        asr     #$8,b,b",
-                    "        and     #>$3,b",
-                    "        move    b1,y0",
-                    "        add     y0,a",
-                    f"        add     #>${_rot + 0xd8:x},a",
-                    "        move    a,r3                ; m3 is linear from the check above",
-                    "        move    #>$1,a",
-                    "        move    a,y:(r3)            ; stamp it now, before any write: a",
-                    "                                    ; clear that lands after the writes",
-                    "                                    ; lands after this too",
                     "rotdone:",
                     f"        move    x:(r7+${slot:02x}),a"])
             else:

@@ -10,7 +10,10 @@ housekeeping, so no track can stall the bus. It is also the fallback: an id
 a bus-carrying remix does not implement resolves here. The send is refused
 on track 8 by construction: with MASTER TRACK on, T8's input is the mix,
 the hosts' wet included, and a send from it would put that wet back into
-the bus.
+the bus. The alias also puts SEND on every FX1 slot set to NONE; there it
+returns at proc entry (r7 0x6100/0x6400/0x6700/0x6a00, image 48), so an
+empty FX1 slot neither sends nor touches the rotation tracker
+(`docs/effects/XBUS.md`).
 
 ## The auto-gain
 
