@@ -3,7 +3,7 @@
 Symptom → cause (measured, inferred or open) → fix. Add an entry the moment
 a mode is seen on hardware.
 
-## A white-noise wash from the delay host with trigs on it 🔴 cause open, fix candidate built (image 43)
+## A white-noise wash from a sample host with trigs on it ✅ measured on the unit, fixed (image 43)
 
 **Symptom.** BusDelay on a track with its own trigs: T3 STATIC with a trig
 on every step washes from the second pass of the pattern on, T2 THRU with a
@@ -30,7 +30,7 @@ split block with the same `r7`; on its init entry, one call at load across
 two loops. The port's cores are lock-step: a race between core 0's flip and
 a core-1 client is structurally invisible to it.
 
-**Reading, fix built (image 43, not yet heard).** Each bus participant's
+**Cause and fix (image 43, 21 Sep 2026: T3 STATIC with a trig every step clean through eight loops and a project reload, where 42 washed after one; the FX2 change on T1 clean too).** Each bus participant's
 proc reconstructed the second call's frame offset from a flag and a split
 the FIRST call stashed in its block (`$65/$66`), consumed by the matching
 a=1 call. If that stash does not survive between the two calls when a trig
@@ -43,13 +43,29 @@ it -- exactly what PLAY and a reload do here); elsewhere the call writes
 its block from frame 0. Since 21 Sep 2026 the offset comes from `r0`,
 which the dispatcher passes as 0 on a first call and 2 x split on the
 second (the port: `r0 = $e` for a trig at frame 7): no state between the
-calls. Same code in SEND, BusDelay and BusVerb. If 43 still washes, the
-reading is wrong and the next instrument is on the unit: a marker the
-first call writes and the second reads, printed as a tone.
+calls. Same code in SEND, BusDelay and BusVerb. The stash itself was never measured on the unit; the fix's
+effect was.
 
-**Test.** The T3 and T2 fixtures above, through several loops and a
-reload each; then the FX2 change on T1 (BusDelay -> SEND) that washed on
-40.
+## A white-noise wash from a THRU host past position 0 with a trig on every step 🔴 cause open
+
+**Symptom.** BusDelay on T2 (a THRU machine) with a trig on every step of
+T2: a white-noise wash at once, on images 40 through 43 alike (43 fixed the
+sample-host wash above; this one is untouched by the r0 offsets). T1 as
+host, a THRU with the same trigs: the THRU's re-open clicks, no wash. A
+THRU host with its ordinary one trig per bar: nothing, on every image
+since the one-aux rig. The rig hosts the delay on T1, so this is a stress
+configuration, not a use.
+
+**What the port sees.** Nothing: a THRU host with a trig every step under
+`verify_set` (`out/OCTABAM89_t2thru`, tones at the inputs) prints flat.
+
+**Open.** What a THRU trig does to the host's dispatch that a sample trig
+does not (its split, its call count, a re-init, the input path), and why
+position 0 is exempt. Next instrument: a diagnostic build whose delay
+prints a marker tone when a call arrives with `r0 != 0` twice in a block,
+or with `n7 = 16` after an a=0 call; and a PC watch under the port on the
+delay's proc entry with the THRU-host fixture, for the call pattern the
+port at least produces.
 
 ## Audio engine wedged, sequencer alive: the master loop ✅ measured
 

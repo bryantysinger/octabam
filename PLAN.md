@@ -8,13 +8,14 @@ record for where code goes; `docs/remixes/` describes each remix;
 
 ## Where it stands (21 Sep 2026)
 
-- **On hardware.** The rig (`bamsep26`) on Sam's MKII, image 42
-  (`OCTABAM42`, 21 Sep 2026: the delay clean on a host with its own trigs,
-  the mechanism of the wash it fixed open in `FAILURE_MODES.md`; the rest
-  of the image's changes since 38 not yet heard). `ok-ms` (Octakit + MIDI SCENES on the stock effects) on
+- **On hardware.** The rig (`bamsep26`) on Sam's MKII, image 43
+  (`OCTABAM43`, 21 Sep 2026: the split block's frame offset from r0; a
+  sample host with a trig every step clean; a THRU host past position 0
+  with a trig every step still washes, open; the rest of the changes since
+  38 not yet heard). `ok-ms` (Octakit + MIDI SCENES on the stock effects) on
   midisc's author's unit as OKMS2. octalab (nordseele) is a DRAM module of
   this remixer and has run on an MKI since 11 Sep 2026.
-- **Built and gated, unflashed:** every other remix; main is image 42.
+- **Built and gated, unflashed:** every other remix; main is image 43.
 - **The platform** (`tools/remix/`): linked GNU-as units, detours, pokes
   and table growth wired by symbol and asserted against stock; recipe-built
   DRAM runtimes; the loader (derived from Octakit's, N payloads,
