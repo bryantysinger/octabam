@@ -1,8 +1,8 @@
 # Working in this repository
 
 **Read `PLAN.md` first.** It says what octabam is now — a remixer for the
-Octatrack's OS that composes the community's modifications and this
-project's own into one image built from the user's own 1.40C — where that
+Octatrack's OS that composes modules, each credited to its author, into
+one image built from the user's own 1.40C — where that
 stands, what is measured about the ground, and the work order.
 `docs/remixer/PLACEMENT.md` is the architecture record for where code goes.
 
@@ -15,8 +15,8 @@ modules claim the same FX2 id, cave, hook site, detour site, poke, runtime
 write, core-private Y word, or the per-core FX2 buffer region — by name.
 
 **Modules come in kinds, and the traps below say which they belong to.** A
-**ColdFire module** (the community's mods: linked GNU-as units, detours by
-symbol, a runtime in DRAM) never touches the DSP and none of the DSP traps
+**ColdFire module** (linked GNU-as units, detours by symbol, a runtime in
+DRAM: midisc, Octakit, octalab, REPITCH) never touches the DSP and none of the DSP traps
 apply to it; its own traps are in the last section. On the DSP side an
 insert has no bus role, no shared-window claim, sits in both payloads and
 runs on any track; a **server** pays for the rotation, the housekeeping

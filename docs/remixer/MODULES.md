@@ -17,8 +17,8 @@ Decide first which kind you are writing.
   are two; `docs/effects/XBUS.md`.
 - A **bus client** (`send`) taps its track into the bus.
 - A **ColdFire module** changes what the firmware does (parts, kits, menus,
-  MIDI, bug fixes) and touches no audio; the community's mods
-  (`modules/midi-scenes`, `modules/octakit`) are this shape. Skeleton
+  MIDI, bug fixes) and touches no audio; midisc (`modules/midi-scenes`)
+  and Octakit (`modules/octakit`) are this shape. Skeleton
   `modules/_template_cf/`, minimal example `modules/hello-dram/`, section
   "Declaring a ColdFire module" below; `docs/remixer/PLACEMENT.md` says
   where the bytes land.

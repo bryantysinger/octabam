@@ -13,8 +13,8 @@
 > allows it and I would be glad to see it.
 
 A remixer for the Elektron Octatrack's operating system: pick the
-modifications you want — the community's and this project's own — and build
-them into one firmware image from your own copy of OS 1.40C.
+modifications you want and build them into one firmware image from your
+own copy of OS 1.40C.
 
 A modification is a **module** (`modules/<name>/`), a selection of modules
 is a **remix** (`remixes/<name>.py`), and `make image REMIX=<name>` composes
@@ -30,7 +30,7 @@ its contents and hardware status.
 
 ## What it carries
 
-**From the community**, built from the authors' own repositories:
+Every module, with its author. Those with a repository are built from it.
 
 | module | author | what it does | proof |
 |---|---|---|---|
@@ -39,24 +39,13 @@ its contents and hardware status.
 | **LOFI AMF FIX** | [bryantysinger/octa-bt-pt](https://github.com/bryantysinger/octa-bt-pt) | stock LO-FI's AMF knob jumps the pitch backwards at some settings; two DSP words fix it | both words disassembled against stock |
 | **REPITCH** | [repeat98](https://github.com/repeat98) | a fifth TSTR value: the track follows the project tempo by playback speed, no grains; PTCH off on that track | ColdFire unit + a 5-position TSTR widget; on an MKII (OCTABAM81, 16 Sep 2026); `tools/verify/verify_repitch.py` |
 
-`ok-ms` (Octakit + MIDI SCENES) ran on hardware on 14 Sep 2026, confirmed by
-midisc's author on his own unit. Two bridge modules let mods that are
-byte-disjoint but behaviourally colliding share an image: **KITS RELOAD**
-(MIDI SCENES' Part Reload beside Octakit's kit reload; the first `ok-ms`
-image trapped on the first reload without it) and **SCENES KITS** (CC→page 2
-and Octakit sharing the MIDI CC dispatch entry). `make modules` marks a pair
-that needs one with `✓*`.
-
-**From this project:**
-
-| | |
-|---|---|
-| **BusVerb / BusDelay / Send** | one aux bus: every track's SEND knob → a multi-mode delay → an eight-line FDN reverb, each engine's wet on the track that hosts it. A route the stock firmware has no path for. On Sam's unit. |
-| **Spectrum / Character / Modulation** | three FX1 stations replacing FILTER, LO-FI and CHORUS: a filter pedal, a saturation/compressor/width chain, a modulation pedal. On Sam's unit. |
-| **Six inserts** | WarpFold, Ripple, Rungs, Streamz, BodeShift, Nimbus: Mutable-Instruments-flavoured per-track effects that stack. Verified by local render; never flashed. |
-| **Tempo sync, CC→page 2, Mode defaults** | ColdFire patches: BusDelay's TIME reads as a division; MIDI CC 62–73 reach page-2 knobs; a MODE turned on the panel (or over CC) re-defaults the knobs around it from the module's views. On the unit. |
-| **The recorder click fix** | three ColdFire caves (FLEX SEEK BIND, FLEX SEEK BIND CTR, RECORDER SPACING) that remove the click at a recorder loop's seam; remix `recfix` carries them beside the stock chooser. On hardware (OCTABAM83, 12 Sep 2026). |
-| **Hello World / Hello DRAM** | the two reference modules, one DSP knob and one DRAM unit, kept building as canaries. |
+| **BusVerb / BusDelay / Send** | [sambanks](https://github.com/sambanks) | one aux bus: every track's SEND knob → a multi-mode delay → an eight-line FDN reverb, each engine's wet on the track that hosts it. A route the stock firmware has no path for | on Sam's MKII |
+| **Spectrum / Character / Modulation** | [sambanks](https://github.com/sambanks) | three FX1 stations replacing FILTER, LO-FI and CHORUS: a filter pedal, a saturation/compressor/width chain, a modulation pedal | on Sam's MKII |
+| **WarpFold, Ripple, Rungs, Streamz, BodeShift, Nimbus** | [sambanks](https://github.com/sambanks) | six Mutable-Instruments-flavoured per-track inserts that stack | local render; never flashed |
+| **TEMPO SYNC, CC PAGE 2, MODE DEFAULTS** | [sambanks](https://github.com/sambanks) | ColdFire patches: BusDelay's TIME reads as a division; MIDI CC 62–73 reach page-2 knobs; a MODE turned on the panel (or over CC) re-defaults the knobs around it from the module's views | on the unit |
+| **FLEX SEEK BIND, FLEX SEEK BIND CTR, RECORDER SPACING** | [sambanks](https://github.com/sambanks) | the recorder click fix: three ColdFire caves that remove the click at a recorder loop's seam; remix `recfix` carries them beside the stock chooser | on hardware (OCTABAM83, 12 Sep 2026) |
+| **KITS RELOAD, SCENES KITS** | [sambanks](https://github.com/sambanks) | bridges that let byte-disjoint but behaviourally colliding modules share an image: MIDI SCENES' Part Reload beside Octakit's kit reload (the first `ok-ms` image trapped on the first reload without it); CC PAGE 2 and Octakit sharing the MIDI CC dispatch entry. `make modules` marks a pair that needs one with `✓*` | `ok-ms` on hardware 14 Sep 2026, confirmed by midisc's author on his unit |
+| **HELLO WORLD, HELLO DRAM** | [sambanks](https://github.com/sambanks) | the two reference modules, one DSP knob and one DRAM unit, kept building as canaries | `make check` |
 
 `make modules` prints the index, the compatibility matrix (which ColdFire
 modules can share an image, from the same check the build makes; `✓*` is a
@@ -124,9 +113,8 @@ affiliated with Elektron. `docs/remixer/FLASHING.md` has the recovery path;
 unit and why. Back up projects before flashing anything that changes them
 (Octakit migrates Parts to Kits on load; downgrading may lose Kit data).
 
-MKI and MKII run the same 1.40C image (hash-verified). This project's own
-effects have only been tested on an MKII; the DRAM platform has run on an
-MKI ([octalab](https://github.com/nordseele/octalab-notes), 11 Sep 2026)
+MKI and MKII run the same 1.40C image (hash-verified). sambanks's effects
+have only been tested on an MKII; the DRAM platform has run on an MKI ([octalab](https://github.com/nordseele/octalab-notes), 11 Sep 2026)
 and on midisc's author's unit (`ok-ms`, 14 Sep 2026).
 
 **No Elektron binary is redistributed here, and none may be.** A built
@@ -154,7 +142,7 @@ tools/patches/     local patches to the vendored toolchains
 scripts/           toolchain setup, OS fetch and recon, the bit-identity gate
 dsp/               shared DSP infrastructure: the null stub and the probes
 docs/remixer/      using and extending the remixer: MODULES, PLACEMENT, REMIXER, TOOLING, FLASHING
-docs/firmware/     the firmware, reverse-engineered: ARCHITECTURE, KERNEL, DSP, CHIP, TABLES, PARAM_PAGES, MAINMENU, PANEL, MIDI, LFO, LEVEL_LAW, COLDFIRE_DELAY, RECORDER, STORAGE; EXTERNAL is the dated index of what arrived from outside
+docs/firmware/     the firmware, reverse-engineered: ARCHITECTURE, KERNEL, DSP, CHIP, TABLES, PARAM_PAGES, MAINMENU, PANEL, MIDI, LFO, LEVEL_LAW, COLDFIRE_DELAY, RECORDER, STORAGE; CONTRIBUTIONS is the dated index of what each contributor sent
 docs/effects/      the effects: XBUS (the bus), REVERB, MASTER, PORTS
 ```
 
@@ -178,8 +166,8 @@ this repository's log.
 
 [MIT](LICENSE) for this repository's own code and documentation. It does
 not extend to Elektron's firmware, which is not distributed here, nor to
-the community repositories referenced as submodules, which remain their
-authors' under their own terms.
+the repositories referenced as submodules, which remain their authors'
+under their own terms.
 [THIRD_PARTY.md](THIRD_PARTY.md) lists every transcribed DSP source
 (Airwindows, JClones, Mutable Instruments, ChowDSP, jpcima, audiojs), the
 submodules and the vendored tools, each with its licence.
