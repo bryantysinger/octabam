@@ -7,7 +7,15 @@ flashed image was built from.
 
 ## Unreleased (main after image 42)
 
-(nothing yet)
+- The bus participants take a split block's frame offset from `r0` (0 on
+  a first call, 2 x split on the a=1 call, as the dispatcher passes it)
+  instead of a flag and a split the first call stashed in `$65/$66` for
+  the second. Image 42 washed again after a reload and a loop, so PR
+  #347's init-store bisect was one lucky run per image; the stash not
+  surviving between the two calls on the unit is the reading that fits
+  every fact (`FAILURE_MODES.md`). SEND, BusDelay, BusVerb alike; the
+  `$65/$66` slots are free. Bit-identical in every gate (dsp_host passes
+  the same `r0`); image 43 is the test.
 
 ## Image 42 — 21 Sep 2026 (`OCTABAM42`, bamsep26 at d3fceaf)
 
