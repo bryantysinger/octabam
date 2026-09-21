@@ -3,50 +3,53 @@
 Symptom → cause (measured, inferred or open) → fix. Add an entry the moment
 a mode is seen on hardware.
 
-## A white-noise wash from the delay host with trigs on it ✅ bisected on the unit (image 42), mechanism open
+## A white-noise wash from the delay host with trigs on it 🔴 cause open, fix candidate built (image 43)
 
-**Symptom.** BusDelay on a track with its own trigs, past dispatch position
-0: T3 STATIC with a trig on every step washes from the second pass of the
-pattern; T2 THRU with a trig on every step washes at once (the THRU's
-re-open clicks ride on top). A steady white-noise wash out of the host
-track: its LEVEL 0 silences it, FDBK moves the repeats underneath and
-leaves it, WET scales it without removing it, STOP does not end it, a
-double STOP thins it, PLAY clears it. T1 as host (position 0) with the same
-trigs: clicks, no wash. T1 host with trigs on a sender: nothing. The bus
-input is irrelevant (every SEND at 0: the same). Sam's MKII, 21 Sep 2026.
+**Symptom.** BusDelay on a track with its own trigs: T3 STATIC with a trig
+on every step washes from the second pass of the pattern on, T2 THRU with a
+trig on every step at once (the THRU's re-open clicks ride on top). A
+steady white-noise wash out of the host track: its LEVEL 0 silences it,
+FDBK moves the repeats underneath and leaves it, WET scales it without
+removing it, STOP does not end it, a double STOP thins it, PLAY or a
+project reload clears it -- and it comes back after the next full loop.
+T1 as host (position 0) with the same trigs: clicks, no wash, in the one
+test made. Trigs on a sender only: nothing. The bus input is irrelevant
+(every SEND at 0: the same). Sam's MKII, 21 Sep 2026.
 
-**Bisect on the unit, same project (OCTABAM91) and fixture.** Image 38:
-clean. 39, 40, 41: wash. 42 = 41 minus the delay's four init stores (PR
-#344: `clr a` then zero raw `$72/$73/$74/$6d`, the TONE/FDBK/PING/WET glide
-states, at `init`): clean. So the stores are the cause. 41's other change
-(the five words off `$84..$88`, PR #346) stays: right by DSP.md's record,
-and not this.
+**Images.** 38: one test clean. 39, 40, 41: wash. 42 (= 41 minus PR
+#344's four init stores): one test clean, then the wash after a reload and
+a loop. So the mode is state-dependent and single runs do not bisect it;
+the init stores were not the cause (their removal stays, harmless). The
+`$84..$88` relocation (PR #346) and the once-per-block glides (PR #345)
+were not it either and stay.
 
-**What the port sees.** Nothing: the same fixture, with the host's sample
-staged and playing, with a THRU host and a trig every step, across two
-loops, with garbage RAM, is flat on every image. A PC watch on the delay's
-proc entry shows both calls of a split block arriving with the same `r7`.
+**What the port sees.** Nothing, in every form: the host's sample staged
+and playing, a THRU host, a trig every step, two loops, garbage RAM, on
+38, 39, 40, 41. A PC watch on the delay's proc entry shows both calls of a
+split block with the same `r7`; on its init entry, one call at load across
+two loops. The port's cores are lock-step: a race between core 0's flip and
+a core-1 client is structurally invisible to it.
 
-**Open.** Why four stores at init do this on the unit and not under the
-port, and only past position 0 with trigs on the host. The reverb's init
-zeroes six words the same way and is fine on T5, position 0; the stations'
-inits zero their state on tracks with trigs at every position (FX1). Two
-readings, neither measured: the unit re-runs an FX2 instance's init on the
-host's trigs with an `r7` that is not the proc call's, so the stores land
-in a neighbour's block; or the init call for an FX2 instance past position
-0 runs in a context where a two-word displaced move (every one of the four
-stores; the reverb's `$6d/$70` stores too, but at position 0) misbehaves.
-The stations' init stores are all one-word. Until measured: **a DSP
-module's init stores nothing beyond what the reverb's already does, and a
-new init store is tested on a host past position 0 with a trig on every
-step before it ships.** The 20 ms of stale coefficients after a select
-that the stores were for stays as it was.
+**Reading, fix built (image 43, not yet heard).** Each bus participant's
+proc reconstructed the second call's frame offset from a flag and a split
+the FIRST call stashed in its block (`$65/$66`), consumed by the matching
+a=1 call. If that stash does not survive between the two calls when a trig
+lands there (nothing measured; the stash was written in July on the
+harness), the second call runs as a first call: at position 0 the rotation
+tracker advances twice in a frame and keeps a lead of one for ever (the
+R25 "metallic on every power cycle" mode: only a re-select or a transport
+start, which makes the instance miss blocks, fall behind and snap, cures
+it -- exactly what PLAY and a reload do here); elsewhere the call writes
+its block from frame 0. Since 21 Sep 2026 the offset comes from `r0`,
+which the dispatcher passes as 0 on a first call and 2 x split on the
+second (the port: `r0 = $e` for a trig at frame 7): no state between the
+calls. Same code in SEND, BusDelay and BusVerb. If 43 still washes, the
+reading is wrong and the next instrument is on the unit: a marker the
+first call writes and the second reads, printed as a tone.
 
-**Under the port** (`ot_emu --dsp-pcwatch 1:0x63b`, the delay's init, T3
-host with its sample playing and a trig every step, 4,000 frames): init
-runs once, at load, with `r7 = 0x6800`, the block every proc call gets.
-The unit's own answer needs a hardware probe (a marker written by init,
-read back by proc from both candidate blocks, printed on the panel).
+**Test.** The T3 and T2 fixtures above, through several loops and a
+reload each; then the FX2 change on T1 (BusDelay -> SEND) that washed on
+40.
 
 ## Audio engine wedged, sequencer alive: the master loop ✅ measured
 
