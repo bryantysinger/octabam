@@ -94,6 +94,14 @@
 ;   r7+$5f              SIZE select index, raw 0..3 (per block)
 ;   r7+$60/$61          REVERSE segment length S / phase step 2^23/S
 ;   r7+$62              REVERSE lag floor (per block)
+;   r7+$0c              last-seen rotation (the gated housekeeping block's)
+;   r7+$20              this block's resolved write offset (0/16/32/48);
+;                       every bus address derives from it (the ROTLATCH slot)
+;   r7+$2a              REVERSE lag cap 32704 - 2S (per block; the loop's RLAG0 source)
+;   r7+$6d              WET coefficient, glided (per block)
+;   r7+$83              this call's CHAIN write address ($901 + rotation +
+;                       frame offset; advances per sample; DRIVE's slot until
+;                       21 Sep 2026, dead since the cubic went)
 ;   r7+$63/$64          this call's DELAY ACC read address / the TIME ramp's per-sample increment (Q8)
 ;   r7+$65..$67         split-aware bus bookkeeping (shared mechanism)
 ;   r7+$68              LineR base: Y:0x4000 (the hatch: LineL + 0x4000) (per block)
@@ -118,17 +126,14 @@
 ;   r7+$7f              bus auto-gain 1/sqrt(N) (per block; read per sample)
 ;   r7+$80              1 - PING (per block)
 ;   r7+$82              warm-up tagged counter
-;   r7+$83              DRIVE amount d (pinned to 0)
-;   r7+$84              this call's CHAIN write address ($901 + rotation +
-;                       frame offset; advances per sample)
-;   r7+$85              WET coefficient, glided (per block)
-;   r7+$87              REVERSE lag cap 32704 - 2S (per block; the loop's RLAG0 source)
-;   r7+$86              this block's resolved write offset (0/16/32/48);
-;                       every bus address derives from it
-;   r7+$88              last-seen rotation (the gated housekeeping block's)
-;   $84..$88 are stored above ($84/$86/$87 per call, $85 and $88 across
-;   calls); docs/firmware/DSP.md records $84..$8a as not persisting across
-;   calls on hardware (10 Aug 2026) -- see DSP.md for the measurement.
+;   $84..$8a            NEVER WRITTEN (21 Sep 2026). Until then the chain write
+;                       address, the WET glide state, the write offset, the
+;                       REVERSE cap and the last-seen rotation sat at $84..$88:
+;                       on a host track with a sample playing, the unit's own
+;                       per-track state lives there between our calls, and the
+;                       delay printed a white-noise wash that survived STOP
+;                       (docs/remixer/FAILURE_MODES.md). DSP.md had recorded
+;                       $84..$8a as not persisting since 10 Aug 2026.
 ;
 ; Parameters (a knob arrives as value<<16, value 0..127):
 ;   p0 AUX   -> this host's own dry send into the aux (headroomed, summed
@@ -182,7 +187,7 @@ init:
         move    a,x:(r7+$72)            ; TONE coefficient
         move    a,x:(r7+$73)            ; FDBK coefficient
         move    a,x:(r7+$74)            ; PING
-        move    a,x:(r7+$85)            ; WET
+        move    a,x:(r7+$6d)            ; WET
 ; ROTINIT
         rts
 
@@ -289,7 +294,7 @@ bus_off_done:
         and     #>$30,a
         move    a1,x0
         move    x0,a                    ; offset now, A2-clean
-        move    x:(r7+$88),x0
+        move    x:(r7+$0c),x0
         cmp     x0,a
         bne     bus_seen                ; it moved: someone else housekept
 bus_dohk:                               ; nobody did -- take over this block
@@ -349,7 +354,7 @@ bus_seen:
                                         ; else housekept in between
         move    a1,x0
         move    x0,a
-        move    a,x:(r7+$88)
+        move    a,x:(r7+$0c)
 bus_notfirst:
 ; ---- resolve THIS BLOCK'S WRITE OFFSET, ONCE, into r7+$86 ---------------
 ; See the long note in modules/send/send_client.asm: every client used to read y:>$900
@@ -426,7 +431,7 @@ bus_mine:
 ; any clear time, which is why the delay stuttered on track 1 and not track 4
 ; (hardware, 17 Aug 2026 -- dispatch position moved the read relative to the
 ; other core's flip).
-        move    x:(r7+$3d),a
+        move    x:(r7-$29),a
         move    a,x1                    ; x1 = write offset (0/16/32/48)
         add     #>$20,a                 ; two buffers on == two buffers back
         and     #>$30,a                 ; mod 4
@@ -440,7 +445,7 @@ bus_mine:
         move    #>$901,a                ; the CHAIN buffer (one-aux rig, 7 Sep
         add     x0,a                    ; 2026): 4 x 16 mono words, the old
         add     b,a                     ; REVERB accumulator's home
-        move    a,x:(r7+$3b)            ; this call's CHAIN write address
+        move    a,x:(r7+$3a)            ; this call's CHAIN write address
 
 ; ---- bus auto-gain: resolve 1/sqrt(N) for this block's READ buffer --------
 ; The DELAY-bus mirror of the reverb's v121 fix (XBUS.md "Gain staging"):
@@ -837,13 +842,13 @@ stpdn:
 
         move    x:(r6+$5),x0            ; WET, slot 5
         move    x0,a                    ; target
-        move    x:(r7+$3c),b
+        move    x:(r7+$24),b
         sub     b,a
         asr     #$3,a,a
         add     b,a
-        move    a,x:(r7+$3c)            ; WET, glided (r7+$3e held 1-MIX until
-                                        ; 15 Sep 2026: the stage adds, it no
-                                        ; longer crossfades)
+        move    a,x:(r7+$24)            ; WET, glided (raw $6d since 21 Sep
+                                        ; 2026: raw $85 was in the $84..$8a
+                                        ; range that hardware does not keep)
         bra     slewdn
 slew2:
         move    x:(r7-$23),a            ; the ramp's running value, Q8
@@ -1020,7 +1025,7 @@ slewdn:
         move    a,x:(r7+$18)            ; REVERSE phase step
         move    p:(r5)+,a               ; 32704 - 2S
         move    a,x:(r7+$d)             ; the cap for this size
-        move    a,x:(r7+$3e)            ; ... kept for the loop ($d is its
+        move    a,x:(r7-$1f)            ; ... kept for the loop ($d is its
                                         ; lag0 scratch): REVERSE re-derives
                                         ; RLAG0 per sample from the TIME ramp
         move    p:(r5)+,a               ; G - 1
@@ -1779,7 +1784,7 @@ rmode:
 ; per-block recipe, on this sample's ramped TIME.
         move    x:(r7-$23),a            ; the ramped TIME, Q8 (this sample's)
         asr     #$8,a,a
-        move    x:(r7+$3e),x0           ; the cap, 32704 - 2S
+        move    x:(r7-$1f),x0           ; the cap, 32704 - 2S
         cmp     x0,a
         tgt     x0,a                    ; min(TIME, cap)
         move    a,x:(r7+$19)            ; RLAG0 for this sample
@@ -1998,7 +2003,7 @@ rskipw:
         asr     #$1,b,b                 ; wet/2 -> x1.5 both channels (R58)
         add     b,a
         move    a,x0                    ; wet L, final
-        move    x:(r7+$3c),y1           ; WET
+        move    x:(r7+$24),y1           ; WET
         mpy     x0,y1,a                 ; wet * WET
         move    a,x0                    ; x0 = wet*WET: what the host prints
         move    x:(r7+$25),b
@@ -2019,7 +2024,7 @@ rskipw:
         asr     #$1,b,b
         add     b,a                     ; + wet*PING/4 -> R shelf 0.75*PING
         move    a,x0                    ; wet R, final
-        move    x:(r7+$3c),y1           ; WET
+        move    x:(r7+$24),y1           ; WET
         mpy     x0,y1,a                 ; wet * WET
         move    a,x0                    ; x0 = wet*WET
         move    x:(r7+$25),b
@@ -2031,15 +2036,15 @@ rskipw:
         move    x:(r7+$26),a            ; out L
         add     b,a                     ; + out R (b still holds it)
         asr     #$1,a,a                 ; mono
-        move    x:(r7+$3b),b            ; this call's CHAIN write address
+        move    x:(r7+$3a),b            ; this call's CHAIN write address
         move    b,r5
         move    a,y:(r5)                ; CHAIN[write][i] = the stage output --
                                         ; a STORE, not an accumulate: one
                                         ; writer, and nobody clears this buffer
-        move    x:(r7+$3b),a
+        move    x:(r7+$3a),a
         move    #>$1,x0
         add     x0,a
-        move    a,x:(r7+$3b)            ; advance the CHAIN write pointer
+        move    a,x:(r7+$3a)            ; advance the CHAIN write pointer
 
         move    (r0)+n0                 ; advance one stereo frame: two
         move    (r0)+n0                 ; steps, n0 stays 1 (14 Sep 2026)
