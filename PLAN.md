@@ -10,9 +10,10 @@ record for where code goes; `docs/remixes/` describes each remix;
 
 - **On hardware.** The rig (`bamsep26`) on Sam's MKII, image 43
   (`OCTABAM43`, 21 Sep 2026: the split block's frame offset from r0; a
-  sample host with a trig every step clean; a THRU host past position 0
-  with a trig every step still washes, open; the rest of the changes since
-  38 not yet heard). `ok-ms` (Octakit + MIDI SCENES on the stock effects) on
+  sample host with a trig every step clean; the rest of the changes since
+  38 not yet heard). Images 44–47 were probes. Image 48 built: SEND
+  returns on an FX1 slot, the measured cause behind the THRU-host wash
+  and the bleed with every SEND at 0 (`docs/effects/XBUS.md`). `ok-ms` (Octakit + MIDI SCENES on the stock effects) on
   midisc's author's unit as OKMS2. octalab (nordseele) is a DRAM module of
   this remixer and has run on an MKI since 11 Sep 2026.
 - **Built and gated, unflashed:** every other remix; main is image 43.

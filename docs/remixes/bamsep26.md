@@ -19,7 +19,7 @@ FX2 chooser: BusVerb, BusDelay, Send, DELAY. FX1 chooser: NONE, Spectrum, Charac
 
 ## Status
 
-On Sam's MKII as image 43 (`OCTABAM43`, 21 Sep 2026; `CHANGELOG.md` per image). Heard on 43: the delay on a sample host with a trig every step, clean through eight loops; a THRU host past position 0 with a trig every step still washes (open, `FAILURE_MODES.md`; host the delay on T1). Not yet heard: the TIME ramp within the block, the once-per-block glides, the `---` and per-mode names, Character's TONE on page 1 (slot 4) with WDTH on page-2 slot 7, Modulation's five modes. The one-aux bus claims all pass on hardware (flash 7); the sends into the delay with the note-only tempo cave, image 24. Every other stock effect is harvested: 13 effects; a saved part naming one plays silence.
+On Sam's MKII as image 43 (`OCTABAM43`, 21 Sep 2026; `CHANGELOG.md` per image); images 44–47 were probes (two wedged, none a release). Image 48 built: SEND returns on an FX1 slot (the bleed with every SEND at 0, and the core-1 tracker's lead of one behind the THRU-host wash; `FAILURE_MODES.md`, `XBUS.md`). Heard on 43: the delay on a sample host with a trig every step, clean through eight loops. Not yet heard: the TIME ramp within the block, the once-per-block glides, the `---` and per-mode names, Character's TONE on page 1 (slot 4) with WDTH on page-2 slot 7, Modulation's five modes. The one-aux bus claims all pass on hardware (flash 7); the sends into the delay with the note-only tempo cave, image 24. Every other stock effect is harvested: 13 effects; a saved part naming one plays silence.
 
 ## Build
 

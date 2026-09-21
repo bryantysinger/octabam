@@ -45,12 +45,8 @@
 ;                       delay writes 1 every block it processes; the reverb
 ;                       reads it, clears it, keeps 3 blocks of grace and takes
 ;                       its input from the CHAIN buffer while live
-;   Y:0x9c4             the tracker's HOLD flag (21 Sep 2026): a core-1 client
-;                       whose stamp was wiped sets it; position 0 clears it
-;                       and skips one advance (XBUS.md "The tracker's self-check")
-;   Y:0x9c5..0x9c6      free (0x9c5 was the T8 return's liveness stamp
-;                       until 20 Sep 2026; 0x9c6 is the core's tracker under
-;                       XBUS, build_bus.py ROTLATCH)
+;   Y:0x9c4..0x9c6      free (0x9c4/0x9c5 were the T8 return's liveness
+;                       stamps until 20 Sep 2026)
 ;   Y:0x9c7..0x9ca      AUX send COUNT, one per accumulator buffer: how many
 ;                        clients wrote that buffer this block, indexed by the
 ;                        same rotation (a server reads last block's sum and
@@ -64,11 +60,7 @@
 ;   Y:0x9d3..0x9d7      unused, deliberately: under XBUS these are
 ;                       0x360d3-5, where per-block state was dead on hardware
 ;                       (writes and in-loop reads never met; mechanism unknown)
-;   Y:0x9d8..0x9e7      the tracker's stamps, stamps[buffer][client] (21 Sep
-;                       2026): a core-1 client writes 1 at its first call;
-;                       the housekeeper zeroes the four of the buffer it
-;                       clears; client = (r7 >> 8) & 3
-;   Y:0x9e8..0xad9      free since 20 Sep 2026 (the T8 return's RETV/RETD
+;   Y:0x9d8..0xad9      free since 20 Sep 2026 (the T8 return's RETV/RETD
 ;                       stamps and the two stereo four-deep stage-output
 ;                       buffers)
 ;
@@ -119,6 +111,33 @@ proc:
 ; x:(r7+$67) ends this section holding this call's frame offset.
         move    a,x:(r7+$14)            ; the dispatcher's call flag, stashed
                                         ; (0 = the a=0 sub-block, $010000 = a=1)
+; ---- an FX1 slot has no bus role (21 Sep 2026) ---------------------------
+; Id 0 is aliased to SEND, and the FX1 chooser's NONE is id 0, so this proc
+; runs on every FX1 slot with no effect, at the slot's own r7: 0x6100,
+; 0x6400, 0x6700, 0x6a00 on each core (three r7 bumps per track, measured
+; under the port on Sam's project, `--dsp-pcwatch`; the FX2 slots are
+; 0x6200, 0x6500, 0x6800, 0x6b00). Until image 48 such a call registered
+; and sent from whatever byte its page held (the bleed into the bus with
+; every SEND at 0, image 46) and, on core 1, ran the rotation tracker
+; BEFORE position 0's advance: a flip that landed before the 0x6100 call
+; snapped T to R there, position 0 then advanced past it, and the core sat
+; one step ahead for good -- the stamp probe (image 47) found its stamps
+; wiped on every block of plain play. X:$213 cannot gate this: it is the
+; last init's pointer at proc time (dsp_host `-allocproc`). Four compares
+; on r7; the refusal returns before any state is touched.
+        move    r7,a
+        move    #>$6100,x0
+        cmp     x0,a
+        beq     send_refused
+        move    #>$6400,x0
+        cmp     x0,a
+        beq     send_refused
+        move    #>$6700,x0
+        cmp     x0,a
+        beq     send_refused
+        move    #>$6a00,x0
+        cmp     x0,a
+        beq     send_refused
 ; ---- this call's frame offset, from r0 (21 Sep 2026) --------------------
 ; The dispatcher passes r0 = 0 on a block's first call and r0 = 2 x split on
 ; the a=1 call of a split block (measured under the port: r0 = $e for a trig
@@ -231,17 +250,6 @@ zclr:
         clr     a
         move    a,y:(r3)                ; AUX count = 0; a stays 0 for the
                                         ; locks below
-        move    r3,a                    ; ... and the four client stamps of
-        sub     #>$9c7,a                ; the same buffer (21 Sep 2026): the
-        asl     #$2,a,a                 ; tracker's check on core 1 reads them
-        add     #>$9d8,a                ; back next frame
-        move    a,r3
-        move    #>$ffffff,m3            ; linear: the four stores below
-        clr     a                       ; (post-increment, the form every
-        move    a,y:(r3)+              ; module runs; a one-word displaced Y
-        move    a,y:(r3)+              ; store, never run on the chip before,
-        move    a,y:(r3)+              ; was image 44's, which wedged)
-        move    a,y:(r3)+             ; a stays 0 for the locks below
 ; ---- release both server-role locks for this block (BUS.md hardware test 3)
 ; a is still 0 from the clear loop above. Whichever of the three effects is
 ; position 0 does this, so the locks are freed exactly once per block and

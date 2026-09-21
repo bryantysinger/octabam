@@ -5,31 +5,27 @@ main carries beyond the last flashed image. The version the panel shows is
 `BUILD` (`make image BUILD=N`); a git tag `OCTABAM<N>` marks the commit each
 flashed image was built from.
 
-## Unreleased (main after image 43)
+## Unreleased (main after image 43; image 48 built)
 
-- The core-1 rotation tracker heals a lead of one within a frame. Each
-  core-1 client stamps a word in the buffer it wrote (`Y:0x9d8..0x9e7`,
-  one per buffer per client); the housekeeper zeroes the stamps of the
-  buffer it clears next; a client whose stamp is gone at its next first
-  call sets a hold flag (`Y:0x9c4`) and position 0 skips one advance.
-  Closes the tracker's documented "cannot self-correct a bad start" for
-  every cause; built for the THRU-host wash (still open on 43; `XBUS.md`
-  "The tracker's self-check"). Init stamps the seeded buffer. +~50 words
-  on B, +10 per housekeeping copy. Image 44 wedged on the first play
-  (sequencer stuck on step 1): its housekeeper cleared the stamps with
-  four one-word displaced Y stores (`move a,y:(r3+$1)` ...), a form no
-  module and no stock code had ever run on the chip; the assembler's
-  one-word patch was proven on the X form and the port decodes what the
-  assembler encodes. Image 45 clears them with post-increment stores, the
-  form everything else runs; bit-identical under every gate. Image 45
-  wedged the same way. The remaining unmasked address in the new code was
-  the check's own read of the client's last write offset: an FX1 slot
-  with no effect runs SEND at an r7 below $6200, which ROTINIT deliberately
-  never seeds, so on the unit that word is boot garbage until the first
-  rotuse writes it, and the stamp read went to a wild Y address (the
-  peripheral registers are in Y). The port zeroes RAM and could not see
-  it. Image 46 masks the value (`and #>$30`) before it becomes an address,
-  the way every other tracker address is built. Image 46 is the test.
+- SEND returns at proc entry on an FX1 slot (r7 0x6100/0x6400/0x6700/
+  0x6a00, measured under the port): id 0 is SEND and FX1 NONE is id 0, so
+  the client had been running on every FX1 slot with no effect — sending
+  from an unseen page byte (audio in the bus with every SEND at 0, image
+  46) and, on core 1, comparing the tracker before position 0's advance,
+  which leaves the core one step ahead whenever core 0's flip lands before
+  the 0x6100 call (`XBUS.md` "An FX1 slot is not a client";
+  `FAILURE_MODES.md`, the THRU-host wash). 21 words per payload. T1's FX2
+  must be a bus client for the advance; `stamp-defaults` warns.
+- The tracker's self-check of images 44–46 (stamps, hold flag) removed;
+  the tracker body, ROTINIT and the housekeepers are image 43's.
+
+Images 44–47 reached the unit and none is a release: 44 and 45 wedged on
+the first play (a one-word displaced Y store the chip had never run, then
+the self-check's unmasked read of an unseeded slot into a wild Y
+address; `CLAUDE.md` for both traps); 46 played with static and the wash
+on a T2 THRU host and bled into the bus with every SEND at 0; 47 (branch
+`probe47`, a marker tone on a wiped stamp) sounded on every block of plain
+play, the measurement behind image 48.
 
 ## Image 43 — 21 Sep 2026 (`OCTABAM43`, bamsep26 at b3f6471)
 
