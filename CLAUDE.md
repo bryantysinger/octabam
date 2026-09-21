@@ -188,6 +188,14 @@ comment -- no client on either payload resolved its write offset, and
 `verify-bus` read it as every server's client count changing.
 `_marker_once` refuses a second occurrence now.
 
+**AN INSTRUCTION FORM THE CHIP HAS NEVER RUN IS NOT PROVEN BY THE PORT.**
+The assembler encodes it, the vendored emulator decodes it the same way, and
+the chip may not: image 44 (21 Sep 2026) wedged on its first block on four
+one-word displaced Y stores (`move a,y:(r3+$1)`), a form with no site in
+either stock payload; the X form has 533. Before using a form, grep it in
+`out/dsp/payload_*.asm` (`tools/build/dsp_disasm_all.py`); no precedent means
+a hardware probe first, or the form everything else uses.
+
 **`SPEC=1` requires `XBUS=1`.** Without it the accumulators stay in core-private
 memory and each half of the tracks can reach only its own core's server — worse
 than today, **and it still makes sound.** The build guards this. Do not ungate it.

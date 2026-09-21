@@ -236,11 +236,12 @@ zclr:
         asl     #$2,a,a                 ; tracker's check on core 1 reads them
         add     #>$9d8,a                ; back next frame
         move    a,r3
-        clr     a
-        move    a,y:(r3)
-        move    a,y:(r3+$1)
-        move    a,y:(r3+$2)
-        move    a,y:(r3+$3)             ; a stays 0 for the locks below
+        move    #>$ffffff,m3            ; linear: the four stores below
+        clr     a                       ; (post-increment, the form every
+        move    a,y:(r3)+              ; module runs; a one-word displaced Y
+        move    a,y:(r3)+              ; store, never run on the chip before,
+        move    a,y:(r3)+              ; was image 44's, which wedged)
+        move    a,y:(r3)+             ; a stays 0 for the locks below
 ; ---- release both server-role locks for this block (BUS.md hardware test 3)
 ; a is still 0 from the clear loop above. Whichever of the three effects is
 ; position 0 does this, so the locks are freed exactly once per block and

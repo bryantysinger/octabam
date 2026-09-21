@@ -46,6 +46,22 @@ second (the port: `r0 = $e` for a trig at frame 7): no state between the
 calls. Same code in SEND, BusDelay and BusVerb. The stash itself was never measured on the unit; the fix's
 effect was.
 
+## Sequencer stuck on step 1 at the first play: an instruction form the chip had never run 🟡 inferred, fix built (image 45)
+
+**Symptom.** Image 44 (21 Sep 2026): flash, load, play -- stuck on step 1,
+the standard wedge; power-cycle and reload recover. **Cause, inferred.**
+The one change on core 0's first block was the housekeeper's new stamp
+clear, written as four one-word displaced Y stores (`move a,y:(r3+$1)`,
+`+$2`, `+$3`): no module and no stock code in either payload uses that
+form, the assembler's one-word displaced move was patched in on 14 Sep
+2026 and proven on the X form (`move x:(r7+$15),a` = `0257de`, 533 stock
+sites), and the port runs whatever the assembler encodes, so a chip that
+decodes that word differently is invisible locally. **Fix.** Image 45
+clears the stamps with `move a,y:(r3)+` after `m3 = $ffffff`, the form
+every module runs. Not measured: what the chip did with the word. Rule: a
+DSP instruction form with no stock precedent in the payload disassembly
+(`tools/build/dsp_disasm_all.py`) does not ship without a hardware probe.
+
 ## A white-noise wash from a THRU host past position 0 with a trig on every step 🔴 cause open, a self-healing tracker built (image 44)
 
 **Symptom.** BusDelay on T2 (a THRU machine) with a trig on every step of
