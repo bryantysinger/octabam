@@ -8,8 +8,8 @@ signal passes through costs another one. This is what "127" means, not a
 calibration constant or a table.
 
 Read out of the binary and off hardware by Bryan T (21 Sep 2026,
-`EXTERNAL.md` §13; hardware captures his). Nothing below has been run
-under the port.
+`~/Downloads/octatrack-level-law.md`; hardware captures his, §7). Nothing
+below has been run under the port.
 
 Status key as `CHIP.md`: ✅ measured (hardware or read off the firmware) ·
 🟡 inferred.
@@ -100,3 +100,17 @@ encodings, five strides) and directly in the DSP data blocks at `X:0x438`,
 | coefficient loop consuming `x1`/`y1` | DSP `P:0x2ff`-`0x30a` |
 | summing mixdown function | DSP `P:0x292`-`0x3a0` |
 | constant-power pan table | DSP `X:0x6c00` (and `X:0x6d02`, reversed) |
+
+## 7. Provenance: what was checked (22 Sep 2026)
+
+Hardware capture (24-bit WAV, no converters in the path) plus a static
+read of our image, both his. Re-read and matching his objdump: the
+dispatcher site (`0x4000d2c6`-`0x4000d2da`, the raw byte into the
+per-track DSP record at `X:0x080`+`0x32`/`0x33`), the encoder handlers
+(`0x40066b64`/`ba8`) and their SRAM mirrors, the squaring
+(`P:0x2f4`-`0x2fb`), and the coefficient loop (`P:0x2ff`-`0x30a`). Not
+re-derived here: the hardware captures themselves (his rig, not re-run).
+This is the same `(L/128)²` law `tools/harness/mixer.py` measured under
+the port for per-track LEVEL (`docs/remixer/HARNESS.md`); his note is the
+first measurement of MAIN/CUE, which that harness explicitly does not
+model.

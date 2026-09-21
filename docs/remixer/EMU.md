@@ -167,7 +167,7 @@ Stock 1.40C, the rig project, `--sequencer --internal-clock --dsp`:
 
 The play phase runs 23,946 ColdFire instructions per 16-sample frame =
 1,497 per sample = 66 M/s for real time; the hottest loop is the stock
-delay's EMAC mix (`0x40003734`, EXTERNAL.md), real work, not a poll. The
+delay's EMAC mix (`0x40003734`, `COLDFIRE_DELAY.md`), real work, not a poll. The
 DSPs execute ~415 instructions per sample on core 0 after the idle skip
 (3.82 G counted, 3.44 G skipped over 917,730 samples).
 

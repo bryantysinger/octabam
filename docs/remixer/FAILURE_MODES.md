@@ -733,3 +733,32 @@ different on each track. `stamp-defaults` and `clean` now store SEND (id
 FX2 slot left. Not measured under the port (its fixture had no audio on
 those tracks); the falsifier is a stamped project that still leaks.
 
+
+## Freeze without an exception screen as ColdFire delay-routine work grows 🟡 his unit, open
+
+**Symptom.** Tape Echo (PR #357, Jannik Aßfalg / repeat98: the effect runs
+on the ColdFire inside the stock delay's frame routine, `COLDFIRE_DELAY.md`)
+freezes his unit as instances are added, always during control edits, with
+no exception screen: OCTACLID3 on a TIME edit with three instances,
+OCTACLID4 while editing the sixth, the PR's candidate at seven. Earlier
+images froze on a second instance's TIME change and on loading three.
+
+**What the counts say.** Per eight-track 16-sample frame under the port's
+instruction meter: stock DELAY 7,628; eight tape instances settled ~23,000;
+all controls moving up to 32,355. Per instance that is ~1,900 settled and
+~3,100 moving. The frame period is 363 µs, ~95,800 CPU cycles at 264 MHz,
+shared with everything else the ColdFire runs. The meter prices an
+uncached SDRAM ring access at one cycle.
+
+**Cause (🟡 inferred).** The routine's per-frame deadline, not memory: the
+state is a fixed 1,600 B, the rings exist for all eight tracks whatever
+FX2 holds, nothing is allocated. Stock spins at `0x40003780` on the DMA
+status word `0xfc0450be` before the commit, which is a silent hang when a
+frame overruns, where a bad pointer on this chip throws a vector screen.
+What would falsify it: a freeze at the same instance count with the
+per-frame work halved, or a freeze with settled controls.
+
+**Fix.** Open. The ColdFire's per-frame budget for this routine is not
+measured; his freezes bracket it. Any reverb or granular on the ColdFire
+prices above the seven-instance point (BusVerb ~18,000 DSP cycles per
+frame, four-grain GRAIN ~28,400, each in the cheaper unit).

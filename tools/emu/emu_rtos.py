@@ -1392,7 +1392,7 @@ class Rtos:
     def pattern_base(self):
         """Base of the CURRENT pattern's record: the bank blob plus
         `pattern * 0x8ed8` (sixteen records fill blob+0..0x8ed80, the parts
-        follow -- EXTERNAL.md §6). Track 1's note-trig mask is its first
+        follow -- RECORDER.md). Track 1's note-trig mask is its first
         eight bytes, which is what `poke_trig` writes."""
         blob = int.from_bytes(self.uc.mem_read(ec.PART_PTR, 4), "big")
         return blob + self.uc.mem_read(CUR_PATTERN, 1)[0] * PATTERN_STRIDE

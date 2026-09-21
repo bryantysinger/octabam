@@ -79,8 +79,8 @@ P:0x38000     19 words   <- payload A only
 
 Payload B: 91 modules, P `0x00000`–~`0x00c77`, no `0x30000`/`0x38000`
 records. The X/Y data blocks differ in address between payloads: curve bank
-`X:0x438` in A, `X:0x42b` in B; Y tables shift by 16 (`TABLES.md`,
-`EXTERNAL.md` §10). The 15 consecutive one-word P records (A
+`X:0x438` in A, `X:0x42b` in B; Y tables shift by 16 (`TABLES.md`
+"Payload-relative addresses"). The 15 consecutive one-word P records (A
 `P:0x006e5`–`0x006f3`, B `P:0x004a5`–`0x004b3`) are all zero: scratch, not
 a dispatch table.
 
@@ -94,8 +94,21 @@ Non-effect modules (payload A): `0x2bf` summing mixdown, `0x3a1` voice
 playback engine (2-tap linear interpolator over a 128-word ring), `0x5cb`
 flag handling off `r6+$1e`, `0x6f4` a small MAC helper, `func_00055a` the
 24-bit ↔ dual-16-bit host packer (🟡 the first two and the packer from
-`EXTERNAL.md`, 30 Aug 2026). The DSP self-modifies: frame setup writes
+Bryan T, 30 Aug 2026). The DSP self-modifies: frame setup writes
 `move x0,p:>$58c` and `p:>$59b`.
+
+### Timestretch is a ColdFire feature 🟡 (Bryan T, 30 Aug 2026)
+
+The CPU renders the grains and crossfades and ships finished audio to the
+DSP every frame; the DSP's playback engine (`P:0x3a1`) is a 2-tap linear
+interpolator over a 128-word ring applying pitch only. Crossfade: a
+512-entry Hann table at `0x80004000`, `T[i] = round(2³¹·sin²(π/2·(i+1)/513))`
+(zero error, `T[i] + T[511−i] = 2³¹`), fixed 512-source-sample fade,
+minimum grain body 2,048 samples. No pre-analysis: the `.ot` serializer
+persists 64 slice records, trim points and a checksum; BEAT mode's
+transients are slice markers. Segments are butt-spliced on the DSP. The
+module labels above (`P:0x3a1`, `P:0x2bf`, `func_00055a`) were his; ours
+had been "parameter unpacking", "resampler" and "gain routine".
 
 ## 4. Disassembly ✅
 
@@ -178,7 +191,11 @@ Runs on the ColdFire: per-frame DMA descriptor arithmetic over per-track
 rings in SDRAM at `0x4F502C10` (10.8 MB, `0x477...` cached alias), EMAC loop
 for gain and mix, frame routine `0x400031a0` consuming the post-FX2 read-back
 block (§6c) and returning 512 words to core 0 at `X:0x4400` (🟡 adopted from
-Bryan T, `EXTERNAL.md`; `docs/history/RTOS_FORK.md` §10.16.2). The DSP is
+Bryan T, 30 Aug 2026; `docs/history/RTOS_FORK.md` §10.16.2). The routine
+itself — its frame, the control-snapshot selector `0x80004804`, the track
+loop, the seam a replacement can take and its per-frame protocol — is
+`COLDFIRE_DELAY.md`. ❌ Until 22 Sep 2026 this read "per-track record
+`0x80001a00 + 96·track`": 96 is the snapshot stride, 12 the track's. The DSP is
 ruled out ✅: one dispatch, no `cmp` against id 8, per-track path FX1 → FX2 →
 packer → `jmp int_00004a`, reachability from the tables/vectors/bootstraps
 covers 95.8% (A) / 98.5% (B) of instructions with every unreached run ≤ 112
@@ -314,9 +331,20 @@ track LEVEL is applied before this point is unread.
 
 ESAI: both cores configure it at boot (`P:0x30026` and the second port:
 `M_TMOD=1`, `M_TDC=$7`, `M_TSMA=$ff`, TX and RX enabled, live `movep
-a,x:<<M_TX0`). Retracted 30 Aug 2026: "audio does not arrive over the ESAI"
-(inferred from dead ESAI vectors `0x30`–`0x3e`; a DMA-serviced peripheral
-needs none). The live vectors `0x10`–`0x1c` are host-port handlers that
+a,x:<<M_TX0`):
+
+```
+030026: movep #>$40,x:<<M_SAICR
+03002c: movep #>$37d01,x:<<M_TCR    ; M_TE0, M_TMOD=1 (network), M_TSWS=$1f
+030036: movep #>$ff,x:<<M_TSMA      ; 8 transmit slots
+030045: movep a,x:<<M_TX0
+```
+
+and a second port (`M_*_1`) identically; `M_TDC=$7` = 8 slots. Retracted
+30 Aug 2026 (Bryan T): "audio does not arrive over the ESAI" (inferred
+from dead ESAI vectors `0x30`–`0x3e`; a DMA-serviced peripheral needs
+none). `CHIP.md` had labelled the `P:0x30000` module "host-port loader +
+ESAI setup" throughout. The live vectors `0x10`–`0x1c` are host-port handlers that
 program DMA0 (`P:0x588..0x592`: destination from `M_HORX` into `M_DDR0`,
 count into `M_DCO0`, `movep #>$8e82c0,x:<<M_DCR0`; `x:>$41f` ping-pong
 selector at `P:0x5c1/0x5c4`).
@@ -342,7 +370,7 @@ per-voice record is set, else `0xb40`; UI `0x40031d70` (bars) and
 `0x4002f7ec` (`%ds`); recorder `0x4006e3b2` (`(raw+1) × 63504000 /
 (4·tempo24)`) and `0x40006dfc` (rounds; the one that reaches `arm()`).
 Retracted 2 Sep 2026: `0x400060c4` as a tempo→frame site (it is the
-PICKUP recorder arm length, `EXTERNAL.md` §6).
+PICKUP recorder arm length, `RECORDER.md`).
 
 The tempo reaches the DSP from stock: the per-frame voice-record writer
 stores tempo24 (`0x8000181c`, BPM*24) into halfword 31 of every track's

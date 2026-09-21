@@ -14,7 +14,7 @@ real peripherals, no scheduler. Two uses:
 
 Needs `unicorn` with the CFV4E model — `make emu-setup` provisions it into
 the uv-managed `.venv` (the `emu` extra). The DEFAULT m68k core is plain-68k
-and will NOT decode this CPU (mvz/mvs/EMAC) — see docs/firmware/EXTERNAL.md. Boot
+and will NOT decode this CPU (mvz/mvs/EMAC) — docs/remixer/TOOLING.md §3. Boot
 details and the fork past the trap: docs/remixer/EMU.md.
 """
 import collections
@@ -118,7 +118,7 @@ MACHINE_OFF = 0x8eda2        # + PAT*stride + track -> playback machine type
 FAKE_PART = 0x50000000       # where we map the scratch Part
 PAT_R = 0x100b14cf           # current PART (resolver mirror) -- named "PAT" historically;
 PAT_W = 0x80000003           # current PART (window/drawer mirror). Both are the part the
-                             # current pattern (0x80000004) links to; docs/firmware/EXTERNAL.md §6.
+                             # current pattern (0x80000004) links to; docs/firmware/RECORDER.md.
 
 
 class BootResult:

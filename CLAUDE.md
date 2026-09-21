@@ -380,7 +380,8 @@ separately: the 6,305-word curve bank is `X:0x438` in A and `X:0x42b` in B
 one source assembled into both, so a bare literal into a stock table is
 correct on tracks 5–8 and mistuned on 1–4, and past the end of the relocated
 table it reads garbage. Bryan T's LOFI2 shipped that way through a week of
-renders and several flashes (13 Sep 2026, `docs/firmware/EXTERNAL.md` §10;
+renders and several flashes (13 Sep 2026, `docs/firmware/TABLES.md`
+"Payload-relative addresses";
 measured here from our own image). `send_probe`'s single-payload render dumps
 payload A. Declare stock table addresses so the build rewrites them per
 payload, or read through a build-supplied base; and audit any stock-table
@@ -502,7 +503,8 @@ detour returns (Bryan's write-up had the ring base as `0x4F502C10` all
 along). Retracted; `machine.h` now folds the alias. The general rule is the
 instrument-blindness one: before trusting a null result, ask what the
 instrument physically cannot see, and check whether a second reading
-(here, EXTERNAL.md) already contradicts it.
+(here, Bryan T's delay write-up, `docs/firmware/COLDFIRE_DELAY.md`) already
+contradicts it.
 
 **THE BOOT VERIFIER BOOTED THE WRONG IMAGE.** `make verify` runs after the
 selftest, which builds every remix in turn and leaves the LAST one at

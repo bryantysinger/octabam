@@ -191,7 +191,7 @@ def set_pattern_scale(pdir, banknum, pattern, length, scale, guard=True):
     print(f"bank{banknum:02d} pattern{pattern} LEN {length} SCALE {SCALE_NAMES[scale]} (index {scale})")
 
 REC_FIELDS = ["INAB", "INCD", "RLEN", "TRIG", "SRC3", "LOOP",
-              "FIN", "FOUT", "AB", "QREC", "QPL", "CD"]   # descriptor order, EXTERNAL.md section 6
+              "FIN", "FOUT", "AB", "QREC", "QPL", "CD"]   # descriptor order, RECORDER.md
 REC_SETUP_OFF = 0x60b   # part-relative file offset of track 0's 12 recorder-setup bytes
                         # (RAM 0x8f382 vs the machine-type byte's 0x8eda2, + the +9 IFF shift)
 
@@ -789,7 +789,7 @@ RIG = (
 
 
 # ---- the three LFOs per track, in the part record ---------------------------
-# octalab's part layout (docs/firmware/EXTERNAL.md section 9, RAM offsets; the
+# octalab's part layout (docs/firmware/PARAM_PAGES.md 5g, RAM offsets; the
 # file is +9): LFO page 1 = `+0x11a + track*24` = SPD1 SPD2 SPD3 DEP1 DEP2
 # DEP3; `+0x2f2 + track*30` = PMTR1 PMTR2 PMTR3 WAVE1 WAVE2 WAVE3, the
 # destination in the scene-byte numbering (16 = AMP BAL, 18..29 the effect
