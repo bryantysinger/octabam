@@ -94,6 +94,31 @@ Two instruction sets, two toolchains:
 | `tools/build/dsp_reach.py` | DSP | control-flow reachability sweep from the real entry points (dispatch tables, vectors, bootstraps) |
 | `scripts/disasm.sh` (`make disasm`) | ColdFire | radare2 on the decompressed MAIN OS with the right arch and base (m68k BE @ `0x40000400`); `emac` uses objdump, the only decoder that reads the ColdFire V4e extensions |
 
+### Disassembling the ColdFire ✅ (Bryan T, 30 Aug 2026; re-read here)
+
+`objdump -m m68k:5407` mangles EMAC regions; `m68k:547x` / `m68k:cfv4e`
+(the same decoder) is required. radare2's m68k backend cannot decode
+`mvs`/`mvz`/`mov3q`/EMAC and, assuming 2-byte opcodes, reads each
+extension word as an instruction: 6,757 undecodable instructions below
+`0x40098000`, 4,543 of them longer than two bytes (`mvz` 4,539, `mvs`
+1,834, EMAC 791; EMAC clusters: `0x40001000` 48, `0x40003000` 62,
+`0x40004000` 50, `0x40007000` 98, `0x4000c000–d000` 47). At `0x40003664`:
+
+| | first four instructions |
+|---|---|
+| `m68k:547x` | `msacl %d0,%a1,%acc2` · `msacl %d0,%a2,%acc3` · `macl %d2,%a1,%a5@+,%a1,%acc0` · `msacl %d5,%a1,%a0@+,%a1,%acc0` |
+| `m68k:5407` | `msacl %d0,%a1` · `.short 0xa4c0` · `btst %d4,%a0@` · `macl %d2,%a1,%a5@+,%a1` |
+| radare2 | `invalid` · `btst.l d4,(a0)` · `invalid` · `btst.l d4,(a0)` |
+
+`scripts/disasm.sh emac <addr> [bytes]` uses `m68k-elf-objdump -m
+m68k:cfv4e`. All 90 ColdFire addresses our docs cited in
+`0x40000400`–`0x4000dfff` were re-read with `cfv4e` (30 Aug 2026); no
+conclusion changed (the four r2-unreadable sites: `0x4000b786` `mov3ql
+#-1,%a1@+`, `0x4000c24a` `mvsb %a3@(0,%d1:l),%d0`, `0x40003664`/`0x40003900`
+EMAC). The menu and descriptor work was Ghidra; the MIDI work was objdump
+`cfv4e`. The Unicorn bring-up needs the CFV4E model for the same reason:
+the default m68k core does not decode this CPU.
+
 ## 4. Building firmware
 
 `tools/build/build_bus.py` is the builder (`make bus` = `XBUS=1 SPEC=1`).

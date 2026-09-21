@@ -125,7 +125,7 @@ page2  FIN(0/113) FOUT(0/113) AB(0/128)  QREC(255/18) QPL(255/18) CD(0/128)
 ```
 
 (default/count.) Decoded to shared RAM by Bryan T, 2 Sep 2026
-(`EXTERNAL.md` §6), display values hardware-confirmed: INAB/INCD
+(`RECORDER.md`), display values hardware-confirmed: INAB/INCD
 `-, A B, A, B, A+B`; RLEN `1…64, MAX` (raw+1, raw 64 = MAX); TRIG `ONE,
 ONE2, HOLD`; SRC3 `-, T1…T8, MAIN, CUE`; FIN/FOUT `0, 0.063, 0.125 … 64`
 (113-entry ladder at `0x400ab63a`, `L/16`); QREC/QPL `OFF, PLEN,
@@ -157,9 +157,18 @@ knob) both call `FUN_400a6994(*(u32*)(P+0x18a), *(u32*)(P+0x18e),
 a 64-bit arithmetic right shift of the pair by its third argument, low half
 returned in D1, high in D0, with a second path for shifts ≥ 32 (params
 8–11); it masks nothing, so every bit decision is made at the call site (26
-direct calls, 3 through a register, 2 sites read the words inline;
-`EXTERNAL.md` §11). Every nibble in the table is one of `0 1 3 5 7 8`; all
-31 rows and Bryan T's bit reading were re-read from our image 16 Sep 2026.
+direct calls, 3 through a register, 2 sites read the words inline).
+Every nibble in the table is one of `0 1 3 5 7 8`; all 31 rows and Bryan
+T's bit reading (`~/Downloads/enable-nibbles.md`, 16 Sep 2026; the note
+verbatim is `git show 3ceba41:docs/history/EXTERNAL_INGEST.md` §11) were
+re-read from our image the same day: all 31 descriptors' `P+0x18e`/`P+0x18a`
+words and nibbles match his table; PICKUP TSTR count 3 against 4 on
+STATIC/FLEX. The accessor, which he hand-decoded, in objdump: `asrl` where
+he read `lsr.l`, and the branch he elided (`bles 0x400a69ce`) is the path
+for shifts ≥ 32 — params 8–11 — returning `hi >> (index−32)` in D1 and
+the sign of `hi` in D0. Both return the same nibble for every word in the
+table. Call-site masks checked: `0x40053810` (`moveq #9; andl`),
+`0x40052b82` (`#15` then `#9`), `0x4003780e` (`#4`).
 
 | bit | value | meaning | status |
 |---|---|---|---|
@@ -185,9 +194,29 @@ direct calls, 3 through a register, 2 sites read the words inline;
 | CONTROL 1 | `00111111` / `00001111` | p6, p7 (`----`) |
 | CONTROL 2 | `11111111` / `00001111` | none |
 
+Effect rows (nibbles p0..p11, `-` = a `---` slot at 0):
+
+| id | page | nibbles |
+|---|---|---|
+| `0x04` | FILTER | `131111111111` (WDTH `3`) |
+| `0x05` | SPATIALIZER | `111111010111` |
+| `0x08` | DELAY | `111111111111` |
+| `0x0c` | EQUALIZER | `111111100100` |
+| `0x0d` | DJ EQUALIZER | `101111000000` |
+| `0x10` | PHASER | `111111010000` |
+| `0x11` | FLANGER | `111111000000` |
+| `0x12` | CHORUS | `111111100100` |
+| `0x13` | COMB FILTER | `111101000000` |
+| `0x14` | PLATE REV | `111111111001` |
+| `0x15` | SPRING REV | `100111110000` |
+| `0x16` | DARK REV | `113111111001` (SHVF `3`) |
+| `0x18` | COMPRESSOR | `111111100000` |
+| `0x19` | MULTIBCOMP | `101111000000` |
+| `0x1c` | LO-FI | `101111001000` (NOIS `0`) |
+
 Named slots with nibble 0: PICKUP p3 RATE, AMP p11 TRIG, MIXER p6 MIX,
-LO-FI p1 NOIS. Effect rows are in `EXTERNAL.md` §11's table; each `---`
-is 0 and each named knob is 1 except FILTER WDTH and DARK REV SHVF (`3`).
+LO-FI p1 NOIS; each `---` is 0 and each named knob is 1 except FILTER
+WDTH and DARK REV SHVF (`3`).
 Until 16 Sep 2026 this section's derived lists read `P+0x18e` high nibble
 first (ARP "p0 p1 p9 p10", NOTE "p8 p10", MIXER "p0 p1 …", AMP REL `8`);
 the hex words were right. The MIXER "drawn anyway" counterexample rested
@@ -379,6 +408,38 @@ the low byte of the word at `P+0`. (5): `FUN_4005996c` counts the list to
 its terminator, then seeds the cursor from `0x400d6150[id]` (`FLTR`→1,
 `EQ`→2, … `DARK`→14); an id absent from it selects position 0 = NONE.
 
+### 5g. Step records, trig words and the lock stores (octalab, MKI, 13 Sep 2026) ✅
+
+64 × 32-byte step records from `TRAC + 0x59` (byte k = p-lock of scene
+parameter k: PLAYBACK 0..5, LFO 6..11, AMP 12..17, FX1 18..23, FX2
+24..29; byte 31 sample lock; `0xff` none); full address `bank + p*0x8ed8 +
+t*0x91a + 0x78 + (s−1)*0x20`. Trig word `TRAC + 0x89a + (s−1)*2` (bits
+15-13 trig count − 1, 12-7 micro-timing ±23, 6-0 condition; labels
+`0x400b2588`); in the bank FILE one byte earlier (`+0x899`). Sample-lock
+store `0x40040ee0(slot)` (steps from `0x460d174a`, page base `0x460d174c`;
+writes bank byte + `0x1001614e` copy, dirty flags, bitmaps `0x400339d8` →
+`0x46c7d48c[step]`). P-lock store `0x4004f5f8(track, param, value)`
+returns unless a trig key is down (`FUN_4003171c`); octalab replicates its
+body (dirty flags `bank+0x9b332` / `0x100f8598` / `0x40027e00`, refresh
+`0x4009da20`). Our decode of the same records by name is
+`tools/hw/ot_spec.py`.
+
+Smaller, same source: 🟡 pattern `+0x8e55` scale mode, `+0x8e53` length,
+`+0x8e54` scale, `+0x8e50` master length (short, −1 INF); per track `TRAC
++ 0x50` length, `+0x51` scale. ✅ descriptor defaults page-1 `desc + 0x5e`,
+page-2 `+0x64` (`FUN_400526e4`); part offsets from `part = bank + 0x8ed80
++ part*0x18b2`: `+0x22 + track` machine type, `+0x2a + track*30 +
+machine*6` PLAYBACK p1, `+0x11a + track*24 + page*6` LFO/AMP/FX1/FX2 p1,
+`+0x2f2 + track*30` LFO PMTR ×3 then WAVE ×3, `+0x662 + (scene*8 +
+track)*0x20` scene locks; LFO destinations 0..29 use the scene-byte
+numbering. Where a Part lives (working, saved, SRAM) is `STORAGE.md` §3.
+Bryan T's `octa-bt-pt` registry (4 Sep 2026; 61 parameters across 14
+effects) agrees with §3's counts on 12 of 14 (FILTER 12, SPAT 10, DELAY
+12, EQ 8, DJEQ 5, PHSR 7, FLNG 6, CHOR 8, COMB 5, SPRG 6, COMP 7, LOFI 6);
+PLATE and DARK differ (we read 10 active slots, it lists 9; open, likely
+the trailing `MIXF`). Its `fx1_disallowed_effects` = DELAY, PLATE, SPRING,
+DARK, "confirmed on real hardware".
+
 ## 6. The page-2 slot map ✅
 
 Each page-2 word carries two controls: the knob field at bits 16–23 and a
@@ -466,7 +527,7 @@ chars; ours ≤ 5, "1/16T"); whether A is consulted where B's count matters.
 - Enable-nibble bit 2 (what the `0x40047ab0` layout changes on screen) and
   bit 3 (whether the six mask-`0x9` sites are the scene-edit path); the
   link-element drawer for bit 1; the four undecoded `0x4004exxx` call
-  sites (§3b, `EXTERNAL.md` §11).
+  sites (§3b).
 - Which staged index and live-lane bytes an FX1 page-2 edit uses when
   opened from the page key (`0x4005a5b0`, the 4→3 remap; no emulator
   drives it): a hardware read (turn a station's MODE, SAVE, read the part

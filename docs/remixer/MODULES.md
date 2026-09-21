@@ -466,6 +466,70 @@ every DRAM window reads back equal to the linked image except the bytes the
 runtime wrote about itself. What the port cannot see: caches (it has none),
 the recorder, and anything after the handoff.
 
+### Pricing a ColdFire module
+
+From Jannik Aßfalg's note beside Tape Echo (PR #357; `COLDFIRE_DELAY.md`),
+the first module to run audio on the ColdFire. Its gate,
+`tools/verify/verify_tapeecho_cpu.py` on that branch, is the worked
+example of every item.
+
+- **Every instruction count names its scope**: processor (ColdFire or one
+  DSP core); unit (per sample, per 16-sample frame, per control frame);
+  population (one instance, one core, eight tracks, both FX slots);
+  included work (effect body, or the complete stock routine around it);
+  control state (settled, moving, transitioning, initialising). ColdFire
+  and DSP counts are not combined and neither becomes a CPU percentage:
+  the meter omits instruction timing, caches, SDRAM contention, DMA stalls
+  and the scheduler.
+- **Edits are a separate workload.** Benchmark settled, one control
+  moving, every control moving, synchronised endpoint reversals (the
+  largest deltas) and mode changes with audio and state live. Report
+  mean, p95, p99 and the maximum, and profile the block that produced the
+  maximum.
+- **Pre-fill history.** A warm start can leave a long line partly empty;
+  keep a fixture that starts with nonzero history and active feedback
+  beside the ordinary one. The difference is the optimisations that
+  depended on silence. Hold sample rate, block size, warm-up, length,
+  input, schedule and initial history identical across comparisons.
+- **Profile the complete routine, exclusive attribution.** The user pays
+  for dispatch, buffer preparation, parameter publication, DMA
+  coordination and fallbacks, not the kernel alone (the detour machinery
+  itself: 7,628 → 7,892 per eight-track frame with every track on the
+  stock path). Callee time leaves the caller's row; express rows per
+  block and per active instance.
+- **Measure an optimisation in its calling context**, before and after
+  with the same fixture, and record code-size growth beside the saving:
+  an unrolled path can execute fewer instructions and cache worse.
+- **Compare persistent state after every block**, not only audio: phase,
+  error carry, random state and history pointers diverge before the
+  audio does. Fixtures: dirty initial memory, address wrap, control
+  reversals, mode changes, active feedback, long runs. Check generated
+  assembly and tables against their generators first.
+- **Test transitions**, both directions, nonzero state, full-scale input;
+  bound the discontinuity, then run on for delayed instability. When a
+  cheap mode bypasses a stateful path, the bypassed state is preserved,
+  cleared or kept running by decision, and tested.
+- **Prove a guard can fail**: a memory-bound or isolation test passes for
+  the wrong reason until a positive control makes the forbidden write and
+  the test goes red. Same for drift checks and instruction ceilings.
+- **Serialized meanings.** Parts and locks store the bytes. Append enum
+  values; never insert. A slot whose meaning changes is a data migration
+  even when the image loads: test old bytes across their full range, not
+  the old default (`CLAUDE.md`, the MODE re-slot stall).
+- **Hooking the stock delay routine** means keeping its protocol: the
+  scratch toggle at `0x40003624`, the state iterator `0x80006180 += 68`,
+  a byte-for-byte fallback for every other id, and no ring sample held
+  across frames (DMA can replace history between them). A callback-level
+  test cannot show any of this; run the stock routine from `0x400031a0`
+  over all eight tracks with a DMA model and compare original against
+  patched after every frame.
+- **Three acceptance questions, answered separately**: correct audio and
+  state contracts; no edit spikes or discontinuities under the meter; the
+  unit responsive and on deadline while streaming, recording and running
+  its other work. The first two do not establish the third; hardware
+  tests include rapid panel edits and locks under full track load, with
+  UI stalls recorded apart from audio glitches and freezes.
+
 ### Two byte-matching traps
 
 - A same-unit label makes `lea` assemble PC-relative, four bytes shorter
