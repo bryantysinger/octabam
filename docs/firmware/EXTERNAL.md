@@ -13,7 +13,7 @@ the officially distributed OS 1.40C (`section_3_MAIN_OS.bin` SHA-256
 
 | received | from | what | where it lives |
 |---|---|---|---|
-| 30 Aug 2026 | Bryan T (Discord) | `octatrack-delay-architecture.md`: the Echo Freeze DELAY is a ColdFire routine over SDRAM rings | `COLDFIRE_DELAY.md` §1 🟡 |
+| 30 Aug 2026 | Bryan T | the Echo Freeze DELAY is a ColdFire routine over SDRAM rings | `COLDFIRE_DELAY.md` §1 🟡 |
 | 30 Aug 2026 | Bryan T | the ESAI carries audio (our "does not" retracted) | `DSP.md` §6c ✅ |
 | 30 Aug 2026 | Bryan T | timestretch is a ColdFire feature; `P:0x3a1` / `P:0x2bf` / `func_00055a` relabelled | `DSP.md` §3 🟡 |
 | 30 Aug 2026 | Bryan T | the data-table atlas (Q23 decode of every X/Y module) | `TABLES.md` 🟡, evaluated 31 Aug |
@@ -24,10 +24,10 @@ the officially distributed OS 1.40C (`section_3_MAIN_OS.bin` SHA-256
 | 6 Sep 2026 | Bryan T | *Sound-on-Sound Looping with the Octatrack* (PDF) and `octatrack_clickless_loops.xlsx`; not in this repo | `RECORDER.md` §3 |
 | 13 Sep 2026 | nordseele | [`octalab-notes`](https://github.com/nordseele/octalab-notes) at `40ffa53` (MIT, findings only), from an Octatrack MKI running our loader: FS layer, slot loading, Parts, the card's files, step records and lock stores, the input layer, menus, the platform reserve on hardware | `STORAGE.md`; `PARAM_PAGES.md` §5g; `PANEL.md` §4b; `MAINMENU.md` §2, §5; `PLACEMENT.md`; `MIDI.md` (PLAYBACK `machine*6`); `tools/hw/ot_project.py` (trig masks `0x40`/`0x48`) |
 | 14 Sep 2026 | Bryan T | absolute X addresses are payload-relative (his LOFI2 mistuned on tracks 1–4) | `TABLES.md` "Payload-relative addresses" ✅; `FAILURE_MODES.md` |
-| 16 Sep 2026 | Bryan T | `enable-nibbles.md`: the parameter enable bitmaps | `PARAM_PAGES.md` §3b ✅ (❌ ours) |
-| 21 Sep 2026 | Bryan T | `LFO.md`: the track LFO engine | `LFO.md` (§8 what was checked) ✅ (❌ ours, ❌ his) |
-| 21 Sep 2026 | Bryan T (hardware) | `octatrack-level-law.md`: MAIN/CUE are `(L/128)²` | `LEVEL_LAW.md` (§7 what was checked) ✅ |
-| 22 Sep 2026 | Jannik Aßfalg (repeat98) | `OCTABAM_GENERAL_DEVELOPMENT_FINDINGS.md`, beside Tape Echo (PR #357): the delay routine's frame, seam and per-frame protocol; benchmarking practice for a ColdFire module | `COLDFIRE_DELAY.md` §2–4 ✅ (❌ ours); `docs/remixer/MODULES.md` "Pricing a ColdFire module"; `FAILURE_MODES.md` |
+| 16 Sep 2026 | Bryan T | the parameter enable bitmaps | `PARAM_PAGES.md` §3b ✅ (❌ ours) |
+| 21 Sep 2026 | Bryan T | the track LFO engine | `LFO.md` (§8 what was checked) ✅ (❌ ours, ❌ his) |
+| 21 Sep 2026 | Bryan T (hardware) | MAIN/CUE are `(L/128)²` | `LEVEL_LAW.md` (§7 what was checked) ✅ |
+| 22 Sep 2026 | Jannik Aßfalg (repeat98) | beside Tape Echo (PR #357): the delay routine's frame, seam and per-frame protocol; benchmarking practice for a ColdFire module | `COLDFIRE_DELAY.md` §2–4 ✅ (❌ ours); `docs/remixer/MODULES.md` "Pricing a ColdFire module"; `FAILURE_MODES.md` |
 
 Community modules that arrived as code rather than notes (midisc, Octakit,
 octalab, REPITCH) are the README's module table and `THIRD_PARTY.md`.

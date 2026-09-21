@@ -159,7 +159,7 @@ returned in D1, high in D0, with a second path for shifts ≥ 32 (params
 8–11); it masks nothing, so every bit decision is made at the call site (26
 direct calls, 3 through a register, 2 sites read the words inline).
 Every nibble in the table is one of `0 1 3 5 7 8`; all 31 rows and Bryan
-T's bit reading (`~/Downloads/enable-nibbles.md`, 16 Sep 2026; the note
+T's bit reading (his note of 16 Sep 2026; the note
 verbatim is `git show 3ceba41:docs/history/EXTERNAL_INGEST.md` §11) were
 re-read from our image the same day: all 31 descriptors' `P+0x18e`/`P+0x18a`
 words and nibbles match his table; PICKUP TSTR count 3 against 4 on

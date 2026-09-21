@@ -2,7 +2,7 @@
 
 ColdFire side of OS 1.40C. Three LFOs per track, eight tracks, evaluated
 once per audio frame inside the frame builder. Read out of the binary by
-Bryan T (21 Sep 2026, `~/Downloads/LFO.md`) and re-read here in objdump
+Bryan T (21 Sep 2026) and re-read here in objdump
 the same day (§8); nothing below has been run under the port yet.
 
 Status key as `CHIP.md`: ✅ read from our image · 🟡 inferred from
