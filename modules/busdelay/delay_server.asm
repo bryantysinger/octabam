@@ -180,14 +180,14 @@ init:
 ; that direction DOES snap, so it is safe.
 ; build_bus.py emits a body here for PAYLOAD B ONLY -- payload A recomputes the
 ; offset from the shared word every block and has nothing to seed.
-; ---- the glided coefficients start from 0 (21 Sep 2026): a short fade-in
-; on select instead of ~20 ms of whatever the slots held (the reverb's init
-; does the same); the warm-up clear covers $27..$5e, not these. Raw r7 here.
-        clr     a
-        move    a,x:(r7+$72)            ; TONE coefficient
-        move    a,x:(r7+$73)            ; FDBK coefficient
-        move    a,x:(r7+$74)            ; PING
-        move    a,x:(r7+$6d)            ; WET
+; INIT WRITES NOTHING BUT THE ROTATION SEED (21 Sep 2026). Four stores here
+; zeroing the glided coefficients (raw $72/$73/$74/$6d, images 39-41) put a
+; white-noise wash on any host past dispatch position 0 that had trigs on
+; it (T2 THRU or T3 STATIC with a trig every step; T1 never), bisected on
+; the unit: image 38 without them clean, 39/40/41 wash, 42 = 41 minus the
+; four stores clean. The port never showed it. Mechanism open
+; (docs/remixer/FAILURE_MODES.md); the coefficients glide in from whatever
+; the slot held for ~20 ms after a select, as before.
 ; ROTINIT
         rts
 
