@@ -2107,74 +2107,88 @@ mkgo:""",
                     + src[j:])
 
         def _rotinit(src, name, slot):
-            """Seed the tracked rotation at init. PAYLOAD B ONLY."""
+            """Seed the client's block label at init. PAYLOAD B ONLY."""
             if "; ROTINIT" not in src:
                 return src
             as_b = (tag == "B") or (DEV and name == "DELAY SERVER")
             if not as_b:
+                # first occurrence only: the delay's rebase note begins a
+                # line with the marker's text
                 return src.replace("; ROTINIT",
-                                   f";  (payload {tag} recomputes every block: "
-                                   f"nothing to seed)", 1)
+                                   f";  (payload {tag} reads the shared word "
+                                   f"every block: nothing to seed)", 1)
             body = "\n".join([
                 "        move    r7,a                ; ROTINIT (payload B)",
                 "        move    #>$6200,x0",
                 "        cmp     x0,a",
-                "        blt     seedskip            ; implausible r7: seed nothing",
+                "        blt     seedskip            ; an FX1 slot: seed nothing",
                 f"        move    y:>${_rot:x},a",
-                "        and     #>$30,a",
+                "        and     #>$70,a",
                 f"        move    a,x:(r7+${slot:02x})",
                 "seedskip:"])
             return src.replace("; ROTINIT", body, 1)
 
+        def _marker_once(src, name, marker):
+            if src.count(marker) != 1:
+                sys.exit(f"{name}: the {marker.strip()} marker must appear exactly "
+                         f"once (found {src.count(marker)}; a comment that spells "
+                         f"it counts)")
+
         def _rotlatch(src, name, slot):
             if "; ROTLATCH" not in src:
                 return src
+            _marker_once(src, name, "; ROTLATCH")
             # DEV places the delay in payload A but it behaves as payload B in
             # every other respect (its gate compares equal, so it never
             # housekeeps) -- so it takes payload B's body wherever it sits.
             as_b = (tag == "B") or (DEV and name == "DELAY SERVER")
             if as_b:
-                _latch = _rot + 0xc6
+                # Core 1 cannot read the flip's phase, so a client never
+                # labels a block from the shared word: it COUNTS its own
+                # blocks from a seed read at init (ROTINIT) and only checks
+                # the count against the rotation R. A difference of one
+                # either way is kept (the seed was read before or after a
+                # flip; a block is in flight); two or more means the client
+                # lost blocks or holds boot garbage, and it snaps to R. A
+                # count cannot flap with the phase, and a label one off in
+                # either direction is what the eight buffers absorb
+                # (send_client.asm's map). 22 Sep 2026; before it the core
+                # tracked R and advanced at position 0, and a lead of one
+                # was kept as the pre-flip phase for ever (images 40-47).
                 body = "\n".join([
-                    "        move    x:(r7+$67),a        ; ROTLATCH: payload B, ONE tracker per core",
+                    "        move    x:(r7+$67),a        ; ROTLATCH: payload B, this client's own count",
                     "        tst     a",
                     "        bne     rotdone             ; not the block's first call",
-                    "        move    r7,a",
-                    "        move    #>$6200,x0",
-                    "        cmp     x0,a                ; position 0's FX2 (the rig's delay host)",
-                    "        bne     rotchk              ; advances the core's tracker once a frame",
-                    f"        move    y:>${_latch:x},a",
-                    "        add     #>$10,a             ; T' = T + one step",
-                    "        and     #>$30,a",
-                    "        move    a1,x0",
-                    "        move    x0,a                ; A2-clean",
-                    f"        move    a,y:>${_latch:x}",
-                    "rotchk:",
-                    f"        move    y:>${_latch:x},a",
-                    "        move    a,x1                ; x1 = T, the core's tracked rotation",
-                    f"        move    y:>${_rot:x},a         ; R, the shared word (pre- or post-flip)",
-                    "        and     #>$30,a",
-                    "        move    a1,x0",
-                    "        move    x0,a                ; x0 = R",
-                    "        cmp     x1,a",
-                    "        beq     rotuse              ; T == R: aligned, use T",
-                    "        add     #>$10,a",
-                    "        and     #>$30,a",
-                    "        move    a1,y0               ; y0 = R + one step",
-                    "        move    x1,a",
+                    f"        move    x:(r7+${slot:02x}),a       ; last block's label",
+                    "        add     #>$10,a             ; + one block",
+                    "        and     #>$70,a",
+                    "        move    a1,x1",
+                    "        move    x1,a                ; A2-clean: x1 = L",
+                    f"        move    y:>${_rot:x},b         ; R, the shared rotation, pre- or post-flip",
+                    "        and     #>$70,b",
+                    "        move    b1,x0               ; x0 = R",
+                    "        sub     x0,a",
+                    "        and     #>$70,a             ; d = L - R mod 8",
+                    "        move    a1,y0",
+                    "        move    y0,a",
+                    "        tst     a",
+                    "        beq     rotkeep             ; d = 0: aligned",
+                    "        move    #>$10,y0",
                     "        cmp     y0,a",
-                    "        beq     rotuse              ; T == R+1: a pre-flip read, keep T",
-                    "        move    x0,a                ; anything else: T is stale, snap to R",
-                    f"        move    a,y:>${_latch:x}",
-                    "rotuse:",
-                    f"        move    y:>${_latch:x},a",
+                    "        beq     rotkeep             ; d = +1: R read before its flip, or a lead of one",
+                    "        move    #>$70,y0",
+                    "        cmp     y0,a",
+                    "        beq     rotkeep             ; d = -1: seeded before a flip, or a lag of one",
+                    "        move    x0,x1               ; anything else: snap to R",
+                    "rotkeep:",
+                    "        move    x1,a",
                     f"        move    a,x:(r7+${slot:02x})",
                     "rotdone:",
                     f"        move    x:(r7+${slot:02x}),a"])
             else:
                 body = "\n".join([
                     f"        move    y:>${_rot:x},a       ; ROTLATCH: payload A is in",
-                    "        and     #>$30,a             ; lockstep with the flip, so",
+                    "        and     #>$70,a             ; lockstep with the flip, so",
                     f"        move    a,x:(r7+${slot:02x})       ; the shared word is stable"])
             out = src.replace("; ROTLATCH", body, 1)
             # Guard the trap above: under XBUS no bare $9xx may survive, in the

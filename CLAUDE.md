@@ -336,9 +336,10 @@ family as "disassemble what you assemble".
 **IN THE SHIPPING REMIX, payload A's half of the shared window is FULLY
 OWNED** (a remix without the reverb frees it, which is how the insert
 collection has room to stack): BusVerb's
-relocated buffers at `0x30000`/`0x34000`, bus scratch at `0x36000-0x360d2`
-(grew 12 Aug for the DELAY send counts + reciprocal table, and again 17 Aug
-when the accumulators went to FOUR buffers for the cross-core race fix).
+relocated buffers at `0x30000`/`0x34000`, bus scratch at `0x36000-0x36157`
+(grew 12 Aug for the DELAY send counts + reciprocal table, 17 Aug when the
+accumulators went to FOUR buffers for the cross-core race fix, and 22 Sep
+2026 to EIGHT buffers plus the chain at `0x360d8..`).
 There is no free ground in it for delay lines — the DEV build places the
 delay at its shipping base `0x38000` (payload B's half) for exactly this
 reason. A delay based at `0x30000` sweeps the rotation word, all four ACC

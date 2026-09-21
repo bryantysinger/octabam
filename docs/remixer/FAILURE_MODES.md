@@ -108,10 +108,21 @@ is why every local run was clean.
 
 **Fix (image 48).** SEND returns at proc entry on an FX1 r7: no
 registration, no write, no tracker call. The self-check is removed; the
-tracker body is image 43's. T1's FX2 must be a bus client for the
-tracker's advance (the stock DELAY there leaves nobody to advance;
-`stamp-defaults` warns). Falsified by: 48 still washing on T2 THRU with a
-trig every step, or still bleeding with every SEND at 0.
+tracker body is image 43's. Falsified by: 48 still washing on T2 THRU with
+a trig every step, or still bleeding with every SEND at 0.
+
+**Structural fix (image 49, built before 48 was heard).** The phase
+agreement itself is gone: eight accumulator and chain buffers, a server
+reads three back, the housekeeper clears two on, and a core-1 client
+counts its own blocks from a seed read at init, checked against the
+rotation once a block with a tolerance of one (`XBUS.md` "The
+accumulators", "Housekeeping and the rotation"). A label one off in either
+direction touches no buffer being cleared or read, and a count cannot
+flap with the flip's phase. Costs one more block of latency (48 samples).
+The port's two-core gate is bit-identical to the one-core control under
+every skew, which under the old tracker was only true of the skews that
+left the flip on one side of every read. Falsified by: any wash or static
+on 49 that a host position, a trig pattern or a load changes.
 
 ## Audio engine wedged, sequencer alive: the master loop ✅ measured
 

@@ -95,11 +95,11 @@
 ;   r7+$60/$61          REVERSE segment length S / phase step 2^23/S
 ;   r7+$62              REVERSE lag floor (per block)
 ;   r7+$0c              last-seen rotation (the gated housekeeping block's)
-;   r7+$20              this block's resolved write offset (0/16/32/48);
+;   r7+$20              this block's resolved write offset (0..112);
 ;                       every bus address derives from it (the ROTLATCH slot)
 ;   r7+$2a              REVERSE lag cap 32704 - 2S (per block; the loop's RLAG0 source)
 ;   r7+$6d              WET coefficient, glided (per block)
-;   r7+$83              this call's CHAIN write address ($901 + rotation +
+;   r7+$83              this call's CHAIN write address ($9d8 + rotation +
 ;                       frame offset; advances per sample; DRIVE's slot until
 ;                       21 Sep 2026, dead since the cubic went)
 ;   r7+$63/$64          this call's DELAY ACC read address / the TIME ramp's per-sample increment (Q8)
@@ -252,7 +252,7 @@ bus_off_done:
         cmp     x0,a
         beq     bus_dohk                ; position 0: always the housekeeper
         move    y:>$900,a
-        and     #>$30,a
+        and     #>$70,a
         move    a1,x0
         move    x0,a                    ; offset now, A2-clean
         move    x:(r7+$0c),x0
@@ -260,13 +260,13 @@ bus_off_done:
         bne     bus_seen                ; it moved: someone else housekept
 bus_dohk:                               ; nobody did -- take over this block
 
-; y:>$900 holds the WRITE OFFSET (0/16/32/48), not the bare buffer index --
-; see the layout comment in modules/send/send_client.asm. FOUR buffers, so the rotation
-; is +16 mod 4 and the mask that does the modulo sanitises boot garbage too.
+; y:>$900 holds the WRITE OFFSET (0..112), not the bare buffer index --
+; see the layout comment in modules/send/send_client.asm. EIGHT buffers, so the rotation
+; is +16 mod 8 and the mask that does the modulo sanitises boot garbage too.
 ; No `asl #$4` follows: the value is already scaled.
         move    y:>$900,a
         add     #>$10,a
-        and     #>$30,a
+        and     #>$70,a
         move    a,y:>$900               ; the new CURRENT rotation
 ; ⚠️ CLEAR THE BUFFER WRITTEN **NEXT** BLOCK, NOT THIS ONE.
 ; Clearing the buffer we are about to write races the OTHER core's writers:
@@ -280,11 +280,11 @@ bus_dohk:                               ; nobody did -- take over this block
 ; with four buffers there is an idle slot. The buffer written next block was
 ; last READ a full block ago and will not be WRITTEN for another full block,
 ; so clearing it now has a block of margin on both sides.
-        add     #>$10,a                 ; one further on: the NEXT block's
-        and     #>$30,a                 ; write target, idle right now
+        add     #>$20,a                 ; two on: written two blocks from now,
+        and     #>$70,a                 ; last read three blocks ago
         move    a,x0                    ; bases for the clear AND the count
 
-        move    #>$961,b                ; ONE BUS (6 Sep 2026): the AUX
+        move    #>$901,b                ; ONE BUS (6 Sep 2026): the AUX
         add     x0,b                    ; accumulator, the only one left
         move    b,r2                    ; r2 = AUX ACC[new] base
         move    #>$ffffff,m2
@@ -311,7 +311,7 @@ bus_zclr:
         move    a,y:(r3)                ; AUX count = 0
 bus_seen:
         move    y:>$900,a               ; remember this block's offset so next
-        and     #>$30,a                 ; block we can tell whether anybody
+        and     #>$70,a                 ; block we can tell whether anybody
                                         ; else housekept in between
         move    a1,x0
         move    x0,a
@@ -393,19 +393,19 @@ bus_mine:
 ; (hardware, 17 Aug 2026 -- dispatch position moved the read relative to the
 ; other core's flip).
         move    x:(r7-$29),a
-        move    a,x1                    ; x1 = write offset (0/16/32/48)
-        add     #>$20,a                 ; two buffers on == two buffers back
-        and     #>$30,a                 ; mod 4
+        move    a,x1                    ; x1 = write offset (0..112)
+        add     #>$50,a                 ; five buffers on == three buffers back
+        and     #>$70,a                 ; mod 8
         move    a,x0                    ; x0 = the read offset
-        move    #>$961,a
+        move    #>$901,a
         add     x0,a
         move    x:(r7+$1e),b            ; this call's split-aware frame offset
         add     b,a
         move    a,x:(r7+$1a)            ; this call's DELAY ACC read address
-        move    x1,x0                   ; the full write offset, 0/16/32/48
-        move    #>$901,a                ; the CHAIN buffer (one-aux rig, 7 Sep
-        add     x0,a                    ; 2026): 4 x 16 mono words, the old
-        add     b,a                     ; REVERB accumulator's home
+        move    x1,x0                   ; the full write offset, 0..112
+        move    #>$9d8,a                ; the CHAIN buffer (one-aux rig, 7 Sep
+        add     x0,a                    ; 2026): 8 x 16 mono words since 22 Sep
+        add     b,a                     ; 2026 (the map in send_client.asm)
         move    a,x:(r7+$3a)            ; this call's CHAIN write address
 
 ; ---- bus auto-gain: resolve 1/sqrt(N) for this block's READ buffer --------
@@ -435,8 +435,8 @@ bus_mine:
         move    #>$ffffff,m5            ; r5 linear for the block (the
 
         move    x1,a                    ; the count belongs to the buffer this
-        add     #>$20,a                 ; block READS, which is two buffers back
-        and     #>$30,a                 ; mod 4
+        add     #>$50,a                 ; block READS, which is three buffers back
+        and     #>$70,a                 ; mod 8
         asr     #$4,a,a                 ; scaled back down -- the counts are one
         move    #>$9c7,x0               ; word per buffer, not sixteen
         add     x0,a
@@ -448,13 +448,13 @@ bus_mine:
         tst     a
         tne     x0,b                    ; sending -> b = 1: we count ourselves
 ; ->DEL from the REVERB host (v8, 5 Sep 2026): BusVerb writes its ->DEL knob
-; field to y:$941 every block -- a single-writer word, not a count RMW -- and
+; field to y:$981 every block -- a single-writer word, not a count RMW -- and
 ; it is one more client while nonzero. x0 is still the increment; the Tcc
 ; reads the tst with nothing between; a zero word leaves a = 0, which IS the
 ; right count. The warm-up below zeroes the word, so a rig with no reverb
 ; never counts boot garbage (and one block of it before the first warm-up
 ; is masked to 0..7 like everything else here).
-        move    y:>$941,a
+        move    y:>$981,a
         tst     a
         tne     x0,a                    ; a = 1 if the reverb host is sending
         add     a,b                     ; ... one more client
@@ -536,7 +536,7 @@ dwarmq:                                                                    ; @B
         move    b,x:(r7+$28)
         move    b,x:(r7+$2e)
         move    b,x:(r7+$2f)
-        move    b,y:>$941               ; the REVERB host's ->DEL flag (v8):
+        move    b,y:>$981               ; the REVERB host's ->DEL flag (v8):
                                         ; zeroed once here, so a rig without
                                         ; a reverb never counts garbage in it
 ; (14 Sep 2026: thirteen clears left with the dead code they served. $19-$1f

@@ -41,7 +41,7 @@ chain in ─► 4 series allpasses ─► ┌─ FDN tank ───────�
 
 | page | slot | label | reads | function |
 |---|---|---|---|---|
-| 1 | 0 | SEND | `r6+$0` | this host's own dry into the aux bus (3-bit headroom, counted through `Y:0x941`); default 0 |
+| 1 | 0 | SEND | `r6+$0` | this host's own dry into the aux bus (3-bit headroom, counted through `Y:0x981`, `0x941` until 22 Sep 2026); default 0 |
 | 1 | 1 | TIME | `r6+$1` | feedback 0.875..0.999 via the mode's `k_mode` |
 | 1 | 2 | SIZE ⌐ | `r6+$2` | scales all eight taps within the mode; floor `f = 0.4` (~1,810 samples, 24 Hz mode spacing); glided 1/64 per block since 20 Sep 2026 (state `y:$09f3`, zeroed at init, clamped to f's range); drawn linked to TIME |
 | 1 | 3 | SHMR | `r6+$3` | shimmer amount, 0 off (bit-identical to no shimmer) |

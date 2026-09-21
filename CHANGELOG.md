@@ -5,19 +5,29 @@ main carries beyond the last flashed image. The version the panel shows is
 `BUILD` (`make image BUILD=N`); a git tag `OCTABAM<N>` marks the commit each
 flashed image was built from.
 
-## Unreleased (main after image 43; image 48 built)
+## Unreleased (main after image 43; image 49 built)
 
+- The bus no longer needs the cores to agree on the flip's phase (image
+  49, 22 Sep 2026): eight accumulator buffers (`Y:0x901..0x980`) and eight
+  chain buffers (`Y:0x9d8..0xa57`), a server reads three back, the
+  housekeeper clears two on, and a core-1 client counts its own blocks
+  from a seed read at init, checked against the rotation once a block
+  with a tolerance of one either way (`XBUS.md` "The accumulators",
+  "Housekeeping and the rotation"). The per-core tracker, its position-0
+  advance and the `T == R + 1` rule are gone. Bus latency 48 samples (32
+  before); `verify-bus` reference re-saved for it; the two-core gate
+  identical to the one-core control under every skew. BusVerb's SEND
+  field moved `0x941` → `0x981`.
 - SEND returns at proc entry on an FX1 slot (r7 0x6100/0x6400/0x6700/
-  0x6a00, measured under the port): id 0 is SEND and FX1 NONE is id 0, so
-  the client had been running on every FX1 slot with no effect — sending
-  from an unseen page byte (audio in the bus with every SEND at 0, image
-  46) and, on core 1, comparing the tracker before position 0's advance,
-  which leaves the core one step ahead whenever core 0's flip lands before
-  the 0x6100 call (`XBUS.md` "An FX1 slot is not a client";
-  `FAILURE_MODES.md`, the THRU-host wash). 21 words per payload. T1's FX2
-  must be a bus client for the advance; `stamp-defaults` warns.
-- The tracker's self-check of images 44–46 (stamps, hold flag) removed;
-  the tracker body, ROTINIT and the housekeepers are image 43's.
+  0x6a00, measured under the port; image 48): id 0 is SEND and FX1 NONE is
+  id 0, so the client had been running on every FX1 slot with no effect —
+  sending from an unseen page byte (audio in the bus with every SEND at 0,
+  image 46) and, on core 1, comparing the tracker before position 0's
+  advance, which left the core one step ahead whenever core 0's flip
+  landed before the 0x6100 call (`XBUS.md` "An FX1 slot is not a client";
+  `FAILURE_MODES.md`, the THRU-host wash). 21 words per payload.
+- The tracker's self-check of images 44–46 (stamps, hold flag) removed
+  (image 48).
 
 Images 44–47 reached the unit and none is a release: 44 and 45 wedged on
 the first play (a one-word displaced Y store the chip had never run, then

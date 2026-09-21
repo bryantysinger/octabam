@@ -64,7 +64,7 @@
 ;
 ; Parameters:
 ;   p0 AUX  -> this host's own dry send into the one aux bus (written to the
-;              AUX accumulator, flagged at y:$941)
+;              AUX accumulator, flagged at y:$981)
 ;   p1 TIME -> feedback, 0.875 .. 0.999
 ;   p2 SHMR (MOD until 15 Sep 2026; the tank modulation is pinned at MOD 30), p3 SIZE
 ;   p4 TONE -> HP and LP on one knob (the HI/LO blocks)
@@ -155,7 +155,7 @@ bus_off_done:
         cmp     x0,a
         beq     bus_dohk                ; position 0: always the housekeeper
         move    y:>$900,a
-        and     #>$30,a
+        and     #>$70,a
         move    a1,x0
         move    x0,a                    ; offset now, A2-clean
         move    x:(r7+$6b),x0
@@ -169,7 +169,7 @@ bus_dohk:                               ; nobody did -- take over this block
 ; No `asl #$4` follows: the value is already scaled.
         move    y:>$900,a
         add     #>$10,a
-        and     #>$30,a
+        and     #>$70,a
         move    a,y:>$900               ; the new CURRENT rotation
 ; ⚠️ CLEAR THE BUFFER WRITTEN **NEXT** BLOCK, NOT THIS ONE.
 ; Clearing the buffer we are about to write races the OTHER core's writers:
@@ -183,11 +183,11 @@ bus_dohk:                               ; nobody did -- take over this block
 ; with four buffers there is an idle slot. The buffer written next block was
 ; last READ a full block ago and will not be WRITTEN for another full block,
 ; so clearing it now has a block of margin on both sides.
-        add     #>$10,a                 ; one further on: the NEXT block's
-        and     #>$30,a                 ; write target, idle right now
+        add     #>$20,a                 ; two on: written two blocks from now,
+        and     #>$70,a                 ; last read three blocks ago
         move    a,x0                    ; bases for the clear AND the count
 
-        move    #>$961,b                ; ONE BUS (6 Sep 2026): the AUX
+        move    #>$901,b                ; ONE BUS (6 Sep 2026): the AUX
         add     x0,b                    ; accumulator, the only one left
         move    b,r2                    ; r2 = AUX ACC[new] base
         move    #>$ffffff,m2
@@ -218,7 +218,7 @@ bus_zclr:
         move    a,y:(r1)                ; AUX count = 0
 bus_seen:
         move    y:>$900,a               ; remember this block's offset so next
-        and     #>$30,a                 ; block we can tell whether anybody
+        and     #>$70,a                 ; block we can tell whether anybody
                                         ; else housekept in between
         move    a1,x0
         move    x0,a
@@ -277,21 +277,21 @@ bus_mine:
         bsr     stampgr                 ; b = grace after this block's stamp
         move    b,y:>$09f1
         clr     a                       ; (BEFORE the tst: clr sets the CCR)
-        move    #>$60,x0                ; the distance from the AUX accumulator
-        tst     b                       ; back to the CHAIN buffer ($901 =
-        tne     x0,a                    ; $961 - $60) while the delay is live,
-        move    a,y1                    ; else 0; the read address subtracts it
+        move    #>$d7,x0                ; the distance from the AUX accumulator
+        tst     b                       ; ($901) up to the CHAIN buffer ($9d8)
+        tne     x0,a                    ; while the delay is live,
+        move    a,y1                    ; else 0; the read address adds it
 
         move    y:>$900,a
-        move    a,x1                    ; x1 = write offset (0/16/32/48)
-        add     #>$20,a                    ; two buffers on == two buffers back
-        and     #>$30,a                    ; mod 4
+        move    a,x1                    ; x1 = write offset (0..112)
+        add     #>$50,a                    ; five buffers on == three buffers back
+        and     #>$70,a                    ; mod 8
         move    a,x0                    ; x0 = the read offset
-        move    #>$961,a                ; the AUX accumulator (one bus, 6 Sep
+        move    #>$901,a                ; the AUX accumulator (one bus, 6 Sep
         add     x0,a                    ; 2026)
         move    x:(r7+$67),b            ; this call's split-aware frame offset
         add     b,a                     ; a = AUX ACC read address
-        sub     y1,a                    ; ... or the CHAIN buffer's, same
+        add     y1,a                    ; ... or the CHAIN buffer's, same
                                         ; rotation and frame offset, while
                                         ; the delay is live (y1 from above)
         move    a,x:(r7+$63)            ; this call's read address
@@ -302,7 +302,7 @@ bus_mine:
 ; SEND's r2: base $961 + write offset (x1, 0/16/32/48) + the split-aware
 ; frame offset (b). The one free r7 slot ($6a) holds the address; the
 ; level is read straight from the knob in the sample loop.
-        move    #>$961,a
+        move    #>$901,a
         add     x1,a
         add     b,a
         move    a,x:(r7+$6a)            ; this call's DELAY ACC write address
@@ -315,14 +315,14 @@ bus_mine:
                                         ; previous block left", 9 Aug)
 
         move    x1,a
-        add     #>$20,a                    ; read offset = write + 2 buffers
-        and     #>$30,a                    ; mod 4
-        asr     #$4,a,a                 ; -> bare index (0..3)
+        add     #>$50,a                    ; read offset = write + 5 buffers = 3 back
+        and     #>$70,a                    ; mod 8
+        asr     #$4,a,a                 ; -> bare index (0..7)
         add     #>$9c7,a                  ; the AUX count (one bus)
         move    a,r5
         move    #>$1,x0                 ; the "one more client" increment
         clr     b                       ; b = 0 -- BEFORE the tst below
-        move    y:>$941,a               ; our own AUX flag (last block's: the
+        move    y:>$981,a               ; our own AUX flag (last block's: the
                                         ; write below runs after this) -- the
                                         ; host's dry is IN THE ACCUMULATOR now,
                                         ; as a SEND's is, so it counts the same
@@ -357,7 +357,7 @@ bus_mine:
 ; ---- ->DEL: tell the DELAY SERVER this host is a client (v8, 5 Sep 2026) --
 ; NOT the count read-modify-write the 18 Aug send did (19 words, two gates,
 ; and a cross-core RMW on a shared word). The knob field itself goes to
-; y:$941 every block -- one writer, one word, idempotent across a split
+; y:$981 every block -- one writer, one word, idempotent across a split
 ; block -- and the delay's auto-gain resolve counts it as one client while
 ; it is nonzero. An idle host writes 0 and takes no share, so the phantom-
 ; client rule (the -6.02 dB defect of 17 Aug 2026 was THIS registration,
@@ -374,7 +374,7 @@ bus_mine:
 ; the sample loop does not multiply by (it multiplies by exactly this word).
         move    x:(r6),a                ; AUX (slot 0), the knob itself: the
                                         ; host's own dry into the ONE aux bus
-        move    a,y:>$941               ; the aux client flag (shared window);
+        move    a,y:>$981               ; the aux client flag (shared window);
                                         ; the delay's resolve counts it, and so
                                         ; does ours above
 ; ... and the sample loop's copy of the level. ⚠️ NOT read from r6 in the
