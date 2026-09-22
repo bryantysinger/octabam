@@ -1235,8 +1235,6 @@ lfrol:
                                         ; (n6 now carries the pre-delay offset;
                                         ; the allpass mask is gone -- the AGU
                                         ; masks for free under m5 = $7ff)
-        move    x:(r7+$31),x0           ; two data moves before the loop, to
-        move    x:(r7+$31),x0           ; clear the AGU write
 
 ; ---- in-loop allpass setup (v74) ---------------------------------------
 ; Dattorro puts a MODULATED allpass inside each tank half, before the long
@@ -1530,53 +1528,48 @@ lfrol:
                                         ; to their own wrap. Masking $fff here
                                         ; would walk r5 into the neighbouring
                                         ; buffer for half of every lap.
-                                        ; Immediate, not n6: n6 now carries
-                                        ; the pre-delay offset.
-        move    a,x:(r7+$39)
+        move    a,n0                    ; the phase, held in n0 for the loop
 
 ; ---- pre-delay ----------------------------------------------------------
 
 ; ---- EARLY REFLECTIONS: REMOVED ------------------------------
 
+; The four diffusers sit 2048 words apart ($32..$35 = shared+0x2000 +
+; 0x800 k), so allpasses 1-3 address from allpass 0's r5 + 0x800 each:
+; apbody leaves r5 where it found it.
         move    x:(r7+$7e),n5        ; this MODE's allpass 0
-        move    x:(r7+$39),a            ; phase   (also spaces the n5 write)
+        move    n0,a                    ; phase   (also spaces the n5 write)
         move    x:(r7+$32),x0            ; base
         add     x0,a
         move    a,r5                    ; = write address
-        move    x:(r7+$6d),y0           ; g, from DIFFUSION (was the fixed
-                                        ; literal 0.703). Loaded once and held
-                                        ; across all four input allpasses.
-        bsr     apbody                  ; the rolled allpass body (v6): reads
-                                        ; $1b, writes $1b and y:(r5)
+        move    x:(r7+$6d),y0           ; g, from DIFFUSION; held across all
+                                        ; four input allpasses
+        bsr     apbody                  ; the rolled allpass body: reads $1b,
+                                        ; writes $1b and y:(r5)
 
         move    x:(r7+$7f),n5        ; this MODE's allpass 1
-        move    x:(r7+$39),a            ; phase   (also spaces the n5 write)
-        move    x:(r7+$33),x0            ; base
-        add     x0,a
+        move    r5,a
+        add     #>$800,a
         move    a,r5                    ; = write address
-        bsr     apbody                  ; the rolled allpass body (v6): reads
-                                        ; $1b, writes $1b and y:(r5)
+        bsr     apbody
 
         move    x:(r7+$80),n5        ; this MODE's allpass 2
-        move    x:(r7+$39),a            ; phase   (also spaces the n5 write)
-        move    x:(r7+$34),x0            ; base
-        add     x0,a
+        move    r5,a
+        add     #>$800,a
         move    a,r5                    ; = write address
-        bsr     apbody                  ; the rolled allpass body (v6): reads
-                                        ; $1b, writes $1b and y:(r5)
+        bsr     apbody
 
         move    x:(r7+$81),n5        ; this MODE's allpass 3
-        move    x:(r7+$39),a            ; phase   (also spaces the n5 write)
-        move    x:(r7+$35),x0            ; base
-        add     x0,a
+        move    r5,a
+        add     #>$800,a
         move    a,r5                    ; = write address
-        bsr     apbody                  ; the rolled allpass body (v6): reads
-                                        ; $1b, writes $1b and y:(r5)
+        bsr     apbody
 
 ; ---- BLOOM ALLPASSES ------------------------------------------
         move    x:(r7+$5e),a            ; in-loop AP A base = shared+0x4000
         add     #>$800,a                  ; -> shared+0x4800  (bloom AP a)
-        move    x:(r7+$39),x0           ; phase mod 2048
+        move    a,x0
+        move    n0,a                    ; phase mod 2048
         add     x0,a
         move    a,r5
         move    #247,n5                 ; 2048 - 1801 (41 ms; SHORT immediate,
@@ -1742,8 +1735,6 @@ tankend:
 
 ; ---- 8x8 Fast Walsh-Hadamard Transform -----------------------------------
 
-        move    #>$ffffff,m6            ; linear for the walk
-
         lua     (r7+$16),r6
         move    x:(r6)+,a               ; d0
         move    x:(r6)+,x0              ; d1
@@ -1835,7 +1826,6 @@ tankend:
         move    a,x:(r7+$19)            ; u3' = u3+u7
         move    b,x:(r7+$3d)            ; u7' = u3-u7
 
-        move    #>$fff,m6               ; back to the pre-delay's modulo-4096
 
 ; ⚠️ The marker below said "excised unless SHIMMER=1" until 30 Aug 2026.
 ; Both halves were wrong: the shimmer is IN by default, build_bus.py
@@ -1895,7 +1885,6 @@ tankend:
 ; 4096, r7+$4e one-pole. The last two free slots in the r7 block.
 ; BUFFER: base+0x7000, 2048 words, 2048-aligned so the AGU wraps it free.
 
-        move    #>$7ff,m5               ; 2048-word shimmer buffer
         move    x:(r7+$5e),a            ; in-loop allpass A base = shared+0x4000,
         sub     #>$3800,a                  ; it, at shared+0x0800 -- which is ; so the shimmer buffer is 0x3800 BELOW
         move    a,r5                    ; 2048-ALIGNED, as the AGU wrap requires
@@ -1953,7 +1942,7 @@ tankend:
         move    a1,x0
         move    x0,a                    ; A2-clean
         move    a,y:>$0905
-        move    a,x:(r7+$14)            ; park for the int/frac splits below
+        move    a,x1                    ; parked for the int/frac splits below
 ; frac_total = wobble frac + read-phase frac, carry out:
         move    x:(r7+$21),a           ; line-0 LFO offset (x MOD depth)
         and     #>$3,a                  ; sub-word bits of the sample offset
@@ -1962,7 +1951,7 @@ tankend:
         asr     #$2,b,b                ; samples -> words
         add     b,a                    ; wobble frac (<= $7fffff, no carry)
         move    a,b                    ; park it (< 1: the move cannot limit)
-        move    x:(r7+$14),a           ; read phase (a2 = 0: wrapped above)
+        move    x1,a                   ; read phase (a2 = 0: wrapped above)
         and     #>$fff,a               ; its frac field
         asl     #$b,a,a                ; -> Q23
         add     b,a                    ; frac sum; a1 bit 23 = the carry
@@ -1977,7 +1966,7 @@ tankend:
         asr     #$2,b,b                ; wobble integer words, 0..31
         add     b,a
         move    a1,x0
-        move    x:(r7+$14),a           ; read phase again
+        move    x1,a                   ; read phase again
         asr     #$c,a,a                ; integer words, 0..2047
         add     x0,a
         move    a1,x1                  ; read position for both head reads
@@ -2026,11 +2015,11 @@ shr0:                                   ; a pure triangle would dip to zero
         move    a,x0                    ; g
         move    a,y1                    ; g
         mpy     x0,y1,a                 ; g^2  (mpy x0,y1 = signed)
-        move    a,x:(r7+$14)            ; park g^2 -- NOT x1 (see above)
+        move    a,b                     ; park g^2 (x1 is the read position)
         move    #>$7fffff,a
         sub     x0,a                    ; 1 - g
         move    a,y1                    ; 1 - g
-        move    x:(r7+$14),x0           ; g^2
+        move    b,x0                    ; g^2
         mpy     x0,y1,a                 ; g^2*(1-g)
         asl     #$1,a,a                 ; 2*g^2*(1-g)
         add     x0,a                    ; s = g^2 + 2*g^2*(1-g)
@@ -2100,20 +2089,18 @@ shr1:                                   ; a pure triangle would dip to zero
         add     x1,a                    ; s = g^2 + 2*g^2*(1-g)
 shd1:
         move    y:(r5+n5),a             ; t0
-        move    a,x:(r7+$14)
+        move    a,x1                    ; parked (x1 is free from here on)
         move    n5,a
         move    #>1,x0
         add     x0,a
         and     #>$7ff,a                  ; pos1 + 1, wrapped
         move    a1,n5
         move    y:(r5+n5),a             ; t1
-        move    x:(r7+$14),x0
-        sub     x0,a                    ; t1 - t0
+        sub     x1,a                    ; t1 - t0
         move    a1,x0
         move    x:(r7+$38),y0           ; frac (write index in y0 is dead now)
         mpy     x0,y0,a                 ; frac*(t1-t0) -- mpysu, y0 >= 0: safe
-        move    x:(r7+$14),x0
-        add     x0,a                    ; interpolated tap 1
+        add     x1,a                    ; interpolated tap 1
         move    a1,x0
         mpy     x0,y1,a                 ; g1 * tap
         add     b,a                     ; the octave-up signal, g0+g1 ~= 1
@@ -2125,8 +2112,6 @@ shd1:
         move    x:(r7+$15),x0           ; where r6 is the pre-delay pointer
         add     x0,a
         move    a,x:(r7+$15)            ; tank input, with the octave folded in
-
-        move    #>$7ff,m5               ; the input diffusers' modulo, unchanged
 ; SHIMMER_END
 
 ; ---- feedback and write back (ROLLED, 8-line) ----------------------------
@@ -2189,7 +2174,7 @@ fbB:
         move    x:(r7+$52),x0           ; LFO integer offset -- the allpass is
         sub     x0,a                    ; MODULATED now, not static
         move    a,n5                    ; (512 - tap) - offset
-        move    x:(r7+$39),a            ; phase (masked to $7ff above)
+        move    n0,a                    ; phase (masked to $7ff above)
         and     #>$1ff,a                ; ...but these buffers are 512. A2 is
                                         ; already 0 (the phase loads positive),
                                         ; so no A2-clean dance is needed here.
@@ -2225,7 +2210,7 @@ fbB:
         move    x:(r7+$54),x0           ; LFO integer offset -- the allpass is
         sub     x0,a                    ; MODULATED now, not static
         move    a,n5                    ; (512 - tap) - offset
-        move    x:(r7+$39),a            ; phase (masked to $7ff above)
+        move    n0,a                    ; phase (masked to $7ff above)
         and     #>$1ff,a                ; ...but these buffers are 512
         move    x:(r7+$5f),x0
         add     x0,a
@@ -2354,10 +2339,11 @@ fbB:
         add     x0,a                    ; + dry at unity
         move    a,x:(r0)+               ; R in place -- dry + wet; r0 on to
                                         ; the next frame (n0 is not used)
-        move    (r1)+                   ; all four line pointers advance together
-        move    (r2)+                   ; and each wraps inside its own line
-        move    (r3)+                   ; under m1..m4 = $fff
-        move    (r4)+
+        move    (r1)+                   ; the three line pointers advance
+        move    (r2)+                   ; together and each wraps inside its
+        move    (r3)+                   ; own line under m1..m3 = $fff (r4 is
+                                        ; the feedback walker now, rebuilt by
+                                        ; lua every sample)
 rvend:
 
 noloop:
