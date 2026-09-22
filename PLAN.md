@@ -13,8 +13,9 @@ record for where code goes; `docs/remixes/` describes each remix;
   sample host with a trig every step clean; the rest of the changes since
   38 not yet heard). Images 44–47 and 50 were probes; 50 is on the unit
   and on a fresh project every configuration tested clean. Image 51
-  built: the engines locked to T1 and T5 (`Remix.locked`), the stock
-  DELAY row out, Character's TXTR removed with WDTH in its slot; image
+  built: the engines locked to T1 and T5 (`Remix.locked`) and out of
+  the chooser, a new project born hosted (RIG HOSTS), the stock DELAY
+  row out, Character's TXTR removed with WDTH in its slot; image
   49's bus needs no cross-core phase (eight buffers, read three back, a
   per-client block count; `docs/effects/XBUS.md`), bus latency 48
   samples. Sam's road test on a fresh project is next. `ok-ms` (Octakit + MIDI SCENES on the stock effects) on
