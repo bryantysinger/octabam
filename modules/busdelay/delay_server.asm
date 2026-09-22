@@ -869,17 +869,6 @@ slewdn:
 ; the single compare it replaces and does not grow when a fourth mode wants
 ; the same treatment. Branchless: cmp sets Z, the intervening moves do not
 ; disturb it, and teq moves a CLEAN register in (never a hand-rolled mask).
-        clr     a
-        move    x:(r7+$20),b            ; MODE
-        move    #$1,x0               ; 1 << 16 = GRAIN
-        cmp     x0,b
-        move    #>$1,x0
-        teq     x0,a
-        move    #$2,x0               ; 2 << 16 = REVERSE
-        cmp     x0,b
-        move    #>$1,x0
-        teq     x0,a
-        move    a,x:(r7-$16)            ; nonzero = the wet comes from $24/$25
 ; REVERSE-32K: in REVERSE the two 16K lines are ONE 32K MONO
 ; ring, so a segment can be 371 ms (2S = 32768 fits, the read preceding the
 ; write each sample). The L ring's mask goes $7fff, the R line's read and
@@ -888,8 +877,9 @@ slewdn:
 ; output is mono to both channels. CLEAN and GRAIN see the line's own mask
 ; ($7fff shipping, $3fff in the hatch) and skipR 0.
         clr     a
+        move    x:(r7+$20),b            ; MODE
         move    #$2,x0               ; 2 << 16 = REVERSE
-        cmp     x0,b                    ; b = MODE, still
+        cmp     x0,b
         move    #>$1,x0
         teq     x0,a
         move    a,x:(r7+$23)            ; skipR
@@ -1389,7 +1379,67 @@ gvrdone:
         move    a,x:(r7+$31)            ; dR (in REVERSE the damping below
                                         ; keeps reading the last one written)
 rskipr:
-; ---- MODE dispatch: PITCH additionally computes the SHIFTED OUTPUT taps ---
+; ---- one-pole damping, line R: s += c*(d-s) -------------------------------
+        move    x:(r7+$2f),b            ; state R
+        move    x:(r7+$31),a            ; dR
+        sub     b,a
+        move    a,x0
+        mpy     x0,y1,a
+        add     b,a
+        move    a,x:(r7+$2f)            ; new state R
+        move    a,x:(r7+$33)            ; fR
+
+; ---- ping-pong crossfeed matrix, feedback path only -----------------------
+        move    a,x0                    ; fR
+        move    x:(r7+$37),y1           ; 1-PING
+        mpy     x0,y1,a                 ; fR*(1-P)
+        move    x:(r7+$2b),y1           ; PING
+        mpy     x0,y1,b                 ; fR*P
+        move    x:(r7+$32),x0           ; fL
+        mac     x0,y1,a                 ; fbIntoR = fR*(1-P) + fL*P
+        move    x:(r7+$37),y1           ; 1-PING
+        mac     x0,y1,b                 ; fbIntoL = fR*P + fL*(1-P)
+        move    a,y0                    ; fbIntoR, parked
+
+; ---- write both lines: LineL takes x_in in full, LineR scaled by 1-PING.
+; Each write is a limiting store (the sum can exceed full scale and a raw
+; a1 would wrap); |y| <= |w|, so no FDBK setting can self-oscillate.
+        move    b,x0                    ; fbIntoL
+        move    x:(r7+$2a),y1           ; FDBK
+        mpy     x0,y1,a
+        move    n6,b                    ; x_in
+        add     b,a
+        move    a,x0                    ; limit
+        move    x0,a
+        move    a,y:(r1)+               ; LineL write, advance
+
+        move    x:(r7+$23),a            ; skipR (REVERSE-32K): no R write, it
+        tst     a                       ; would land in the mono ring's upper half
+        bne     rskipw
+        move    y0,a                    ; fbIntoR
+        move    a,x0
+        mpy     x0,y1,a                 ; * FDBK
+        move    n6,b
+        move    b,x0                    ; x_in
+        move    x:(r7+$37),y1           ; 1 - PING
+        mac     x0,y1,a                 ; + the direct input's share
+        move    a,x0                    ; limit
+        move    x0,a
+        move    a,y:(r2+n2)             ; LineR write (phase + base)
+        move    (r2)+                   ; advance the phase
+rskipw:
+
+        move    r1,a
+        move    x:(r7+$22),x0
+        and     x0,a
+        move    a1,r1                   ; the masked phase (a1 needs no A2-clean)
+        move    (r1)+n1                 ; + LineL base
+        move    r2,a
+        and     #>$7fff,a                                                  ; @B
+        and     #>$3fff,a                                                  ; @DEV
+        move    a1,r2                   ; the wrapped phase (base-relative)
+
+; ---- MODE dispatch -------------------------------------------------------
 ; 0 and every unknown value run the loop's clean taps alone -- a wrong select
 ; degrades to the trad delay, never to silence (the stage-1 rule). The
 ; compare is the safe `cmp x0,a` form.
@@ -1412,7 +1462,7 @@ gmode:
 ; edge -- the click per block the loop's tap had. Same recipe as the block's:
 ; min(TIME, 28670 - mask) + G + 2, on this sample's ramped TIME. The block's
 ; own write of $-e is the first sample's starting point and is overwritten.
-        move    x:(r7-$23),a            ; the ramped TIME, Q8 (this sample's)
+        move    n4,a                    ; the ramped TIME, Q8 (this sample's)
         asr     #$8,a,a
         move    #>28670,b               ; 32767 - 4096 - 1                 ; @B
         move    #>12286,b               ; 16383 - 4096 - 1                 ; @DEV
@@ -1546,6 +1596,7 @@ gmode:
                                         ; not a wrap)
         move    a,x0
         move    r1,a                ; line L write pointer
+        sub     #>1,a                   ; the line write above advanced it
         sub     x0,a                    ; W - dist
         and     #>$7fff,a                                                  ; @B
         and     #>$3fff,a                                                  ; @DEV
@@ -1595,7 +1646,7 @@ gvlz:
                                         ; peak over CLEAN with it, peaks level
                                         ; without -- the level a return wants)
 ; GRAINMK
-        move    b,x:(r7-$25)            ; shifted OUTPUT tap L
+        move    b,x:(r7+$32)            ; wet L
 ; ---- READER, line R: four grains, ROLLED (v5) ----------------------------
 ; Records of THREE words at r7+$4c: s (latched scatter), w (window
 ; multiplier, 0 = muted), acc (read advance, Q14.9). Every latch is a Tcc
@@ -1670,6 +1721,7 @@ gvlz:
                                         ; not a wrap)
         move    a,x0
         move    r2,a                ; line R write pointer
+        sub     #>1,a                   ; the line write above advanced it
         sub     x0,a                    ; W - dist
         and     #>$7fff,a                                                  ; @B
         and     #>$3fff,a                                                  ; @DEV
@@ -1716,7 +1768,7 @@ gvrz:
                                         ; peak over CLEAN with it, peaks level
                                         ; without -- the level a return wants)
 ; GRAINMK
-        move    b,x:(r7-$24)            ; shifted OUTPUT tap R
+        move    b,x:(r7+$33)            ; wet R
         bra     pdone
 ; MODEFORK_MID -- alternative 2: REVERSE
 
@@ -1759,7 +1811,7 @@ rmode:
 ; below stepped the heads by the whole glide step at every block edge --
 ; the same click per block the loop's tap had; min(TIME, cap), the
 ; per-block recipe, on this sample's ramped TIME.
-        move    x:(r7-$23),a            ; the ramped TIME, Q8 (this sample's)
+        move    n4,a                    ; the ramped TIME, Q8 (this sample's)
         asr     #$8,a,a
         move    x:(r7-$1f),x0           ; the cap, 32704 - 2S
         cmp     x0,a
@@ -1812,6 +1864,7 @@ rmode:
 ; ---- Line L: both heads, windowed and summed -----------------------------
         move    n1,n5                   ; the L base (the ring's, in REVERSE)
         move    r1,a                    ; LineL write pointer
+        sub     #>1,a                   ; the line write above advanced it
         move    x:(r7+$d),x0           ; lag0
         sub     x0,a
         and     #>$7fff,a               ; read phase in the 32K MONO ring
@@ -1822,6 +1875,7 @@ rmode:
         mpy     x0,y1,a
         move    a,b
         move    r1,a
+        sub     #>1,a                   ; the line write above advanced it
         move    x:(r7+$f),x0           ; lag1
         sub     x0,a
         and     #>$7fff,a
@@ -1831,87 +1885,12 @@ rmode:
         move    x:(r7+$10),y1           ; g1
         mpy     x0,y1,a
         add     b,a
-        move    a,x:(r7-$25)            ; shifted OUTPUT tap L -- NOT $79
-        move    a,x:(r7-$24)            ; ... and R: the reverse is MONO
+        move    a,x:(r7+$32)            ; wet L -- NOT $79
+        move    a,x:(r7+$33)            ; ... and R: the reverse is MONO
                                         ; (REVERSE-32K; the R line is not
                                         ; written in this mode)
 ; MODEFORK_END
 pdone:
-; ---- one-pole damping, line R: s += c*(d-s) -------------------------------
-        move    x:(r7+$2f),b            ; state R
-        move    x:(r7+$31),a            ; dR
-        sub     b,a
-        move    a,x0
-        move    x:(r7+$29),y1           ; TONE coefficient
-        mpy     x0,y1,a
-        add     b,a
-        move    a,x:(r7+$2f)            ; new state R
-        move    a,x:(r7+$33)            ; fR
-
-; ---- ping-pong crossfeed matrix, feedback path only -----------------------
-        move    a,x0                    ; fR
-        move    x:(r7+$37),y1           ; 1-PING
-        mpy     x0,y1,a                 ; fR*(1-P)
-        move    x:(r7+$2b),y1           ; PING
-        mpy     x0,y1,b                 ; fR*P
-        move    x:(r7+$32),x0           ; fL
-        mac     x0,y1,a                 ; fbIntoR = fR*(1-P) + fL*P
-        move    x:(r7+$37),y1           ; 1-PING
-        mac     x0,y1,b                 ; fbIntoL = fR*P + fL*(1-P)
-        move    a,y0                    ; fbIntoR, parked
-
-; ---- write both lines: LineL takes x_in in full, LineR scaled by 1-PING.
-; Each write is a limiting store (the sum can exceed full scale and a raw
-; a1 would wrap); |y| <= |w|, so no FDBK setting can self-oscillate.
-        move    b,x0                    ; fbIntoL
-        move    x:(r7+$2a),y1           ; FDBK
-        mpy     x0,y1,a
-        move    n6,b                    ; x_in
-        add     b,a
-        move    a,x0                    ; limit
-        move    x0,a
-        move    a,y:(r1)+               ; LineL write, advance
-
-        move    x:(r7+$23),a            ; skipR (REVERSE-32K): no R write, it
-        tst     a                       ; would land in the mono ring's upper half
-        bne     rskipw
-        move    y0,a                    ; fbIntoR
-        move    a,x0
-        mpy     x0,y1,a                 ; * FDBK
-        move    n6,b
-        move    b,x0                    ; x_in
-        move    x:(r7+$37),y1           ; 1 - PING
-        mac     x0,y1,a                 ; + the direct input's share
-        move    a,x0                    ; limit
-        move    x0,a
-        move    a,y:(r2+n2)             ; LineR write (phase + base)
-        move    (r2)+                   ; advance the phase
-rskipw:
-
-        move    r1,a
-        move    x:(r7+$22),x0
-        and     x0,a
-        move    a1,r1                   ; the masked phase (a1 needs no A2-clean)
-        move    (r1)+n1                 ; + LineL base
-        move    r2,a
-        and     #>$7fff,a                                                  ; @B
-        and     #>$3fff,a                                                  ; @DEV
-        move    a1,r2                   ; the wrapped phase (base-relative)
-
-; ---- GRAIN / REVERSE: the wet becomes the arm's tap ------------------------
-; After the line writes, so nothing from an arm re-enters the loop. tst sets
-; Z, the moves do not disturb it, tne moves a clean register in; in CLEAN the
-; flag is 0 and the wet is fL/fR.
-        move    x:(r7-$16),a            ; SHIFTED flag: GRAIN or REVERSE
-        tst     a
-        move    x:(r7-$25),x0           ; the arm's L
-        move    x:(r7+$32),b            ; loop's wet L
-        tne     x0,b
-        move    b,x:(r7+$32)
-        move    x:(r7-$24),x0           ; the arm's R
-        move    x:(r7+$33),b
-        tne     x0,b
-        move    b,x:(r7+$33)
 
 ; ---- OUTPUT STAGE: out = in + wet*WET per channel, in = x_in (the chain
 ; input, this host's SEND included), wet = the final tap x1.5 (R also
