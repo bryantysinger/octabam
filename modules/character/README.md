@@ -46,10 +46,17 @@ bytes are stock LO-FI's until `ot_project.py stamp-defaults` writes ours.
   release 63 ms (K = 4); GLUE on the master 0.5 / 500 ms (K = 3). The
   threshold/ratio numbers that stood here (thr 0.03, invR 0.1, 8/100 ms)
   were the retired law's.
-- Cost: 975 words on each payload (1,138 / 1,195 with the return, 20 Sep
-  2026); 623 cycles/sample static worst case. The pricer's worst core is
-  four of these beside the reverb: 3,657 against 3,120 usable, inside the
-  counter's error margin; the hardware burn sweep settles it.
+- Cost: 790 words on each payload (671 before the pointer rewrite, 975
+  with TXTR, 1,138 / 1,195 with the return, 20 Sep 2026); pricer per mode
+  (`cycle_count.py --modes`, words): TAPE 342, TUBE 327, INFL 256.
+- 22 Sep 2026: the sample loop reads its coefficients through two 16-word
+  post-increment rings and its state through pointers; displaced `(r7+$..)`
+  moves per sample path went TAPE 79 / TUBE 74 / INFL 62 -> 0. Probe 57
+  (`docs/firmware/CHIP.md` §2) timed a one-word displaced move at 3.98 cycles
+  against 2.00 for a pointer or register move in a one-instruction DO loop,
+  so the words the pricer counts understate the chip's cost of the old form.
+  Nine renders (three modes x two knob sets, DRV 0 with FOLD, T8 GLUE, T8
+  TUBE) are bit-identical to the pre-rewrite build.
 - `verify_menu`, `verify_replaces` (it took LO-FI's FX1 page) and
   `verify_labels` (the select prints its words on the emulated firmware)
   pass on the rig.
