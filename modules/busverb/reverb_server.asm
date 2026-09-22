@@ -1440,7 +1440,11 @@ lfrol:
         move    x:(r7+$5c),b            ; spaces the r5 write
         move    y:(r5+n5),a
         move    a,x:(r7+$5d)
-        move    #>$7ff,m5               ; v100: back to the diffusers' 2048
+        move    #>$7ff,m5               ; back to the diffusers' 2048
+        move    x:(r7+$6a),n2           ; this call's AUX write address and
+        move    x:(r7+$63),n3           ; read address: the loop walks them
+                                        ; through n2/n3 (free: the priming's
+                                        ; use of n2/n3 is over)
 
         do      n7,>rvend
 
@@ -1469,18 +1473,18 @@ lfrol:
                                         ; is NOT the knob block in this loop)
         mpy     x1,y1,a
         asr     #$3,a,a                 ; 3 bits of bus headroom
-        move    x:(r7+$6a),r5           ; this call's DELAY ACC write address
+        move    n2,r5                   ; this call's AUX write address
         move    y:(r5),b
         add     b,a
-        move    a,y:(r5)+               ; DELAY ACC[write][i] += contribution
-        move    r5,x:(r7+$6a)           ; advanced one sample
-        move    x:(r7+$63),r5           ; this sample's read address: the aux
-                                        ; accumulator, or the delay's output
+        move    a,y:(r5)+               ; AUX ACC[write][i] += contribution
+        move    r5,n2                   ; advanced one sample
+        move    n3,r5                   ; this sample's read address: the aux
+                                        ; accumulator, or the delay's chain
                                         ; buffer while the delay is live
         move    x:(r7+$0c),y1           ; auto-gain 1/sqrt(N) -- or exactly 1/8
                                         ; on the chain (spaces the r5 write)
-        move    y:(r5)+,x1              ; last block's fully-summed sends,
-        move    r5,x:(r7+$63)           ; and the pointer advanced one sample
+        move    y:(r5)+,x1              ; the fully-summed sends three blocks
+        move    r5,n3                   ; back, and the pointer advanced
                                         ; (m5 = $7ff: both buffers sit inside
                                         ; one 2048-aligned block, no wrap)
         mpy     x1,y1,a                 ; (unity after the asl)
@@ -1668,9 +1672,9 @@ tankend:
 ; both groups sit inside one aligned block of either modulo for every r7.
         move    #6,n6                   ; the table's stride (short: address
                                         ; register, zero-extended)
-        move    x:(r7+$0b),a
-        add     #>$5,a
-        move    a,r6                    ; -> line 0's output word
+        move    r6,a                    ; the tank loop left r6 48 words past
+        sub     #>43,a                  ; the table: back to line 0's output
+        move    a,r6                    ; word (table + 5)
         move    #>$7ff,m5               ; back to the input diffusers' 2048
         lua     (r7+$16),r4             ; (these two space the r6 write)
         lua     (r7+$3a),r5
