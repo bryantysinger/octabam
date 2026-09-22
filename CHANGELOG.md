@@ -40,6 +40,22 @@ flashed image was built from.
   `verify-ident` (9 settings) and a T8 GLUE render. Stale header slot map
   and comments (the return, TXTR, the old BUS mode) rewritten.
 
+- BusDelay sample loop on pointers and registers (23 Sep 2026): the aux
+  accumulator read through r3, the chain write at `(r3+n3)`, x_in / lag /
+  fraction / TIME ramp / crossfeed terms / stage outputs in registers, the
+  GRAIN and REVERSE arms after the line writes writing the wet slots
+  themselves (the SHIFTED substitution and its per-block flag removed),
+  GRAIN's trips with s / frac / gain / t0 in registers, the cursor in r6 and
+  the wet sum in n6, REVERSE's lags and windows in registers. Displaced
+  moves per sample CLEAN 91 -> 35, GRAIN 294 -> 102, REVERSE 109 -> 39;
+  pricer 1,126 -> 1,028 (GRAIN) cycles/sample; 1,354 -> 1,300 words.
+  28/28 `verify-bus` bit-identical. Two per-block writes landed in GRAIN's
+  records every block: the PITCH decode's park at raw $49 (grain 3's
+  line-L scatter word; moved to raw $16) and the SIZE decode's copy of the
+  REVERSE lag cap at raw $56 (grain 3's line-R window multiplier; the copy
+  is gone, raw $2a holds the cap). Each moves the two GRAIN cases only. `verify-bus` gained seven cases (the
+  delay's GRAIN, REVERSE and PING/TONE arms, the reverb's PLATE, BIG and
+  GATE) -- until then every case ran CLEAN and the reverb's default mode.
 - Spectrum LADR RES makeup (23 Sep 2026, Sam: "the vol drop desperately
   needs it"): the ladder's output ×M = min(1 + k/2, 2.3), one per-block
   word and one multiply per channel. Loop RMS against dry at RES 64 / 127:
