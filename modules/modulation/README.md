@@ -70,9 +70,15 @@ proven by the gates). A change of MODE clears every state slot.
 
 ## Measured
 
-- **1,128 words** (`make check`, 20 Sep 2026; LOFI added 16 Sep 2026: 1,044 before, 1,199 with ENS), payload A FREE 918 in the rig; **525 cycles/sample** worst
-  (PHSR 525; LINE 446, COMB 359 -- LOFI is ~45 of each) — under Character's 623, so the
-  worst core is Character's: 3,657.
+- **1,352 words** (`make bus`, 22 Sep 2026; 1,128 on 20 Sep, LOFI added 16 Sep
+  2026: 1,044 before, 1,199 with ENS), payload A FREE 848 in the rig; pricer
+  per loop PHSR 489, LINE 423, COMB 361 words/sample (525 / 446 / 359 before
+  the rewrite). The loops are pointer-addressed since 22 Sep 2026 (PR #378):
+  displaced moves per sample LINE 107, PHSR 136, COMB 116 → 0, the block's
+  constants streamed at r7+$48 and the states walked from r7+$23; 15
+  renders across every MODE bit-identical. A one-word displaced move runs
+  3.98 cycles on the chip against 2.00 for a pointer move (probe 57,
+  `docs/firmware/CHIP.md` §2), which the word count cannot show.
 - `tools/verify/verify_modulation.py`, **29 gates, all PASS**: MIX 0
   bit-exact in every mode; an FX2 instance a bit-exact dry pass with the
   guard clean; every mode against `modulation_ref.py` on a stereo signal

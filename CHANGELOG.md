@@ -7,6 +7,14 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- Character and Modulation pointer-addressed the same way (22 Sep 2026,
+  PRs #377 and #378): displaced moves per sample Character TAPE 79 / TUBE
+  74 / INFL 62 → 0 and Modulation LINE 107 / PHSR 136 / COMB 116 → 0, every
+  ring a 16-word modulo (stock runs only power-of-two modulos on the chip),
+  nine and fifteen renders bit-identical. One documented non-identity:
+  Modulation's LOFI latches now clear on a MODE change. Pricer words per
+  sample: Character 342 / 327 / 256, Modulation 423 / 489 / 361.
+
 - Spectrum HP, the sixth MODE (22 Sep 2026): the SEM SVF's high-pass tap,
   a per-block weight and nothing in the loop. Harness: DC to 0 LSB, 4 kHz
   within 0.2 dB and 200 Hz cut 26.9 dB at FREQ 64. HP had gone on 14 Sep
