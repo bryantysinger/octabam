@@ -7,6 +7,14 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- Spectrum LADR RES makeup (23 Sep 2026, Sam: "the vol drop desperately
+  needs it"): the ladder's output ×M = min(1 + k/2, 2.3), one per-block
+  word and one multiply per channel. Loop RMS against dry at RES 64 / 127:
+  FREQ 127 −9.4 / −13.5 → −3.5 / −6.3 dB, FREQ 64 −9.1 / −8.6 → −3.1 /
+  −1.4; the 0.3 FS noise gate at RES 127 stays off the rails. Every other
+  mode bit-identical; VOWL's RES 127 loss is left (no headroom at the
+  formant). SEM is flat across RES; ISO within 2 dB open; BP is a bandpass.
+
 - Character DRV drives the curves (23 Sep 2026, Sam: "much too subtle"):
   the saturator's input is x·G with G = 1 + 3·DRV/128 (+12 dB at 127) on
   top of each mode's own law, the output scaled per mode (TAPE ×1, TUBE

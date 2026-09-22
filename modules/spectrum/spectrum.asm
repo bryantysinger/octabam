@@ -537,7 +537,20 @@ fs_live:
         move    (r6)+n6
         move    #>$ffffff,m2
 ; LADR's stream at $60 on r2: G^3(1-G) G^2(1-G) G(1-G) 1-G k/4 d/2 (G' per
-; sample) for L, the same for R
+; sample) M/4 for L, the same for R. M = min(1 + k/2, 2.3) is the RES
+; makeup (23 Sep 2026): the ladder's passband gain is 1/(1 + k), -13.8 dB
+; at RES 127 on the loop ("the vol drop desperately needs it"); M gives
+; +5.9 dB back at RES 64 and +7.2 dB from RES ~100 up. Unclamped, 1 + 0.75 k
+; recovered it fully and put verify_spectrum's 0.3 FS noise at RES 127 on
+; the rails 4.6 % of the time, 1 + k/2 0.4 %, 1 + 0.4 k a few samples.
+        move    x:(r7+$13),x0           ; k/4
+        move    #>$400000,y1            ; 0.5
+        mpy     x0,y1,a
+        add     #>$200000,a             ; M/4 = (1 + k/2)/4
+        move    #>$499999,x0            ; 2.3/4
+        cmp     x0,a
+        tgt     x0,a                    ; M <= 2.3
+        move    a,x1
         move    r7,r2
         move    #$60,n2
         move    (r2)+n2
@@ -555,6 +568,7 @@ fs_live:
         move    x:(r7+$14),x0
         move    x0,x:(r1)+
         move    (r1)+                   ; slot 6: G', per sample
+        move    x1,x:(r1)+              ; slot 7: M/4
         move    x:(r7+$17),x0
         move    x0,x:(r1)+
         move    x:(r7+$12),x0
@@ -567,6 +581,8 @@ fs_live:
         move    x0,x:(r1)+
         move    x:(r7+$14),x0
         move    x0,x:(r1)+
+        move    (r1)+                   ; slot 14: G'
+        move    x1,x:(r1)+              ; slot 15: M/4
 ; VOWL's stream at $70 on r5: b0 m1 a2 for each formant, then vg/8
         move    r7,r5
         move    #$70,n5
@@ -912,7 +928,7 @@ fs_ladr:
 ; channels' stream slots (22 Sep 2026: the FM term was a multiply by zero
 ; since 14 Sep, so G' is the clamped ramp exactly). Pointer-addressed: r2 ->
 ; this block's LADR stream at $60 (G^3(1-G) G^2(1-G) G(1-G) 1-G k/4 d/2 G'
-; per channel), r3 -> the states; x in b, wetA back in a.
+; M/4 per channel), r3 -> the states; x in b, wetA back in a, then M.
         move    x:(r7+$16),a
         move    x:(r7+$15),x0
         add     x0,a
@@ -923,14 +939,18 @@ fs_ladr:
         move    r2,r1
         move    #$6,n1
         move    (r1)+n1
-        move    #$7,n1
+        move    #$8,n1
         move    a,x:(r1)+n1             ; G' for L (slot 6)
-        move    a,x:(r1)                ; G' for R (slot 13)
+        move    a,x:(r1)                ; G' for R (slot 14)
         move    r2,r1
 ; ===================== channel L =====================
         move    x:(r0),b                ; x
         move    r7,r3                   ; states s0..s3 at $00
         bsr     fs_lcore
+        move    a,x0                    ; wetA (limited)
+        move    x:(r1)+,y1              ; M/4, the RES makeup
+        mpy     x0,y1,a
+        asl     #$2,a,a
         move    a,x:(r0)                ; out (limited)
 ; ===================== channel R =====================
         move    x:(r0+n0),b
@@ -938,6 +958,10 @@ fs_ladr:
         move    #$8,n3
         move    (r3)+n3                 ; states s0..s3 at $08
         bsr     fs_lcore
+        move    a,x0
+        move    x:(r1)+,y1
+        mpy     x0,y1,a
+        asl     #$2,a,a
         move    a,x:(r0+n0)
         bra     fs_join
 ; MODEFORK_MID -- alternative 4: CAP, Airwindows Capacitor2 (MIT; 14 Sep 2026)
