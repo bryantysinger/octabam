@@ -132,8 +132,7 @@ remix. The rings themselves are already reserved by the stock OS.
   samples. There is no large buffer clear inside the audio callback.
 
 Stock DELAY remains id `0x08` and is not replaced. CPU Tape Echo no longer
-claims any DSP delay memory. `tape_echo.asm` and the old DSP test functions
-are retained as reference, but are **not used by the shipping manifest**.
+claims any DSP delay memory.
 
 CPU cost is not yet hardware-qualified. Eight instances are verified for
 correctness, **not** certified to meet deadlines alongside timestretch,
@@ -141,7 +140,8 @@ recording and streaming. Emulator instruction counts are not hardware cycles.
 
 ## Local gates and audition
 
-`python3 tools/verify/verify_tapeecho.py` now runs `verify_tapeecho_cpu.py`.
+`.venv/bin/python3 tools/verify/verify_tapeecho_cpu.py tapeecho` runs the CPU
+gate with the same native architecture used by `make check`.
 It also measures parameter-edit spikes with full synthetic tape history and
 all eight tracks active. Endpoint reversals run every 1, 16 and 64 blocks for
 TIME, FDBK, WOW, AGE, SYNC and MIX, plus all six controls together in FREE
@@ -153,7 +153,8 @@ controls reversing in FREE and 32,466 in BEAT. Settled MIX=90 with full
 history peaks at 25,604. These are executed-instruction counts, not hardware
 cycles, and hardware UI responsiveness remains unverified.
 
-It rebuilds the remix, checks generated-source drift, and runs:
+It consumes the remix image built by `make check`, checks generated-source
+drift, incrementally rebuilds its ColdFire probe, and runs:
 
 * every TIME value at six tempos, plus actual long-delay impulses, bounded BEAT settling and monotonic FREE slew;
 * shipped TIME formatter across all values, tracks, Parts and both modes;
@@ -178,7 +179,7 @@ fix confirmation. Local instruction counts
 do not establish CPU deadline headroom. Do not treat this candidate as a
 hardware-confirmed fix or as safe for a live set.
 
-`make check REMIX=repitch-tapeecho` includes this gate and the loader boot.
+`make check REMIX=tapeecho` includes this gate and the loader boot.
 The native audition is `out/tapeecho-cpu/audition.wav`. Its arithmetic is
 cross-checked against actual ColdFire execution, but it is not a hardware
 capture. Hardware listening, cache/bus timing and worst-case CPU load remain open.

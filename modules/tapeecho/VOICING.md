@@ -452,8 +452,7 @@ flashed or packaged as a new release by this voicing pass.
 ```
 python3 modules/tapeecho/generate_tables.py --check
 python3 modules/tapeecho/generate_cpu.py --check
-python3 tools/verify/verify_tapeecho_cpu.py repitch-tapeecho
-make check REMIX=repitch-tapeecho
+.venv/bin/python3 tools/verify/verify_tapeecho_cpu.py tapeecho
 make check REMIX=tapeecho
 ```
 
@@ -471,5 +470,5 @@ Final local results: both remix `make check` runs passed all runnable gates,
 including loader boot. Project playback was skipped (no `OT_PROJECT`);
 module-absent gates were skipped as expected. ASan/UBSan voice plus stress
 tests passed with no diagnostics. FREE/BEAT peak recurrence residual was
-0.001618 FS. The final standalone build restores `repitch-tapeecho`; no
-release image/container is emitted.
+0.001618 FS. The final standalone build leaves the `tapeecho` remix selected;
+no release image/container is emitted.

@@ -163,7 +163,7 @@ def native_tests(lib, wav):
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('remix',nargs='?',default='repitch-tapeecho')
+    ap.add_argument('remix',nargs='?',default='tapeecho')
     ap.add_argument('--wav',type=pathlib.Path,default=OUT/'audition.wav')
     a=ap.parse_args()
     if 'TAPE ECHO' not in registry.remix(a.remix).modules:
@@ -180,8 +180,10 @@ def main():
                      cwd=ROOT,capture_output=True,text=True)
     check('DSP-only audition refuses to mislabel dry passthrough as CPU Tape Echo',
           r.returncode!=0 and 'Tape Echo now runs on the CPU' in r.stderr)
-    # This verifier owns its image; no previous gate's output can stand in.
-    run(['make','bus',f'REMIX={a.remix}'])
+    # make check owns the selected image.  Standalone runs consume the same
+    # artifact, so they cannot silently replace what an earlier gate built.
+    if not (ROOT/'out/mainos_bus.bin').is_file():
+        raise RuntimeError(f'missing out/mainos_bus.bin; run make bus REMIX={a.remix}')
     libpath=OUT/'cpu-native.so'
     run(['cc','-shared','-fPIC','-O2','-DTE_HOST=1','modules/tapeecho/cpu.c','-o',libpath])
     lib=C.CDLL(str(libpath))
@@ -195,7 +197,19 @@ def main():
     voice=run([OUT/'voice-probe'])
     (OUT/'voice.log').write_text(voice)
     print(voice, end='', flush=True)
-    run(['cmake','-S','tools/emu/ot_emu','-B','out/emu'])
+    # Configure only when the shared emulator build tree is absent or belongs
+    # to another worktree. The targeted incremental build remains here so
+    # probe/source edits cannot be tested against a stale executable.
+    cache = ROOT/'out/emu/CMakeCache.txt'
+    expected_source = (ROOT/'tools/emu/ot_emu').resolve()
+    configured_source = None
+    if cache.is_file():
+        for line in cache.read_text(errors='replace').splitlines():
+            if line.startswith('CMAKE_HOME_DIRECTORY:INTERNAL='):
+                configured_source = pathlib.Path(line.partition('=')[2]).resolve()
+                break
+    if configured_source != expected_source:
+        run(['cmake','--fresh','-S','tools/emu/ot_emu','-B','out/emu'])
     run(['cmake','--build','out/emu','--target','ot_tapeecho_cpu_test','-j8'])
     symbols=run(['m68k-elf-nm','-n','out/platform/runtime/runtime.elf'])
     (OUT/'profile-symbols.txt').write_text(symbols)
