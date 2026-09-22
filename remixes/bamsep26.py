@@ -1,9 +1,10 @@
 """bamsep26 -- the rig: the bus, three stations, the stock delay.
 
-FX2 rows: BusVerb (runs on T5 only), BusDelay (T1 only), SEND (the
-fallback: one AUX knob); an engine chosen on any other track is a dry pass
-(22 Sep 2026; until then BusVerb ran on any of T5-8, BusDelay on T1-4, and
-the stock DELAY had a row). FX1 rows: NONE + the three stations, each on the id of the stock
+FX2: one chooser row, SEND (the fallback: one AUX knob). BusVerb (T5) and
+BusDelay (T1) have no row: `ot_project.py host <project>` hosts them, their
+pages draw their twelve knobs, and either is a dry pass on any other track
+(22 Sep 2026; until then both were rows, BusVerb ran on any of T5-8,
+BusDelay on T1-4, and the stock DELAY had a row). FX1 rows: NONE + the three stations, each on the id of the stock
 effect it replaces (Spectrum = FILTER 0x04, Character = LO-FI 0x1c,
 Modulation = CHORUS 0x12) and FX1-only; a station named on FX2 runs dry.
 Each station defaults to a bit-exact passthrough, so a saved part that
@@ -30,11 +31,16 @@ REMIX = Remix(
     doc="The rig: bus (BusVerb on T5 + BusDelay on T1) + three stations.",
     modules=("REVERB SERVER", "DELAY SERVER", "SEND",
              "SPECTRUM", "CHARACTER", "MODULATION",
-             "TEMPO SYNC", "CC PAGE 2", "MODE DEFAULTS"),
+             "TEMPO SYNC", "CC PAGE 2", "MODE DEFAULTS", "RIG HOSTS"),
     fallback="SEND",
-    # 22 Sep 2026: the engines run on their host slots only (BusDelay on T1,
-    # BusVerb on T5) and are a dry pass anywhere else; the stock DELAY row
-    # is out of the chooser. Every other FX2 is a SEND.
+    # 22 Sep 2026: the engines have NO chooser row (hidden), keep their
+    # twelve names on the host page (named), and run on their host slots
+    # only (BusDelay on T1, BusVerb on T5; the HOSTGUARD body: a dry pass
+    # anywhere else). The FX2 chooser is SEND alone; `ot_project.py host
+    # <project>` puts the engines on T1/T5 and SEND everywhere else. Sam:
+    # nothing else selectable.
+    hidden=("REVERB SERVER", "DELAY SERVER"),
+    named=("REVERB SERVER", "DELAY SERVER"),
     locked=("REVERB SERVER", "DELAY SERVER"),
     fx1=("SPECTRUM", "CHARACTER", "MODULATION"),
 )
