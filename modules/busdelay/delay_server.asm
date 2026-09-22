@@ -1457,22 +1457,21 @@ rskipw:
 ; MODEFORK_MID -- alternative 1: GRAIN
 
 gmode:
-; the read distance base per sample from the TIME ramp (20 Sep 2026): the
-; per-block base stepped every reader by the whole glide step at each block
-; edge -- the click per block the loop's tap had. Same recipe as the block's:
-; min(TIME, 28670 - mask) + G + 2, on this sample's ramped TIME. The block's
-; own write of $-e is the first sample's starting point and is overwritten.
+        move    n6,a
+        move    a,x:(r7+$34)            ; x_in parked: n6 is the wet sum here
+; the read distance base per sample from the TIME ramp: min(TIME, 28670 -
+; mask) + G + 2 on this sample's ramped TIME (the block's own write of $-e
+; is overwritten).
         move    n4,a                    ; the ramped TIME, Q8 (this sample's)
         asr     #$8,a,a
         move    #>28670,b               ; 32767 - 4096 - 1                 ; @B
         move    #>12286,b               ; 16383 - 4096 - 1                 ; @DEV
-        move    x:(r7-$11),x0           ; mask = G - 1
-        sub     x0,b                    ; the lag cap for this G
+        move    x:(r7-$11),y1           ; mask = G - 1
+        sub     y1,b                    ; the lag cap for this G
         move    b,x0
         cmp     x0,a
         tgt     x0,a                    ; min(TIME, cap) = lag
-        move    x:(r7-$11),x0
-        add     x0,a                    ; + G - 1
+        add     y1,a                    ; + G - 1
         add     #>$3,a                  ; + 3 = lag + G + 2
         move    a,x:(r7-$e)            ; the read distance base
 ; ---- PRNG advance: BusDelay's 23-bit xorshift 15/15/8 -------------------
@@ -1493,6 +1492,7 @@ gmode:
         move    a1,x0
         move    x0,a                    ; A2 clean before the store
         move    a,x:(r7-$31)
+        move    a,b                     ; the state, for the density bits
 ; ---- this sample's scatter candidate: prng * SPRAY -> 0..4095 samples ----
         move    a,x0                    ; state, 0 .. ~1.0 (always positive)
         move    x:(r7+$13),y1           ; SPRAY, Q23
@@ -1503,10 +1503,9 @@ gmode:
         move    x0,a
         move    a,x:(r7+$f)
 ; ---- this sample's window-multiplier candidate: 2^(23-k), or 0 if muted --
-        move    x:(r7-$31),b
         asr     #$5,b,b
         and     #>$7,b
-        move    b1,x1                   ; bits, 0..7 (x1 is free in this mode)
+        move    b1,x1                   ; bits, 0..7
         clr     b                       ; the muted form, BEFORE the compare
         move    x:(r7-$d),a            ; dens3
         sub     x1,a                    ; N SET == muted
@@ -1521,32 +1520,30 @@ gmode:
         move    a1,x0
         move    x0,a
         move    a,x:(r7-$17)
-        clr     b                       ; wet L accumulates in b
-; ---- READER, line L: four grains, ROLLED (v5) ----------------------------
-; Records of THREE words at r7+$40: s (latched scatter), w (window
+        move    a,r6                    ; the phase cursor = age (grain 0's)
+; ---- READER, line L: four grains, rolled -----------------------------------
+; Records of THREE words at raw $40: s (latched scatter), w (window
 ; multiplier, 0 = muted), acc (read advance, Q14.9). Every latch is a Tcc
 ; reading the ONE `tst` of this grain's phase, with nothing but moves between
-; them (the GRAIN 5d trap); the `add` that advances acc comes AFTER the last
-; of them. Phase walks $5d by G/4 per trip; the wet sum lives in x:(r7+$1e)
-; because b is the latch register inside the body.
+; them; the `add` that advances acc comes AFTER the last of them. The phase
+; cursor walks r6 by G/4 per trip; the wet sum accumulates in n6; b is the
+; latch register, then acc, then frac, then t0.
         move    r7,a                    ; records at raw $40 = r7 - 9
         sub     #>$9,a                  ; (r7 is rebased by $49 here)
         move    a,r4                    ; (m4 is linear from the block preamble)
-        move    x:(r7-$17),x0
-        move    x0,x:(r7+$14)           ; cursor = age (grain 0's phase)
         move    n1,n5                   ; this line's base for the reads
         clr     a
-        move    a,x:(r7-$2b)
+        move    a,n6                    ; wet L = 0
 ; GRAINCNT
         do      #4,>gvlz
-        move    x:(r7+$14),a            ; this grain's phase
+        move    r6,a                    ; this grain's phase
         tst     a                       ; Z SET == its wrap
         move    a,x1                    ; phase, kept for the distance
         move    x:(r7+$f),x0           ; candidate scatter
         move    x:(r4),b
         teq     x0,b
         move    b,x:(r4)+               ; s
-        move    b,x:(r7-$2c)            ; park s
+        move    b,y0                    ; s
         move    x:(r7+$10),x0           ; candidate multiplier (0 = muted)
         move    x:(r4),b
         teq     x0,b
@@ -1563,28 +1560,21 @@ gmode:
         move    a0,x0
         move    x0,a                    ; reloaded clean: A2 consistent
         abs     a
-        move    a,x:(r7-$30)            ; park the window gain
+        move    a,y1                    ; the window gain
         move    b,a                     ; acc
-        and     #>$1ff,a                ; the fraction
-        asl     #$e,a,a                 ; -> Q23
-        move    a1,x0
-        move    x0,a
-        move    a,x:(r7-$2f)            ; park frac
-        move    b,a
         asr     #$9,a,a                 ; integer samples advanced
         move    a1,x0
+        move    b,a
+        and     #>$1ff,a                ; the fraction
+        asl     #$e,a,a                 ; -> Q23
+        move    a,b                     ; frac
         move    x:(r7-$e),a            ; lag + G + 2
         sub     x0,a                    ; - advance
-        move    x:(r7-$2c),x0
-        add     x0,a                    ; + s
-        add     x1,a                    ; + phase = dist. ⚠️ THE PHASE TERM IS
-                                        ; WHAT MAKES UNITY A FIXED TAP: W moves
-                                        ; one sample per sample, so a distance
-                                        ; that does not grow with the phase
-                                        ; reads at 1 + r, an octave up at
-                                        ; "unity" (measured: 955 Hz
-                                        ; for 438 in). Nimbus's geometry has the
-                                        ; same term missing -- see its README.
+        add     y0,a                    ; + s
+        add     x1,a                    ; + phase = dist: W moves one sample
+                                        ; per sample, so a distance that does
+                                        ; not grow with the phase reads an
+                                        ; octave up at unity
         move    #>$2,x0
         cmp     x0,a                    ; never the head's own slot ...
         tlt     x0,a
@@ -1595,83 +1585,69 @@ gmode:
                                         ; at the oldest sample: a flat spot,
                                         ; not a wrap)
         move    a,x0
-        move    r1,a                ; line L write pointer
+        move    r1,a                    ; the line's write pointer
         sub     #>1,a                   ; the line write above advanced it
         sub     x0,a                    ; W - dist
         and     #>$7fff,a                                                  ; @B
         and     #>$3fff,a                                                  ; @DEV
         move    a1,x0
         move    x0,a
-        move    a,x:(r7-$2d)            ; park the read phase
+        move    b,y0                    ; frac (s is consumed)
         move    a,r5
-        move    y:(r5+n5),a             ; t0 (line L base in n5)
-        move    a,x:(r7-$2e)
-        move    x:(r7-$2d),a
+        move    y:(r5+n5),b             ; t0 (the line base in n5)
         add     #>$1,a                  ; one sample NEWER
         and     #>$7fff,a                                                  ; @B
         and     #>$3fff,a                                                  ; @DEV
         move    a1,r5
         move    y:(r5+n5),a             ; t1
-        move    x:(r7-$2e),x0
-        sub     x0,a                    ; t1 - t0, signed
-        move    a1,x0                   ; -> FIRST mpy operand
-        move    x:(r7-$2f),y1           ; frac
-        mpy     x0,y1,a
-        move    x:(r7-$2e),x0
-        add     x0,a                    ; tap = t0 + frac*(t1-t0)
+        sub     b,a                     ; t1 - t0, signed
+        move    a1,x0                   ; -> the signed operand
+        mpy     y0,x0,a                 ; frac * (t1 - t0)
+        add     b,a                     ; tap = t0 + frac*(t1-t0)
         move    a,x0                    ; LIMITING move
-        move    x:(r7-$30),y1           ; window gain
-        mpy     x0,y1,a
-        move    x:(r7-$2b),b
-        add     b,a
-        move    a,x:(r7-$2b)       ; wet L +=
-        move    x:(r7+$14),a            ; next grain: a quarter further round
+        mpy     x0,y1,a                 ; * the window gain
+        move    a,x0
+        move    n6,a
+        add     x0,a
+        move    a,n6                    ; wet +=
+        move    x1,a                    ; next grain: a quarter further round
         move    x:(r7-$10),x0
         add     x0,a
         move    x:(r7-$11),x0
         and     x0,a
         move    a1,x0
         move    x0,a
-        move    a,x:(r7+$14)
+        move    a,r6
 gvlz:
 ; ---- wet L = sum of four * makeup --------------------------------------
 ; four windows at quarter offsets sum to exactly 2, so the makeup coeff's
 ; 1/2 at full density is unity and its 1.0 top is +6 dB for the sparsest
-; gate -- the v2 arithmetic, kept.
-        move    x:(r7-$2b),x0
+; gate.
+        move    n6,a
+        move    a,x0
         move    x:(r7-$c),y1           ; makeup coeff
-        mpy     x0,y1,b                 ; (a +6 dB asl sat here for a day, 12 Sep
-                                        ; 2026, sized on the clobbered reader:
-                                        ; whole, GRAIN is +2.1 dB RMS / +6.6 dB
-                                        ; peak over CLEAN with it, peaks level
-                                        ; without -- the level a return wants)
+        mpy     x0,y1,b
 ; GRAINMK
         move    b,x:(r7+$32)            ; wet L
-; ---- READER, line R: four grains, ROLLED (v5) ----------------------------
-; Records of THREE words at r7+$4c: s (latched scatter), w (window
-; multiplier, 0 = muted), acc (read advance, Q14.9). Every latch is a Tcc
-; reading the ONE `tst` of this grain's phase, with nothing but moves between
-; them (the GRAIN 5d trap); the `add` that advances acc comes AFTER the last
-; of them. Phase walks $5d by G/4 per trip; the wet sum lives in x:(r7+$1f)
-; because b is the latch register inside the body.
+; ---- READER, line R: the same four grains on the R records ---------------
         move    r7,a                    ; records at raw $4c = r7 + 3
         add     #>$3,a                  ; (r7 is rebased by $49 here)
         move    a,r4
-        move    x:(r7-$17),x0
-        move    x0,x:(r7+$14)           ; cursor = age (grain 0's phase)
+        move    x:(r7-$17),a
+        move    a,r6                    ; cursor = age (grain 0's phase)
         move    n2,n5                   ; this line's base for the reads
         clr     a
-        move    a,x:(r7-$2a)
+        move    a,n6                    ; wet R = 0
 ; GRAINCNT
         do      #4,>gvrz
-        move    x:(r7+$14),a            ; this grain's phase
+        move    r6,a                    ; this grain's phase
         tst     a                       ; Z SET == its wrap
         move    a,x1                    ; phase, kept for the distance
         move    x:(r7+$f),x0           ; candidate scatter
         move    x:(r4),b
         teq     x0,b
         move    b,x:(r4)+               ; s
-        move    b,x:(r7-$2c)            ; park s
+        move    b,y0                    ; s
         move    x:(r7+$10),x0           ; candidate multiplier (0 = muted)
         move    x:(r4),b
         teq     x0,b
@@ -1688,28 +1664,21 @@ gvlz:
         move    a0,x0
         move    x0,a                    ; reloaded clean: A2 consistent
         abs     a
-        move    a,x:(r7-$30)            ; park the window gain
+        move    a,y1                    ; the window gain
         move    b,a                     ; acc
-        and     #>$1ff,a                ; the fraction
-        asl     #$e,a,a                 ; -> Q23
-        move    a1,x0
-        move    x0,a
-        move    a,x:(r7-$2f)            ; park frac
-        move    b,a
         asr     #$9,a,a                 ; integer samples advanced
         move    a1,x0
+        move    b,a
+        and     #>$1ff,a                ; the fraction
+        asl     #$e,a,a                 ; -> Q23
+        move    a,b                     ; frac
         move    x:(r7-$e),a            ; lag + G + 2
         sub     x0,a                    ; - advance
-        move    x:(r7-$2c),x0
-        add     x0,a                    ; + s
-        add     x1,a                    ; + phase = dist. ⚠️ THE PHASE TERM IS
-                                        ; WHAT MAKES UNITY A FIXED TAP: W moves
-                                        ; one sample per sample, so a distance
-                                        ; that does not grow with the phase
-                                        ; reads at 1 + r, an octave up at
-                                        ; "unity" (measured: 955 Hz
-                                        ; for 438 in). Nimbus's geometry has the
-                                        ; same term missing -- see its README.
+        add     y0,a                    ; + s
+        add     x1,a                    ; + phase = dist: W moves one sample
+                                        ; per sample, so a distance that does
+                                        ; not grow with the phase reads an
+                                        ; octave up at unity
         move    #>$2,x0
         cmp     x0,a                    ; never the head's own slot ...
         tlt     x0,a
@@ -1720,55 +1689,49 @@ gvlz:
                                         ; at the oldest sample: a flat spot,
                                         ; not a wrap)
         move    a,x0
-        move    r2,a                ; line R write pointer
+        move    r2,a                    ; the line's write pointer
         sub     #>1,a                   ; the line write above advanced it
         sub     x0,a                    ; W - dist
         and     #>$7fff,a                                                  ; @B
         and     #>$3fff,a                                                  ; @DEV
         move    a1,x0
         move    x0,a
-        move    a,x:(r7-$2d)            ; park the read phase
+        move    b,y0                    ; frac (s is consumed)
         move    a,r5
-        move    y:(r5+n5),a             ; t0 (line R base in n5)
-        move    a,x:(r7-$2e)
-        move    x:(r7-$2d),a
+        move    y:(r5+n5),b             ; t0 (the line base in n5)
         add     #>$1,a                  ; one sample NEWER
         and     #>$7fff,a                                                  ; @B
         and     #>$3fff,a                                                  ; @DEV
         move    a1,r5
         move    y:(r5+n5),a             ; t1
-        move    x:(r7-$2e),x0
-        sub     x0,a                    ; t1 - t0, signed
-        move    a1,x0                   ; -> FIRST mpy operand
-        move    x:(r7-$2f),y1           ; frac
-        mpy     x0,y1,a
-        move    x:(r7-$2e),x0
-        add     x0,a                    ; tap = t0 + frac*(t1-t0)
+        sub     b,a                     ; t1 - t0, signed
+        move    a1,x0                   ; -> the signed operand
+        mpy     y0,x0,a                 ; frac * (t1 - t0)
+        add     b,a                     ; tap = t0 + frac*(t1-t0)
         move    a,x0                    ; LIMITING move
-        move    x:(r7-$30),y1           ; window gain
-        mpy     x0,y1,a
-        move    x:(r7-$2a),b
-        add     b,a
-        move    a,x:(r7-$2a)       ; wet R +=
-        move    x:(r7+$14),a            ; next grain: a quarter further round
+        mpy     x0,y1,a                 ; * the window gain
+        move    a,x0
+        move    n6,a
+        add     x0,a
+        move    a,n6                    ; wet +=
+        move    x1,a                    ; next grain: a quarter further round
         move    x:(r7-$10),x0
         add     x0,a
         move    x:(r7-$11),x0
         and     x0,a
         move    a1,x0
         move    x0,a
-        move    a,x:(r7+$14)
+        move    a,r6
 gvrz:
 ; ---- wet R -------------------------------------------------------------
-        move    x:(r7-$2a),x0
+        move    n6,a
+        move    a,x0
         move    x:(r7-$c),y1
-        mpy     x0,y1,b                 ; (a +6 dB asl sat here for a day, 12 Sep
-                                        ; 2026, sized on the clobbered reader:
-                                        ; whole, GRAIN is +2.1 dB RMS / +6.6 dB
-                                        ; peak over CLEAN with it, peaks level
-                                        ; without -- the level a return wants)
+        mpy     x0,y1,b
 ; GRAINMK
         move    b,x:(r7+$33)            ; wet R
+        move    x:(r7+$34),a
+        move    a,n6                    ; x_in back
         bra     pdone
 ; MODEFORK_MID -- alternative 2: REVERSE
 
@@ -1807,16 +1770,15 @@ gvrz:
 ; audited-signed `mpy x0,y1` form; y1 carries S or a window gain, both
 ; non-negative.
 rmode:
-; RLAG0 per sample from the TIME ramp (20 Sep 2026): the per-block value
-; below stepped the heads by the whole glide step at every block edge --
-; the same click per block the loop's tap had; min(TIME, cap), the
-; per-block recipe, on this sample's ramped TIME.
+; RLAG0 per sample from the TIME ramp: min(TIME, cap) on this sample's
+; ramped TIME (a per-block value stepped the heads by the whole glide step
+; at every block edge).
         move    n4,a                    ; the ramped TIME, Q8 (this sample's)
         asr     #$8,a,a
         move    x:(r7-$1f),x0           ; the cap, 32704 - 2S
         cmp     x0,a
         tgt     x0,a                    ; min(TIME, cap)
-        move    a,x:(r7+$19)            ; RLAG0 for this sample
+        move    a,x1                    ; RLAG0 for this sample
         move    x:(r7+$15),a            ; segment phase
         move    x:(r7+$18),x0           ; step = 2^23 / S
         add     x0,a
@@ -1824,7 +1786,8 @@ rmode:
         move    a1,x0
         move    x0,a                    ; A2-clean; boot garbage dies here
         move    a,x:(r7+$15)
-; ---- head 0: lag and window from the phase -------------------------------
+        move    a,b                     ; the phase, kept for head 1
+; ---- head 0: lag from the phase -------------------------------------------
         move    a1,x0                   ; phase
         move    x:(r7+$17),y1           ; S, non-negative
         mpy     x0,y1,a                 ; p = phase*S/2^23, EXACT (the
@@ -1832,63 +1795,61 @@ rmode:
                                         ; 2^23, so nothing is rounded)
         asl     #$1,a,a                 ; 2p -- the write pointer's run-away
         move    a1,x0
-        move    x:(r7+$19),a            ; RLAG0
+        move    x1,a                    ; RLAG0
         add     x0,a
-        move    a,x:(r7+$d)            ; lag0, shared by both lines
-        move    x:(r7+$15),a            ; phase again
-        bsr     smoothw                 ; s = g^2*(3-2g) (v6 roll)
-        move    a1,x0
-        move    x0,a
-        move    a,x:(r7+$e)            ; g0
+        move    a,r6                    ; lag0, shared by both lines
 ; ---- head 1: half a segment further on, same machinery -------------------
-        move    x:(r7+$15),a
+        move    b,a
         move    #$40,x0  
         add     x0,a
         and     #>$7fffff,a
         move    a1,x0
         move    x0,a
-        move    a,x:(r7+$12)            ; park phase1
+        move    a,y0                    ; phase1, kept for its window
         move    a1,x0
-        move    x:(r7+$17),y1
-        mpy     x0,y1,a
+        mpy     x0,y1,a                 ; (y1 = S)
         asl     #$1,a,a
         move    a1,x0
-        move    x:(r7+$19),a
+        move    x1,a
         add     x0,a
-        move    a,x:(r7+$f)            ; lag1
-        move    x:(r7+$12),a
-        bsr     smoothw                 ; (v6 roll)
+        move    a,x1                    ; lag1
+; ---- the windows: complementary triangles, smoothstepped, g0 + g1 == 1 ---
+        move    b,a                     ; the phase
+        bsr     smoothw                 ; s = g^2*(3-2g)
         move    a1,x0
         move    x0,a
-        move    a,x:(r7+$10)            ; g1, and g0+g1 == 1 exactly
+        move    a,b                     ; g0
+        move    y0,a                    ; phase1
+        move    b,y0                    ; g0
+        bsr     smoothw
+        move    a1,x0
+        move    x0,a
+        move    a,y1                    ; g1
 ; ---- Line L: both heads, windowed and summed -----------------------------
         move    n1,n5                   ; the L base (the ring's, in REVERSE)
+        move    r6,a                    ; lag0
+        move    a,x0
         move    r1,a                    ; LineL write pointer
         sub     #>1,a                   ; the line write above advanced it
-        move    x:(r7+$d),x0           ; lag0
         sub     x0,a
         and     #>$7fff,a               ; read phase in the 32K MONO ring
-        move    a1,r5                   ; (REVERSE-32K, 13 Sep 2026; the base
-        move    y:(r5+n5),a             ; is 0x8000-aligned too) tap, head 0
-        move    a,x0                    ; possibly negative -> FIRST operand
-        move    x:(r7+$e),y1           ; g0
-        mpy     x0,y1,a
+        move    a1,r5                   ; (the base is 0x8000-aligned too)
+        move    y:(r5+n5),a             ; tap, head 0
+        move    a,x0                    ; possibly negative -> the signed operand
+        mpy     y0,x0,a                 ; * g0
         move    a,b
         move    r1,a
-        sub     #>1,a                   ; the line write above advanced it
-        move    x:(r7+$f),x0           ; lag1
-        sub     x0,a
+        sub     #>1,a
+        sub     x1,a                    ; - lag1
         and     #>$7fff,a
         move    a1,r5
         move    y:(r5+n5),a             ; tap, head 1
         move    a,x0
-        move    x:(r7+$10),y1           ; g1
-        mpy     x0,y1,a
+        mpy     x0,y1,a                 ; * g1
         add     b,a
-        move    a,x:(r7+$32)            ; wet L -- NOT $79
-        move    a,x:(r7+$33)            ; ... and R: the reverse is MONO
-                                        ; (REVERSE-32K; the R line is not
-                                        ; written in this mode)
+        move    a,x:(r7+$32)            ; wet L
+        move    a,x:(r7+$33)            ; ... and R: the reverse is MONO (the
+                                        ; R line is not written in this mode)
 ; MODEFORK_END
 pdone:
 
