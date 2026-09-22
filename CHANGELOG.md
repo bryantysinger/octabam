@@ -7,6 +7,23 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- Disassemble what you assemble, automatically (Jannik Aßfalg, PR #380,
+  22 Sep 2026; hygiene pass 23 Sep): every `build_bus.assemble()` compares
+  `dsp_asm -list` with `dsp56kDisassemble`'s decode of the same bytes and
+  stops on a mnemonic mismatch. Artifacts bit-identical across the 26
+  refhash configurations. The `mpy`→`mpysu` sites are counted per module
+  in `build_bus.MPYSU_AUDITED` (REVERB SERVER 12 + 9 + 4, SEND 1,
+  CHARACTER 1, SPECTRUM 1 per assembly; CLAUDE.md's "23 sites" was stale)
+  and a count that differs from the table stops the build with the site
+  list, so a clean build prints nothing. `make where A=<addr>` prints every
+  doc paragraph citing a ColdFire address plus a disassembly window, by
+  scanning the docs on each call; the PR's `firmware/symbols.toml` (a copy
+  of every such paragraph, 10,829 lines, append-only) and its seeder are
+  not kept. `verify_set` skips the CC-40 check when the fixture's T2 FX2
+  id is not a module of the remix and, with Octakit present, expects the
+  load to rewrite `kits*` files only, so `make check REMIX=octakit`
+  reaches the end.
+
 - Upstream sweep (23 Sep 2026): nordseele's octalab-notes read again at
   `e0dc56d` (nine commits since `40ffa53`) and its findings placed in
   `STORAGE.md` §1 (a FAT directory record's first cluster is the long at

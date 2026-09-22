@@ -323,13 +323,9 @@ disasm: ## Open radare2 on the decompressed ColdFire MAIN OS
 	scripts/disasm.sh
 
 .PHONY: where
-where: ## What's recorded + a live disasm window for one address. make where A=0x40004d40 [N=128] [NOTE="..."]
-	@test -n "$(A)" || { echo "usage: make where A=0x40004d40 [N=bytes] [NOTE=\"finding\"]"; exit 1; }
-	python3 tools/build/where.py $(A) $(if $(N),-n $(N)) $(if $(NOTE),--note "$(NOTE)")
-
-.PHONY: symbols-seed
-symbols-seed: ## Re-scan CLAUDE.md/docs/STATUS.md for addresses -> firmware/symbols.toml (additive, safe to re-run)
-	python3 tools/build/seed_symbols.py
+where: ## Every doc paragraph citing one ColdFire address + a disasm window. make where A=0x40004d40 [N=128]
+	@test -n "$(A)" || { echo "usage: make where A=0x40004d40 [N=bytes]"; exit 1; }
+	python3 tools/build/where.py $(A) $(if $(N),-n $(N))
 
 .PHONY: clean
 clean: ## Remove build products (keeps downloads/ and vendor/)
