@@ -487,6 +487,97 @@ fs_live:
 ; only branch, and the pricer charges dispatch + the worst alternative.
 ; ===========================================================================
         move    #$1,n0                  ; (short immediate, stock's own form)
+; ---- the SVF's pointer bases (22 Sep 2026): r4 -> the coefficient stream
+; at $50 (c4 d kLP kHP kBP for L, then for R), r6 -> the states at $34;
+; r1/r2 walk copies of them every sample. r6 is the page pointer, which
+; nothing reads after this point (the dispatcher reloads it).
+        move    r7,r4
+        move    #$50,n4
+        move    (r4)+n4
+        move    #>$ffffff,m4
+        move    r4,r1
+        move    #>$ffffff,m1
+        move    x:(r7+$1f),x0           ; c4
+        move    x0,x:(r1)+
+        move    x:(r7+$33),x0           ; d
+        move    x0,x:(r1)+
+        move    x:(r7+$23),x0           ; kLP
+        move    x0,x:(r1)+
+        move    x:(r7+$25),x0           ; kHP
+        move    x0,x:(r1)+
+        move    x:(r7+$24),x0           ; kBP
+        move    x0,x:(r1)+
+        move    x:(r7+$1f),x0           ; the same five for R
+        move    x0,x:(r1)+
+        move    x:(r7+$33),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$23),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$25),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$24),x0
+        move    x0,x:(r1)+
+        move    r7,r6
+        move    #$34,n6
+        move    (r6)+n6
+        move    #>$ffffff,m2
+; LADR's stream at $60 on r2: G^3(1-G) G^2(1-G) G(1-G) 1-G k/4 d/2 (G' per
+; sample) for L, the same for R
+        move    r7,r2
+        move    #$60,n2
+        move    (r2)+n2
+        move    r2,r1
+        move    x:(r7+$17),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$12),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$11),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$18),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$13),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$14),x0
+        move    x0,x:(r1)+
+        move    (r1)+                   ; slot 6: G', per sample
+        move    x:(r7+$17),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$12),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$11),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$18),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$13),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$14),x0
+        move    x0,x:(r1)+
+; VOWL's stream at $70 on r5: b0 m1 a2 for each formant, then vg/8
+        move    r7,r5
+        move    #$70,n5
+        move    (r5)+n5
+        move    #>$ffffff,m5
+        move    r5,r1
+        move    x:(r7+$16),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$10),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$13),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$17),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$11),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$14),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$18),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$12),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$15),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$48),x0
+        move    x0,x:(r1)+
         do      n7,>fs_end
 ; ---- input peak for the envelope follower (mono, pre-filter) --------------
         move    x:(r0),a
@@ -509,124 +600,102 @@ fs_live:
         tst     a
         bne     fs_v_or_l
 ; MODEFORK_MID -- alternative 1: the SEM zero-delay SVF, LP / BP
+; Pointer-addressed since 22 Sep 2026 (the displaced move costs at least two
+; cycles more than a pointer move on the chip, measured): r1 walks this
+; block's coefficient stream (c4 d kLP kHP kBP, once per channel, written
+; before the loop at $50), r2 walks the states s0L s1L s0R s1R at $34; hp,
+; bp and lp stay in registers. The arithmetic is the 14 Sep engine's,
+; instruction for instruction: bit-identical (the six-render gate).
+        move    r4,r1                   ; the stream
+        move    r6,r2                   ; the states
 ; ===================== channel L =====================
-        move    x:(r0),x0
-        move    x0,x:(r7+$1d)           ; park x
-        move    x:(r7+$2e),a            ; g = g2run (FM went with filter B, 14 Sep 2026)
-        move    a,x:(r7+$1c)            ; g2 this sample
-        move    x:(r7+$1d),x1           ; x (DRV retired: x_d == x)
-; t8 = (x_d - (2R+g)*s0 - s1)/8, pre-scaled so nothing clamps before hp
-        move    x:(r7+$34),x0           ; s0
-        move    x:(r7+$1f),y1           ; c4 = (R + g2)/2
+        move    x:(r0),x1               ; x
+        move    x:(r2)+,x0              ; s0
+        move    x0,y0                   ; s0, kept for bp
+        move    x:(r1)+,y1              ; c4 = (R + g2)/2
         mpy     x0,y1,a
         asl     #$2,a,a                 ; (2R + g) * s0
-        move    x:(r7+$35),x0           ; s1
+        move    x:(r2)-,x0              ; s1 (r2 back on s0)
         add     x0,a
         move    x1,b
         sub     a,b                     ; t
         asr     #$3,b,b
         move    b,x0                    ; t8, |t8| <= 0.63
-; hp = 8 * d * t8  (the ZDF's implicit solve)
-        move    x:(r7+$33),y1           ; d
+        move    x:(r1)+,y1              ; d
         mpy     x0,y1,a
         asl     #$3,a,a
         move    a,x0                    ; hp, limited -- the resonance clamp
-        move    a,y0                    ; hp for the taps
-; p = 2*g*hp ; bp = s0 + p ; s0' = bp + p  (trapezoidal integrator)
-        move    x:(r7+$1c),y1           ; g2
+        move    a,x1                    ; hp, kept for the tap (x is spent)
+        move    x:(r7+$2e),y1           ; g2 = g2run this sample
         mpy     x0,y1,b
         asl     #$1,b,b                 ; p = g*hp
-        move    x:(r7+$34),a
+        move    y0,a                    ; s0
         add     b,a                     ; bp
-        move    a,x1                    ; bp, limited
+        move    a,y0                    ; bp, limited, kept for the tap
         add     b,a
-        move    a,x:(r7+$34)            ; s0'
-; q = 2*g*bp ; lp = s1 + q ; s1' = lp + q
-        move    x1,x0
-        move    x:(r7+$1c),y1           ; g2
-        mpy     x0,y1,b
-        asl     #$1,b,b                 ; q = g*bp
-        move    x:(r7+$35),a
-        add     b,a                     ; lp
-        move    a,x:(r7+$1b)            ; lp parked (limited)
-        add     b,a
-        move    a,x:(r7+$35)            ; s1'
-; wetA = kBP*bp + kHP*hp + kLP*lp   (NOTCH = hp + lp)
-        move    x1,x0
-        move    x:(r7+$24),y1
-        mpy     x0,y1,a
+        move    a,x:(r2)+               ; s0' (r2 -> s1)
         move    y0,x0
-        move    x:(r7+$25),y1
-        mpy     x0,y1,b
+        mpy     x0,y1,b                 ; y1 is still g2
+        asl     #$1,b,b                 ; q = g*bp
+        move    x:(r2),a                ; s1
+        add     b,a                     ; lp
+        move    a,x0                    ; lp, limited, for the tap
         add     b,a
-        move    x:(r7+$1b),x0
-        move    x:(r7+$23),y1
-        mpy     x0,y1,b
-        add     b,a
-        move    a,x:(r7+$1b)            ; wetA
-; filter B and the mix (the shared callee); r3 -> this channel's B poles,
-; n3 -> its B_prev from there
-        move    x:(r7+$1b),a            ; wetA is the output (filter B and the mix went 14 Sep 2026)
-        move    a,x:(r0)                ; out L (limited)
+        move    a,x:(r2)+               ; s1' (r2 -> the next channel's s0)
+; wetA = kLP*lp + kHP*hp + kBP*bp (exact in the accumulator, any order)
+        move    x:(r1)+,y1              ; kLP
+        mpy     x0,y1,a
+        move    x1,x0                   ; hp
+        move    x:(r1)+,y1              ; kHP
+        mac     x0,y1,a
+        move    y0,x0                   ; bp
+        move    x:(r1)+,y1              ; kBP
+        mac     x0,y1,a
+        move    a,x:(r0)                ; out (limited)
 ; ===================== channel R =====================
-        move    x:(r0+n0),x0
-        move    x0,x:(r7+$1d)           ; park x
-        move    x:(r7+$2e),a            ; g = g2run
-        move    a,x:(r7+$1c)
-        move    x:(r7+$1d),x1           ; x (DRV retired: x_d == x)
-; t8 = (x_d - (2R+g)*s0 - s1)/8, pre-scaled so nothing clamps before hp
-        move    x:(r7+$36),x0           ; s0
-        move    x:(r7+$1f),y1           ; c4 = (R + g2)/2
+        move    x:(r0+n0),x1               ; x
+        move    x:(r2)+,x0              ; s0
+        move    x0,y0                   ; s0, kept for bp
+        move    x:(r1)+,y1              ; c4 = (R + g2)/2
         mpy     x0,y1,a
         asl     #$2,a,a                 ; (2R + g) * s0
-        move    x:(r7+$37),x0           ; s1
+        move    x:(r2)-,x0              ; s1 (r2 back on s0)
         add     x0,a
         move    x1,b
         sub     a,b                     ; t
         asr     #$3,b,b
         move    b,x0                    ; t8, |t8| <= 0.63
-; hp = 8 * d * t8  (the ZDF's implicit solve)
-        move    x:(r7+$33),y1           ; d
+        move    x:(r1)+,y1              ; d
         mpy     x0,y1,a
         asl     #$3,a,a
         move    a,x0                    ; hp, limited -- the resonance clamp
-        move    a,y0                    ; hp for the taps
-; p = 2*g*hp ; bp = s0 + p ; s0' = bp + p  (trapezoidal integrator)
-        move    x:(r7+$1c),y1           ; g2
+        move    a,x1                    ; hp, kept for the tap (x is spent)
+        move    x:(r7+$2e),y1           ; g2 = g2run this sample
         mpy     x0,y1,b
         asl     #$1,b,b                 ; p = g*hp
-        move    x:(r7+$36),a
+        move    y0,a                    ; s0
         add     b,a                     ; bp
-        move    a,x1                    ; bp, limited
+        move    a,y0                    ; bp, limited, kept for the tap
         add     b,a
-        move    a,x:(r7+$36)            ; s0'
-; q = 2*g*bp ; lp = s1 + q ; s1' = lp + q
-        move    x1,x0
-        move    x:(r7+$1c),y1           ; g2
-        mpy     x0,y1,b
-        asl     #$1,b,b                 ; q = g*bp
-        move    x:(r7+$37),a
-        add     b,a                     ; lp
-        move    a,x:(r7+$1b)            ; lp parked (limited)
-        add     b,a
-        move    a,x:(r7+$37)            ; s1'
-; wetA = kBP*bp + kHP*hp + kLP*lp   (NOTCH = hp + lp)
-        move    x1,x0
-        move    x:(r7+$24),y1
-        mpy     x0,y1,a
+        move    a,x:(r2)+               ; s0' (r2 -> s1)
         move    y0,x0
-        move    x:(r7+$25),y1
-        mpy     x0,y1,b
+        mpy     x0,y1,b                 ; y1 is still g2
+        asl     #$1,b,b                 ; q = g*bp
+        move    x:(r2),a                ; s1
+        add     b,a                     ; lp
+        move    a,x0                    ; lp, limited, for the tap
         add     b,a
-        move    x:(r7+$1b),x0
-        move    x:(r7+$23),y1
-        mpy     x0,y1,b
-        add     b,a
-        move    a,x:(r7+$1b)            ; wetA
-; filter B and the mix (the shared callee); r3 -> this channel's B poles,
-; n3 -> its B_prev from there
-        move    x:(r7+$1b),a            ; wetA is the output (filter B and the mix went 14 Sep 2026)
-        move    a,x:(r0+n0)                ; out R (limited)
+        move    a,x:(r2)+               ; s1' (r2 -> the next channel's s0)
+; wetA = kLP*lp + kHP*hp + kBP*bp (exact in the accumulator, any order)
+        move    x:(r1)+,y1              ; kLP
+        mpy     x0,y1,a
+        move    x1,x0                   ; hp
+        move    x:(r1)+,y1              ; kHP
+        mac     x0,y1,a
+        move    y0,x0                   ; bp
+        move    x:(r1)+,y1              ; kBP
+        mac     x0,y1,a
+        move    a,x:(r0+n0)                ; out (limited)
         bra     fs_join
 ; MODEFORK_MID -- alternative 2: VOWL, the three-formant bank
 fs_v_or_l:
@@ -638,226 +707,229 @@ fs_v_or_l:
         bne     fs_cap                  ; 3: the capacitor (the fourth alternative)
         bra     fs_ladr
 fs_vowl:
+; pointer-addressed (22 Sep 2026): r5 -> the block's stream at $70 (b0 m1 a2
+; per formant, then vg/8), r3 -> the channel's eight states (x1 x2, then y1 y2
+; per formant), n3 = 2 steps the pair.
 ; ===================== channel L =====================
-        move    x:(r0),x0
-        move    x0,x:(r7+$1d)           ; park x
-        move    x0,x1                   ; x (DRV retired: x_d == x)
+        move    x:(r0),x1          ; x (DRV retired: x_d == x)
+        move    r7,r3                   ; states at $00
+        move    #$2,n3
+        move    r5,r1                   ; the stream: b0 m1 a2 x3, vg/8
 ; dx/2 = (x_d - x2)/2, shared by the three resonators; then x2 <- x1 <- x_d
-        move    x:(r7+$01),x0           ; x2
+        move    x:(r3),y0               ; x1
+        move    x1,x:(r3)+              ; x1 <- x_d
+        move    x:(r3),x0               ; x2
+        move    y0,x:(r3)+              ; x2 <- x1; r3 -> formant 0's y1
         move    x1,a
         sub     x0,a
         asr     #$1,a,a
-        move    a,x:(r7+$1b)            ; dx/2, parked (|.| <= 1)
-        move    x:(r7+$00),x0
-        move    x0,x:(r7+$01)
-        move    x1,x:(r7+$00)
+        move    a,x1                    ; dx/2 (|.| <= 1)
 ; formant 0: y = 2*b0*(dx/2) + 2*m1*y1 - a2*y2; then y2 <- y1 <- y
-        move    x:(r7+$1b),x0
-        move    x:(r7+$16),y1           ; b0
+        move    x1,x0                   ; dx/2
+        move    x:(r1)+,y1              ; b0
         mpy     x0,y1,a
         asl     #$1,a,a
-        move    x:(r7+$02),x0           ; y1
-        move    x:(r7+$10),y1           ; m1 = -a1/2
+        move    x:(r3)+,x0              ; y1
+        move    x:(r1)+,y1              ; m1 = -a1/2
         mpy     x0,y1,b
         asl     #$1,b,b
         add     b,a
-        move    x:(r7+$03),x0           ; y2
-        move    x:(r7+$13),y1           ; a2
+        move    x0,b                    ; y1, for the shift
+        move    x:(r3),x0               ; y2
+        move    b,x:(r3)-               ; y2 <- y1
+        move    x:(r1)+,y1              ; a2
         mpy     x0,y1,b
         sub     b,a                     ; y
-        move    x:(r7+$02),x0
-        move    x0,x:(r7+$03)           ; y2 <- y1
-        move    a,x:(r7+$02)            ; y1 <- y (limited)
+        move    a,x:(r3)+n3             ; y1 <- y (limited); on to the next pair
         move    a,x0                    ; y, limited
         move    #$40,y1                 ; the formant's gain, halved
         mpy     x0,y1,a
-        move    a,y0                    ; the sum so far (halved), kept in y0:
-                                        ; free on this path and in fs_bmix, and
-                                        ; |sum| <= 0.5 + 0.25 + 0.15 < 1, so the
-                                        ; limiting move never limits
+        move    a,y0                    ; the sum so far (halved)
 ; formant 1: y = 2*b0*(dx/2) + 2*m1*y1 - a2*y2; then y2 <- y1 <- y
-        move    x:(r7+$1b),x0
-        move    x:(r7+$17),y1           ; b0
+        move    x1,x0                   ; dx/2
+        move    x:(r1)+,y1              ; b0
         mpy     x0,y1,a
         asl     #$1,a,a
-        move    x:(r7+$04),x0           ; y1
-        move    x:(r7+$11),y1           ; m1 = -a1/2
+        move    x:(r3)+,x0              ; y1
+        move    x:(r1)+,y1              ; m1 = -a1/2
         mpy     x0,y1,b
         asl     #$1,b,b
         add     b,a
-        move    x:(r7+$05),x0           ; y2
-        move    x:(r7+$14),y1           ; a2
+        move    x0,b                    ; y1, for the shift
+        move    x:(r3),x0               ; y2
+        move    b,x:(r3)-               ; y2 <- y1
+        move    x:(r1)+,y1              ; a2
         mpy     x0,y1,b
         sub     b,a                     ; y
-        move    x:(r7+$04),x0
-        move    x0,x:(r7+$05)           ; y2 <- y1
-        move    a,x:(r7+$04)            ; y1 <- y (limited)
+        move    a,x:(r3)+n3             ; y1 <- y (limited); on to the next pair
         move    a,x0                    ; y, limited
         move    #$20,y1                 ; the formant's gain, halved
         mpy     x0,y1,a
         add     y0,a
         move    a,y0                    ; the sum so far (halved)
 ; formant 2: y = 2*b0*(dx/2) + 2*m1*y1 - a2*y2; then y2 <- y1 <- y
-        move    x:(r7+$1b),x0
-        move    x:(r7+$18),y1           ; b0
+        move    x1,x0                   ; dx/2
+        move    x:(r1)+,y1              ; b0
         mpy     x0,y1,a
         asl     #$1,a,a
-        move    x:(r7+$06),x0           ; y1
-        move    x:(r7+$12),y1           ; m1 = -a1/2
+        move    x:(r3)+,x0              ; y1
+        move    x:(r1)+,y1              ; m1 = -a1/2
         mpy     x0,y1,b
         asl     #$1,b,b
         add     b,a
-        move    x:(r7+$07),x0           ; y2
-        move    x:(r7+$15),y1           ; a2
+        move    x0,b                    ; y1, for the shift
+        move    x:(r3),x0               ; y2
+        move    b,x:(r3)-               ; y2 <- y1
+        move    x:(r1)+,y1              ; a2
         mpy     x0,y1,b
         sub     b,a                     ; y
-        move    x:(r7+$06),x0
-        move    x0,x:(r7+$07)           ; y2 <- y1
-        move    a,x:(r7+$06)            ; y1 <- y (limited)
+        move    a,x:(r3)+n3             ; y1 <- y (limited); on to the next pair
         move    a,x0                    ; y, limited
         move    #>$133333,y1          ; the formant's gain, halved
         mpy     x0,y1,a
         add     y0,a
-        move    a,y0                    ; the halved sum (never limits, above)
+        move    a,y0                    ; the sum so far (halved)
 ; wetA = 2 * the halved sum (= y0 + 0.5*y1 + 0.3*y2), limited -- as sum + sum,
 ; NOT an asl: a0 still holds the last product's low bits and a shift would
 ; carry its top bit into a1; the add leaves a2:a1 exactly as the shift of the
 ; reloaded sum did
         add     y0,a
-        move    a,x:(r7+$1b)            ; wetA
-        move    x:(r7+$1b),x0           ; wetA (limited)
-        move    x:(r7+$48),y1           ; vg/8
+        move    a,x0                    ; wetA (limited)
+        move    x:(r1)+,y1              ; vg/8
         mpy     x0,y1,a
         asl     #$3,a,a                 ; wetA * vg, the store limits
-        move    a,x:(r0)                ; out L (limited)
+        move    a,x:(r0)           ; out (limited)
 ; ===================== channel R =====================
-        move    x:(r0+n0),x0
-        move    x0,x:(r7+$1d)           ; park x
-        move    x0,x1                   ; x (DRV retired: x_d == x)
+        move    x:(r0+n0),x1       ; x (DRV retired: x_d == x)
+        move    r7,r3
+        move    #$8,n3
+        move    (r3)+n3                 ; states at $08
+        move    #$2,n3
+        move    r5,r1                   ; the stream: b0 m1 a2 x3, vg/8
 ; dx/2 = (x_d - x2)/2, shared by the three resonators; then x2 <- x1 <- x_d
-        move    x:(r7+$09),x0           ; x2
+        move    x:(r3),y0               ; x1
+        move    x1,x:(r3)+              ; x1 <- x_d
+        move    x:(r3),x0               ; x2
+        move    y0,x:(r3)+              ; x2 <- x1; r3 -> formant 0's y1
         move    x1,a
         sub     x0,a
         asr     #$1,a,a
-        move    a,x:(r7+$1b)            ; dx/2, parked (|.| <= 1)
-        move    x:(r7+$08),x0
-        move    x0,x:(r7+$09)
-        move    x1,x:(r7+$08)
+        move    a,x1                    ; dx/2 (|.| <= 1)
 ; formant 0: y = 2*b0*(dx/2) + 2*m1*y1 - a2*y2; then y2 <- y1 <- y
-        move    x:(r7+$1b),x0
-        move    x:(r7+$16),y1           ; b0
+        move    x1,x0                   ; dx/2
+        move    x:(r1)+,y1              ; b0
         mpy     x0,y1,a
         asl     #$1,a,a
-        move    x:(r7+$0a),x0           ; y1
-        move    x:(r7+$10),y1           ; m1 = -a1/2
+        move    x:(r3)+,x0              ; y1
+        move    x:(r1)+,y1              ; m1 = -a1/2
         mpy     x0,y1,b
         asl     #$1,b,b
         add     b,a
-        move    x:(r7+$0b),x0           ; y2
-        move    x:(r7+$13),y1           ; a2
+        move    x0,b                    ; y1, for the shift
+        move    x:(r3),x0               ; y2
+        move    b,x:(r3)-               ; y2 <- y1
+        move    x:(r1)+,y1              ; a2
         mpy     x0,y1,b
         sub     b,a                     ; y
-        move    x:(r7+$0a),x0
-        move    x0,x:(r7+$0b)           ; y2 <- y1
-        move    a,x:(r7+$0a)            ; y1 <- y (limited)
+        move    a,x:(r3)+n3             ; y1 <- y (limited); on to the next pair
         move    a,x0                    ; y, limited
         move    #$40,y1                 ; the formant's gain, halved
         mpy     x0,y1,a
-        move    a,y0                    ; the sum so far (halved), kept in y0:
-                                        ; free on this path and in fs_bmix, and
-                                        ; |sum| <= 0.5 + 0.25 + 0.15 < 1, so the
-                                        ; limiting move never limits
+        move    a,y0                    ; the sum so far (halved)
 ; formant 1: y = 2*b0*(dx/2) + 2*m1*y1 - a2*y2; then y2 <- y1 <- y
-        move    x:(r7+$1b),x0
-        move    x:(r7+$17),y1           ; b0
+        move    x1,x0                   ; dx/2
+        move    x:(r1)+,y1              ; b0
         mpy     x0,y1,a
         asl     #$1,a,a
-        move    x:(r7+$0c),x0           ; y1
-        move    x:(r7+$11),y1           ; m1 = -a1/2
+        move    x:(r3)+,x0              ; y1
+        move    x:(r1)+,y1              ; m1 = -a1/2
         mpy     x0,y1,b
         asl     #$1,b,b
         add     b,a
-        move    x:(r7+$0d),x0           ; y2
-        move    x:(r7+$14),y1           ; a2
+        move    x0,b                    ; y1, for the shift
+        move    x:(r3),x0               ; y2
+        move    b,x:(r3)-               ; y2 <- y1
+        move    x:(r1)+,y1              ; a2
         mpy     x0,y1,b
         sub     b,a                     ; y
-        move    x:(r7+$0c),x0
-        move    x0,x:(r7+$0d)           ; y2 <- y1
-        move    a,x:(r7+$0c)            ; y1 <- y (limited)
+        move    a,x:(r3)+n3             ; y1 <- y (limited); on to the next pair
         move    a,x0                    ; y, limited
         move    #$20,y1                 ; the formant's gain, halved
         mpy     x0,y1,a
         add     y0,a
         move    a,y0                    ; the sum so far (halved)
 ; formant 2: y = 2*b0*(dx/2) + 2*m1*y1 - a2*y2; then y2 <- y1 <- y
-        move    x:(r7+$1b),x0
-        move    x:(r7+$18),y1           ; b0
+        move    x1,x0                   ; dx/2
+        move    x:(r1)+,y1              ; b0
         mpy     x0,y1,a
         asl     #$1,a,a
-        move    x:(r7+$0e),x0           ; y1
-        move    x:(r7+$12),y1           ; m1 = -a1/2
+        move    x:(r3)+,x0              ; y1
+        move    x:(r1)+,y1              ; m1 = -a1/2
         mpy     x0,y1,b
         asl     #$1,b,b
         add     b,a
-        move    x:(r7+$0f),x0           ; y2
-        move    x:(r7+$15),y1           ; a2
+        move    x0,b                    ; y1, for the shift
+        move    x:(r3),x0               ; y2
+        move    b,x:(r3)-               ; y2 <- y1
+        move    x:(r1)+,y1              ; a2
         mpy     x0,y1,b
         sub     b,a                     ; y
-        move    x:(r7+$0e),x0
-        move    x0,x:(r7+$0f)           ; y2 <- y1
-        move    a,x:(r7+$0e)            ; y1 <- y (limited)
+        move    a,x:(r3)+n3             ; y1 <- y (limited); on to the next pair
         move    a,x0                    ; y, limited
         move    #>$133333,y1          ; the formant's gain, halved
         mpy     x0,y1,a
         add     y0,a
-        move    a,y0                    ; the halved sum (never limits, above)
+        move    a,y0                    ; the sum so far (halved)
 ; wetA = 2 * the halved sum (= y0 + 0.5*y1 + 0.3*y2), limited -- as sum + sum,
 ; NOT an asl: a0 still holds the last product's low bits and a shift would
 ; carry its top bit into a1; the add leaves a2:a1 exactly as the shift of the
 ; reloaded sum did
         add     y0,a
-        move    a,x:(r7+$1b)            ; wetA
-        move    x:(r7+$1b),x0           ; wetA (limited)
-        move    x:(r7+$48),y1           ; vg/8
+        move    a,x0                    ; wetA (limited)
+        move    x:(r1)+,y1              ; vg/8
         mpy     x0,y1,a
         asl     #$3,a,a                 ; wetA * vg, the store limits
-        move    a,x:(r0+n0)             ; out R (limited)
+        move    a,x:(r0+n0)        ; out (limited)
         bra     fs_join
 ; MODEFORK_MID -- alternative 3: LADR, the linear zero-delay Moog ladder
 fs_ladr:
-; the per-sample ramp: Grun += dG (the ladder's g2run; found missing by the
-; float comparison rendering silence -- G' was 0 every sample)
+; the per-sample ramp: Grun += dG, then G' = min(Grun, $7f0000) into both
+; channels' stream slots (22 Sep 2026: the FM term was a multiply by zero
+; since 14 Sep, so G' is the clamped ramp exactly). Pointer-addressed: r2 ->
+; this block's LADR stream at $60 (G^3(1-G) G^2(1-G) G(1-G) 1-G k/4 d/2 G'
+; per channel), r3 -> the states; x in b, wetA back in a.
         move    x:(r7+$16),a
         move    x:(r7+$15),x0
         add     x0,a
         move    a,x:(r7+$16)            ; limited: G never past the rail
+        move    #$7f,x0
+        cmp     x0,a
+        tgt     x0,a                    ; G' < 1
+        move    r2,r1
+        move    #$6,n1
+        move    (r1)+n1
+        move    #$7,n1
+        move    a,x:(r1)+n1             ; G' for L (slot 6)
+        move    a,x:(r1)                ; G' for R (slot 13)
+        move    r2,r1
 ; ===================== channel L =====================
-        move    x:(r0),x0
-        move    x0,x:(r7+$1d)           ; park x
-; the ladder core (fs_lcore, one straight-line callee per channel, 13 Sep
-; 2026: inline it overran payload A by 20 words): x0 = B_prev, r3 -> the
-; four states; wetA lands in $1b
-        move    #>$0,x0                 ; B_prev (FM went with filter B, 14 Sep 2026)
+        move    x:(r0),b                ; x
         move    r7,r3                   ; states s0..s3 at $00
         bsr     fs_lcore
-        move    x:(r7+$1b),a            ; wetA is the output (filter B and the mix went 14 Sep 2026)
         move    a,x:(r0)                ; out (limited)
 ; ===================== channel R =====================
-        move    x:(r0+n0),x0
-        move    x0,x:(r7+$1d)           ; park x
-        move    #>$0,x0                 ; B_prev (0)
+        move    x:(r0+n0),b
         move    r7,r3
         move    #$8,n3
         move    (r3)+n3                 ; states s0..s3 at $08
         bsr     fs_lcore
-        move    x:(r7+$1b),a            ; wetA is the output (filter B and the mix went 14 Sep 2026)
-        move    a,x:(r0+n0)                ; out (limited)
-        bra     fs_join                 ; (LADR fell into CAP on the first v2 build: silent)
+        move    a,x:(r0+n0)
+        bra     fs_join
 ; MODEFORK_MID -- alternative 4: CAP, Airwindows Capacitor2 (MIT; 14 Sep 2026)
 fs_cap:
 ; the rotation: count = (count + 1) mod 6 picks which two of the five moving
 ; pole pairs join pole A this sample (B or C, then D, E or F); the offsets
-; come from a six-word table at $40 written at init.
+; come from a six-word table at $40 written at init. o1 -> n4, o2 -> n6.
         move    x:(r7+$22),a
         add     #>$1,a
         move    #>$6,x0
@@ -869,14 +941,14 @@ fs_cap:
         move    #>$40,n3
         move    (r3)+n3
         move    a1,n3
-        move    x:(r3+n3),x0            ; o2 = 3, 4 or 5
-        move    x0,x:(r7+$2a)
         and     #>$1,a
         add     #>$1,a                  ; o1 = 1 or 2
-        move    a1,x:(r7+$2b)
+        move    a1,n4
+        move    x:(r3+n3),a             ; o2 = 3, 4 or 5
+        move    a1,n6
 ; ===================== channel L =====================
         move    x:(r0),a
-        move    r7,r3                   ; L states at $00 (hp A..F) / $06 (lp A..F)
+        move    r7,r3                   ; L states: hp A..F at $00, lp A..F at $06
         bsr     fs_ccore
         move    a,x:(r0)                ; out (limited)
 ; ===================== channel R =====================
@@ -917,15 +989,25 @@ fs_end:
 ; ---------------------------------------------------------------------------
 ; fs_ccore -- Capacitor2 for one channel (Airwindows, MIT;).
 ; In: a = x, r3 -> the channel's twelve states (hp A..F at +0..5, lp A..F at
-; +6..11), x:(r7+$2a) = o2 (3/4/5), x:(r7+$2b) = o1 (1/2) this sample.
+; +6..11), n4 = o1 (1/2), n6 = o2 (3/4/5) this sample.
 ; Out: a = x through pole A, the o1 pair and the o2 pair, times trim.
 ; scale/2 = |1/2 - x/(2 nl)|; amt/2 = base * scale/2; each pole is
 ; s' = s (1 - amt) + x amt (the second mac doubles the halved amount), a
-; highpass takes x - s', a lowpass takes s'. STRAIGHT-LINE. Clobbers x0,
-; x1, y0, y1, b, n3; $1d = the running x, $1f/$23/$24 = this sample's amounts.
+; highpass takes x - s', a lowpass takes s'. STRAIGHT-LINE. Pointer-addressed
+; (22 Sep 2026): the four amounts (1-hpAmt hpAmt/2 1-lpAmt lpAmt/2) sit in a
+; four-word ring at $7c read round by r1 (m1 = 3: one turn per pole pair),
+; r5 = r3 + 6 is the lowpass states (n3 = n5 = the pair's offset), x1 the
+; running x. Clobbers x0, x1, y0, y1, b, r1, m1, r5, n3, n5.
 ; ---------------------------------------------------------------------------
 fs_ccore:
-        move    a,x:(r7+$1d)            ; x (the dry drives the dielectric)
+        move    r7,r1
+        move    #$7c,n1
+        move    (r1)+n1
+        move    #$3,m1
+        move    r3,r5
+        move    #$6,n5
+        move    (r5)+n5
+        move    a,x1                    ; x (the dry drives the dielectric)
         move    a,x0
         move    x:(r7+$28),y1           ; gn/16
         mpy     x0,y1,a                 ; g x / (16 nl)
@@ -934,146 +1016,132 @@ fs_ccore:
         add     #>$400000,a             ; 1/2 - g x/(2 nl)
         abs     a
         move    a,x0                    ; scale/2, 0 .. 1 (clipped: the plugin's own bound)
-        move    x:(r7+$26),y1           ; lpBase
-        mpy     x0,y1,a
-        move    a,x:(r7+$1f)            ; lpAmt/2
-        asl     #$1,a,a
-        neg     a
-        add     #>$7fffff,a
-        move    a,x:(r7+$23)            ; 1 - lpAmt  (-1 .. 1)
         move    x:(r7+$27),y1           ; hpBase
         mpy     x0,y1,a
-        move    a,x:(r7+$24)            ; hpAmt/2
+        move    (r1)+
+        move    a,x:(r1)-               ; ring 1: hpAmt/2
         asl     #$1,a,a
         neg     a
         add     #>$7fffff,a
-        move    a,x:(r7+$1c)            ; 1 - hpAmt
-; pole A (offset 0 / 6)
-        move    #>$0,n3
-        move    x:(r3+n3),x0            ; hp state
-        move    x:(r7+$1c),y1
+        move    a,x:(r1)+               ; ring 0: 1 - hpAmt
+        move    (r1)+
+        move    x:(r7+$26),y1           ; lpBase
         mpy     x0,y1,a
-        move    x:(r7+$1d),x0
-        move    x:(r7+$24),y1
+        move    (r1)+
+        move    a,x:(r1)-               ; ring 3: lpAmt/2
+        asl     #$1,a,a
+        neg     a
+        add     #>$7fffff,a
+        move    a,x:(r1)+               ; ring 2: 1 - lpAmt  (-1 .. 1)
+        move    (r1)+                   ; round to ring 0
+; pole A (offset 0 / 6)
+        move    x:(r3),x0               ; hp state
+        move    x:(r1)+,y1
+        mpy     x0,y1,a
+        move    x1,x0
+        move    x:(r1)+,y1
         mac     x0,y1,a
         mac     x0,y1,a                 ; s' = s (1 - amt) + x amt
-        move    a,x:(r3+n3)
-        move    x:(r7+$1d),b
+        move    a,x:(r3)
+        move    x1,b
         sub     a,b                     ; x - s'
-        move    b,x:(r7+$1d)
-        move    #>$6,n3
-        move    x:(r3+n3),x0            ; lp state
-        move    x:(r7+$23),y1
+        move    b,x1
+        move    x:(r5),x0               ; lp state
+        move    x:(r1)+,y1
         mpy     x0,y1,a
-        move    x:(r7+$1d),x0
-        move    x:(r7+$1f),y1
+        move    x1,x0
+        move    x:(r1)+,y1
         mac     x0,y1,a
         mac     x0,y1,a
-        move    a,x:(r3+n3)
-        move    a,x:(r7+$1d)            ; x = s'
+        move    a,x:(r5)
+        move    a,x1                    ; x = s'
 ; the o1 pair (B or C)
-        move    x:(r7+$2b),n3
+        move    n4,n3
+        move    n4,n5
         move    x:(r3+n3),x0
-        move    x:(r7+$1c),y1
+        move    x:(r1)+,y1
         mpy     x0,y1,a
-        move    x:(r7+$1d),x0
-        move    x:(r7+$24),y1
+        move    x1,x0
+        move    x:(r1)+,y1
         mac     x0,y1,a
         mac     x0,y1,a
         move    a,x:(r3+n3)
-        move    x:(r7+$1d),b
+        move    x1,b
         sub     a,b
-        move    b,x:(r7+$1d)
-        move    x:(r7+$2b),a
-        add     #>$6,a
-        move    a1,n3
-        move    x:(r3+n3),x0
-        move    x:(r7+$23),y1
+        move    b,x1
+        move    x:(r5+n5),x0
+        move    x:(r1)+,y1
         mpy     x0,y1,a
-        move    x:(r7+$1d),x0
-        move    x:(r7+$1f),y1
+        move    x1,x0
+        move    x:(r1)+,y1
         mac     x0,y1,a
         mac     x0,y1,a
-        move    a,x:(r3+n3)
-        move    a,x:(r7+$1d)
+        move    a,x:(r5+n5)
+        move    a,x1
 ; the o2 pair (D, E or F)
-        move    x:(r7+$2a),n3
+        move    n6,n3
+        move    n6,n5
         move    x:(r3+n3),x0
-        move    x:(r7+$1c),y1
+        move    x:(r1)+,y1
         mpy     x0,y1,a
-        move    x:(r7+$1d),x0
-        move    x:(r7+$24),y1
+        move    x1,x0
+        move    x:(r1)+,y1
         mac     x0,y1,a
         mac     x0,y1,a
         move    a,x:(r3+n3)
-        move    x:(r7+$1d),b
+        move    x1,b
         sub     a,b
-        move    b,x:(r7+$1d)
-        move    x:(r7+$2a),a
-        add     #>$6,a
-        move    a1,n3
-        move    x:(r3+n3),x0
-        move    x:(r7+$23),y1
+        move    b,x1
+        move    x:(r5+n5),x0
+        move    x:(r1)+,y1
         mpy     x0,y1,a
-        move    x:(r7+$1d),x0
-        move    x:(r7+$1f),y1
+        move    x1,x0
+        move    x:(r1)+,y1
         mac     x0,y1,a
         mac     x0,y1,a
-        move    a,x:(r3+n3)
+        move    a,x:(r5+n5)
         move    a,x0                    ; x = s'
         move    x:(r7+$29),y1           ; trim/2
         mpy     x0,y1,a
         asl     #$1,a,a                 ; out = x trim
+        move    #>$ffffff,m1
         rts
 
 ; ---- fs_lcore: the ladder's per-channel core (LADR) ----------
-; In: x0 = B_prev, r3 -> the channel's four halved states, x parked at $1d,
-; the block's G powers at $10..$12, k/4 at $13, d/2 at $14, Grun at $16.
-; Out: wetA = y4 at $1b (and in a). Straight-line, no control transfer
-; (cycle_count.py's rule for a loop callee); clobbers x0 x1 y0 y1 a b r3 n3.
+; In: b = x, r1 -> this channel's seven-word stream (G^3(1-G) G^2(1-G)
+; G(1-G) 1-G k/4 d/2 G'), r3 -> the channel's four halved states. Out:
+; wetA = y4 in a. Straight-line, no control transfer (cycle_count.py's rule
+; for a loop callee); clobbers x0 x1 y0 y1 a b r1 r3 n3.
 fs_lcore:
-; G' = clamp(Grun * (1 + kFM * B_prev)): FM as the SEM does it, d frozen
-        move    x:(r7+$2c),y1           ; kFM (0 unless ROUT = FM)
-        mpy     x0,y1,a                 ; kFM * B, +-0.5
-        move    a,x0
-        move    x:(r7+$16),y1           ; Grun
-        mpy     x0,y1,a
-        move    x:(r7+$16),x0
-        add     x0,a                    ; G' = Grun * (1 + kFM * B)
-        move    #$7f,x0
-        cmp     x0,a
-        tgt     x0,a                    ; G' < 1
-        move    a,x:(r7+$1c)            ; G' this sample
 ; S/8 = (1-G)(G^3 s0 + G^2 s1 + G s2 + s3)/8 with the states at s/2: sum/4
         move    x:(r3)+,x0              ; s0/2
-        move    x:(r7+$17),y1           ; G^3(1-G)
+        move    x:(r1)+,y1              ; G^3(1-G)
         mpy     x0,y1,a
         move    x:(r3)+,x0              ; s1/2
-        move    x:(r7+$12),y1           ; G^2(1-G)
+        move    x:(r1)+,y1              ; G^2(1-G)
         mac     x0,y1,a
         move    x:(r3)+,x0              ; s2/2
-        move    x:(r7+$11),y1           ; G(1-G)
+        move    x:(r1)+,y1              ; G(1-G)
         mac     x0,y1,a
         move    x:(r3),x0               ; s3/2
-        move    x:(r7+$18),y1           ; 1-G
+        move    x:(r1)+,y1              ; 1-G
         move    #$3,n3
         mac     x0,y1,a                 ; S/2
         move    (r3)-n3                 ; back to s0
         asr     #$2,a,a                 ; S/8, <= 0.6
         move    a,x0
 ; u = (x - k S) d: k S = 32 (k/4)(S/8); the accumulator holds the sum
-        move    x:(r7+$13),y1           ; k/4
+        move    x:(r1)+,y1              ; k/4
         mpy     x0,y1,a                 ; (k/4)(S/8)
         asl     #$5,a,a                 ; k S
-        move    x:(r7+$1d),b            ; x
-        sub     a,b                     ; x - k S
+        sub     a,b                     ; x - k S (b = x from the caller)
         asr     #$5,b,b                 ; /32, <= 0.6
         move    b,x0
-        move    x:(r7+$14),y1           ; d/2
+        move    x:(r1)+,y1              ; d/2
         mpy     x0,y1,a                 ; (x - k S) d / 64
         asl     #$5,a,a                 ; u/2
         move    a,x1                    ; v/2 (limited: u within +-2)
-        move    x:(r7+$1c),y1           ; G' for the four stages
+        move    x:(r1)+,y1              ; G' for the four stages
 ; stage 0: y/2 = G'(v-s)/2 + s/2 ; s'/2 = y - s/2  (x1 = v/2 in, y/2 out)
         move    x:(r3),y0               ; s/2
         move    x1,a                    ; v/2
@@ -1126,10 +1194,9 @@ fs_lcore:
         asl     #$1,a,a                 ; y
         sub     y0,a                    ; s'/2 = y - s/2
         move    a,x:(r3)+               ; limited: s' within +-2
-; wetA = y4 = 2 * (y/2)
+; wetA = y4 = 2 * (y/2), in a for the caller's limiting store
         move    x1,a
         asl     #$1,a,a
-        move    a,x:(r7+$1b)            ; wetA (limited)
         rts
 
 ; ===========================================================================
