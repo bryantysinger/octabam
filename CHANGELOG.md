@@ -7,6 +7,12 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- The DSP core clock measured: 199.9 MHz, 4,532 cycles a sample (probe 55,
+  branch `probe55`: timer 0 free-running at CLK/2, the per-frame advance
+  printed as an amplitude against a reference, `tools/harness/clock_probe.py`
+  on a capture). The rated maximum already: no clock headroom. CHIP.md's
+  183.456 MHz inference retracted.
+
 - RIG HOSTS, image 53: a new part's FX1 is NONE (image 52's kept stock's
   FILTER default, which on this image is Spectrum's id with FILTER's page
   bytes: "muted and quiet and modulated" on the unit until re-selected),
