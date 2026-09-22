@@ -69,7 +69,7 @@ MODULE = Module(
     params=(
         # ---- page 1: the performance surface, scene/CC-reachable -----------
         Param(b"DRV", 0, active=True, formatter=_PLAIN,
-              doc="saturation drive; 0 skips the stage (bit-exact); TAPE 0.8x..8x"),
+              doc="drive into the curve, +12 dB at 127 (level-compensated) on top of each mode's own; 0 skips"),
         Param(b"FOLD", 0, active=True, formatter=_PLAIN,
               doc="wavefolder drive, 1x..48x into the fold at a held level; 0 = no folding"),
         Param(b"WDTH", 64, 128, active=True, formatter=_BIPOL,

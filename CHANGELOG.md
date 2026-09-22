@@ -7,6 +7,13 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- Character DRV drives the curves (23 Sep 2026, Sam: "much too subtle"):
+  the saturator's input is x·G with G = 1 + 3·DRV/128 (+12 dB at 127) and
+  the output ×1/G, in every mode, on top of each mode's own law; DRV 0
+  still skips the stage. THD at −20 dBFS, 1 kHz, before → after: TAPE 64
+  −40 → −23 dB, TAPE 127 −18 → −11, TUBE 127 −22 → −18, INFL 127 −58 → −37.
+  Character 790 → 882 words. Unheard on the unit.
+
 - Upstream sweep (23 Sep 2026): nordseele's octalab-notes read again at
   `e0dc56d` (nine commits since `40ffa53`) and its findings placed in
   `STORAGE.md` §1 (a FAT directory record's first cluster is the long at
