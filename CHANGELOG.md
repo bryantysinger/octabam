@@ -7,6 +7,18 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- Modulation, the station pass (23 Sep 2026): the allpass stage takes x
+  and returns y in x0 (its entry/exit copies and the callers' eight moves
+  per channel went, 20 stages per sample), the LFO, LOFI and MIX bodies
+  inline, the fixed taps' centre split into i and f per block (`mo_itap`),
+  c200 / COMB's period−1 and trim as stream words, mo_herm's index chain,
+  six parallel moves with stock precedent. Pricer words per sample LINE
+  423 → 372, PHSR 489 → 393, COMB 361 → 321; the rig's priced worst core
+  3,121 → 2,737 (four PHSR beside the reverb; 3,120 usable). 13 settings
+  bit-identical on the new `make verify-ident MOD=modulation`. An
+  accumulator-to-accumulator MOVE limits where TFR does not: `tfr a,b` with
+  a parallel store changed the LINE renders and was reverted.
+
 - Spectrum LADR RES makeup (23 Sep 2026, Sam: "the vol drop desperately
   needs it"): the ladder's output ×M = min(1 + k/2, 2.3), one per-block
   word and one multiply per channel. Loop RMS against dry at RES 64 / 127:
