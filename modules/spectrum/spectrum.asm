@@ -521,6 +521,37 @@ fs_live:
         move    #$34,n6
         move    (r6)+n6
         move    #>$ffffff,m2
+; LADR's stream at $60 on r2: G^3(1-G) G^2(1-G) G(1-G) 1-G k/4 d/2 (G' per
+; sample) for L, the same for R
+        move    r7,r2
+        move    #$60,n2
+        move    (r2)+n2
+        move    r2,r1
+        move    x:(r7+$17),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$12),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$11),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$18),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$13),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$14),x0
+        move    x0,x:(r1)+
+        move    (r1)+                   ; slot 6: G', per sample
+        move    x:(r7+$17),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$12),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$11),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$18),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$13),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$14),x0
+        move    x0,x:(r1)+
         do      n7,>fs_end
 ; ---- input peak for the envelope follower (mono, pre-filter) --------------
         move    x:(r0),a
@@ -837,34 +868,38 @@ fs_vowl:
         bra     fs_join
 ; MODEFORK_MID -- alternative 3: LADR, the linear zero-delay Moog ladder
 fs_ladr:
-; the per-sample ramp: Grun += dG (the ladder's g2run; found missing by the
-; float comparison rendering silence -- G' was 0 every sample)
+; the per-sample ramp: Grun += dG, then G' = min(Grun, $7f0000) into both
+; channels' stream slots (22 Sep 2026: the FM term was a multiply by zero
+; since 14 Sep, so G' is the clamped ramp exactly). Pointer-addressed: r2 ->
+; this block's LADR stream at $60 (G^3(1-G) G^2(1-G) G(1-G) 1-G k/4 d/2 G'
+; per channel), r3 -> the states; x in b, wetA back in a.
         move    x:(r7+$16),a
         move    x:(r7+$15),x0
         add     x0,a
         move    a,x:(r7+$16)            ; limited: G never past the rail
+        move    #$7f,x0
+        cmp     x0,a
+        tgt     x0,a                    ; G' < 1
+        move    r2,r1
+        move    #$6,n1
+        move    (r1)+n1
+        move    #$7,n1
+        move    a,x:(r1)+n1             ; G' for L (slot 6)
+        move    a,x:(r1)                ; G' for R (slot 13)
+        move    r2,r1
 ; ===================== channel L =====================
-        move    x:(r0),x0
-        move    x0,x:(r7+$1d)           ; park x
-; the ladder core (fs_lcore, one straight-line callee per channel, 13 Sep
-; 2026: inline it overran payload A by 20 words): x0 = B_prev, r3 -> the
-; four states; wetA lands in $1b
-        move    #>$0,x0                 ; B_prev (FM went with filter B, 14 Sep 2026)
+        move    x:(r0),b                ; x
         move    r7,r3                   ; states s0..s3 at $00
         bsr     fs_lcore
-        move    x:(r7+$1b),a            ; wetA is the output (filter B and the mix went 14 Sep 2026)
         move    a,x:(r0)                ; out (limited)
 ; ===================== channel R =====================
-        move    x:(r0+n0),x0
-        move    x0,x:(r7+$1d)           ; park x
-        move    #>$0,x0                 ; B_prev (0)
+        move    x:(r0+n0),b
         move    r7,r3
         move    #$8,n3
         move    (r3)+n3                 ; states s0..s3 at $08
         bsr     fs_lcore
-        move    x:(r7+$1b),a            ; wetA is the output (filter B and the mix went 14 Sep 2026)
-        move    a,x:(r0+n0)                ; out (limited)
-        bra     fs_join                 ; (LADR fell into CAP on the first v2 build: silent)
+        move    a,x:(r0+n0)
+        bra     fs_join
 ; MODEFORK_MID -- alternative 4: CAP, Airwindows Capacitor2 (MIT; 14 Sep 2026)
 fs_cap:
 ; the rotation: count = (count + 1) mod 6 picks which two of the five moving
@@ -1039,53 +1074,40 @@ fs_ccore:
         rts
 
 ; ---- fs_lcore: the ladder's per-channel core (LADR) ----------
-; In: x0 = B_prev, r3 -> the channel's four halved states, x parked at $1d,
-; the block's G powers at $10..$12, k/4 at $13, d/2 at $14, Grun at $16.
-; Out: wetA = y4 at $1b (and in a). Straight-line, no control transfer
-; (cycle_count.py's rule for a loop callee); clobbers x0 x1 y0 y1 a b r3 n3.
+; In: b = x, r1 -> this channel's seven-word stream (G^3(1-G) G^2(1-G)
+; G(1-G) 1-G k/4 d/2 G'), r3 -> the channel's four halved states. Out:
+; wetA = y4 in a. Straight-line, no control transfer (cycle_count.py's rule
+; for a loop callee); clobbers x0 x1 y0 y1 a b r1 r3 n3.
 fs_lcore:
-; G' = clamp(Grun * (1 + kFM * B_prev)): FM as the SEM does it, d frozen
-        move    x:(r7+$2c),y1           ; kFM (0 unless ROUT = FM)
-        mpy     x0,y1,a                 ; kFM * B, +-0.5
-        move    a,x0
-        move    x:(r7+$16),y1           ; Grun
-        mpy     x0,y1,a
-        move    x:(r7+$16),x0
-        add     x0,a                    ; G' = Grun * (1 + kFM * B)
-        move    #$7f,x0
-        cmp     x0,a
-        tgt     x0,a                    ; G' < 1
-        move    a,x:(r7+$1c)            ; G' this sample
 ; S/8 = (1-G)(G^3 s0 + G^2 s1 + G s2 + s3)/8 with the states at s/2: sum/4
         move    x:(r3)+,x0              ; s0/2
-        move    x:(r7+$17),y1           ; G^3(1-G)
+        move    x:(r1)+,y1              ; G^3(1-G)
         mpy     x0,y1,a
         move    x:(r3)+,x0              ; s1/2
-        move    x:(r7+$12),y1           ; G^2(1-G)
+        move    x:(r1)+,y1              ; G^2(1-G)
         mac     x0,y1,a
         move    x:(r3)+,x0              ; s2/2
-        move    x:(r7+$11),y1           ; G(1-G)
+        move    x:(r1)+,y1              ; G(1-G)
         mac     x0,y1,a
         move    x:(r3),x0               ; s3/2
-        move    x:(r7+$18),y1           ; 1-G
+        move    x:(r1)+,y1              ; 1-G
         move    #$3,n3
         mac     x0,y1,a                 ; S/2
         move    (r3)-n3                 ; back to s0
         asr     #$2,a,a                 ; S/8, <= 0.6
         move    a,x0
 ; u = (x - k S) d: k S = 32 (k/4)(S/8); the accumulator holds the sum
-        move    x:(r7+$13),y1           ; k/4
+        move    x:(r1)+,y1              ; k/4
         mpy     x0,y1,a                 ; (k/4)(S/8)
         asl     #$5,a,a                 ; k S
-        move    x:(r7+$1d),b            ; x
-        sub     a,b                     ; x - k S
+        sub     a,b                     ; x - k S (b = x from the caller)
         asr     #$5,b,b                 ; /32, <= 0.6
         move    b,x0
-        move    x:(r7+$14),y1           ; d/2
+        move    x:(r1)+,y1              ; d/2
         mpy     x0,y1,a                 ; (x - k S) d / 64
         asl     #$5,a,a                 ; u/2
         move    a,x1                    ; v/2 (limited: u within +-2)
-        move    x:(r7+$1c),y1           ; G' for the four stages
+        move    x:(r1)+,y1              ; G' for the four stages
 ; stage 0: y/2 = G'(v-s)/2 + s/2 ; s'/2 = y - s/2  (x1 = v/2 in, y/2 out)
         move    x:(r3),y0               ; s/2
         move    x1,a                    ; v/2
@@ -1138,10 +1160,9 @@ fs_lcore:
         asl     #$1,a,a                 ; y
         sub     y0,a                    ; s'/2 = y - s/2
         move    a,x:(r3)+               ; limited: s' within +-2
-; wetA = y4 = 2 * (y/2)
+; wetA = y4 = 2 * (y/2), in a for the caller's limiting store
         move    x1,a
         asl     #$1,a,a
-        move    a,x:(r7+$1b)            ; wetA (limited)
         rts
 
 ; ===========================================================================
