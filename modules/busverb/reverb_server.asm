@@ -2284,31 +2284,26 @@ fbB:
         move    x:(r7+$44),a            ; fb7
         move    a,y:(r5)             ; write to line 7
 
-; ---- wet gain for the MIX below ----------------------------------------
-; Loaded HERE, not with the sums above: the write-back clobbers y1, so this
-; has to come after it. The sums themselves never use y1.
-        move    x:(r7+$20),y1           ; wet gain (constant, v4)
-
-; ---- WIDTH: mid/side, then MIX, then onto the dry -----------------------
-; M = (L+R)/2, S = (L-R)/2, out = M +/- w*S. w=0 collapses to mono, w=1 gives
-; back exactly the two tap sums.
+; ---- WIDTH: mid/side, then the wet high-cut, WET, then onto the dry ------
+; M = (L+R)/2, S = (L-R)/2, out = M +/- w*S. The width w is pinned at 0.75
+; (the knob is SHFT; $2c carries its step). M, w*S and their high-cut
+; values live in y1/x1 (a register move limits exactly as the parked store
+; did); the wet gain sits in b and is moved into y0 per channel.
         move    x:(r7+$2d),a
         move    x:(r7+$2e),x0
         add     x0,a
         asr     #$1,a,a
-        move    a,x:(r7+$25)            ; M
+        move    a,y1                    ; M
         move    x:(r7+$2d),a
         sub     x0,a
         asr     #$1,a,a
         move    a,x0
-        move    #$60,y0                 ; width PINNED at the old default
-                                        ; (wide, 0.75) -- the knob is SHFT
-                                        ; now and $2c carries its step
+        move    #$60,y0                 ; w = 0.75
         mpy     x0,y0,a
-        move    a,x:(r7+$26)            ; w*S
+        move    a,x1                    ; w*S
 
 ; ---- wet high-cut --------------------------------------------
-        move    x:(r7+$25),a            ; M
+        move    y1,a                    ; M
         move    x:(r7+$78),b            ; high-cut state, M channel
         sub     b,a
         move    a,x0
@@ -2316,47 +2311,43 @@ fbB:
         mpy     x0,y0,a                 ; c*(x - y)
         add     b,a                     ; y += c*(x - y)
         move    a,x:(r7+$78)
-        move    a,x:(r7+$25)            ; M, high-cut
-        move    x:(r7+$26),a            ; w*S
+        move    a,y1                    ; M, high-cut
+        move    x1,a                    ; w*S
         move    x:(r7+$79),b            ; state, S channel
         sub     b,a
         move    a,x0
         mpy     x0,y0,a
         add     b,a
         move    a,x:(r7+$79)
-        move    a,x:(r7+$26)            ; w*S, high-cut
+        move    a,x1                    ; w*S, high-cut
+        move    x:(r7+$20),b            ; wet gain (wgain/2)
 
-; ---- (the mono M write to the shared REVERB WET lived here until;
-
-        move    x:(r7+$25),a
-        move    x:(r7+$26),x0
-        add     x0,a
+; ---- L = M + w*S, R = M - w*S, each * wgain * GLVL * WET * 2, + dry -----
+        move    y1,a
+        add     x1,a
         move    a,x0
-        mpy     x0,y1,a                 ; * (wgain/2)
+        move    b,y0
+        mpy     y0,x0,a                 ; * (wgain/2), signed (y0,x0)
         asl     #$1,a,a                 ; wet makeup: doubled in full precision
         move    a,x0                    ; GATE: scale the wet by the gate level
-        move    x:(r7+$62),y0           ; GLVL (0..1); y1 still holds wet gain
+        move    x:(r7+$62),y0           ; GLVL (0..1)
         mpy     y0,x0,a                 ; signed (y0,x0): wet * gate
         move    a,x0                    ; gated wet L
 ; THE HOST PRINT: dry + wet*WET, in place. The chain input (the aux, or
 ; the delay's output while it is live) feeds the tank only; the dry the
-; host hears is its own. Until 20 Sep 2026 the stage output in + wet*WET
-; was also published to a shared buffer for the T8 return, and the print
-; was gated off while that return was live. The mpy is the audited-signed
-; y0,x0 form.
+; host hears is its own.
         move    x:(r7+$70),y0           ; WET
         mpy     y0,x0,a                 ; wet * WET
-        asl     #$1,a,a                 ; x2: WET 127 = +6 dB (Sam, 16 Sep 2026:
-                                        ; "reverb is still too quiet"; the
-                                        ; stores below limit)
+        asl     #$1,a,a                 ; x2: WET 127 = +6 dB (the stores
+                                        ; below limit)
         move    x:(r0),x0               ; dry L, still in place
-        add     x0,a                    ; + dry at unity (v5)
+        add     x0,a                    ; + dry at unity
         move    a,x:(r0)+               ; L in place -- dry + wet; r0 on to R
-        move    x:(r7+$25),a
-        move    x:(r7+$26),x0
-        sub     x0,a
+        move    y1,a
+        sub     x1,a
         move    a,x0
-        mpy     x0,y1,a
+        move    b,y0
+        mpy     y0,x0,a                 ; * (wgain/2)
         asl     #$1,a,a                 ; wet makeup, right channel
         move    a,x0                    ; GATE: same gate level on the right
         move    x:(r7+$62),y0           ; GLVL
@@ -2366,7 +2357,7 @@ fbB:
         mpy     y0,x0,a                 ; wet * WET
         asl     #$1,a,a                 ; x2, as on L
         move    x:(r0),x0               ; dry R, still in place
-        add     x0,a                    ; + dry at unity (v5)
+        add     x0,a                    ; + dry at unity
         move    a,x:(r0)+               ; R in place -- dry + wet; r0 on to
                                         ; the next frame (n0 is not used)
         move    (r1)+                   ; all four line pointers advance together
