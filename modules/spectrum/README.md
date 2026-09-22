@@ -10,7 +10,16 @@ hides the row.
 
 - **LADR** — the linear zero-delay Moog transistor ladder (audiojs/filter
   moogLadder, MIT), 24 dB/oct; RES 127 is the edge of self-oscillation,
-  bounded there.
+  bounded there. The passband sits at 1/(1 + k) (k up to 3.9 at RES 127:
+  −13.8 dB), so since 23 Sep 2026 the output carries a RES makeup
+  M = min(1 + k/2, 2.3), one per-block word and one multiply per channel
+  (Sam: "the vol drop desperately needs it"). Loop RMS against dry at RES
+  64 / 127: FREQ 127 −9.4 / −13.5 → −3.5 / −6.3 dB, FREQ 64 −9.1 / −8.6 →
+  −3.1 / −1.4. The clamp keeps `verify_spectrum`'s 0.3 FS noise at RES 127
+  off the rails (1 + 0.75k railed 4.6 %, 1 + k/2 0.4 %). VOWL's RES 127
+  loss (7.5 to 9 dB on the loop, the bands narrowing) is left: a 0.1 FS
+  tone at the formant already peaks at −4.7 dBFS through its ×8 makeup,
+  and ×12 put it on the rails.
 - **SEM / BP** — a driven Oberheim SEM zero-delay SVF (Zavalishin's
   trapezoidal form, audiojs/filter oberheim, MIT); the cutoff ramps per
   sample across the block. SEM carries SHPE (page 2, slot 7; `---` in every
