@@ -223,7 +223,7 @@ fs_msame:
         move    a,x:(r7+$25)
         move    #>$7fffff,x0
         move    x:(r6+$c),a             ; MODE, slot 6 = $c's knob field
-        and     #>$ff0000,a             ; 0 LADR, 1 LP, 2 BP, 3 ISO, 4 VOWL, 5 HP
+        and     #>$ff0000,a             ; 0 LADR, 1 SEM, 2 BP, 3 ISO, 4 VOWL
         beq     fs_mladr                ; (LADR first, 14 Sep 2026: "moog is best")
         cmp     #>$20000,a
         beq     fs_mbp
@@ -231,17 +231,27 @@ fs_msame:
         beq     fs_mcap
         cmp     #>$40000,a
         beq     fs_mvowl
-        cmp     #>$50000,a
-        beq     fs_mhp
-        move    x0,x:(r7+$23)           ; LP, and anything unexpected
+; SEM (and anything unexpected): SHPE, slot 7 in $c's companion field, is
+; the SEM's mode pot -- 0 LP, 64 notch (LP + HP), 127 HP (23 Sep 2026):
+; kHP = min(1, k/64), kLP = min(1, (127 - k)/63): both exactly 1 at 64; the
+; stores limit.
+        move    x:(r6+$c),a
+        and     #>$7f00,a               ; k<<8
+        move    a1,x0
+        move    x0,a                    ; A2-clean (AND cleans A1 only)
+        asl     #$9,a,a                 ; k<<17 = k/64 as Q23
+        move    a,x:(r7+$25)            ; kHP
+        move    #>$7f00,b
+        sub     x0,b                    ; (127 - k)<<8
+        asl     #$8,b,b                 ; (127 - k)/128 as Q23
+        move    b,x0
+        move    #>$410410,y1            ; (128/63)/4
+        mpy     x0,y1,b
+        asl     #$2,b,b                 ; (127 - k)/63
+        move    b,x:(r7+$23)            ; kLP
         bra     fs_mdone
 fs_mbp:
         move    x0,x:(r7+$24)
-        bra     fs_mdone
-fs_mhp:
-; the SVF's high-pass tap (22 Sep 2026, back as the sixth MODE: a select
-; past five positions draws as the plain dial printing its word)
-        move    x0,x:(r7+$25)
         bra     fs_mdone
 fs_mcap:
 ; ---- ISO: Airwindows Capacitor2 (Chris Johnson, MIT), the
