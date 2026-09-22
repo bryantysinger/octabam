@@ -209,6 +209,8 @@ bus_dohk:                               ; nobody did -- take over this block
         move    y:>$900,a
         add     #>$10,a
         and     #>$70,a
+        move    a1,x0                   ; A2-clean: a boot word with bit 23 set
+        move    x0,a                    ; would saturate the store
         move    a,y:>$900               ; the new CURRENT rotation
 ; ⚠️ CLEAR THE BUFFER WRITTEN **NEXT** BLOCK, NOT THIS ONE.
 ; Clearing the buffer we are about to write races the OTHER core's writers:

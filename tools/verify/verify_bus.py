@@ -109,7 +109,7 @@ CASES = [
 
     # --- the hosts' own sends: paths every DEFAULT render leaves at zero ----
     # ⚠️ Added after the delay's IN decode was silently DELETED by
-    # a splice (6d2690b) and 17/17 still passed -- every case had IN at 0, so
+    # a splice (6d2690b) and every case still passed -- every case had IN at 0, so
     # "IN multiplies garbage" rendered identically to "IN works". A knob whose
     # default is 0 is INVISIBLE to this gate unless a case drives it.
     ("DS AUX  the delay host's own send, nonzero (inall)",
@@ -197,7 +197,7 @@ def render(mem, case, bump_level=0, extra_send=""):
     # is the failure mode a bus change produces most often. Carry the peak so a
     # dead render is a loud error rather than a green tick.
     peak = max((abs(v) for v in L + R), default=0)
-    # Samples are kept only when a lag search may need them -- 17 cases of raw
+    # Samples are kept only when a lag search may need them -- 28 cases of raw
     # audio is a lot to hold for a run that is going to compare hashes.
     return h.hexdigest(), peak, len(L), (L, R)
 

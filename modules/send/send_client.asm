@@ -160,8 +160,9 @@ bus_dohk:                               ; nobody did -- take over this block
 
         move    y:>$900,a
         add     #>$10,a                 ; advance one buffer
-        and     #>$70,a                 ; mod 8; the mask also sanitises boot
-                                        ; garbage (bit 23 clear)
+        and     #>$70,a                 ; mod 8; the mask sanitises boot garbage
+        move    a1,x0                   ; A2-clean: a boot word with bit 23 set
+        move    x0,a                    ; would saturate the store
         move    a,y:>$900               ; the new CURRENT rotation
 ; The buffer cleared is the one written TWO blocks from now: clearing the
 ; buffer about to be written races the other core's writers (a core-1
