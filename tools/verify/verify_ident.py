@@ -5,7 +5,7 @@ across a knob matrix: every mode with two knob sets, all zeros, all max.
     python3 tools/verify/verify_ident.py <module> ref     # stamp from the current build
     python3 tools/verify/verify_ident.py <module> check   # compare the current build
 
-The reference is out/<module>_ident_ref.json (gitignored, per worktree).
+The reference is out/ident_<module>_ref.json (gitignored, per worktree).
 Every 0..127 knob is driven off its default so each stage carries signal;
 the select (MODE / SAT) is swept over its count. The Spectrum-specific
 matrix stays in verify_spectrum_ident.py.
@@ -28,7 +28,7 @@ FRAMES, N = 15, 6000
 SR = 44100
 TMP = pathlib.Path(f"out/_identgate_{MOD.name}")
 TMP.mkdir(parents=True, exist_ok=True)
-REF = pathlib.Path(f"out/{MOD.name}_ident_ref.json")
+REF = pathlib.Path(f"out/ident_{MOD.name}_ref.json")
 
 # Rebuild the dump every run: a stale audition cache measures the STOCK
 # effect on this id (verify_spectrum_ident.py's note).
