@@ -71,6 +71,31 @@ symlink `out/emu`**: its CMake cache names the main checkout's sources,
 so `cmake --build` there compiles THEIR `tools/emu/ot_emu`, not yours
 (14 Sep 2026: a port edit "built" fine and the binary did not have it).
 Build the port into the worktree: `make emu-cf` (a fresh cache, ~1 min).
+**The same holds for `dsp_host` and `dsp_asm`:** `scripts/setup.sh` builds
+them from a COPY staged into `vendor/dsp56300/source/dsp_host/`, so in a
+worktree the shared binary is the main checkout's, whatever the branch's
+`tools/harness/dsp_host/dsp_host.cpp` says, and `dsp_host` ignores an
+option it does not know. PR #356 was reviewed twice (21–22 Sep 2026) as
+"MOD has no effect, residual 0.000" for exactly this reason: its
+`-paramfile` never ran, every render used default knobs, and the effect
+was fine (34 gates pass under its own host). A branch that changes
+`dsp_host.cpp` is built in an isolated tree, never into `vendor/`:
+
+```
+cat > /tmp/hostpr/CMakeLists.txt <<EOF
+cmake_minimum_required(VERSION 3.10)
+project(hostpr CXX)
+set(CMAKE_CXX_STANDARD 17)
+add_subdirectory(/ABS/PATH/TO/main/vendor/dsp56300 dsp56300)
+add_executable(dsp_host_pr /ABS/PATH/TO/worktree/tools/harness/dsp_host/dsp_host.cpp)
+target_include_directories(dsp_host_pr PRIVATE /ABS/PATH/TO/main/vendor/dsp56300/source)
+target_link_libraries(dsp_host_pr PRIVATE dsp56kEmu)
+EOF
+cmake -S /tmp/hostpr -B /tmp/hostpr/build -DCMAKE_BUILD_TYPE=Release && cmake --build /tmp/hostpr/build --target dsp_host_pr -j8
+```
+
+then point the harness at it (`benchmark_reverbs.HOST`, `send_probe`'s
+host path) for that run.
 
 ## Traps that have already cost real work
 
