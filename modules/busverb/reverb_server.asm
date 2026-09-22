@@ -1661,171 +1661,191 @@ lfrol:
         move    a,y:(r6)+               ; w5: this line's output
 tankend:
 
-; ---- collect the LINES outputs to r7 slots for the Hadamard ---------------
-; The loop leaves them in the state table at stride 6. Lines 0-3 go to
-; $16..$19, lines 4-7 to $3a..$3d -- the two 4-word groups the 8x8 FWHT
-; operates on in-place.
+; ---- collect the LINES outputs for the Hadamard ---------------------------
+; The tank loop leaves them in the state table at stride 6. Lines 0-3 go to
+; $16..$19 and lines 4-7 to $3a..$3d, the two 4-word groups the 8x8 FWHT
+; operates on in place; r4 (m4 = $fff) and r5 (m5 = $7ff) walk them, and
+; both groups sit inside one aligned block of either modulo for every r7.
         move    #6,n6                   ; the table's stride (short: address
                                         ; register, zero-extended)
         move    x:(r7+$0b),a
-        add     #>$5,a                
+        add     #>$5,a
         move    a,r6                    ; -> line 0's output word
         move    #>$7ff,m5               ; back to the input diffusers' 2048
-        nop                             ; two instructions between writing r6
-                                        ; and addressing through it
+        lua     (r7+$16),r4             ; (these two space the r6 write)
+        lua     (r7+$3a),r5
         move    y:(r6)+n6,a
-        move    a,x:(r7+$16)            ; line 0
+        move    a,x:(r4)+               ; line 0
         move    y:(r6)+n6,a
-        move    a,x:(r7+$17)            ; line 1
+        move    a,x:(r4)+               ; line 1
         move    y:(r6)+n6,a
-        move    a,x:(r7+$18)            ; line 2
+        move    a,x:(r4)+               ; line 2
         move    y:(r6)+n6,a
-        move    a,x:(r7+$19)            ; line 3
+        move    a,x:(r4)+               ; line 3
         move    y:(r6)+n6,a
-        move    a,x:(r7+$3a)            ; line 4
+        move    a,x:(r5)+               ; line 4
         move    y:(r6)+n6,a
-        move    a,x:(r7+$3b)            ; line 5
+        move    a,x:(r5)+               ; line 5
         move    y:(r6)+n6,a
-        move    a,x:(r7+$3c)            ; line 6
+        move    a,x:(r5)+               ; line 6
         move    y:(r6)+n6,a
-        move    a,x:(r7+$3d)            ; line 7
+        move    a,x:(r5)+               ; line 7
 
 ; ---- wet output: eight lines summed per channel -------------------------
-        move    x:(r7+$16),a            ; line 0
-        move    x:(r7+$17),x0           ; line 1
-        sub     x0,a
-        move    x:(r7+$18),x0           ; line 2
-        add     x0,a                    ; a = l0-l1+l2   (l3 driven, excluded)
-        move    x:(r7+$3a),x0           ; line 4
-        add     x0,a
-        move    x:(r7+$3b),x0           ; line 5
-        sub     x0,a
-        move    x:(r7+$3c),x0           ; line 6
-        add     x0,a                    ; (l7 driven, excluded)
-        move    x:(r7+$08),b            ; the bloom, pre-filter: the wet
-        asr     #$3,b,b                 ; bloom back at 0.5x (R18: 1x/1.5x/2x
-                                        ; all flutter on plucked transients --
-                                        ; the AP pulse train is audible at any
-                                        ; ring length once the level is up;
-                                        ; the forward primary lives in the
-                                        ; driven-line taps below instead)
+; L = l0 - l1 + l2 + l3/2 + l4 - l5 + l6 + bloom/8; R = l0 + l1 - l2 + l4 +
+; l5 - l6 + l7/2 + bloom/8 (l3/l7, the driven lines, split L/R keep the
+; image wide; the bloom at 0.5x). 56-bit sums, so the order is free.
+        lua     (r7+$16),r4
+        lua     (r7+$3a),r5
+        move    x:(r7+$08),b            ; the bloom, pre-filter
+        asr     #$3,b,b
+        move    x:(r4)+,a               ; line 0
         add     b,a
-        move    x:(r7+$19),b            ; line 3 (driven)
+        move    x:(r4)+,x0              ; line 1
+        sub     x0,a
+        move    x:(r4)+,x0              ; line 2
+        add     x0,a
+        move    x:(r4)+,b               ; line 3 (driven)
         asr     #$1,b,b
         add     b,a
+        move    x:(r5)+,x0              ; line 4
+        add     x0,a
+        move    x:(r5)+,x0              ; line 5
+        sub     x0,a
+        move    x:(r5)+,x0              ; line 6
+        add     x0,a
         move    a,x:(r7+$2d)            ; wet L
-        move    x:(r7+$16),a
-        move    x:(r7+$17),x0
-        add     x0,a
-        move    x:(r7+$18),x0
-        sub     x0,a                    ; a = l0+l1-l2   (l3 excluded)
-        move    x:(r7+$3a),x0           ; line 4
-        add     x0,a
-        move    x:(r7+$3b),x0           ; line 5
-        add     x0,a
-        move    x:(r7+$3c),x0           ; line 6
-        sub     x0,a                    ; (l7 excluded)
-        move    x:(r7+$08),b            ; same bloom on R
-        asr     #$3,b,b                 ; 0.5x, as L
+        lua     (r7+$16),r4
+        lua     (r7+$3a),r5
+        move    x:(r7+$08),b            ; the bloom again
+        asr     #$3,b,b
+        move    x:(r4)+,a               ; line 0
         add     b,a
-        move    x:(r7+$3d),b            ; line 7 (driven), R side -- split
-        asr     #$1,b,b                 ; l3/l7 keeps the image wide
+        move    x:(r4)+,x0              ; line 1
+        add     x0,a
+        move    x:(r4)+,x0              ; line 2
+        sub     x0,a
+        move    x:(r5)+,x0              ; line 4
+        add     x0,a
+        move    x:(r5)+,x0              ; line 5
+        add     x0,a
+        move    x:(r5)+,x0              ; line 6
+        sub     x0,a
+        move    x:(r5)+,b               ; line 7 (driven), R side
+        asr     #$1,b,b
         add     b,a
         move    a,x:(r7+$2e)            ; wet R
 
-; ---- 8x8 Fast Walsh-Hadamard Transform -----------------------------------
+; ---- 8x8 Fast Walsh-Hadamard Transform, in place ---------------------------
+; Stage 1 pairs neighbours (r4 reads, r5 writes one pair behind); stage 2
+; pairs (0,2)/(1,3) with the four values in registers; stage 3 pairs the
+; groups (r4/r6 on $16.., r5 on $3a..). A register park limits exactly as
+; the stores it replaces.
+        lua     (r7+$16),r4
+        lua     (r7+$16),r5
+        move    x:(r4)+,a               ; d0
+        move    x:(r4)+,x0              ; d1
+        move    a,b
+        add     x0,a
+        sub     x0,b
+        move    a,x:(r5)+               ; u0 = d0+d1
+        move    b,x:(r5)+               ; u1 = d0-d1
+        move    x:(r4)+,a               ; d2
+        move    x:(r4)+,x0              ; d3
+        move    a,b
+        add     x0,a
+        sub     x0,b
+        move    a,x:(r5)+               ; u2 = d2+d3
+        move    b,x:(r5)+               ; u3 = d2-d3
 
+        lua     (r7+$3a),r4
+        lua     (r7+$3a),r5
+        move    x:(r4)+,a               ; d4
+        move    x:(r4)+,x0              ; d5
+        move    a,b
+        add     x0,a
+        sub     x0,b
+        move    a,x:(r5)+               ; u4 = d4+d5
+        move    b,x:(r5)+               ; u5 = d4-d5
+        move    x:(r4)+,a               ; d6
+        move    x:(r4)+,x0              ; d7
+        move    a,b
+        add     x0,a
+        sub     x0,b
+        move    a,x:(r5)+               ; u6 = d6+d7
+        move    b,x:(r5)+               ; u7 = d6-d7
+
+        lua     (r7+$16),r4
+        lua     (r7+$16),r5
+        move    x:(r4)+,x0              ; u0
+        move    x:(r4)+,x1              ; u1
+        move    x:(r4)+,a               ; u2
+        move    a,b
+        add     x0,a                    ; u0+u2
+        neg     b
+        add     x0,b                    ; u0-u2
+        move    a,x:(r5)+               ; u0' = u0+u2
+        move    b,y0                    ; u2' = u0-u2, parked
+        move    x:(r4)+,a               ; u3
+        move    a,b
+        add     x1,a                    ; u1+u3
+        neg     b
+        add     x1,b                    ; u1-u3
+        move    a,x:(r5)+               ; u1' = u1+u3
+        move    y0,x:(r5)+              ; u2'
+        move    b,x:(r5)+               ; u3' = u1-u3
+
+        lua     (r7+$3a),r4
+        lua     (r7+$3a),r5
+        move    x:(r4)+,x0              ; u4
+        move    x:(r4)+,x1              ; u5
+        move    x:(r4)+,a               ; u6
+        move    a,b
+        add     x0,a
+        neg     b
+        add     x0,b
+        move    a,x:(r5)+               ; u4' = u4+u6
+        move    b,y0                    ; u6' = u4-u6, parked
+        move    x:(r4)+,a               ; u7
+        move    a,b
+        add     x1,a
+        neg     b
+        add     x1,b
+        move    a,x:(r5)+               ; u5' = u5+u7
+        move    y0,x:(r5)+              ; u6'
+        move    b,x:(r5)+               ; u7' = u5-u7
+
+        lua     (r7+$16),r4
+        lua     (r7+$3a),r5
         lua     (r7+$16),r6
-        move    x:(r6)+,a               ; d0
-        move    x:(r6)+,x0              ; d1
+        move    x:(r4)+,a               ; u0
+        move    x:(r5),x0               ; u4
         move    a,b
         add     x0,a
         sub     x0,b
-        move    a,x:(r6-2)              ; u0 = d0+d1
-        move    b,x:(r6-1)              ; u1 = d0-d1
-        move    x:(r6)+,a               ; d2
-        move    x:(r6)+,x0              ; d3
+        move    a,x:(r6)+               ; u0' = u0+u4
+        move    b,x:(r5)+               ; u4' = u0-u4
+        move    x:(r4)+,a               ; u1
+        move    x:(r5),x0               ; u5
         move    a,b
         add     x0,a
         sub     x0,b
-        move    a,x:(r6-2)              ; u2 = d2+d3
-        move    b,x:(r6-1)              ; u3 = d2-d3
-
-        lua     (r7+$3a),r6
-        move    x:(r6)+,a               ; d4
-        move    x:(r6)+,x0              ; d5
+        move    a,x:(r6)+               ; u1' = u1+u5
+        move    b,x:(r5)+               ; u5' = u1-u5
+        move    x:(r4)+,a               ; u2
+        move    x:(r5),x0               ; u6
         move    a,b
         add     x0,a
         sub     x0,b
-        move    a,x:(r6-2)              ; u4 = d4+d5
-        move    b,x:(r6-1)              ; u5 = d4-d5
-        move    x:(r6)+,a               ; d6
-        move    x:(r6)+,x0              ; d7
+        move    a,x:(r6)+               ; u2' = u2+u6
+        move    b,x:(r5)+               ; u6' = u2-u6
+        move    x:(r4)+,a               ; u3
+        move    x:(r5),x0               ; u7
         move    a,b
         add     x0,a
         sub     x0,b
-        move    a,x:(r6-2)              ; u6 = d6+d7
-        move    b,x:(r6-1)              ; u7 = d6-d7
-
-        move    x:(r7+$16),a            ; u0
-        move    x:(r7+$18),x0           ; u2
-        move    a,b
-        add     x0,a
-        sub     x0,b
-        move    a,x:(r7+$16)            ; u0' = u0+u2
-        move    b,x:(r7+$18)            ; u2' = u0-u2
-        move    x:(r7+$17),a            ; u1
-        move    x:(r7+$19),x0           ; u3
-        move    a,b
-        add     x0,a
-        sub     x0,b
-        move    a,x:(r7+$17)            ; u1' = u1+u3
-        move    b,x:(r7+$19)            ; u3' = u1-u3
-
-        move    x:(r7+$3a),a            ; u4
-        move    x:(r7+$3c),x0           ; u6
-        move    a,b
-        add     x0,a
-        sub     x0,b
-        move    a,x:(r7+$3a)            ; u4' = u4+u6
-        move    b,x:(r7+$3c)            ; u6' = u4-u6
-        move    x:(r7+$3b),a            ; u5
-        move    x:(r7+$3d),x0           ; u7
-        move    a,b
-        add     x0,a
-        sub     x0,b
-        move    a,x:(r7+$3b)            ; u5' = u5+u7
-        move    b,x:(r7+$3d)            ; u7' = u5-u7
-
-        move    x:(r7+$16),a            ; u0
-        move    x:(r7+$3a),x0           ; u4
-        move    a,b
-        add     x0,a
-        sub     x0,b
-        move    a,x:(r7+$16)            ; u0' = u0+u4
-        move    b,x:(r7+$3a)            ; u4' = u0-u4
-        move    x:(r7+$17),a            ; u1
-        move    x:(r7+$3b),x0           ; u5
-        move    a,b
-        add     x0,a
-        sub     x0,b
-        move    a,x:(r7+$17)            ; u1' = u1+u5
-        move    b,x:(r7+$3b)            ; u5' = u1-u5
-        move    x:(r7+$18),a            ; u2
-        move    x:(r7+$3c),x0           ; u6
-        move    a,b
-        add     x0,a
-        sub     x0,b
-        move    a,x:(r7+$18)            ; u2' = u2+u6
-        move    b,x:(r7+$3c)            ; u6' = u2-u6
-        move    x:(r7+$19),a            ; u3
-        move    x:(r7+$3d),x0           ; u7
-        move    a,b
-        add     x0,a
-        sub     x0,b
-        move    a,x:(r7+$19)            ; u3' = u3+u7
-        move    b,x:(r7+$3d)            ; u7' = u3-u7
-
+        move    a,x:(r6)+               ; u3' = u3+u7
+        move    b,x:(r5)+               ; u7' = u3-u7
 
 ; ⚠️ The marker below said "excised unless SHIMMER=1" until 30 Aug 2026.
 ; Both halves were wrong: the shimmer is IN by default, build_bus.py
