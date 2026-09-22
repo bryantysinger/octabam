@@ -50,7 +50,7 @@
 ;   $60..$6f the main ring (per block; r5, m5 = 15), in the order the sample
 ;     reads them: gq trim/2 gq trim/2 $4d $29 t/2 t/2 $26 $2d $2e $22 $28 $27
 ;     $2b $20 -- COMP off steps over its five words (n5 = 5, else 0)
-;   $4e G/8, $4f 1/G (DRV's drive into the curve, 23 Sep 2026)
+;   $4e G/8, $4f the output scale after the curve (1, (1+d)/G, 1/G by mode; 23 Sep 2026)
 ;   $1c, $25, $46/$47, $50..$59, $5d..$5f free (22 Sep 2026: the sample loop reads
 ;   its coefficients through the rings and its state through r3/r4; the
 ;   displaced move costs twice the pointer move on the chip, CHIP.md)
@@ -413,8 +413,11 @@ ch_live:
         move    x0,x:(r3)+
 ; DRV's drive into the curve (23 Sep 2026, Sam: "much too subtle"): the
 ; saturator's input is x*G with G = 1 + 3d (DRV 127 = +12 dB) and its output
-; is scaled back by 1/G, so DRV moves the curve's bite and nothing else at
-; low level. G/8 at $4e, 1/G at $4f (the ring words around each callee).
+; is scaled back per mode -- INFL by 1/G (it barely compresses: unity small
+; signal), TUBE by (1+d)/G (half), TAPE by 1 (TapeHead's own trim already
+; holds its small signal at unity, and its smoothstep compresses the rest:
+; with 1/G on top a loop sat 18 dB under dry at DRV 127). G/8 at $4e, the
+; output scale at $4f (the ring words around each callee).
         move    x:(r6+$0),a             ; d = DRV/128
         move    a,x0
         move    #>$300000,y1            ; 0.375
@@ -430,6 +433,23 @@ ch_live:
         move    a0,x0
         move    x0,a
         asl     #$1,a,a                 ; 1/G, 1.0 at DRV 0 (the store limits)
+        move    x:(r7+$29),b            ; sat mode
+        tst     b
+        beq     ch_gtape
+        move    #>$1,x0
+        cmp     x0,b
+        bne     ch_gdone                ; INFL: 1/G
+        move    a,x0                    ; TUBE: (1/G)(1+d)
+        move    x:(r6+$0),a
+        asr     #$1,a,a
+        add     #>$400000,a             ; (1 + d)/2
+        move    a,y1
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        bra     ch_gdone
+ch_gtape:
+        move    #>$7fffff,a             ; TAPE: 1
+ch_gdone:
         move    a,x:(r7+$4f)
 ; the SAT ring: the active mode's words, both channels, each between G/8
 ; and 1/G
@@ -585,7 +605,7 @@ ch_rdone:
         move    (r3)+n3                 ; r3 = r7+$16: L y2
         bsr     chtape
         move    b,x0                    ; LIMITING: the hard clip
-        move    x:(r6)+,y1              ; 1/G
+        move    x:(r6)+,y1              ; the output scale
         mpy     x0,y1,b
         move    b,x:(r4)+
         move    #$18,n3
@@ -597,7 +617,7 @@ ch_rdone:
         move    (r3)+n3                 ; r3 = r7+$18: R y2
         bsr     chtape
         move    b,x0                    ; LIMITING: the hard clip
-        move    x:(r6)+,y1              ; 1/G
+        move    x:(r6)+,y1              ; the output scale
         mpy     x0,y1,b
         move    b,x:(r4)-
         move    (r6)+n6                 ; the ring's remainder: one turn per sample
@@ -617,7 +637,7 @@ ch_s12:
         move    (r3)+n3                 ; r3 = r7+$41: L x1, y1
         bsr     chtube
         move    b,x0                    ; LIMITING: the hard clip
-        move    x:(r6)+,y1              ; 1/G
+        move    x:(r6)+,y1              ; the output scale
         mpy     x0,y1,b
         move    b,x:(r4)+
         move    #$43,n3
@@ -629,7 +649,7 @@ ch_s12:
         move    (r3)+n3                 ; r3 = r7+$43: R x1, y1
         bsr     chtube
         move    b,x0                    ; LIMITING: the hard clip
-        move    x:(r6)+,y1              ; 1/G
+        move    x:(r6)+,y1              ; the output scale
         mpy     x0,y1,b
         move    b,x:(r4)-
         move    (r6)+n6
@@ -642,7 +662,7 @@ ch_sinfl:
         asl     #$3,a,a                 ; x*G, up to 4 in the accumulator
         bsr     chinfl
         move    b,x0                    ; LIMITING: the hard clip
-        move    x:(r6)+,y1              ; 1/G
+        move    x:(r6)+,y1              ; the output scale
         mpy     x0,y1,b
         move    b,x:(r4)+
         move    x:(r4),x0               ; R in           
@@ -651,7 +671,7 @@ ch_sinfl:
         asl     #$3,a,a                 ; x*G, up to 4 in the accumulator
         bsr     chinfl
         move    b,x0                    ; LIMITING: the hard clip
-        move    x:(r6)+,y1              ; 1/G
+        move    x:(r6)+,y1              ; the output scale
         mpy     x0,y1,b
         move    b,x:(r4)-
         move    (r6)+n6
