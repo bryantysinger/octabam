@@ -1489,7 +1489,9 @@ lfrol:
                                         ; one 2048-aligned block, no wrap)
         mpy     x1,y1,a                 ; (unity after the asl)
         asl     #$3,a,a                 ; undo the writers' 3-bit headroom
-        move    a,x:(r7+$1b)            ; the averaged input, feeding the tank
+        move    a,y1                    ; the averaged input, feeding the tank:
+                                        ; the chain word, held in y1 through
+                                        ; the four diffusers
 
         move    x:(r7+$30),a            ; GCNT
         sub     #>$1,a                  ; GCNT - 1  (sets N)
@@ -1498,7 +1500,7 @@ lfrol:
         move    a,x1                    ; counted-down candidate
 ; B. retrigger: if |input| >= threshold, GCNT := GHOLD (else the countdown).
 ;    A `move` does not touch the condition codes, so the sub's N reaches tmi.
-        move    x:(r7+$1b),a            ; full tank input (bus/send too)
+        move    y1,a                    ; full tank input (bus/send too)
         abs     a
         move    #>$008000,x0            ; threshold ~0.004 (-48 dBFS). WAS
         sub     x0,a                    ; N = 0 (plus) when triggered
@@ -1579,12 +1581,10 @@ lfrol:
         move    #247,n5                 ; 2048 - 1801 (41 ms; SHORT immediate,
                                         ; zero-extended in an address register)
         move    x:(r7+$7b),y0           ; g, both bloom APs: 0.40 .. 0.86 with
-        move    x:(r7+$1b),x1           ; chain output in
         move    y:(r5+n5),b             ; d
         move    b,x0
         mpy     x0,y0,a
-        move    x1,x0
-        add     x0,a                    ; v = x + g*d
+        add     y1,a                    ; v = x + g*d (y1 = the chain out)
         move    a,x0                    ; x0 = v, limited as the store was
         mpy     x0,y0,a
         sub     a,b                     ; out = d - g*v
@@ -1605,7 +1605,7 @@ lfrol:
         move    b,x:(r7+$08)            ; -> the bloom component, for the sums
         move    x0,y:(r5)               ; write v (AP b)
 
-        move    x:(r7+$1b),a
+        move    y1,a                    ; the diffused chain
 ; ---- TANK INPUT ATTENUATION: -12 dB of headroom -------------------------
         asr     #$2,a,a                 ; -12 dB
         move    a,x:(r7+$15)            ; diffused input -> tank
@@ -2387,34 +2387,24 @@ dry:
         move    #>$ffffff,m5
         rts
 
-; ---- apbody: one input-diffuser allpass (v6 roll) -------------------------
-; The identical 13-instruction body appeared FOUR times (input allpasses
-; 0-3), 17 words each -- found the same way as the delay's smoothw roll, by
-; scanning the built module for repeated instruction runs. This file's first
-; subroutine; the roll paid for the v6 additions (IN wet makeup, SHFT, the
-; shifter-input HP).
+; ---- apbody: one input-diffuser allpass ------------------------------------
 ; In: r5 = write address, n5 = this allpass's tap (m5 = $7ff modulo held by
-; the caller), y0 = g (held across all four calls), $1b = chain in.
-; Out: $1b = chain out, v written at y:(r5). Clobbers a/b/x0/x1 and $1c.
-; The mpy x0,y0 encodes as mpysu (the documented family): safe because the
-; SECOND operand y0 = g is always positive, exactly as at the inline sites
-; this replaces -- the machine code is byte-identical to the old bodies.
+; the caller), y0 = g (held across all four calls), y1 = chain in.
+; Out: y1 = chain out, v written at y:(r5). Clobbers a/b/x0/x1.
+; The mpy x0,y0 encodes as mpysu: safe because the SECOND operand y0 = g is
+; always positive.
 apbody:
-        move    x:(r7+$1b),x1           ; chain in, and spaces the r5 write
+        nop                             ; spaces the caller's r5 write
         move    y:(r5+n5),b             ; d, at (phase - tap) mod 2048
         move    b,x0
         mpy     x0,y0,a
-        move    x1,x0
-        add     x0,a                    ; v = x + g*d
-        move    a,x1                    ; x1 = v. A register move limits
-                                        ; exactly as a store does, so this
-                                        ; IS the value the $1c park held
+        add     y1,a                    ; v = x + g*d
+        move    a,x1                    ; x1 = v (a register move limits
+                                        ; exactly as a store does)
         mpy     x1,y0,a
         sub     a,b                     ; out = d - g*v
-        move    b,x:(r7+$1b)
-        move    x1,y:(r5)               ; write v at base + phase -- no
-                                        ; reload: $1c is fbA's scratch and
-                                        ; fbA rewrites it before its read
+        move    x1,y:(r5)               ; write v at base + phase
+        move    b,y1                    ; chain out
         rts
 
 ; ---- stampgr: a clear-on-read liveness stamp with 3 blocks of grace -------
