@@ -164,6 +164,26 @@ firmware, 1,130 on the meter). Only the burn sweep measures the ceiling.
 `make cycles` prints the live per-module figures and the worst load a core
 can be asked for.
 
+Words are not cycles on this chip (probe 57, branch `probe55`, 22 Sep
+2026: core 1's timer 0 around a 1,000-iteration one-instruction DO loop on
+T1's FX1, printed as an amplitude and read by `clock_probe.py --bench`):
+
+| instruction | cycles per iteration |
+|---|---|
+| `move x0,a` | 2.00 ✅ |
+| `move x:(r0),a` | 2.00 ✅ |
+| `move x:(r7+$15),a` (one-word displaced) | 3.98 ✅ |
+| `move x:(r7+$70),a` (two-word displaced) | 6.01 ✅ |
+
+A station's whole-proc timer window is not usable for its absolute cost:
+probes 59/61 (8 nops × 125 and × 1,000 iterations) differed by one frame
+(72,512 cycles), not by their instruction counts — the window is
+pre-empted by whole frames of the unit's other audio work. Probe 56's
+per-station numbers (LP 464, VOWL 685, LADR 797, ISO 1,010, TAPE 887, JUNO
+1,260 cycles/sample) carry that pre-emption and are not separable from it
+❓; the burn sweep and the pricer with the per-form costs above are the
+instruments.
+
 ### The rig's load, measured (15 Sep 2026)
 
 `rig_render.py --project OCTABAM89 --bank 3 --part 2` (C02's layout: T1

@@ -7,6 +7,16 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- Spectrum's sample loop pointer-addressed (22 Sep 2026): the block's
+  coefficients go into streams at r7+$50..$7f once per block and every
+  alternative walks them with `(r1)+`, states with `(r2)+`/`(r3)+`, the
+  per-sample parks in registers; arithmetic unchanged, six renders across
+  every MODE bit-identical. Displaced moves per sample 49 / 78 / 39 / 88
+  (SVF / VOWL / LADR / CAP) to 9 / 6 / 9 / 16. Reason: probe 57 (branch
+  `probe55`, 22 Sep 2026) timed a one-instruction DO loop on the unit at
+  2.00 cycles for a register or pointer move, 3.98 for the one-word
+  displaced move, 6.01 for the two-word form; the pricer counts words.
+
 - The DSP core clock measured: 199.9 MHz, 4,532 cycles a sample (probe 55,
   branch `probe55`: timer 0 free-running at CLK/2, the per-frame advance
   printed as an amplitude against a reference, `tools/harness/clock_probe.py`

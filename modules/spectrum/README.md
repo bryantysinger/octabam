@@ -47,14 +47,22 @@ limiter.
   the loop reads. Before it did, filter B's frozen HP poles held a stale
   value and put up to a full-scale DC on a station's output, which surfaced
   on hardware as the master compressor collapsing the right channel.
-- Cost: 1,040 words; 290 cycles/sample (`make check`, 20 Sep 2026; 954 /
-  369 before TAME came and went).
+- Cost: 1,103 words; pricer per mode LP/BP 126, VOWL 216, LADR 230, ISO
+  292 words/sample (22 Sep 2026). The pricer counts words; on the chip a
+  one-word displaced move (`x:(r7+$nn)`) runs 3.98 cycles against 2.00 for
+  a pointer or register move (probe 57, `docs/firmware/CHIP.md` §2), and
+  the sample loop is pointer-addressed since 22 Sep 2026: displaced moves
+  per sample went 49 / 78 / 39 / 88 (SVF / VOWL / LADR / CAP) to 9 / 6 / 9
+  / 16, with the block's coefficients copied into streams at r7+$50..$7f
+  once per block. Six renders (every MODE at FREQ 40 RES 60, LP at FREQ 90
+  RES 110 ENV 20 LDP 100 LSP 90 WDTH 100) bit-identical before and after;
+  hardware cycles unmeasured (a station's timer window is pre-empted by
+  whole frames, CHIP.md §2).
 - `verify_menu`, `verify_replaces`, `verify_labels` pass on the rig.
 
 On Sam's unit since flash 4; the LADR voicing (PR #254) since image 21.
 
 ## Open
 
-- A parallel-move relayout of the sample loop (coefficients contiguous in
-  X, state in Y, walked by r3/r4) would roughly halve the loop; the identity
-  gate above is the check. No consumer for the cycles yet.
+- The remaining displaced moves are the loop head (input peak, cutoff
+  ramp, the mode flag) and CAP's four per-block bases and trim.
