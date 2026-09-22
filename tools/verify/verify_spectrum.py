@@ -162,6 +162,12 @@ d_bp = tail_mean(render(dc(), FREQ=64, MODE=2)[0])
 dcv = int(0.25 * 8388607)
 check("BP at DC -> 0", abs(d_bp) < 64, f"{d_bp:.0f} LSB")
 check("LP at DC -> DC", abs(d_lp - dcv) < 256, f"{d_lp:.0f} vs {dcv}")
+d_hp = tail_mean(render(dc(), FREQ=64, MODE=5)[0])
+check("HP at DC -> 0", abs(d_hp) < 64, f"{d_hp:.0f} LSB")
+hp_hi = rms_db(render(tone(4000, 0.2), FREQ=64, MODE=5)[0]) - rms_db(tone(4000, 0.2))
+hp_lo = rms_db(render(tone(200, 0.2), FREQ=64, MODE=5)[0]) - rms_db(tone(200, 0.2))
+check("HP at FREQ=64 passes 4 kHz within 3 dB", abs(hp_hi) < 3, f"{hp_hi:.1f} dB")
+check("HP at FREQ=64 cuts 200 Hz by more than 12 dB", hp_lo < -12, f"{hp_lo:.1f} dB")
 
 # ---- 4. ISO: Airwindows Capacitor2 ------------------------------
 # LOW = FREQ (127 open), COLR = RES (the dielectric); no HIGH cut (option B). Against the

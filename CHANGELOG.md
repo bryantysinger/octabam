@@ -7,6 +7,14 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- Spectrum HP, the sixth MODE (22 Sep 2026): the SEM SVF's high-pass tap,
+  a per-block weight and nothing in the loop. Harness: DC to 0 LSB, 4 kHz
+  within 0.2 dB and 200 Hz cut 26.9 dB at FREQ 64. HP had gone on 14 Sep
+  2026 because the five-position tick widget drew the sixth blank; a
+  count past five now takes the plain dial with the label cave printing
+  the word (`build_bus.py`), so every MODE on Spectrum draws that way.
+  `WIDE_STEPPED`'s arc-scaling hook is not used (it has not run on a unit).
+
 - Spectrum's sample loop pointer-addressed (22 Sep 2026): the block's
   coefficients go into streams at r7+$50..$7f once per block and every
   alternative walks them with `(r1)+`, states with `(r2)+`/`(r3)+`, the

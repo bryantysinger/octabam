@@ -6,9 +6,9 @@ decided from the allocator base at init). MODE selects the filter:
   * LADR -- the linear zero-delay Moog transistor ladder (audiojs/filter
     moogLadder, MIT), 24 dB/oct, resonance to the edge of self-oscillation
     at RES 127 and bounded there;
-  * LP / BP -- a driven Oberheim SEM zero-delay SVF (Zavalishin's
+  * LP / BP / HP -- a driven Oberheim SEM zero-delay SVF (Zavalishin's
     trapezoidal form, audiojs/filter oberheim, MIT), the cutoff ramped per
-    sample across the block;
+    sample across the block (HP is the sixth MODE, 22 Sep 2026);
   * ISO -- an isolator (Airwindows Capacitor2); RES is the dielectric colour;
   * VOWL -- a three-formant bank (constant-peak-gain resonators) morphed
     across A E I O U by FREQ, RES narrowing the bands.
@@ -90,9 +90,11 @@ MODULE = Module(
               doc="stereo width of the output, drawn -64..+63: 0 untouched, -64 mono, +63 double sides"),
         # ---- page 2: knob / select / knob / select / knob / select ----------
         # MODE top left (slot 6, the knob field), as on every effect (16 Sep 2026)
-        Param(b"MODE", 0, 5, active=True, formatter=_STEP,
-              labels=("LADR", "LP", "BP", "ISO", "VOWL"),
-              doc="LADR the Moog (first: the best one); LP/BP the SEM; ISO an isolator (Capacitor2); VOWL"),
+        # Six values: past the tick widget's five the build gives the slot
+        # the plain dial (B = 0) and the label cave still prints the word.
+        Param(b"MODE", 0, 6, active=True, formatter=_STEP,
+              labels=("LADR", "LP", "BP", "ISO", "VOWL", "HP"),
+              doc="LADR the Moog (first: the best one); LP/BP/HP the SEM; ISO an isolator (Capacitor2); VOWL"),
         _BLANK, _BLANK, _BLANK, _BLANK, _BLANK,
     ),
     # FREQ is always where, RES always the flavour; a mode labels RES for
