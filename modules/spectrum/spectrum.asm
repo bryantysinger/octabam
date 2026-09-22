@@ -487,6 +487,40 @@ fs_live:
 ; only branch, and the pricer charges dispatch + the worst alternative.
 ; ===========================================================================
         move    #$1,n0                  ; (short immediate, stock's own form)
+; ---- the SVF's pointer bases (22 Sep 2026): r4 -> the coefficient stream
+; at $50 (c4 d kLP kHP kBP for L, then for R), r6 -> the states at $34;
+; r1/r2 walk copies of them every sample. r6 is the page pointer, which
+; nothing reads after this point (the dispatcher reloads it).
+        move    r7,r4
+        move    #$50,n4
+        move    (r4)+n4
+        move    #>$ffffff,m4
+        move    r4,r1
+        move    #>$ffffff,m1
+        move    x:(r7+$1f),x0           ; c4
+        move    x0,x:(r1)+
+        move    x:(r7+$33),x0           ; d
+        move    x0,x:(r1)+
+        move    x:(r7+$23),x0           ; kLP
+        move    x0,x:(r1)+
+        move    x:(r7+$25),x0           ; kHP
+        move    x0,x:(r1)+
+        move    x:(r7+$24),x0           ; kBP
+        move    x0,x:(r1)+
+        move    x:(r7+$1f),x0           ; the same five for R
+        move    x0,x:(r1)+
+        move    x:(r7+$33),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$23),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$25),x0
+        move    x0,x:(r1)+
+        move    x:(r7+$24),x0
+        move    x0,x:(r1)+
+        move    r7,r6
+        move    #$34,n6
+        move    (r6)+n6
+        move    #>$ffffff,m2
         do      n7,>fs_end
 ; ---- input peak for the envelope follower (mono, pre-filter) --------------
         move    x:(r0),a
@@ -509,124 +543,102 @@ fs_live:
         tst     a
         bne     fs_v_or_l
 ; MODEFORK_MID -- alternative 1: the SEM zero-delay SVF, LP / BP
+; Pointer-addressed since 22 Sep 2026 (the displaced move costs at least two
+; cycles more than a pointer move on the chip, measured): r1 walks this
+; block's coefficient stream (c4 d kLP kHP kBP, once per channel, written
+; before the loop at $50), r2 walks the states s0L s1L s0R s1R at $34; hp,
+; bp and lp stay in registers. The arithmetic is the 14 Sep engine's,
+; instruction for instruction: bit-identical (the six-render gate).
+        move    r4,r1                   ; the stream
+        move    r6,r2                   ; the states
 ; ===================== channel L =====================
-        move    x:(r0),x0
-        move    x0,x:(r7+$1d)           ; park x
-        move    x:(r7+$2e),a            ; g = g2run (FM went with filter B, 14 Sep 2026)
-        move    a,x:(r7+$1c)            ; g2 this sample
-        move    x:(r7+$1d),x1           ; x (DRV retired: x_d == x)
-; t8 = (x_d - (2R+g)*s0 - s1)/8, pre-scaled so nothing clamps before hp
-        move    x:(r7+$34),x0           ; s0
-        move    x:(r7+$1f),y1           ; c4 = (R + g2)/2
+        move    x:(r0),x1               ; x
+        move    x:(r2)+,x0              ; s0
+        move    x0,y0                   ; s0, kept for bp
+        move    x:(r1)+,y1              ; c4 = (R + g2)/2
         mpy     x0,y1,a
         asl     #$2,a,a                 ; (2R + g) * s0
-        move    x:(r7+$35),x0           ; s1
+        move    x:(r2)-,x0              ; s1 (r2 back on s0)
         add     x0,a
         move    x1,b
         sub     a,b                     ; t
         asr     #$3,b,b
         move    b,x0                    ; t8, |t8| <= 0.63
-; hp = 8 * d * t8  (the ZDF's implicit solve)
-        move    x:(r7+$33),y1           ; d
+        move    x:(r1)+,y1              ; d
         mpy     x0,y1,a
         asl     #$3,a,a
         move    a,x0                    ; hp, limited -- the resonance clamp
-        move    a,y0                    ; hp for the taps
-; p = 2*g*hp ; bp = s0 + p ; s0' = bp + p  (trapezoidal integrator)
-        move    x:(r7+$1c),y1           ; g2
+        move    a,x1                    ; hp, kept for the tap (x is spent)
+        move    x:(r7+$2e),y1           ; g2 = g2run this sample
         mpy     x0,y1,b
         asl     #$1,b,b                 ; p = g*hp
-        move    x:(r7+$34),a
+        move    y0,a                    ; s0
         add     b,a                     ; bp
-        move    a,x1                    ; bp, limited
+        move    a,y0                    ; bp, limited, kept for the tap
         add     b,a
-        move    a,x:(r7+$34)            ; s0'
-; q = 2*g*bp ; lp = s1 + q ; s1' = lp + q
-        move    x1,x0
-        move    x:(r7+$1c),y1           ; g2
-        mpy     x0,y1,b
-        asl     #$1,b,b                 ; q = g*bp
-        move    x:(r7+$35),a
-        add     b,a                     ; lp
-        move    a,x:(r7+$1b)            ; lp parked (limited)
-        add     b,a
-        move    a,x:(r7+$35)            ; s1'
-; wetA = kBP*bp + kHP*hp + kLP*lp   (NOTCH = hp + lp)
-        move    x1,x0
-        move    x:(r7+$24),y1
-        mpy     x0,y1,a
+        move    a,x:(r2)+               ; s0' (r2 -> s1)
         move    y0,x0
-        move    x:(r7+$25),y1
-        mpy     x0,y1,b
+        mpy     x0,y1,b                 ; y1 is still g2
+        asl     #$1,b,b                 ; q = g*bp
+        move    x:(r2),a                ; s1
+        add     b,a                     ; lp
+        move    a,x0                    ; lp, limited, for the tap
         add     b,a
-        move    x:(r7+$1b),x0
-        move    x:(r7+$23),y1
-        mpy     x0,y1,b
-        add     b,a
-        move    a,x:(r7+$1b)            ; wetA
-; filter B and the mix (the shared callee); r3 -> this channel's B poles,
-; n3 -> its B_prev from there
-        move    x:(r7+$1b),a            ; wetA is the output (filter B and the mix went 14 Sep 2026)
-        move    a,x:(r0)                ; out L (limited)
+        move    a,x:(r2)+               ; s1' (r2 -> the next channel's s0)
+; wetA = kLP*lp + kHP*hp + kBP*bp (exact in the accumulator, any order)
+        move    x:(r1)+,y1              ; kLP
+        mpy     x0,y1,a
+        move    x1,x0                   ; hp
+        move    x:(r1)+,y1              ; kHP
+        mac     x0,y1,a
+        move    y0,x0                   ; bp
+        move    x:(r1)+,y1              ; kBP
+        mac     x0,y1,a
+        move    a,x:(r0)                ; out (limited)
 ; ===================== channel R =====================
-        move    x:(r0+n0),x0
-        move    x0,x:(r7+$1d)           ; park x
-        move    x:(r7+$2e),a            ; g = g2run
-        move    a,x:(r7+$1c)
-        move    x:(r7+$1d),x1           ; x (DRV retired: x_d == x)
-; t8 = (x_d - (2R+g)*s0 - s1)/8, pre-scaled so nothing clamps before hp
-        move    x:(r7+$36),x0           ; s0
-        move    x:(r7+$1f),y1           ; c4 = (R + g2)/2
+        move    x:(r0+n0),x1               ; x
+        move    x:(r2)+,x0              ; s0
+        move    x0,y0                   ; s0, kept for bp
+        move    x:(r1)+,y1              ; c4 = (R + g2)/2
         mpy     x0,y1,a
         asl     #$2,a,a                 ; (2R + g) * s0
-        move    x:(r7+$37),x0           ; s1
+        move    x:(r2)-,x0              ; s1 (r2 back on s0)
         add     x0,a
         move    x1,b
         sub     a,b                     ; t
         asr     #$3,b,b
         move    b,x0                    ; t8, |t8| <= 0.63
-; hp = 8 * d * t8  (the ZDF's implicit solve)
-        move    x:(r7+$33),y1           ; d
+        move    x:(r1)+,y1              ; d
         mpy     x0,y1,a
         asl     #$3,a,a
         move    a,x0                    ; hp, limited -- the resonance clamp
-        move    a,y0                    ; hp for the taps
-; p = 2*g*hp ; bp = s0 + p ; s0' = bp + p  (trapezoidal integrator)
-        move    x:(r7+$1c),y1           ; g2
+        move    a,x1                    ; hp, kept for the tap (x is spent)
+        move    x:(r7+$2e),y1           ; g2 = g2run this sample
         mpy     x0,y1,b
         asl     #$1,b,b                 ; p = g*hp
-        move    x:(r7+$36),a
+        move    y0,a                    ; s0
         add     b,a                     ; bp
-        move    a,x1                    ; bp, limited
+        move    a,y0                    ; bp, limited, kept for the tap
         add     b,a
-        move    a,x:(r7+$36)            ; s0'
-; q = 2*g*bp ; lp = s1 + q ; s1' = lp + q
-        move    x1,x0
-        move    x:(r7+$1c),y1           ; g2
-        mpy     x0,y1,b
-        asl     #$1,b,b                 ; q = g*bp
-        move    x:(r7+$37),a
-        add     b,a                     ; lp
-        move    a,x:(r7+$1b)            ; lp parked (limited)
-        add     b,a
-        move    a,x:(r7+$37)            ; s1'
-; wetA = kBP*bp + kHP*hp + kLP*lp   (NOTCH = hp + lp)
-        move    x1,x0
-        move    x:(r7+$24),y1
-        mpy     x0,y1,a
+        move    a,x:(r2)+               ; s0' (r2 -> s1)
         move    y0,x0
-        move    x:(r7+$25),y1
-        mpy     x0,y1,b
+        mpy     x0,y1,b                 ; y1 is still g2
+        asl     #$1,b,b                 ; q = g*bp
+        move    x:(r2),a                ; s1
+        add     b,a                     ; lp
+        move    a,x0                    ; lp, limited, for the tap
         add     b,a
-        move    x:(r7+$1b),x0
-        move    x:(r7+$23),y1
-        mpy     x0,y1,b
-        add     b,a
-        move    a,x:(r7+$1b)            ; wetA
-; filter B and the mix (the shared callee); r3 -> this channel's B poles,
-; n3 -> its B_prev from there
-        move    x:(r7+$1b),a            ; wetA is the output (filter B and the mix went 14 Sep 2026)
-        move    a,x:(r0+n0)                ; out R (limited)
+        move    a,x:(r2)+               ; s1' (r2 -> the next channel's s0)
+; wetA = kLP*lp + kHP*hp + kBP*bp (exact in the accumulator, any order)
+        move    x:(r1)+,y1              ; kLP
+        mpy     x0,y1,a
+        move    x1,x0                   ; hp
+        move    x:(r1)+,y1              ; kHP
+        mac     x0,y1,a
+        move    y0,x0                   ; bp
+        move    x:(r1)+,y1              ; kBP
+        mac     x0,y1,a
+        move    a,x:(r0+n0)                ; out (limited)
         bra     fs_join
 ; MODEFORK_MID -- alternative 2: VOWL, the three-formant bank
 fs_v_or_l:
