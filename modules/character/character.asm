@@ -651,13 +651,44 @@ ch_s12:
         move    b,x:(r4)-
         move    (r6)+n6
         bra     ch_nosat
-; MODEFORK_MID -- alternative 3: INFL = OInflator (stateless)
+; MODEFORK_MID -- alternative 3: INFL = OInflator (stateless, inlined per
+; channel: its 30 words twice against a bsr/rts per call)
 ch_sinfl:
         move    x:(r4),x0               ; L in (post fold)
         move    x:(r6)+,y1              ; G/8
         mpy     x0,y1,a
         asl     #$3,a,a                 ; x*G, up to 4 in the accumulator
-        bsr     chinfl
+; ---- OInflator inline (JClones_OInflator.jsfx, MIT), single band, Curve 0
+; (c = 0.25), Clip on: x2 = x/2; g = 0.75 + 0.5|x2|; gx = g x2;
+; y = 2e gx (1 - |gx|) + (1 - e) x2; out = 2y. e = DRV/128; g and t = 1 - |gx|
+; live halved. Stateless; the ring holds e/2, 1 - e. Clobbers x0, x1, y1, a, b.
+        asr     #$1,a,a                 ; x2
+        move    a,x1
+        abs     a
+        move    a,x0                    ; |x2|
+        move    #$20,y1                 ; 0.25
+        mpy     x0,y1,a
+        add     #>$300000,a             ; g/2 = 0.375 + 0.25*|x2|
+        move    a,y1
+        move    x1,x0                   ; x2
+        mpy     x0,y1,a
+        asl     #$1,a,a                 ; gx = g*x2
+        move    a,x0                    ; gx
+        abs     a
+        asr     #$1,a,a
+        neg     a
+        add     #>$400000,a             ; t/2 = 0.5 - |gx|/2, in [0.25, 0.5]
+        move    a,y1
+        mpy     x0,y1,a                 ; gx * t/2
+        move    a,x0
+        move    x:(r6)+,y1              ; e/2
+        mpy     x0,y1,a                 ; gx * t/2 * e/2
+        asl     #$3,a,a                 ; 2e * gx * t
+        move    x1,x0                   ; x2
+        move    x:(r6)+,y1              ; 1 - e
+        mac     x0,y1,a                 ; + (1 - e)*x2 = y
+        asl     #$1,a,a                 ; out = 2y
+        move    a,b
         move    b,x0                    ; LIMITING: the hard clip
         move    x:(r6)+,y1              ; the output scale
         mpy     x0,y1,b
@@ -666,7 +697,33 @@ ch_sinfl:
         move    x:(r6)+,y1              ; G/8
         mpy     x0,y1,a
         asl     #$3,a,a                 ; x*G, up to 4 in the accumulator
-        bsr     chinfl
+        asr     #$1,a,a                 ; x2
+        move    a,x1
+        abs     a
+        move    a,x0                    ; |x2|
+        move    #$20,y1                 ; 0.25
+        mpy     x0,y1,a
+        add     #>$300000,a             ; g/2 = 0.375 + 0.25*|x2|
+        move    a,y1
+        move    x1,x0                   ; x2
+        mpy     x0,y1,a
+        asl     #$1,a,a                 ; gx = g*x2
+        move    a,x0                    ; gx
+        abs     a
+        asr     #$1,a,a
+        neg     a
+        add     #>$400000,a             ; t/2 = 0.5 - |gx|/2, in [0.25, 0.5]
+        move    a,y1
+        mpy     x0,y1,a                 ; gx * t/2
+        move    a,x0
+        move    x:(r6)+,y1              ; e/2
+        mpy     x0,y1,a                 ; gx * t/2 * e/2
+        asl     #$3,a,a                 ; 2e * gx * t
+        move    x1,x0                   ; x2
+        move    x:(r6)+,y1              ; 1 - e
+        mac     x0,y1,a                 ; + (1 - e)*x2 = y
+        asl     #$1,a,a                 ; out = 2y
+        move    a,b
         move    b,x0                    ; LIMITING: the hard clip
         move    x:(r6)+,y1              ; the output scale
         mpy     x0,y1,b
@@ -893,48 +950,6 @@ chtube:
         move    x:(r6)+,y1              ; R = 0.999
         mac     x0,y1,a                 ; + R*y1
         move    a,x:(r3)                ; y1 <- y
-        move    a,b
-        rts
-
-; ---------------------------------------------------------------------------
-; chinfl -- OInflator per channel (JClones_OInflator.jsfx, MIT;),
-; single band, Curve at the JSFX default 0 (c = 0.25), Clip on (the +-0.5
-; threshold on the halved signal IS the input's full scale). In: a = x, r6 ->
-; the ring (e/2, 1 - e). Out: b.
-;   x2 = x/2                      (the JSFX's 0.5 input headroom)
-;   g  = 0.75 + 0.5*|x2|          (2c|x2| + (1 - c), in [0.75, 1])
-;   gx = g*x2                     (|gx| <= 0.5)
-;   y  = 2e*gx*(1 - |gx|) + (1 - e)*x2
-;   out = 2*y                     (the JSFX's x2 output gain; |out| <= 1)
-; e = DRV/128. g and t = 1 - |gx| live halved.
-; STRAIGHT-LINE, stateless; every mpy/mac x0,y1. Clobbers x0, x1, y1, a, b.
-chinfl:
-        asr     #$1,a,a                 ; x2
-        move    a,x1
-        abs     a
-        move    a,x0                    ; |x2|
-        move    #$20,y1                 ; 0.25
-        mpy     x0,y1,a
-        add     #>$300000,a             ; g/2 = 0.375 + 0.25*|x2|
-        move    a,y1
-        move    x1,x0                   ; x2
-        mpy     x0,y1,a
-        asl     #$1,a,a                 ; gx = g*x2
-        move    a,x0                    ; gx
-        abs     a
-        asr     #$1,a,a
-        neg     a
-        add     #>$400000,a             ; t/2 = 0.5 - |gx|/2, in [0.25, 0.5]
-        move    a,y1
-        mpy     x0,y1,a                 ; gx * t/2
-        move    a,x0
-        move    x:(r6)+,y1              ; e/2
-        mpy     x0,y1,a                 ; gx * t/2 * e/2
-        asl     #$3,a,a                 ; 2e * gx * t
-        move    x1,x0                   ; x2
-        move    x:(r6)+,y1              ; 1 - e
-        mac     x0,y1,a                 ; + (1 - e)*x2 = y
-        asl     #$1,a,a                 ; out = 2y
         move    a,b
         rts
 
