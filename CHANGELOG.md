@@ -7,6 +7,18 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- The efficiency / tech-debt pass (23 Sep 2026), the frame around the five
+  per-module entries below: `make verify-bus` grew from 21 to 28 cases
+  (GRAIN, REVERSE, PLATE, BIG, the shimmer and the gate had no
+  bit-identity case), and `make verify-ident MOD=<station>` is one
+  knob-matrix identity gate for any FX1 station (Character and Modulation
+  had none). The new GRAIN cases found the two BusDelay record collisions
+  in its entry below. SEND's loop multiplies through x0 (its mpysu
+  site gone); the rotation flip in all three housekeeping copies cleans A2
+  before its store. CLAUDE.md: the r7 block is a per-module census, and
+  `move a,b` limits where `tfr a,b` does not. Chip cycles of the rewritten
+  loops are unmeasured (the burn sweep on a flashed image is the
+  instrument); every number here is the pricer's words or a source census.
 - Modulation, the station pass (23 Sep 2026): the allpass stage takes x
   and returns y in x0 (its entry/exit copies and the callers' eight moves
   per channel went, 20 stages per sample), the LFO, LOFI and MIX bodies
