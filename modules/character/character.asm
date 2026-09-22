@@ -94,24 +94,24 @@ init:
         move    #>$1,x0
         tst     a
         tpl     x0,b                    ; base >= 0x4000: an FX2 slot
-        move    b,x:(r7+$40)          ; 1 = dry pass
+        move    b,x:(r7+$23)            ; 1 = dry pass
         clr     a
-        move    a,x:(r7+$41)            ; the DC blocker's state, both channels
-        move    a,x:(r7+$42)
+        move    a,x:(r7+$3e)            ; TapeHead's SVF states, R then L
+        move    a,x:(r7+$3f)
+        move    a,x:(r7+$40)
+        move    a,x:(r7+$41)
+        move    a,x:(r7+$42)            ; the DC blocker's states, L then R
         move    a,x:(r7+$43)
         move    a,x:(r7+$44)
-        move    a,x:(r7+$15)            ; TapeHead's SVF states, both channels
-        move    a,x:(r7+$16)
-        move    a,x:(r7+$17)
-        move    a,x:(r7+$18)
+        move    a,x:(r7+$45)
         move    a,x:(r7+$5a)            ; the tilt's two low-pass states, the
         move    a,x:(r7+$5b)            ; compressor's level_s, the master flag:
         move    a,x:(r7+$5c)            ; every slot read before written
-        move    a,x:(r7+$45)            ; (14 Sep 2026, verify_dirtystate)
+        move    a,x:(r7+$25)            ; (verify_dirtystate)
         rts
 
 proc:
-        move    x:(r7+$40),a           ; an FX2 slot: dry, nothing written
+        move    x:(r7+$23),a            ; an FX2 slot: dry, nothing written
         tst     a
         bne     ch_end
 ; ===========================================================================
@@ -152,7 +152,7 @@ proc:
 ; COMP amount, straight from the knob
         move    x:(r6+$3),x0
         move    x0,x:(r7+$26)
-        move    x:(r7+$45),a
+        move    x:(r7+$25),a
         tst     a
         bne     ch_cglue
         move    #>$7fffff,x0            ; COMP: K/4 = 1.0 (4x), release 63 ms
@@ -247,11 +247,11 @@ ch_sdone:
         beq     ch_master
 ch_nopos:
         clr     a
-        move    a,x:(r7+$45)            ; not track 8: the channel law
+        move    a,x:(r7+$25)            ; not track 8: the channel law
         bra     ch_pos3
 ch_master:
         move    #>$1,x0
-        move    x0,x:(r7+$45)           ; the master: GLUE
+        move    x0,x:(r7+$25)           ; the master: GLUE
 ch_pos3:
         move    x:(r6+$0),a             ; d = DRV/128
         move    a,x1                    ; (x1 = DRV/128 for TapeHead's words below)
@@ -367,7 +367,6 @@ ch_live:
         move    #$19,n4
         move    (r4)+n4
         move    #>$ffffff,m4
-        move    #$2,n4                  ; key = x:(r4+n4)
         move    r7,r5
         move    #$60,n5
         move    (r5)+n5
@@ -423,7 +422,7 @@ ch_live:
         move    #>$300000,y1            ; 0.375
         mpy     x0,y1,a
         add     #>$100000,a             ; G/8 = 0.125 + 0.375 d
-        move    a,x:(r7+$4e)
+        move    a,x:(r7+$32)
         move    a,x0
         move    #$08,y1                 ; 1/16
         move    y1,a                    ; a clean load: a0 = 0 for the divide
@@ -436,8 +435,7 @@ ch_live:
         move    x:(r7+$29),b            ; sat mode
         tst     b
         beq     ch_gtape
-        move    #>$1,x0
-        cmp     x0,b
+        cmp     #>$1,b
         bne     ch_gdone                ; INFL: 1/G
         move    a,x0                    ; TUBE: (1/G)(1+d)
         move    x:(r6+$0),a
@@ -450,9 +448,12 @@ ch_live:
 ch_gtape:
         move    #>$7fffff,a             ; TAPE: 1
 ch_gdone:
-        move    a,x:(r7+$4f)
+        move    a,x:(r7+$33)
 ; the SAT ring: the active mode's words, both channels, each between G/8
-; and 1/G
+; and the output scale. n3 = $41 for the sample loop's state pointers:
+; TapeHead's L y2 at r7 + n3, TUBE's L pair one past it, the tilt block at
+; r4 + n3.
+        move    #$41,n3
         move    r7,r6
         move    #$70,n6
         move    (r6)+n6
@@ -463,7 +464,7 @@ ch_gdone:
         move    x:(r7+$29),a
         tst     a
         bne     ch_r12
-        move    x:(r7+$4e),x0           ; TAPE: G/8 k2 k3mag d8 d8 trim 1/G
+        move    x:(r7+$32),x0           ; TAPE: G/8 k2 k3mag d8 d8 trim scale
         move    x0,x:(r3)+
         move    x:(r7+$30),x0
         move    x0,x:(r3)+
@@ -474,9 +475,9 @@ ch_gdone:
         move    x0,x:(r3)+
         move    x:(r7+$2a),x0
         move    x0,x:(r3)+
-        move    x:(r7+$4f),x0
+        move    x:(r7+$33),x0
         move    x0,x:(r3)+
-        move    x:(r7+$4e),x0
+        move    x:(r7+$32),x0
         move    x0,x:(r3)+
         move    x:(r7+$30),x0
         move    x0,x:(r3)+
@@ -487,15 +488,14 @@ ch_gdone:
         move    x0,x:(r3)+
         move    x:(r7+$2a),x0
         move    x0,x:(r3)+
-        move    x:(r7+$4f),x0
+        move    x:(r7+$33),x0
         move    x0,x:(r3)+
         move    #$2,n6                  ; 16 - 14
         bra     ch_rdone
 ch_r12:
-        move    #>$1,x0
-        cmp     x0,a
+        cmp     #>$1,a
         bne     ch_rinfl
-        move    x:(r7+$4e),x0           ; TUBE: G/8 (0.5+d)/2 d d/2 comp/2 1/G
+        move    x:(r7+$32),x0           ; TUBE: G/8 (0.5+d)/2 d d/2 comp/2 R scale
         move    x0,x:(r3)+
         move    x:(r7+$4c),x0
         move    x0,x:(r3)+
@@ -505,9 +505,11 @@ ch_r12:
         move    x0,x:(r3)+
         move    x:(r7+$39),x0
         move    x0,x:(r3)+
-        move    x:(r7+$4f),x0
+        move    #>$7fdf3b,x0            ; the DC blocker's R = 0.999
         move    x0,x:(r3)+
-        move    x:(r7+$4e),x0
+        move    x:(r7+$33),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$32),x0
         move    x0,x:(r3)+
         move    x:(r7+$4c),x0
         move    x0,x:(r3)+
@@ -517,36 +519,32 @@ ch_r12:
         move    x0,x:(r3)+
         move    x:(r7+$39),x0
         move    x0,x:(r3)+
-        move    x:(r7+$4f),x0
+        move    #>$7fdf3b,x0            ; the DC blocker's R = 0.999
         move    x0,x:(r3)+
-        move    #$4,n6                  ; 16 - 12
+        move    x:(r7+$33),x0
+        move    x0,x:(r3)+
+        move    #$2,n6                  ; 16 - 14
         bra     ch_rdone
 ch_rinfl:
-        move    x:(r7+$4e),x0           ; INFL: G/8 e/2 1-e 1/G
+        move    x:(r7+$32),x0           ; INFL: G/8 e/2 1-e scale
         move    x0,x:(r3)+
         move    x:(r7+$3a),x0
         move    x0,x:(r3)+
         move    x:(r7+$3b),x0
         move    x0,x:(r3)+
-        move    x:(r7+$4f),x0
+        move    x:(r7+$33),x0
         move    x0,x:(r3)+
-        move    x:(r7+$4e),x0
+        move    x:(r7+$32),x0
         move    x0,x:(r3)+
         move    x:(r7+$3a),x0
         move    x0,x:(r3)+
         move    x:(r7+$3b),x0
         move    x0,x:(r3)+
-        move    x:(r7+$4f),x0
+        move    x:(r7+$33),x0
         move    x0,x:(r3)+
         move    #$8,n6                  ; 16 - 8
 ch_rdone:
         do      n7,>ch_end
-; ---- the key (the mono sum) ----------------------------------------------
-        move    x:(r0),a
-        move    x:(r0+n0),x0
-        add     x0,a
-        asr     #$1,a,a
-        move    a,x:(r4+n4)             ; key = mono in (the ->KEY hook)
 ; ---- FOLD: WarpFold's wrap-and-reflect, both channels --------------------
         move    x:(r0),x0
         move    x:(r5)+,y1              ; gq = gain/64
@@ -595,26 +593,27 @@ ch_rdone:
         tst     a
         bne     ch_s12
 ; MODEFORK_MID -- alternative 1: TAPE = TapeHead
-; r3 -> the channel's y2 (y1 the word below), r6 its ring.
-        move    #$16,n3
+; r3 -> the channel's y2 (y1 the word below): L at r7 + n3 = $41, R two
+; below (chtape leaves r3 where it entered). r6 its ring. y0 = the
+; smoothstep's 0.7 for both calls (chtape reads it, never writes it).
         move    r7,r3
         move    x:(r4),x0               ; L in (post fold)
         move    x:(r6)+,y1              ; G/8
         mpy     x0,y1,a
         asl     #$3,a,a                 ; x*G, up to 4 in the accumulator
-        move    (r3)+n3                 ; r3 = r7+$16: L y2
+        move    #>$59999a,y0            ; 0.7
+        move    (r3)+n3                 ; r3 = r7+$41: L y2
         bsr     chtape
         move    b,x0                    ; LIMITING: the hard clip
         move    x:(r6)+,y1              ; the output scale
         mpy     x0,y1,b
         move    b,x:(r4)+
-        move    #$18,n3
-        move    r7,r3
-        move    x:(r4),x0               ; R in           
+        move    x:(r4),x0               ; R in
         move    x:(r6)+,y1              ; G/8
         mpy     x0,y1,a
         asl     #$3,a,a                 ; x*G, up to 4 in the accumulator
-        move    (r3)+n3                 ; r3 = r7+$18: R y2
+        move    (r3)-
+        move    (r3)-                   ; r3 = r7+$3f: R y2
         bsr     chtape
         move    b,x0                    ; LIMITING: the hard clip
         move    x:(r6)+,y1              ; the output scale
@@ -624,29 +623,27 @@ ch_rdone:
         bra     ch_nosat
 ; MODEFORK_MID -- alternative 2: TUBE = DaTube (one compare more: 1 or 2)
 ch_s12:
-        move    #>$1,x0
-        cmp     x0,a
+        cmp     #>$1,a
         bne     ch_sinfl
-; r3 -> the channel's DC-blocker pair (x1, y1).
-        move    #$41,n3
+; r3 -> the channel's DC-blocker pair (x1, y1): L at r7 + n3 + 1 = $42, R
+; the pair above (chtube leaves r3 on y1).
         move    r7,r3
         move    x:(r4),x0               ; L in (post fold)
         move    x:(r6)+,y1              ; G/8
         mpy     x0,y1,a
+        move    (r3)+n3
         asl     #$3,a,a                 ; x*G, up to 4 in the accumulator
-        move    (r3)+n3                 ; r3 = r7+$41: L x1, y1
+        move    (r3)+                   ; r3 = r7+$42: L x1, y1
         bsr     chtube
         move    b,x0                    ; LIMITING: the hard clip
         move    x:(r6)+,y1              ; the output scale
         mpy     x0,y1,b
         move    b,x:(r4)+
-        move    #$43,n3
-        move    r7,r3
-        move    x:(r4),x0               ; R in           
+        move    x:(r4),x0               ; R in
         move    x:(r6)+,y1              ; G/8
         mpy     x0,y1,a
         asl     #$3,a,a                 ; x*G, up to 4 in the accumulator
-        move    (r3)+n3                 ; r3 = r7+$43: R x1, y1
+        move    (r3)+                   ; r3 = r7+$44: R x1, y1
         bsr     chtube
         move    b,x0                    ; LIMITING: the hard clip
         move    x:(r6)+,y1              ; the output scale
@@ -680,16 +677,15 @@ ch_nosat:
 ; ---- TONE: a tilt after the saturator, every mode ----------
 ; One-pole low-pass at 1.2 kHz per channel (k = 0.157), y = x + (t/2)(x - 2lp):
 ; TONE 127 = +3.5 dB above / -6 dB below, 0 the mirror, 64 bit-exact.
-; r3 -> the state block: lp L, lp R, level_s.
-        move    #$5a,n3
-        move    r7,r3
+; r3 -> the state block at r4 + n3 = $5a: lp L, lp R, level_s. y0 = k.
+        move    r4,r3
+        move    #>$141893,y0            ; k
         move    (r3)+n3
         move    x:(r4),a                ; L
         move    x:(r3),x0               ; lp
         sub     x0,a
         move    a,x0                    ; x - lp
-        move    #>$141893,y1            ; k
-        mpy     x0,y1,a
+        mpy     y0,x0,a
         move    x:(r3),b
         add     b,a                     ; lp' = lp + k (x - lp)
         move    a,x:(r3)+
@@ -707,8 +703,7 @@ ch_nosat:
         move    x:(r3),x0
         sub     x0,a
         move    a,x0
-        move    #>$141893,y1
-        mpy     x0,y1,a
+        mpy     y0,x0,a
         move    x:(r3),b
         add     b,a
         move    a,x:(r3)+
@@ -727,11 +722,15 @@ ch_nosat:
 ; K * level_s, gr = (Lv^2/2 - 1)^2 + a*Lv, <= 1 by the limiting move --
 ; a dip around Lv = 1 -- then x *= gr * makeup on both channels. Lv is
 ; carried halved (Lv/2, so Lv up to 2 fits a word; the dip is over by 1.5).
-; r3 -> level_s after the tilt's two states.
+; r3 -> level_s after the tilt's two states. The key is the mono input,
+; still untouched in the frame (the write-back is the last stage).
         move    x:(r5)+,a               ; COMP
         tst     a
         beq     ch_capd                 ; COMP 0: the stage is skipped
-        move    x:(r4+n4),a             ; key
+        move    x:(r0),a
+        move    x:(r0+n0),x0
+        add     x0,a
+        asr     #$1,a,a                 ; key = mono in
         abs     a
         move    a,x0                    ; level
         move    x:(r3),b                ; level_s
@@ -834,7 +833,7 @@ ch_bypass:
 ; ---------------------------------------------------------------------------
 ; chtube -- DaTube per channel (JClones_DaTube.jsfx, MIT;).
 ; In: a = x, r3 -> the DC blocker's x1 (y1 the word above), r6 -> the ring
-; ((0.5+d)/2, d, d/2, comp/2). Out: b.
+; ((0.5+d)/2, d, d/2, comp/2, R). Out: b.
 ;   xin = x*(0.5 + d)                           ((0.5+d)/2, halved)
 ;   u   = 1 - |xin|      (may go negative: the JSFX's linear extension past
 ;                         +-1 is exactly the curve with u^P dropped, so the
@@ -842,7 +841,8 @@ ch_bypass:
 ;   T   = u - u^P, P = ln(10) + 1 = 3.3026     (TUBE_UP: 17 pairs of u^P/2)
 ;   y   = xin + (d/2)*T for xin > 0, xin - d*T for xin < 0   (asymmetric: the
 ;                         negative half is driven twice as hard -- the tube)
-;   out = 2 * y * comp(d), then the DC blocker (k 1, R 0.999).
+;   out = 2 * y * comp(d), then the DC blocker (k = 1 an immediate, R =
+;                         0.999 from the ring).
 ; Everything runs HALVED (xin/2 <= 0.75, u/2, T/2, y/2) and the post gain is
 ; comp/4 doubled back twice. STRAIGHT-LINE: no branch. Every mpy x0,y1 (the
 ; audited-signed order; the one Tcc reads the tst right before it). Clobbers
@@ -897,7 +897,7 @@ chtube:
         move    x0,a
         sub     b,a                     ; x - x1
         move    x:(r3),x0               ; y1
-        move    #>$7fdf3b,y1            ; R = 0.999
+        move    x:(r6)+,y1              ; R = 0.999
         mac     x0,y1,a                 ; + R*y1
         move    a,x:(r3)                ; y1 <- y
         move    a,b
@@ -948,13 +948,13 @@ chinfl:
 ; chtape -- TapeHead per channel (JClones_TapeHead.jsfx, MIT;).
 ; In: a = x, r3 -> y2 (y1 the word below), both kept at /4 (the
 ; port's headroom: |y1| <= 1.46, |y2| <= 1.95 true), r6 -> the ring (k2,
-; k3mag, d/8, d/8, trim). Out: b = (g3*clip(y3)
+; k3mag, d/8, d/8, trim), y0 = 0.7. Out: b = (g3*clip(y3)
 ; + ss(d*y1) + ss(d*y2)) * trim, up to 2.2, CLIPPED (the JSFX's own output
 ; clip) and then scaled by the block's unity trim (1/11)/d8. STRAIGHT-LINE:
 ; no branch of any kind
-; (cycle_count.py charges the span at each call). Every mpy is x0,y1 (the
-; audited-signed order); every clip is a LIMITING move into x0. Clobbers
-; x0, x1, y1, a, b.
+; (cycle_count.py charges the span at each call). Every mpy is x0,y1 or
+; y0,x0 (the signed encodings); every clip is a LIMITING move into x0.
+; Clobbers x0, x1, y1, a, b; reads y0.
 ;   y1 += k2*y2 ; y3 = k1*y1 + y2 - x ; y2 -= k3mag*y3      (k3 = -1.4 k2)
 ;   ss(v) = 1.5v - 0.5v^3 on v = clip(d*y1), clip(d*y2)      (v = 32*(y1/4*d/8))
 chtape:
@@ -999,8 +999,7 @@ chtape:
         asr     #$1,a,a
         add     x0,a                    ; ss(v) = 1.5v - 0.5v^3
         move    a,x0
-        move    #>$59999a,y1            ; trim 0.7
-        mpy     x0,y1,a
+        mpy     y0,x0,a                 ; * 0.7 (y0, the caller's)
         add     a,b
         move    x:(r3),x0               ; y2n/4
         move    x:(r6)+,y1
@@ -1016,8 +1015,7 @@ chtape:
         asr     #$1,a,a
         add     x0,a
         move    a,x0
-        move    #>$59999a,y1
-        mpy     x0,y1,a
+        mpy     y0,x0,a                 ; * 0.7
         add     a,b
         move    b,x0                    ; LIMITING move: the JSFX's output clip
         move    x:(r6)+,y1              ; then the trim (1/11)/d8 + 0.023
