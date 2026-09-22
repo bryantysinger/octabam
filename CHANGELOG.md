@@ -5,7 +5,16 @@ main carries beyond the last flashed image. The version the panel shows is
 `BUILD` (`make image BUILD=N`); a git tag `OCTABAM<N>` marks the commit each
 flashed image was built from.
 
-## Unreleased (main after image 43; image 52 built)
+## Unreleased (main after image 43; image 53 built)
+
+- RIG HOSTS, image 53: a new part's FX1 is NONE (image 52's kept stock's
+  FILTER default, which on this image is Spectrum's id with FILTER's page
+  bytes: "muted and quiet and modulated" on the unit until re-selected),
+  and each track's FX2 page defaults come from that track's own
+  descriptor through the id table instead of the stock DELAY's (two more
+  detours, 0x40005830 and 0x40005840). Measured under the port on a
+  project the firmware created: FX1 0 x8, FX2 6 9 9 9 7 9 9 8, T1's page
+  bytes BusDelay's defaults, T5's BusVerb's, T8's the stock delay's.
 
 - Nothing else is selectable on FX2 (image 52, 22 Sep 2026): BusVerb and
   BusDelay are hidden from the chooser (one row, SEND) and keep their
