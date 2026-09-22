@@ -39,15 +39,18 @@
 ;   $37 d/2  $38 d  $4c (0.5+d)/2  $39 comp/4 (TUBE, per block)   $3a e/2  $3b 1-e (INFL, per block)
 ;   $49 chtube's u/2 park (per sample)
 ;   $4d DRV==0: skip the saturator (per block)
-;   per sample / persistent (all below $40: an r7 displacement past 63
-;   assembles to the two-word long form):
-;   $3f tilt lp L (PERSISTENT)   $23 tilt lp R (PERSISTENT)
-;   $19..$1c, $25, $46/$47, $4e..$58, $5a..$5c free since 22 Sep 2026 (TXTR,
-;   Airwindows Pockey, removed: WDTH took its page-1 slot)
-;   $1e level_s (PERSISTENT)   $45 master flag (1 = position 3 on A: GLUE)
-;   $1f gr (per sample)
-;   $32 key    $33 dry L park   $34 dry R park
-;   $35 scratch (wet L)          $36 scratch (wet R)
+;   per sample / persistent:
+;   $5a tilt lp L, $5b tilt lp R, $5c level_s (PERSISTENT; r3 walks them)
+;   $45 master flag (1 = position 3 on A: GLUE)
+;   $19 wet L, $1a wet R, $1b key (per sample; r4 -> $19, n4 = 2)
+;   $50..$59 the SAT ring (per block, by mode; r6, m6 = its length - 1):
+;     TAPE k2 k3mag d8 d8 trim x2, TUBE (0.5+d)/2 d d/2 comp/2 x2, INFL e/2 1-e x2
+;   $60..$6f the main ring (per block; r5, m5 = 15), in the order the sample
+;     reads them: gq trim/2 gq trim/2 $4d $29 t/2 t/2 $26 $2d $2e $22 $28 $27
+;     $2b $20 -- COMP off steps over its five words (n5 = 5, else 0)
+;   $1c, $1d.., $25, $46/$47, $4e/$4f free (22 Sep 2026: the sample loop reads
+;   its coefficients through the rings and its state through r3/r4; the
+;   displaced move costs twice the pointer move on the chip, CHIP.md)
 ;
 ; ---- the master, by position ---------------------------------------------
 ; On the master (dispatch position 3 on payload A, track 8) COMP runs the
@@ -98,12 +101,10 @@ init:
         move    a,x:(r7+$16)
         move    a,x:(r7+$17)
         move    a,x:(r7+$18)
-        move    a,x:(r7+$1e)            ; the compressor's state: AC1 level_s
-        move    a,x:(r7+$3f)            ; the tilt's two low-pass states, the
-        move    a,x:(r7+$23)            ; master flag: every slot read before
-        move    a,x:(r7+$45)            ; written (14 Sep 2026, verify_dirtystate)
-        move    #>$7fffff,x0
-        move    x0,x:(r7+$1f)           ; gr = unity
+        move    a,x:(r7+$5a)            ; the tilt's two low-pass states, the
+        move    a,x:(r7+$5b)            ; compressor's level_s, the master flag:
+        move    a,x:(r7+$5c)            ; every slot read before written
+        move    a,x:(r7+$45)            ; (14 Sep 2026, verify_dirtystate)
         rts
 
 proc:
@@ -355,18 +356,130 @@ ch_live:
 ; ===========================================================================
         move    #$1,n0                  ; (short immediate, stock's own form)
         move    #>$ffffff,m3            ; the SAT callees own r3
+; ---- the rings (22 Sep 2026): the block's coefficients, in the order the
+; sample reads them, walked by post-increment; modulo brings each pointer
+; back to its base every sample (one turn per sample), so nothing is reset
+; inside the loop. r4 -> the per-sample scratch (wet L, wet R, key).
+        move    r7,r4
+        move    #$19,n4
+        move    (r4)+n4
+        move    #>$ffffff,m4
+        move    #$2,n4                  ; key = x:(r4+n4)
+        move    r7,r5
+        move    #$60,n5
+        move    (r5)+n5
+        move    #>$ffffff,m5
+        move    r5,r3
+        move    x:(r7+$21),x0           ; gq (FOLD L)
+        move    x0,x:(r3)+
+        move    x:(r7+$1d),x0           ; trim/2
+        move    x0,x:(r3)+
+        move    x:(r7+$21),x0           ; gq (FOLD R)
+        move    x0,x:(r3)+
+        move    x:(r7+$1d),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$4d),x0           ; DRV 0: skip the saturator
+        move    x0,x:(r3)+
+        move    x:(r7+$29),x0           ; sat mode
+        move    x0,x:(r3)+
+        move    x:(r7+$24),x0           ; t/2 (TONE L)
+        move    x0,x:(r3)+
+        move    x:(r7+$24),x0           ; t/2 (TONE R)
+        move    x0,x:(r3)+
+        move    #$0f,m5                 ; sixteen words, one turn per sample
+        move    x:(r7+$26),a            ; COMP; off: the sample steps over its
+        move    a,x:(r3)+               ; five words (n5 = 5 at ch_capd)
+        clr     b
+        move    #>$5,x0
+        tst     a
+        teq     x0,b
+        move    b1,n5
+        move    x:(r7+$2d),x0           ; attack
+        move    x0,x:(r3)+
+        move    x:(r7+$2e),x0           ; release
+        move    x0,x:(r3)+
+        move    x:(r7+$22),x0           ; K/4
+        move    x0,x:(r3)+
+        move    x:(r7+$28),x0           ; the dip's a
+        move    x0,x:(r3)+
+        move    x:(r7+$27),x0           ; makeup/4
+        move    x0,x:(r3)+
+        move    x:(r7+$2b),x0           ; side gain / 2
+        move    x0,x:(r3)+
+        move    x:(r7+$20),x0           ; m
+        move    x0,x:(r3)+
+; the SAT ring: the active mode's words, both channels
+        move    r7,r6
+        move    #$50,n6
+        move    (r6)+n6
+        move    #>$ffffff,m6
+        move    r6,r3
+        move    x:(r7+$29),a
+        tst     a
+        bne     ch_r12
+        move    x:(r7+$30),x0           ; TAPE: k2 k3mag d8 d8 trim
+        move    x0,x:(r3)+
+        move    x:(r7+$31),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$48),x0
+        move    x0,x:(r3)+
+        move    x0,x:(r3)+
+        move    x:(r7+$2a),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$30),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$31),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$48),x0
+        move    x0,x:(r3)+
+        move    x0,x:(r3)+
+        move    x:(r7+$2a),x0
+        move    x0,x:(r3)+
+        move    #$09,m6
+        bra     ch_rdone
+ch_r12:
+        move    #>$1,x0
+        cmp     x0,a
+        bne     ch_rinfl
+        move    x:(r7+$4c),x0           ; TUBE: (0.5+d)/2 d d/2 comp/2
+        move    x0,x:(r3)+
+        move    x:(r7+$38),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$37),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$39),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$4c),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$38),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$37),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$39),x0
+        move    x0,x:(r3)+
+        move    #$07,m6
+        bra     ch_rdone
+ch_rinfl:
+        move    x:(r7+$3a),x0           ; INFL: e/2 1-e
+        move    x0,x:(r3)+
+        move    x:(r7+$3b),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$3a),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$3b),x0
+        move    x0,x:(r3)+
+        move    #$03,m6
+ch_rdone:
         do      n7,>ch_end
-; ---- park the dry, and take the key (the mono sum) ------------------------
+; ---- the key (the mono sum) ----------------------------------------------
         move    x:(r0),a
-        move    a,x:(r7+$33)
         move    x:(r0+n0),x0
-        move    x0,x:(r7+$34)
         add     x0,a
         asr     #$1,a,a
-        move    a,x:(r7+$32)            ; key = mono in (the ->KEY hook)
+        move    a,x:(r4+n4)             ; key = mono in (the ->KEY hook)
 ; ---- FOLD: WarpFold's wrap-and-reflect, both channels --------------------
-        move    x:(r7+$33),x0
-        move    x:(r7+$21),y1           ; gq = gain/64
+        move    x:(r0),x0
+        move    x:(r5)+,y1              ; gq = gain/64
         mpy     x0,y1,a                 ; v/64
         asl     #$5,a,a                 ; v/2
         move    #$40,x1                 ; 0.5 (short immediate: bits 23-16)
@@ -378,12 +491,12 @@ ch_live:
         sub     b,a                     ; |s| - 0.5
         asl     #$1,a,a                 ; fold in [-1,1)
         move    a,x0
-        move    x:(r7+$1d),y1           ; trim/2
+        move    x:(r5)+,y1              ; trim/2
         mpy     x0,y1,a
         asl     #$1,a,a                 ; the fold at a held level
-        move    a,x:(r7+$35)            ; wet L
-        move    x:(r7+$34),x0
-        move    x:(r7+$21),y1
+        move    a,x:(r4)+               ; wet L
+        move    x:(r0+n0),x0
+        move    x:(r5)+,y1
         mpy     x0,y1,a
         asl     #$5,a,a
         move    #$40,x1
@@ -395,36 +508,36 @@ ch_live:
         sub     b,a
         asl     #$1,a,a
         move    a,x0
-        move    x:(r7+$1d),y1
+        move    x:(r5)+,y1
         mpy     x0,y1,a
         asl     #$1,a,a
-        move    a,x:(r7+$36)            ; wet R
+        move    a,x:(r4)-               ; wet R
 ; ---- SATURATE: the character. TAPE is
 ; TapeHead, TUBE is DaTube, INFL is OInflator: one straight-line callee per
 ; mode per channel (a = the sample in, b = out; the caller's store is the
-; hard clip). Skipped whole when DRV is 0 ($4d, per block). The three
+; hard clip). Skipped whole when DRV is 0 (per block). The three
 ; alternatives are a MODEFORK so the pricer charges the worst, not all.
-        move    x:(r7+$4d),a
-        tst     a
+        move    x:(r5)+,b               ; DRV 0: skip the saturator
+        move    x:(r5)+,a               ; sat mode (both ring words consumed)
+        tst     b
         bne     ch_nosat
 ; MODEFORK_BEGIN -- cycle_count.py: the dispatch, one flag test
-        move    x:(r7+$29),a
         tst     a
         bne     ch_s12
 ; MODEFORK_MID -- alternative 1: TAPE = TapeHead
-; r3 -> the channel's y1/y2 pair (the SVF state).
-        move    #$15,n3
+; r3 -> the channel's y2 (y1 the word below), r6 its ring.
+        move    #$16,n3
         move    r7,r3
-        move    x:(r7+$35),a            ; L in (post fold/ring)
-        move    (r3)+n3                 ; r3 = r7+$15: L y1, y2
+        move    x:(r4),a                ; L in (post fold)
+        move    (r3)+n3                 ; r3 = r7+$16: L y2
         bsr     chtape
-        move    b,x:(r7+$35)            ; LIMITING store: the hard clip
-        move    #$17,n3
+        move    b,x:(r4)+               ; LIMITING store: the hard clip
+        move    #$18,n3
         move    r7,r3
-        move    x:(r7+$36),a            ; R in
-        move    (r3)+n3                 ; r3 = r7+$17: R y1, y2
+        move    x:(r4),a                ; R in
+        move    (r3)+n3                 ; r3 = r7+$18: R y2
         bsr     chtape
-        move    b,x:(r7+$36)
+        move    b,x:(r4)-
         bra     ch_nosat
 ; MODEFORK_MID -- alternative 2: TUBE = DaTube (one compare more: 1 or 2)
 ch_s12:
@@ -434,169 +547,173 @@ ch_s12:
 ; r3 -> the channel's DC-blocker pair (x1, y1).
         move    #$41,n3
         move    r7,r3
-        move    x:(r7+$35),a            ; L in
+        move    x:(r4),a                ; L in
         move    (r3)+n3                 ; r3 = r7+$41: L x1, y1
         bsr     chtube
-        move    b,x:(r7+$35)            ; LIMITING store: the clip
+        move    b,x:(r4)+               ; LIMITING store: the clip
         move    #$43,n3
         move    r7,r3
-        move    x:(r7+$36),a            ; R in
+        move    x:(r4),a                ; R in
         move    (r3)+n3                 ; r3 = r7+$43: R x1, y1
         bsr     chtube
-        move    b,x:(r7+$36)
+        move    b,x:(r4)-
         bra     ch_nosat
 ; MODEFORK_MID -- alternative 3: INFL = OInflator (stateless)
 ch_sinfl:
-        move    x:(r7+$35),a            ; L in
+        move    x:(r4),a                ; L in
         bsr     chinfl
-        move    b,x:(r7+$35)            ; LIMITING store: the clip (|out| <= 1)
-        move    x:(r7+$36),a            ; R in
+        move    b,x:(r4)+               ; LIMITING store: the clip (|out| <= 1)
+        move    x:(r4),a                ; R in
         bsr     chinfl
-        move    b,x:(r7+$36)
+        move    b,x:(r4)-
 ; MODEFORK_END
 ch_nosat:
 ; ---- TONE: a tilt after the saturator, every mode ----------
 ; One-pole low-pass at 1.2 kHz per channel (k = 0.157), y = x + (t/2)(x - 2lp):
 ; TONE 127 = +3.5 dB above / -6 dB below, 0 the mirror, 64 bit-exact.
-        move    x:(r7+$35),a            ; L
-        move    x:(r7+$3f),x0           ; lp
+; r3 -> the state block: lp L, lp R, level_s.
+        move    #$5a,n3
+        move    r7,r3
+        move    (r3)+n3
+        move    x:(r4),a                ; L
+        move    x:(r3),x0               ; lp
         sub     x0,a
         move    a,x0                    ; x - lp
         move    #>$141893,y1            ; k
         mpy     x0,y1,a
-        move    x:(r7+$3f),b
+        move    x:(r3),b
         add     b,a                     ; lp' = lp + k (x - lp)
-        move    a,x:(r7+$3f)
+        move    a,x:(r3)+
         move    a,x0
-        move    x:(r7+$35),a
+        move    x:(r4),a
         sub     x0,a
         sub     x0,a                    ; x - 2 lp'
         move    a,x0
-        move    x:(r7+$24),y1           ; t/2
+        move    x:(r5)+,y1              ; t/2
         mpy     x0,y1,a
-        move    x:(r7+$35),b
+        move    x:(r4),b
         add     b,a
-        move    a,x:(r7+$35)
-        move    x:(r7+$36),a            ; R
-        move    x:(r7+$23),x0
+        move    a,x:(r4)+
+        move    x:(r4),a                ; R
+        move    x:(r3),x0
         sub     x0,a
         move    a,x0
         move    #>$141893,y1
         mpy     x0,y1,a
-        move    x:(r7+$23),b
+        move    x:(r3),b
         add     b,a
-        move    a,x:(r7+$23)
+        move    a,x:(r3)+
         move    a,x0
-        move    x:(r7+$36),a
+        move    x:(r4),a
         sub     x0,a
         sub     x0,a
         move    a,x0
-        move    x:(r7+$24),y1
+        move    x:(r5)+,y1
         mpy     x0,y1,a
-        move    x:(r7+$36),b
+        move    x:(r4),b
         add     b,a
-        move    a,x:(r7+$36)
+        move    a,x:(r4)-
 ; ---- COMPRESS: COMP 0 skips the stage
 ; (bit-exact); else |key| smoothed by the flavour's attack / release, Lv =
-; K * level_s, gr = (Lv^2/2 - 1)^2 + a*Lv, <= 1 by the limiting store --
+; K * level_s, gr = (Lv^2/2 - 1)^2 + a*Lv, <= 1 by the limiting move --
 ; a dip around Lv = 1 -- then x *= gr * makeup on both channels. Lv is
 ; carried halved (Lv/2, so Lv up to 2 fits a word; the dip is over by 1.5).
-        move    x:(r7+$26),a            ; COMP
+; r3 -> level_s after the tilt's two states.
+        move    x:(r5)+,a               ; COMP
         tst     a
         beq     ch_capd                 ; COMP 0: the stage is skipped
-        move    x:(r7+$32),a            ; key
+        move    x:(r4+n4),a             ; key
         abs     a
         move    a,x0                    ; level
-        move    x:(r7+$1e),b            ; level_s
+        move    x:(r3),b                ; level_s
         move    x0,a
         sub     b,a                     ; d = level - level_s
-        move    x:(r7+$2d),x1           ; attack
-        move    x:(r7+$2e),b            ; release
+        move    x:(r5)+,x1              ; attack
+        move    x:(r5)+,b               ; release
         tst     a                       ; nothing between this and the Tcc
         tpl     x1,b                    ; rising: attack
         move    b,y1
         move    a,x0
         mpy     x0,y1,a                 ; k*d
-        move    x:(r7+$1e),b
+        move    x:(r3),b
         add     b,a
-        move    a,x:(r7+$1e)            ; level_s
+        move    a,x:(r3)                ; level_s
         move    a,x0
-        move    x:(r7+$22),y1           ; K/4
+        move    x:(r5)+,y1              ; K/4
         mpy     x0,y1,a
         asl     #$1,a,a
-        move    a,x0                    ; Lv/2 (the limiting store: Lv <= 2)
+        move    a,x0                    ; Lv/2 (the limiting move: Lv <= 2)
         move    x0,y1
         mpy     x0,y1,a                 ; (Lv/2)^2
         asl     #$1,a,a                 ; Lv^2/2
         add     #>$800000,a             ; t = Lv^2/2 - 1  (-1 .. 1)
         move    a,x1                    ; t (clean)
-        move    x:(r7+$28),y1           ; a
+        move    x:(r5)+,y1              ; a
         mpy     x0,y1,b                 ; a*Lv/2  (x0 = Lv/2 >= 0)
         asl     #$1,b,b                 ; a*Lv
         move    x1,x0                   ; t goes negative below the dip: the
         move    x1,y1                   ; square must be the audited x0,y1
         mpy     x0,y1,a                 ; t^2   (mpy x1,y1 encodes as mpysu)
         add     b,a                     ; gr = t^2 + a*Lv
-        move    a,x:(r7+$1f)            ; gr (the limiting store: <= 1)
-ch_capp:
-        move    x:(r7+$1f),x0           ; gr
-        move    x:(r7+$27),y1           ; makeup/4
+        move    a,x0                    ; gr (the limiting move: <= 1)
+        move    x:(r5)+,y1              ; makeup/4
         mpy     x0,y1,a
         move    a,y1                    ; gr*makeup/4
-        move    x:(r7+$35),x0
+        move    x:(r4),x0
         mpy     x0,y1,a
         asl     #$2,a,a
-        move    a,x:(r7+$35)
-        move    x:(r7+$36),x0
+        move    a,x:(r4)+
+        move    x:(r4),x0
         mpy     x0,y1,a
         asl     #$2,a,a
-        move    a,x:(r7+$36)
+        move    a,x:(r4)-
 ch_capd:
+        move    (r5)+n5                 ; COMP off: past its five ring words
 ; ---- WIDTH: mid stays, side scales ---------------------------------------
-        move    x:(r7+$35),a            ; L
-        move    x:(r7+$36),x0           ; R
+        move    x:(r4)+,a               ; L
+        move    x:(r4)-,x0              ; R
         add     x0,a
         asr     #$1,a,a
         move    a,x1                    ; mid
-        move    x:(r7+$35),a
+        move    x:(r4),a
         sub     x0,a
         asr     #$1,a,a
         move    a,x0                    ; side
-        move    x:(r7+$2b),y1           ; side gain / 2
+        move    x:(r5)+,y1              ; side gain / 2
         mpy     x0,y1,a
         asl     #$1,a,a                 ; the halving undone in the guard bits
         move    a,y0                    ; scaled side
         move    x1,a
         add     y0,a                    ; mid + side
-        move    a,x:(r7+$35)
+        move    a,x:(r4)+
         move    x1,a
         sub     y0,a                    ; mid - side
-        move    a,x:(r7+$36)
+        move    a,x:(r4)-
 ; ---- MIX and write back --------------------------------------------------
-        move    x:(r7+$35),a
+        move    x:(r4)+,a
         move    x:(r0),b
         sub     b,a
         asr     #$1,a,a
         move    a,x0
-        move    x:(r7+$20),y1           ; m
+        move    x:(r5)+,y1              ; m (the ring's last word: r5 turns)
         mpy     x0,y1,a
         asl     #$1,a,a
         add     b,a
         move    a,x:(r0)
-        move    x:(r7+$36),a
+        move    x:(r4)-,a
         move    x:(r0+n0),b
         sub     b,a
         asr     #$1,a,a
         move    a,x0
-        move    x:(r7+$20),y1
-        mpy     x0,y1,a
+        mpy     x0,y1,a                 ; y1 still m
         asl     #$1,a,a
         add     b,a
         move    a,x:(r0+n0)
         move    (r0)+n0                 ; the frame advance: n0 is 1 for the
         move    (r0)+n0                 ; whole loop, so two steps, no reload
 ch_end:
-        nop
+        move    #>$ffffff,m5            ; the rings' modulo, back to linear
+        move    #>$ffffff,m6
         rts
 
 ; ===========================================================================
@@ -607,8 +724,9 @@ ch_bypass:
 
 ; ---------------------------------------------------------------------------
 ; chtube -- DaTube per channel (JClones_DaTube.jsfx, MIT;).
-; In: a = x, r3 -> the DC blocker's x1 (x:(r3)) and y1 (x:(r3+$1)). Out: b.
-;   xin = x*(0.5 + d)                           ($4c = (0.5+d)/2, halved)
+; In: a = x, r3 -> the DC blocker's x1 (y1 the word above), r6 -> the ring
+; ((0.5+d)/2, d, d/2, comp/2). Out: b.
+;   xin = x*(0.5 + d)                           ((0.5+d)/2, halved)
 ;   u   = 1 - |xin|      (may go negative: the JSFX's linear extension past
 ;                         +-1 is exactly the curve with u^P dropped, so the
 ;                         table lookup clamps u to 0 and the rest is linear)
@@ -619,16 +737,16 @@ ch_bypass:
 ; Everything runs HALVED (xin/2 <= 0.75, u/2, T/2, y/2) and the post gain is
 ; comp/4 doubled back twice. STRAIGHT-LINE: no branch. Every mpy x0,y1 (the
 ; audited-signed order; the one Tcc reads the tst right before it). Clobbers
-; x0, x1, y0, y1, a, b, n1, n2; $49 parks u/2.
+; x0, x1, y0, y1, a, b, n1, n2; y0 parks u/2 (P2[idx] rides in b).
 chtube:
         move    a,x0                    ; x
-        move    x:(r7+$4c),y1           ; (0.5 + d)/2
+        move    x:(r6)+,y1              ; (0.5 + d)/2
         mpy     x0,y1,a
         move    a,x1                    ; xin/2  (|.| <= 0.75)
         abs     a
         neg     a
         add     #>$400000,a             ; u/2 = 0.5 - |xin/2|, in [-0.25, 0.5]
-        move    a,x:(r7+$49)            ; park u/2
+        move    a,y0                    ; park u/2
         move    #$0,x0                  ; (a move does not disturb the flags)
         tst     a
         tmi     x0,a                    ; the lookup's argument: max(u, 0)/2
@@ -641,51 +759,52 @@ chtube:
         and     #>$3ffff,b              ; the 18 bits under the step (b2 = 0)
         asl     #$5,b,b                 ; frac, Q23
         move    b,x0                    ; AGU settle: n1 written 4 back
-        move    p:(r1+n1),y0            ; P2[idx] = u^P / 2
+        move    p:(r1+n1),b             ; P2[idx] = u^P / 2
         move    p:(r2+n2),y1            ; P2[idx+1] - P2[idx]  (>= 0)
         mpy     x0,y1,a                 ; frac * slope
-        add     y0,a                    ; u^P / 2
-        move    x:(r7+$49),b            ; u/2
+        add     b,a                     ; u^P / 2
+        move    y0,b                    ; u/2
         sub     a,b                     ; T/2 = (u - u^P)/2
         move    b,x0                    ; T/2
-        move    x:(r7+$38),y1           ; d
+        move    x:(r6)+,y1              ; d
         mpy     x0,y1,a                 ; d * T/2
         neg     a
         move    a,y0                    ; the negative half's term, parked
-        move    x:(r7+$37),y1           ; d/2
+        move    x:(r6)+,y1              ; d/2
         mpy     x0,y1,a                 ; the positive half's term
         move    x1,b                    ; xin/2
         tst     b                       ; its sign -- nothing between this
         tmi     y0,a                    ; and the Tcc (the flag trap)
         add     x1,a                    ; y/2 = xin/2 + term
         move    a,x0
-        move    x:(r7+$39),y1           ; comp/2
+        move    x:(r6)+,y1              ; comp/2
         mpy     x0,y1,a                 ; (y/2)(comp/2) = y*comp/4
         asl     #$2,a,a                 ; *4 -> y*comp: the JSFX's -6 dB default
         move    a,x0                    ; x, the DC blocker's input (LIMITING)
         move    x:(r3),x1               ; x1
-        move    x0,x:(r3)               ; x1 <- x
+        move    x0,x:(r3)+              ; x1 <- x
         move    #>$7fffff,y1            ; k = 1.0 (an immediate: chtube is TUBE's)
         mpy     x1,y1,b                 ; k*x1 (mpysu: y1 is positive)
         move    x0,a
         sub     b,a                     ; x - x1
-        move    x:(r3+$1),x0            ; y1
+        move    x:(r3),x0               ; y1
         move    #>$7fdf3b,y1            ; R = 0.999
         mac     x0,y1,a                 ; + R*y1
-        move    a,x:(r3+$1)             ; y1 <- y
+        move    a,x:(r3)                ; y1 <- y
         move    a,b
         rts
 
 ; ---------------------------------------------------------------------------
 ; chinfl -- OInflator per channel (JClones_OInflator.jsfx, MIT;),
 ; single band, Curve at the JSFX default 0 (c = 0.25), Clip on (the +-0.5
-; threshold on the halved signal IS the input's full scale). In: a = x. Out: b.
+; threshold on the halved signal IS the input's full scale). In: a = x, r6 ->
+; the ring (e/2, 1 - e). Out: b.
 ;   x2 = x/2                      (the JSFX's 0.5 input headroom)
 ;   g  = 0.75 + 0.5*|x2|          (2c|x2| + (1 - c), in [0.75, 1])
 ;   gx = g*x2                     (|gx| <= 0.5)
 ;   y  = 2e*gx*(1 - |gx|) + (1 - e)*x2
 ;   out = 2*y                     (the JSFX's x2 output gain; |out| <= 1)
-; e = DRV/128 ($3a = e/2, $3b = 1 - e). g and t = 1 - |gx| live halved.
+; e = DRV/128. g and t = 1 - |gx| live halved.
 ; STRAIGHT-LINE, stateless; every mpy/mac x0,y1. Clobbers x0, x1, y1, a, b.
 chinfl:
         asr     #$1,a,a                 ; x2
@@ -707,21 +826,23 @@ chinfl:
         move    a,y1
         mpy     x0,y1,a                 ; gx * t/2
         move    a,x0
-        move    x:(r7+$3a),y1           ; e/2
+        move    x:(r6)+,y1              ; e/2
         mpy     x0,y1,a                 ; gx * t/2 * e/2
         asl     #$3,a,a                 ; 2e * gx * t
         move    x1,x0                   ; x2
-        move    x:(r7+$3b),y1           ; 1 - e
+        move    x:(r6)+,y1              ; 1 - e
         mac     x0,y1,a                 ; + (1 - e)*x2 = y
         asl     #$1,a,a                 ; out = 2y
         move    a,b
         rts
 
 ; chtape -- TapeHead per channel (JClones_TapeHead.jsfx, MIT;).
-; In: a = x, r3 -> y1 (x:(r3)) and y2 (x:(r3+$1)), both kept at /4 (the
-; port's headroom: |y1| <= 1.46, |y2| <= 1.95 true). Out: b = (g3*clip(y3)
+; In: a = x, r3 -> y2 (y1 the word below), both kept at /4 (the
+; port's headroom: |y1| <= 1.46, |y2| <= 1.95 true), r6 -> the ring (k2,
+; k3mag, d/8, d/8, trim). Out: b = (g3*clip(y3)
 ; + ss(d*y1) + ss(d*y2)) * trim, up to 2.2, CLIPPED (the JSFX's own output
-; clip) and then scaled by the block's unity trim x:(r7+$22) = (1/11)/d8. STRAIGHT-LINE: no branch of any kind
+; clip) and then scaled by the block's unity trim (1/11)/d8. STRAIGHT-LINE:
+; no branch of any kind
 ; (cycle_count.py charges the span at each call). Every mpy is x0,y1 (the
 ; audited-signed order); every clip is a LIMITING move into x0. Clobbers
 ; x0, x1, y1, a, b.
@@ -730,24 +851,24 @@ chinfl:
 chtape:
         asr     #$2,a,a                 ; Xs = x/4
         move    a,x1
-        move    x:(r3+$1),x0            ; y2
-        move    x:(r7+$30),y1           ; k2
+        move    x:(r3)-,x0              ; y2
+        move    x:(r6)+,y1              ; k2
         mpy     x0,y1,a
         move    x:(r3),b
         add     b,a                     ; y1n = y1 + k2*y2
         move    a,x0
-        move    x0,x:(r3)
+        move    x0,x:(r3)+
         move    #>$5b6db7,y1            ; k1 = 5/7
         mpy     x0,y1,a
-        move    x:(r3+$1),b
+        move    x:(r3),b
         add     b,a
         sub     x1,a                    ; y3 = k1*y1n + y2 - Xs
         move    a,x0
-        move    x:(r7+$31),y1           ; k3mag
+        move    x:(r6)+,y1              ; k3mag
         mpy     x0,y1,a
-        move    x:(r3+$1),b
+        move    x:(r3),b
         sub     a,b                     ; y2n = y2 - k3mag*y3
-        move    b,x:(r3+$1)
+        move    b,x:(r3)-
         move    x0,a
         asl     #$2,a,a                 ; 4*y3
         move    a,x0                    ; LIMITING move: clip(y3)
@@ -755,8 +876,8 @@ chtape:
         mpy     x0,y1,b
         asl     #$1,b,b
         neg     b                       ; b = g3*trim*clip(y3)   (g3 < 0)
-        move    x:(r3),x0               ; y1n/4
-        move    x:(r7+$48),y1           ; d/8
+        move    x:(r3)+,x0              ; y1n/4
+        move    x:(r6)+,y1              ; d/8
         mpy     x0,y1,a
         asl     #$5,a,a                 ; v = d*y1n
         move    a,x0                    ; LIMITING move: clip(v)
@@ -772,8 +893,8 @@ chtape:
         move    #>$59999a,y1            ; trim 0.7
         mpy     x0,y1,a
         add     a,b
-        move    x:(r3+$1),x0            ; y2n/4
-        move    x:(r7+$48),y1
+        move    x:(r3),x0               ; y2n/4
+        move    x:(r6)+,y1
         mpy     x0,y1,a
         asl     #$5,a,a
         move    a,x0
@@ -790,6 +911,6 @@ chtape:
         mpy     x0,y1,a
         add     a,b
         move    b,x0                    ; LIMITING move: the JSFX's output clip
-        move    x:(r7+$2a),y1           ; then the trim (1/11)/d8 + 0.023
+        move    x:(r6)+,y1              ; then the trim (1/11)/d8 + 0.023
         mpy     x0,y1,b
         rts
