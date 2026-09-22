@@ -7,6 +7,23 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- Upstream sweep (23 Sep 2026): nordseele's octalab-notes read again at
+  `e0dc56d` (nine commits since `40ffa53`) and its findings placed in
+  `STORAGE.md` §1 (a FAT directory record's first cluster is the long at
+  `+0x11e`, re-read here), `SAMPLE_SAVE.md` §7 (the storage-job entry
+  `0x40024168` reads kind/object from `0x460be9e8`/`ec`; a stock save ran on
+  his MKI), `RECORDER.md` §2, `MAINMENU.md` §6b, `PANEL.md` §2/§3b,
+  `PARAM_PAGES.md` §5g. Octakit's submodule moved to her `c6d3f39` (README
+  only; image byte-identical). `verify_menu`'s FX1 chooser check read 0x40
+  bytes from `0x400d6060`, four words into the FX2 table the build mirrors
+  for Octakit, so `make check` on every Octakit remix had been red since
+  15 Sep 2026; the window is the list's 12 words now. Unchanged upstream:
+  octemu, dsp56300, octamax, octa-bt-pt, JSFXClones. Moved but not
+  re-pinned: midisc 1.40MIDISC8.1 (his CC filter switched off, which this
+  module never carried), elektron-firmware-tool (restructured; upstream now
+  has `--emit-container`, our patch no longer applies), mc68k-md-mm (an
+  HDI08 CVR-read callback).
+
 - Character and Modulation pointer-addressed the same way (22 Sep 2026,
   PRs #377 and #378): displaced moves per sample Character TAPE 79 / TUBE
   74 / INFL 62 → 0 and Modulation LINE 107 / PHSR 136 / COMB 116 → 0, every
