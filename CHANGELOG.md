@@ -5,7 +5,26 @@ main carries beyond the last flashed image. The version the panel shows is
 `BUILD` (`make image BUILD=N`); a git tag `OCTABAM<N>` marks the commit each
 flashed image was built from.
 
-## Unreleased (main after image 43; image 49 built)
+## Unreleased (main after image 43; image 51 built)
+
+- The bus engines are locked to their host slots (`Remix.locked`, image
+  51, 22 Sep 2026): BusDelay runs on T1 and BusVerb on T5, and either is
+  an exact dry pass on any other track (the HOSTGUARD body hidden engines
+  already took, at proc entry, `r7 == 0x6200`). The stock DELAY row is out
+  of the FX2 chooser: every other FX2 is a SEND. `stamp-defaults` warns
+  about an engine off its slot. Sam, 22 Sep 2026: a known working
+  combination over a free one.
+- Character: TXTR (Airwindows Pockey) removed after a high-pitched squeal
+  on the unit when it was touched on the master, unreproduced on the
+  harness at any value, with garbage RAM or on the GLUE position; WDTH
+  takes its page-1 slot 2, page 2 is SAT alone. 304 words per payload
+  freed; `pockey_ref.py` and the two codec tables gone.
+- Images 44–50: 44 and 45 wedged, 46 washed, 47 and 50 were probes (47:
+  the core-1 tracker one ahead on every block; 50: the dispatcher's call
+  pattern matches stock's code on a fresh project, no marker). On a fresh
+  project on 50 every tested configuration was clean; the THRU-host wash
+  of images 40–49 reproduced only in OCTABAM91 and was not bisected
+  further.
 
 - The bus no longer needs the cores to agree on the flip's phase (image
   49, 22 Sep 2026): eight accumulator buffers (`Y:0x901..0x980`) and eight

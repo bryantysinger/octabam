@@ -518,6 +518,10 @@ def wrong_core(pdir):
                     lo, hi = PAYLOAD_TRACKS[hit[1]][0] + 1, PAYLOAD_TRACKS[hit[1]][-1] + 1
                     out.append(f"{bank.name} part {p + 1} T{t + 1}: {hit[0]} runs as SEND "
                                f"there (payload {hit[1]} = T{lo}-T{hi})")
+                elif hit is not None and t != PAYLOAD_TRACKS[hit[1]][0]:
+                    # locked to the host slot (schema.Remix.locked, 22 Sep 2026)
+                    out.append(f"{bank.name} part {p + 1} T{t + 1}: {hit[0]} is a dry pass "
+                               f"there (locked to T{PAYLOAD_TRACKS[hit[1]][0] + 1})")
     return out
 
 
