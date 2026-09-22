@@ -77,9 +77,11 @@ Build the port into the worktree: `make emu-cf` (a fresh cache, ~1 min).
 **The assembler mis-encodes instructions, silently.** `dsp_asm` encodes
 `tfr a,b` as `rnd b`, and **any `mpy` operand order it doesn't know as
 `mpysu`** — found with `mpy x0,y0`, confirmed 9 Aug 2026 for `mpy x1,y1`
-and `mpy x0,x1` too (23 sites in the shipping reverb are mpysu; all audited
-safe because their second operand is always positive, which is the only
-reason the engine works). `mpysu` treats the SECOND operand as unsigned, so
+and `mpy x0,x1` too (every shipping site is audited safe because its second
+operand is always positive, which is the only reason the engine works; the
+sites are counted per module in `build_bus.MPYSU_AUDITED`, and since 23 Sep
+2026 every `assemble()` round-trips its bytes through the disassembler and
+stops on any other mismatch or on a count that differs from the table). `mpysu` treats the SECOND operand as unsigned, so
 a negative multiplier there is silently corrupted. `mpy x0,y1` and
 `mpy y0,x0` encode signed. Both assemble clean and do the wrong thing.
 **Disassemble what you assemble** when a result surprises you — and always
