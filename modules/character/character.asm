@@ -44,13 +44,14 @@
 ;   $45 master flag (1 = position 3 on A: GLUE)
 ;   $19 wet L, $1a wet R, $1b key (per sample; r4 -> $19, n4 = 2)
 ;   $70..$7f the SAT ring (per block; r6, m6 = 15 in every mode -- the chip
-;     has only ever run power-of-two modulos): TAPE k2 k3mag d8 d8 trim x2,
-;     TUBE (0.5+d)/2 d d/2 comp/2 x2, INFL e/2 1-e x2; the remainder to 16
-;     is stepped once per sample by (r6)+n6 (n6 = 6 / 8 / 12 per mode)
+;     has only ever run power-of-two modulos): G/8 then TAPE k2 k3mag d8 d8 trim,
+;     TUBE (0.5+d)/2 d d/2 comp/2, INFL e/2 1-e, then 1/G; x2; the remainder
+;     to 16 is stepped once per sample by (r6)+n6 (n6 = 2 / 4 / 8 per mode)
 ;   $60..$6f the main ring (per block; r5, m5 = 15), in the order the sample
 ;     reads them: gq trim/2 gq trim/2 $4d $29 t/2 t/2 $26 $2d $2e $22 $28 $27
 ;     $2b $20 -- COMP off steps over its five words (n5 = 5, else 0)
-;   $1c, $25, $46/$47, $4e..$59, $5d..$5f free (22 Sep 2026: the sample loop reads
+;   $4e G/8, $4f the output scale after the curve (1, (1+d)/G, 1/G by mode; 23 Sep 2026)
+;   $1c, $25, $46/$47, $50..$59, $5d..$5f free (22 Sep 2026: the sample loop reads
 ;   its coefficients through the rings and its state through r3/r4; the
 ;   displaced move costs twice the pointer move on the chip, CHIP.md)
 ;
@@ -410,7 +411,48 @@ ch_live:
         move    x0,x:(r3)+
         move    x:(r7+$20),x0           ; m
         move    x0,x:(r3)+
-; the SAT ring: the active mode's words, both channels
+; DRV's drive into the curve (23 Sep 2026, Sam: "much too subtle"): the
+; saturator's input is x*G with G = 1 + 3d (DRV 127 = +12 dB) and its output
+; is scaled back per mode -- INFL by 1/G (it barely compresses: unity small
+; signal), TUBE by (1+d)/G (half), TAPE by 1 (TapeHead's own trim already
+; holds its small signal at unity, and its smoothstep compresses the rest:
+; with 1/G on top a loop sat 18 dB under dry at DRV 127). G/8 at $4e, the
+; output scale at $4f (the ring words around each callee).
+        move    x:(r6+$0),a             ; d = DRV/128
+        move    a,x0
+        move    #>$300000,y1            ; 0.375
+        mpy     x0,y1,a
+        add     #>$100000,a             ; G/8 = 0.125 + 0.375 d
+        move    a,x:(r7+$4e)
+        move    a,x0
+        move    #$08,y1                 ; 1/16
+        move    y1,a                    ; a clean load: a0 = 0 for the divide
+        andi    #$fe,ccr
+        rep     #$18
+        div     x0,a                    ; (1/16)/(G/8) = 1/(2G) in a0
+        move    a0,x0
+        move    x0,a
+        asl     #$1,a,a                 ; 1/G, 1.0 at DRV 0 (the store limits)
+        move    x:(r7+$29),b            ; sat mode
+        tst     b
+        beq     ch_gtape
+        move    #>$1,x0
+        cmp     x0,b
+        bne     ch_gdone                ; INFL: 1/G
+        move    a,x0                    ; TUBE: (1/G)(1+d)
+        move    x:(r6+$0),a
+        asr     #$1,a,a
+        add     #>$400000,a             ; (1 + d)/2
+        move    a,y1
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        bra     ch_gdone
+ch_gtape:
+        move    #>$7fffff,a             ; TAPE: 1
+ch_gdone:
+        move    a,x:(r7+$4f)
+; the SAT ring: the active mode's words, both channels, each between G/8
+; and 1/G
         move    r7,r6
         move    #$70,n6
         move    (r6)+n6
@@ -421,14 +463,7 @@ ch_live:
         move    x:(r7+$29),a
         tst     a
         bne     ch_r12
-        move    x:(r7+$30),x0           ; TAPE: k2 k3mag d8 d8 trim
-        move    x0,x:(r3)+
-        move    x:(r7+$31),x0
-        move    x0,x:(r3)+
-        move    x:(r7+$48),x0
-        move    x0,x:(r3)+
-        move    x0,x:(r3)+
-        move    x:(r7+$2a),x0
+        move    x:(r7+$4e),x0           ; TAPE: G/8 k2 k3mag d8 d8 trim 1/G
         move    x0,x:(r3)+
         move    x:(r7+$30),x0
         move    x0,x:(r3)+
@@ -439,19 +474,28 @@ ch_live:
         move    x0,x:(r3)+
         move    x:(r7+$2a),x0
         move    x0,x:(r3)+
-        move    #$6,n6                  ; 16 - 10
+        move    x:(r7+$4f),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$4e),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$30),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$31),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$48),x0
+        move    x0,x:(r3)+
+        move    x0,x:(r3)+
+        move    x:(r7+$2a),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$4f),x0
+        move    x0,x:(r3)+
+        move    #$2,n6                  ; 16 - 14
         bra     ch_rdone
 ch_r12:
         move    #>$1,x0
         cmp     x0,a
         bne     ch_rinfl
-        move    x:(r7+$4c),x0           ; TUBE: (0.5+d)/2 d d/2 comp/2
-        move    x0,x:(r3)+
-        move    x:(r7+$38),x0
-        move    x0,x:(r3)+
-        move    x:(r7+$37),x0
-        move    x0,x:(r3)+
-        move    x:(r7+$39),x0
+        move    x:(r7+$4e),x0           ; TUBE: G/8 (0.5+d)/2 d d/2 comp/2 1/G
         move    x0,x:(r3)+
         move    x:(r7+$4c),x0
         move    x0,x:(r3)+
@@ -461,18 +505,40 @@ ch_r12:
         move    x0,x:(r3)+
         move    x:(r7+$39),x0
         move    x0,x:(r3)+
-        move    #$8,n6                  ; 16 - 8
+        move    x:(r7+$4f),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$4e),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$4c),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$38),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$37),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$39),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$4f),x0
+        move    x0,x:(r3)+
+        move    #$4,n6                  ; 16 - 12
         bra     ch_rdone
 ch_rinfl:
-        move    x:(r7+$3a),x0           ; INFL: e/2 1-e
-        move    x0,x:(r3)+
-        move    x:(r7+$3b),x0
+        move    x:(r7+$4e),x0           ; INFL: G/8 e/2 1-e 1/G
         move    x0,x:(r3)+
         move    x:(r7+$3a),x0
         move    x0,x:(r3)+
         move    x:(r7+$3b),x0
         move    x0,x:(r3)+
-        move    #$0c,n6                 ; 16 - 4
+        move    x:(r7+$4f),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$4e),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$3a),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$3b),x0
+        move    x0,x:(r3)+
+        move    x:(r7+$4f),x0
+        move    x0,x:(r3)+
+        move    #$8,n6                  ; 16 - 8
 ch_rdone:
         do      n7,>ch_end
 ; ---- the key (the mono sum) ----------------------------------------------
@@ -532,15 +598,27 @@ ch_rdone:
 ; r3 -> the channel's y2 (y1 the word below), r6 its ring.
         move    #$16,n3
         move    r7,r3
-        move    x:(r4),a                ; L in (post fold)
+        move    x:(r4),x0               ; L in (post fold)
+        move    x:(r6)+,y1              ; G/8
+        mpy     x0,y1,a
+        asl     #$3,a,a                 ; x*G, up to 4 in the accumulator
         move    (r3)+n3                 ; r3 = r7+$16: L y2
         bsr     chtape
-        move    b,x:(r4)+               ; LIMITING store: the hard clip
+        move    b,x0                    ; LIMITING: the hard clip
+        move    x:(r6)+,y1              ; the output scale
+        mpy     x0,y1,b
+        move    b,x:(r4)+
         move    #$18,n3
         move    r7,r3
-        move    x:(r4),a                ; R in
+        move    x:(r4),x0               ; R in           
+        move    x:(r6)+,y1              ; G/8
+        mpy     x0,y1,a
+        asl     #$3,a,a                 ; x*G, up to 4 in the accumulator
         move    (r3)+n3                 ; r3 = r7+$18: R y2
         bsr     chtape
+        move    b,x0                    ; LIMITING: the hard clip
+        move    x:(r6)+,y1              ; the output scale
+        mpy     x0,y1,b
         move    b,x:(r4)-
         move    (r6)+n6                 ; the ring's remainder: one turn per sample
         bra     ch_nosat
@@ -552,25 +630,49 @@ ch_s12:
 ; r3 -> the channel's DC-blocker pair (x1, y1).
         move    #$41,n3
         move    r7,r3
-        move    x:(r4),a                ; L in
+        move    x:(r4),x0               ; L in (post fold)
+        move    x:(r6)+,y1              ; G/8
+        mpy     x0,y1,a
+        asl     #$3,a,a                 ; x*G, up to 4 in the accumulator
         move    (r3)+n3                 ; r3 = r7+$41: L x1, y1
         bsr     chtube
-        move    b,x:(r4)+               ; LIMITING store: the clip
+        move    b,x0                    ; LIMITING: the hard clip
+        move    x:(r6)+,y1              ; the output scale
+        mpy     x0,y1,b
+        move    b,x:(r4)+
         move    #$43,n3
         move    r7,r3
-        move    x:(r4),a                ; R in
+        move    x:(r4),x0               ; R in           
+        move    x:(r6)+,y1              ; G/8
+        mpy     x0,y1,a
+        asl     #$3,a,a                 ; x*G, up to 4 in the accumulator
         move    (r3)+n3                 ; r3 = r7+$43: R x1, y1
         bsr     chtube
+        move    b,x0                    ; LIMITING: the hard clip
+        move    x:(r6)+,y1              ; the output scale
+        mpy     x0,y1,b
         move    b,x:(r4)-
         move    (r6)+n6
         bra     ch_nosat
 ; MODEFORK_MID -- alternative 3: INFL = OInflator (stateless)
 ch_sinfl:
-        move    x:(r4),a                ; L in
+        move    x:(r4),x0               ; L in (post fold)
+        move    x:(r6)+,y1              ; G/8
+        mpy     x0,y1,a
+        asl     #$3,a,a                 ; x*G, up to 4 in the accumulator
         bsr     chinfl
-        move    b,x:(r4)+               ; LIMITING store: the clip (|out| <= 1)
-        move    x:(r4),a                ; R in
+        move    b,x0                    ; LIMITING: the hard clip
+        move    x:(r6)+,y1              ; the output scale
+        mpy     x0,y1,b
+        move    b,x:(r4)+
+        move    x:(r4),x0               ; R in           
+        move    x:(r6)+,y1              ; G/8
+        mpy     x0,y1,a
+        asl     #$3,a,a                 ; x*G, up to 4 in the accumulator
         bsr     chinfl
+        move    b,x0                    ; LIMITING: the hard clip
+        move    x:(r6)+,y1              ; the output scale
+        mpy     x0,y1,b
         move    b,x:(r4)-
         move    (r6)+n6
 ; MODEFORK_END

@@ -18,7 +18,18 @@ Chain, fixed: fold → saturate → tilt → compress → width → mix.
   TUBE = DaTube: u − u^P with the negative half driven twice as hard,
   level-compensated (a per-block division); the curve is a 17-pair P table.
   INFL = OInflator: a signed cubic, DRV is its Effect. DRV 0 skips the
-  stage, bit-exact.
+  stage, bit-exact. Since 23 Sep 2026 (Sam: "much too subtle") DRV also
+  drives the curve's input by G = 1 + 3·DRV/128 (+12 dB at 127), on top of
+  each mode's own law, with the output scaled per mode: TAPE ×1 (TapeHead's
+  trim already holds its small signal at unity and its smoothstep
+  compresses the rest; with 1/G on top a loop sat 18 dB under dry at DRV
+  127), TUBE ×(1+d)/G, INFL ×1/G. THD on a 1 kHz tone at −20 dBFS (the
+  set's working level), before → after: TAPE DRV 64 −40 → −23 dB, DRV 127
+  −18 → −11 dB; TUBE 127 −22 → −18 dB; INFL 127 −58 → −37 dB. Level on that
+  tone at DRV 64 / 127: TAPE +7.3 / +1.1 dB, TUBE +2.1 / +1.4, INFL +1.8 /
+  +3.1; on the test loop's peaks TAPE +1.7 / −6.7, TUBE +0.5 / −4.2, INFL
+  +1.2 / −0.1. Small-signal gain at DRV 127: +12 / +6 / 0 dB by mode
+  (`verify_character`).
 - **TONE** — a tilt after the saturator, drawn −64..+63; 0 flat, bit-exact.
 - **COMP** — JClones AC1's console channel law: GLUE (slow, soft-kneed) on
   the master by position, COMP (fast) on every other track. One feedforward

@@ -7,6 +7,14 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- Character DRV drives the curves (23 Sep 2026, Sam: "much too subtle"):
+  the saturator's input is x·G with G = 1 + 3·DRV/128 (+12 dB at 127) on
+  top of each mode's own law, the output scaled per mode (TAPE ×1, TUBE
+  ×(1+d)/G, INFL ×1/G: small-signal +12 / +6 / 0 dB at 127); DRV 0 still
+  skips the stage. THD at −20 dBFS, 1 kHz, before → after: TAPE 64
+  −40 → −23 dB, TAPE 127 −18 → −11, TUBE 127 −22 → −18, INFL 127 −58 → −37.
+  Character 790 → 882 words. Unheard on the unit.
+
 - Disassemble what you assemble, automatically (Jannik Aßfalg, PR #380,
   22 Sep 2026; hygiene pass 23 Sep): every `build_bus.assemble()` compares
   `dsp_asm -list` with `dsp56kDisassemble`'s decode of the same bytes and
