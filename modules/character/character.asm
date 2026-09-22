@@ -43,12 +43,14 @@
 ;   $5a tilt lp L, $5b tilt lp R, $5c level_s (PERSISTENT; r3 walks them)
 ;   $45 master flag (1 = position 3 on A: GLUE)
 ;   $19 wet L, $1a wet R, $1b key (per sample; r4 -> $19, n4 = 2)
-;   $50..$59 the SAT ring (per block, by mode; r6, m6 = its length - 1):
-;     TAPE k2 k3mag d8 d8 trim x2, TUBE (0.5+d)/2 d d/2 comp/2 x2, INFL e/2 1-e x2
+;   $70..$7f the SAT ring (per block; r6, m6 = 15 in every mode -- the chip
+;     has only ever run power-of-two modulos): TAPE k2 k3mag d8 d8 trim x2,
+;     TUBE (0.5+d)/2 d d/2 comp/2 x2, INFL e/2 1-e x2; the remainder to 16
+;     is stepped once per sample by (r6)+n6 (n6 = 6 / 8 / 12 per mode)
 ;   $60..$6f the main ring (per block; r5, m5 = 15), in the order the sample
 ;     reads them: gq trim/2 gq trim/2 $4d $29 t/2 t/2 $26 $2d $2e $22 $28 $27
 ;     $2b $20 -- COMP off steps over its five words (n5 = 5, else 0)
-;   $1c, $1d.., $25, $46/$47, $4e/$4f free (22 Sep 2026: the sample loop reads
+;   $1c, $25, $46/$47, $4e..$59, $5d..$5f free (22 Sep 2026: the sample loop reads
 ;   its coefficients through the rings and its state through r3/r4; the
 ;   displaced move costs twice the pointer move on the chip, CHIP.md)
 ;
@@ -410,10 +412,12 @@ ch_live:
         move    x0,x:(r3)+
 ; the SAT ring: the active mode's words, both channels
         move    r7,r6
-        move    #$50,n6
+        move    #$70,n6
         move    (r6)+n6
-        move    #>$ffffff,m6
-        move    r6,r3
+        move    #$0f,m6                 ; sixteen words in every mode: the
+        move    r6,r3                   ; chip has only ever run power-of-two
+                                        ; modulos (stock m = $3ff, $7f, $1f);
+                                        ; the remainder is stepped by n6
         move    x:(r7+$29),a
         tst     a
         bne     ch_r12
@@ -435,7 +439,7 @@ ch_live:
         move    x0,x:(r3)+
         move    x:(r7+$2a),x0
         move    x0,x:(r3)+
-        move    #$09,m6
+        move    #$6,n6                  ; 16 - 10
         bra     ch_rdone
 ch_r12:
         move    #>$1,x0
@@ -457,7 +461,7 @@ ch_r12:
         move    x0,x:(r3)+
         move    x:(r7+$39),x0
         move    x0,x:(r3)+
-        move    #$07,m6
+        move    #$8,n6                  ; 16 - 8
         bra     ch_rdone
 ch_rinfl:
         move    x:(r7+$3a),x0           ; INFL: e/2 1-e
@@ -468,7 +472,7 @@ ch_rinfl:
         move    x0,x:(r3)+
         move    x:(r7+$3b),x0
         move    x0,x:(r3)+
-        move    #$03,m6
+        move    #$0c,n6                 ; 16 - 4
 ch_rdone:
         do      n7,>ch_end
 ; ---- the key (the mono sum) ----------------------------------------------
@@ -538,6 +542,7 @@ ch_rdone:
         move    (r3)+n3                 ; r3 = r7+$18: R y2
         bsr     chtape
         move    b,x:(r4)-
+        move    (r6)+n6                 ; the ring's remainder: one turn per sample
         bra     ch_nosat
 ; MODEFORK_MID -- alternative 2: TUBE = DaTube (one compare more: 1 or 2)
 ch_s12:
@@ -557,6 +562,7 @@ ch_s12:
         move    (r3)+n3                 ; r3 = r7+$43: R x1, y1
         bsr     chtube
         move    b,x:(r4)-
+        move    (r6)+n6
         bra     ch_nosat
 ; MODEFORK_MID -- alternative 3: INFL = OInflator (stateless)
 ch_sinfl:
@@ -566,6 +572,7 @@ ch_sinfl:
         move    x:(r4),a                ; R in
         bsr     chinfl
         move    b,x:(r4)-
+        move    (r6)+n6
 ; MODEFORK_END
 ch_nosat:
 ; ---- TONE: a tilt after the saturator, every mode ----------
