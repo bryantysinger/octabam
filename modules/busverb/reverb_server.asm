@@ -2136,16 +2136,14 @@ shd1:
 
 ; -- Step 1a: rolled feedback, group A (u[0..3] at $16..$19) --------------
 ; r4 walks u[0..3] (post-increment), r5 walks scratch[0..3] ($1a..$1d).
-; r6 already walks table B (weight + gain, 2 words per line). Input reloaded
-; from $15 each iteration because mpy x0,y1,b overwrites b.
+; r6 already walks table B (weight + gain, 2 words per line). The tank input
+; sits in y1 across both groups: nothing in either body writes y1.
         lua     (r7+$16),r4             ; r4 -> u0
         lua     (r7+$1a),r5             ; r5 -> scratch0
-        move    x:(r7+$15),b            ; input, also spaces the r5 write
+        move    x:(r7+$15),y1           ; input, also spaces the r5 write
         nop
         do      #4,>fbA
         move    y:(r6)+,x0             ; weight[k]
-        move    x:(r7+$15),b           ; input (fresh each iteration)
-        move    b,y1
         mpy     x0,y1,b                ; input * weight[k]
         move    x:(r4)+,a              ; u[k]
         move    a,x0
@@ -2164,16 +2162,14 @@ fbA:
 ; -- Step 1b: rolled feedback, group B (u[4..7] at $3a..$3d) --------------
 ; r4 walks u[4..7], r5 walks scratch[4..7] ($41..$44).
         lua     (r7+$3a),r4             ; r4 -> u4
-        move    x:(r7+$15),b            ; input (spaces the r4 write)
+        nop                             ; spaces the r4 write
         lua     (r4+$7),r5              ; r5 -> scratch4 = r7+$41, past
                                         ; lua's 7-bit displacement
         nop                             ; r5 is first read ten
                                         ; instructions into the loop
         do      #4,>fbB
         move    y:(r6)+,x0             ; weight[k]
-        move    x:(r7+$15),b           ; input (fresh each iteration)
-        move    b,y1
-        mpy     x0,y1,b                ; input * weight[k]
+        mpy     x0,y1,b                ; input * weight[k] (y1 from group A)
         move    x:(r4)+,a              ; u[k]
         move    a,x0
         move    y:(r6)+,y0             ; gain[k], as in fbA
