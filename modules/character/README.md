@@ -6,7 +6,7 @@ row.
 
 | page 1 | DRV · FOLD · WDTH · COMP · TONE · MIX |
 |---|---|
-| page 2 | SAT (TAPE TUBE INFL) · WDTH · — · — · — · — |
+| page 2 | SAT (TAPE TUBE INFL) · — · — · — · — · — |
 
 Chain, fixed: fold → saturate → tilt → compress → width → mix.
 
@@ -40,7 +40,7 @@ Chain, fixed: fold → saturate → tilt → compress → width → mix.
   engine's wet entered at the front of the chain and the hosts were stamped
   quiet. The return was degraded on the unit and clean under the port
   (`docs/remixer/FAILURE_MODES.md`) and went; each engine prints its wet
-  on its own host. WDTH moved up to page-2 slot 7.
+  on its own host. WDTH is page-1 slot 2 (TXTR's until 22 Sep 2026).
 
 Defaults are a bit-exact passthrough (DRV 0, FOLD 0, TONE 64, COMP 0, MIX
 127, WDTH 64): a part that stored LO-FI runs this. A part's stored
@@ -57,9 +57,18 @@ bytes are stock LO-FI's until `ot_project.py stamp-defaults` writes ours.
   release 63 ms (K = 4); GLUE on the master 0.5 / 500 ms (K = 3). The
   threshold/ratio numbers that stood here (thr 0.03, invR 0.1, 8/100 ms)
   were the retired law's.
-- Cost: 790 words on each payload (671 before the pointer rewrite, 975
-  with TXTR, 1,138 / 1,195 with the return, 20 Sep 2026); pricer per mode
-  (`cycle_count.py --modes`, words): TAPE 342, TUBE 327, INFL 256.
+- Cost: 888 words on each payload (903 after the DRV drive, 790 before it;
+  671 before the pointer rewrite; 975 with TXTR; 1,138 / 1,195 with the
+  return, 20 Sep 2026); pricer per mode (`cycle_count.py --modes`, words):
+  TAPE 325, TUBE 321, INFL 245 (354 / 339 / 268 after the DRV drive, 23
+  Sep 2026).
+- 23 Sep 2026: the loop's state pointers go through n3 alone (TapeHead's
+  states at `$3e..$41`, TUBE's DC blockers at `$42..$45`, the tilt block at
+  r4 + n3); COMP reads its key from the frame instead of a per-sample
+  store; the tilt's k, TapeHead's 0.7 and TUBE's R load once per sample or
+  ride in the ring; twelve parallel moves (forms with stock precedent);
+  OInflator inlined per channel. Bit-identical on `make verify-ident
+  MOD=character` (9 settings) and a T8 (GLUE) rig render.
 - 22 Sep 2026: the sample loop reads its coefficients through two 16-word
   post-increment rings and its state through pointers; displaced `(r7+$..)`
   moves per sample path went TAPE 79 / TUBE 74 / INFL 62 -> 0. Probe 57

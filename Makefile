@@ -225,6 +225,11 @@ verify-roll: ## Prove an alternate REVERB engine is bit-identical: make verify-r
 verify-spectrum-ident: ## Prove a rewritten Spectrum is bit-identical to a saved reference: make verify-spectrum-ident SAVE=1 on the tree you trust, then make verify-spectrum-ident
 	python3 tools/verify/verify_spectrum_ident.py $(if $(SAVE),ref,check)
 
+.PHONY: verify-ident
+verify-ident: ## Prove a rewritten FX1 station is bit-identical across a knob matrix: make verify-ident MOD=character SAVE=1 on the tree you trust, then make verify-ident MOD=character
+	@test -n "$(MOD)" || { echo "usage: make verify-ident MOD=<spectrum|character|modulation> [SAVE=1]"; exit 1; }
+	python3 tools/verify/verify_ident.py $(MOD) $(if $(SAVE),ref,check)
+
 .PHONY: verify-delay
 verify-delay: ## Prove an alternate DELAY engine is bit-identical: make verify-delay CAND=modules/busdelay/delay_new.asm
 	@test -n "$(CAND)" || { echo "usage: make verify-delay CAND=modules/busdelay/delay_new.asm [REF=modules/busdelay/delay_server.asm]"; exit 1; }

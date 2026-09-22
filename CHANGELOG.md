@@ -7,6 +7,77 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- The efficiency / tech-debt pass (23 Sep 2026), the frame around the five
+  per-module entries below: `make verify-bus` grew from 21 to 28 cases
+  (GRAIN, REVERSE, PLATE, BIG, the shimmer and the gate had no
+  bit-identity case), and `make verify-ident MOD=<station>` is one
+  knob-matrix identity gate for any FX1 station (Character and Modulation
+  had none). The new GRAIN cases found the two BusDelay record collisions
+  in its entry below. SEND's loop multiplies through x0 (its mpysu
+  site gone); the rotation flip in all three housekeeping copies cleans A2
+  before its store. CLAUDE.md: the r7 block is a per-module census, and
+  `move a,b` limits where `tfr a,b` does not. Chip cycles of the rewritten
+  loops are unmeasured (the burn sweep on a flashed image is the
+  instrument); every number here is the pricer's words or a source census.
+- Modulation, the station pass (23 Sep 2026): the allpass stage takes x
+  and returns y in x0 (its entry/exit copies and the callers' eight moves
+  per channel went, 20 stages per sample), the LFO, LOFI and MIX bodies
+  inline, the fixed taps' centre split into i and f per block (`mo_itap`),
+  c200 / COMB's period−1 and trim as stream words, mo_herm's index chain,
+  six parallel moves with stock precedent. Pricer words per sample LINE
+  423 → 372, PHSR 489 → 393, COMB 361 → 321; the rig's priced worst core
+  3,121 → 2,737 (four PHSR beside the reverb; 3,120 usable). 13 settings
+  bit-identical on the new `make verify-ident MOD=modulation`. An
+  accumulator-to-accumulator MOVE limits where TFR does not: `tfr a,b` with
+  a parallel store changed the LINE renders and was reverted.
+- BusVerb's sample loop on pointers and registers (23 Sep 2026): the u
+  vectors, the wet sums and the FWHT walk `$16..$19` / `$3a..$3d` through
+  r4/r5/r6; the tank input rides y1 through fbA/fbB, the chain word y1
+  through the four diffusers, g y0 through the in-loop allpasses; M/S and
+  their high-cut values, the shimmer parks and the allpass phase sit in
+  x1/y1/b/n0; the aux write/read pointers in n2/n3. One-word displaced
+  accesses per sample 206 → 111, pricer 1,135 → 1,117; 28 bus-gate cases
+  bit-identical. Dead code out (two spacing loads, a dead `(r4)+`, two
+  redundant m5 writes, the m6 writes around the FWHT). The header's r7 map
+  is a census (sixteen free slots; it said full), the state-table
+  description matches the code (6 + 2 words per line), the parameter list
+  matches the manifest; `REVERB.md`'s TIME law, GATE hold (52–784 ms),
+  memory table (bloom allpasses added) and register note follow the code.
+- Character efficiency pass (23 Sep 2026): the loop's state pointers go
+  through n3 alone (states relaid at `$3e..$45`, the tilt block at r4 +
+  n3), COMP's key read from the untouched frame, the tilt's k / TapeHead's
+  0.7 / TUBE's R loaded once per sample or from the ring, twelve parallel
+  moves, OInflator inlined. Pricer words TAPE 354 → 325, TUBE 339 → 321,
+  INFL 268 → 245; 903 → 888 words per payload. Bit-identical on
+  `verify-ident` (9 settings) and a T8 GLUE render. Stale header slot map
+  and comments (the return, TXTR, the old BUS mode) rewritten.
+
+- BusDelay sample loop on pointers and registers (23 Sep 2026): the aux
+  accumulator read through r3, the chain write at `(r3+n3)`, x_in / lag /
+  fraction / TIME ramp / crossfeed terms / stage outputs in registers, the
+  GRAIN and REVERSE arms after the line writes writing the wet slots
+  themselves (the SHIFTED substitution and its per-block flag removed),
+  GRAIN's trips with s / frac / gain / t0 in registers, the cursor in r6 and
+  the wet sum in n6, REVERSE's lags and windows in registers. Displaced
+  moves per sample CLEAN 91 -> 35, GRAIN 294 -> 102, REVERSE 109 -> 39;
+  pricer 1,126 -> 1,028 (GRAIN) cycles/sample; 1,354 -> 1,300 words.
+  28/28 `verify-bus` bit-identical. Two per-block writes landed in GRAIN's
+  records every block: the PITCH decode's park at raw $49 (grain 3's
+  line-L scatter word; moved to raw $16) and the SIZE decode's copy of the
+  REVERSE lag cap at raw $56 (grain 3's line-R window multiplier; the copy
+  is gone, raw $2a holds the cap). Each moves the two GRAIN cases only. `verify-bus` gained seven cases (the
+  delay's GRAIN, REVERSE and PING/TONE arms, the reverb's PLATE, BIG and
+  GATE) -- until then every case ran CLEAN and the reverb's default mode.
+- Spectrum loop pass (23 Sep 2026): one `do n7` per MODE dispatched once
+  per block (only the selected mode's stream is built), the input peak /
+  LADR's Grun / CAP's rotation count in address registers across the loop,
+  CAP's rings set up per block and written in read order, stock-shaped
+  parallel moves, `max a,b` for the peak, LADR's dead G' clamp removed
+  (G ≤ 0.645 by the table). Pricer words/sample SVF / VOWL / LADR / ISO
+  126 / 216 / 238 / 292 → 107 / 170 / 198 / 250; displaced moves per
+  sample 9 / 7 / 10 / 17 → 4 / 0 / 0 / 1. `verify-ident MOD=spectrum` and
+  `verify-spectrum-ident` bit-identical; payload A FREE 848 → 621.
+
 - Spectrum LADR RES makeup (23 Sep 2026, Sam: "the vol drop desperately
   needs it"): the ladder's output ×M = min(1 + k/2, 2.3), one per-block
   word and one multiply per channel. Loop RMS against dry at RES 64 / 127:

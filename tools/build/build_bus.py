@@ -519,7 +519,6 @@ _LISTLINE = re.compile(r"^([0-9a-f]{6}): (\S+)(?:\s+(.*?))?\s*; "
 # needs the table updated so the count stays exact.
 MPYSU_AUDITED = {
     "REVERB SERVER": {"x0,y0,a": 12, "x0,x1,a": 9, "x1,y1,a": 4},
-    "SEND":          {"x1,y1,a": 1},
     "CHARACTER":     {"x1,y1,b": 1},
     "SPECTRUM":      {"x1,y1,b": 1},
 }

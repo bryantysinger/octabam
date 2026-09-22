@@ -154,6 +154,13 @@ condition codes** — the dependency is invisible at the point you edit, and
 as the A2-staleness trap: legal instructions, correct-looking source, wrong
 machine behaviour.
 
+**AN ACCUMULATOR-TO-ACCUMULATOR `move a,b` LIMITS; `tfr a,b` MOVES ALL 56
+BITS.** A parallel `tfr x1,a  a,x:(r3)+` written to replace `move a,x:(r3)+ /
+move a,b` differed on the bit-identity gate whenever `a` exceeded 24 bits
+(23 Sep 2026, Modulation's LINE loop; encodings confirmed by disassembly,
+found by bisecting one item). The two are interchangeable only when the
+source is known to fit.
+
 **`Tcc` takes a REGISTER source, never an accumulator, and `clr` takes an
 accumulator, never a register.** `tpl b,a` and `clr x0` are both
 InvalidInstruction — caught at assembly, which is the cheap case, but they
@@ -350,10 +357,14 @@ watch for: a level that is flat across sender count in one layout and drifts
 in another. It surfaced as an "unexplained residual" in a completely
 different effect's send level, and the effect being blamed was innocent.
 
-**r7 scratch is COMPLETELY FULL — `$00..$83` all in use as of 10 Aug 2026**
-(the "only `$00..$0c` free" note held until the R16–R18 work consumed the
-rest). New per-track state goes in the Y state table, not r7. `$84+` hangs
-the unit. (Do not scan for these with `"\$$s"` in a shell — it expands.)
+**r7 scratch `$00..$83` is the per-instance block; `$84+` hangs the unit**
+(a host track's own state lives there between calls, images 39–42). Each
+module's header maps its own block; a slot census of the source is the
+truth, not the map (23 Sep 2026: BusVerb's map said full and 14 slots had
+no reference; BusDelay's map listed nine slots the code never touches, and
+one it used twice — the PITCH decode's park on grain 3's scatter record).
+New per-track state goes in a free slot of the module's own block or the
+Y state table. (Do not scan for these with `"\$$s"` in a shell — it expands.)
 
 **A dump can resolve a perfectly plausible dispatch entry for an effect it
 does not contain.** `SPEC=1` (which `make render` sets) aliases the absent

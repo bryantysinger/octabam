@@ -17,8 +17,9 @@ decided from the allocator base at init). MODE selects the filter:
 ENV (a block-peak follower, instant attack, LSP = release) and LDP (an LFO,
 LSP = speed) both move the cutoff; WDTH is mid/side width on the output.
 
-Every mpy is `mpy x0,y1`, the audited-signed form; every clip is the store
-limiter.
+Every mpy is `mpy x0,y1`, the audited-signed form, but the VOWL decode's
+`mpy x1,y1,b` (R' > 0, in build_bus.MPYSU_AUDITED); every clip is the
+store limiter.
 """
 
 from remix.schema import (ModeView, BusRole, Claims, DspSection, Formatter, Harness, Kind,
@@ -66,7 +67,7 @@ MODULE = Module(
     name="spectrum",
     key="SPECTRUM",
     kind=Kind.DSP_EFFECT,
-    doc="BamSep26 station: a filter pedal -- SEM LP/BP/HP, Airwindows Capacitor2, formants, the Moog ladder; ENV and LFO onto the cutoff; width.",
+    doc="BamSep26 station: a filter pedal -- the Moog ladder, SEM (LP..HP by SHPE), BP, Airwindows Capacitor2, formants; ENV and LFO onto the cutoff; width.",
     menu=MenuEntry(
         fx2_id=0x04,
         replaces="FILTER",            # stock FILTER's id: both menus, every part
@@ -114,7 +115,7 @@ MODULE = Module(
         # G2_TABLE is read with p:(r5)+ and interpolated linearly per block.
         ptable=G2_TABLE + COS_TABLE + VOWL_ER,
         priority=12,                  # after every existing module
-        bus_role=BusRole.NONE,        # an insert that also WRITES the bus
+        bus_role=BusRole.NONE,        # an insert: no bus role
         ybase=YBase.NEVER,
         gate_label=None,              # no housekeeping, so no XBUS gate
     ),
