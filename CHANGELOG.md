@@ -15,13 +15,15 @@ flashed image was built from.
   Modulation's LOFI latches now clear on a MODE change. Pricer words per
   sample: Character 342 / 327 / 256, Modulation 423 / 489 / 361.
 
-- Spectrum HP, the sixth MODE (22 Sep 2026): the SEM SVF's high-pass tap,
-  a per-block weight and nothing in the loop. Harness: DC to 0 LSB, 4 kHz
-  within 0.2 dB and 200 Hz cut 26.9 dB at FREQ 64. HP had gone on 14 Sep
-  2026 because the five-position tick widget drew the sixth blank; a
-  count past five now takes the plain dial with the label cave printing
-  the word (`build_bus.py`), so every MODE on Spectrum draws that way.
-  `WIDE_STEPPED`'s arc-scaling hook is not used (it has not run on a unit).
+- Spectrum SEM with a SHPE knob (23 Sep 2026): MODE 1 is SEM (was LP), and
+  SHPE on page 2 slot 7 is the SEM's mode pot, 0 lowpass, 64 notch (LP +
+  HP), 127 highpass, as weights on the SVF's taps computed once per block
+  (kHP = min(1, k/64), kLP = min(1, (127 − k)/63)); `---` in every other
+  mode. BP stays its own MODE; ISO and VOWL keep their values, so stored
+  parts need no re-stamp. Harness: SHPE 127 at DC 0 LSB, 4 kHz +0.2 dB,
+  200 Hz −26.9 dB; SHPE 64 cuts its cutoff 28.8 dB and passes DC and
+  8 kHz. HP as a sixth MODE (22 Sep 2026, PR #376) lasted a day; MODE is
+  back on the five-position tick widget.
 
 - Spectrum's sample loop pointer-addressed (22 Sep 2026): the block's
   coefficients go into streams at r7+$50..$7f once per block and every

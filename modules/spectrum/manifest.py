@@ -6,9 +6,10 @@ decided from the allocator base at init). MODE selects the filter:
   * LADR -- the linear zero-delay Moog transistor ladder (audiojs/filter
     moogLadder, MIT), 24 dB/oct, resonance to the edge of self-oscillation
     at RES 127 and bounded there;
-  * LP / BP / HP -- a driven Oberheim SEM zero-delay SVF (Zavalishin's
+  * SEM / BP -- a driven Oberheim SEM zero-delay SVF (Zavalishin's
     trapezoidal form, audiojs/filter oberheim, MIT), the cutoff ramped per
-    sample across the block (HP is the sixth MODE, 22 Sep 2026);
+    sample across the block; SEM's SHPE knob (page 2, `---` in every other
+    mode) is the SEM's mode pot, 0 LP, 64 notch, 127 HP (23 Sep 2026);
   * ISO -- an isolator (Airwindows Capacitor2); RES is the dielectric colour;
   * VOWL -- a three-formant bank (constant-peak-gain resonators) morphed
     across A E I O U by FREQ, RES narrowing the bands.
@@ -90,19 +91,24 @@ MODULE = Module(
               doc="stereo width of the output, drawn -64..+63: 0 untouched, -64 mono, +63 double sides"),
         # ---- page 2: knob / select / knob / select / knob / select ----------
         # MODE top left (slot 6, the knob field), as on every effect (16 Sep 2026)
-        # Six values: past the tick widget's five the build gives the slot
-        # the plain dial (B = 0) and the label cave still prints the word.
-        Param(b"MODE", 0, 6, active=True, formatter=_STEP,
-              labels=("LADR", "LP", "BP", "ISO", "VOWL", "HP"),
-              doc="LADR the Moog (first: the best one); LP/BP/HP the SEM; ISO an isolator (Capacitor2); VOWL"),
-        _BLANK, _BLANK, _BLANK, _BLANK, _BLANK,
+        Param(b"MODE", 0, 5, active=True, formatter=_STEP,
+              labels=("LADR", "SEM", "BP", "ISO", "VOWL"),
+              doc="LADR the Moog (first); SEM (SHPE: LP..notch..HP) and BP the SVF; ISO (Capacitor2); VOWL"),
+        # SHPE on slot 7 ($c's companion field): the SEM's mode pot; `---`
+        # in every other mode (the views below).
+        Param(b"SHPE", 0, 128, active=True, formatter=_PLAIN,
+              doc="SEM only: 0 lowpass, 64 notch (LP + HP), 127 highpass; --- in the other modes"),
+        _BLANK, _BLANK, _BLANK, _BLANK,
     ),
     # FREQ is always where, RES always the flavour; a mode labels RES for
     # what it is there. ISO's defaults land by stamp and, with MODE DEFAULTS
     # in the remix, on a panel MODE turn.
     mode_slot=6,
-    mode_views=(ModeView(mode=3, names={0: b"LOW", 1: b"COLR"}, defaults={0: 127, 1: 64}),
-                ModeView(mode=4, names={0: b"VOWL", 1: b"SHRP"})),   # FREQ morphs A E I O U
+    mode_views=(ModeView(mode=0, names={7: b"---"}),
+                ModeView(mode=1, defaults={7: 0}),                    # SEM: SHPE lands on LP
+                ModeView(mode=2, names={7: b"---"}),
+                ModeView(mode=3, names={0: b"LOW", 1: b"COLR", 7: b"---"}, defaults={0: 127, 1: 64}),
+                ModeView(mode=4, names={0: b"VOWL", 1: b"SHRP", 7: b"---"})),   # FREQ morphs A E I O U
     dsp=DspSection(
         asm="modules/spectrum/spectrum.asm",
         # G2_TABLE is read with p:(r5)+ and interpolated linearly per block.
