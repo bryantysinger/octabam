@@ -154,6 +154,13 @@ condition codes** — the dependency is invisible at the point you edit, and
 as the A2-staleness trap: legal instructions, correct-looking source, wrong
 machine behaviour.
 
+**AN ACCUMULATOR-TO-ACCUMULATOR `move a,b` LIMITS; `tfr a,b` MOVES ALL 56
+BITS.** A parallel `tfr x1,a  a,x:(r3)+` written to replace `move a,x:(r3)+ /
+move a,b` differed on the bit-identity gate whenever `a` exceeded 24 bits
+(23 Sep 2026, Modulation's LINE loop; encodings confirmed by disassembly,
+found by bisecting one item). The two are interchangeable only when the
+source is known to fit.
+
 **`Tcc` takes a REGISTER source, never an accumulator, and `clr` takes an
 accumulator, never a register.** `tpl b,a` and `clr x0` are both
 InvalidInstruction — caught at assembly, which is the cheap case, but they
