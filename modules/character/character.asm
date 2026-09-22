@@ -3,8 +3,7 @@
 ;
 ; Insert contract (modules/ripple/ripple_svf.asm): frames in place at
 ; x:(r0)/x:(r0+n0), knobs from r6, state in this instance's r7 block. The
-; station never touches the bus (the return it carried on T8 went 20 Sep
-; 2026: each engine prints its wet on its own host).
+; station never touches the bus.
 ;
 ; ---- the chain, fixed order ----------------------------------------------
 ;   f     = fold(x * gain) / gain                       FOLD (held level)
@@ -13,8 +12,7 @@
 ;   c     = t * gain(env)                                COMP (GLUE on the master)
 ;   w     = width(c)                                     WDTH
 ;   out   = x + MIX*(w - x)                              MIX
-; Distortion BEFORE dynamics: a compressor after the dirt is a tool, before
-; it is a fader for the dirt.
+; Distortion before dynamics.
 ;
 ; ---- the compressor (JClones AC1, MIT) -------------------------------------
 ; AC1's console channel law for both flavours: |key| smoothed by attack /
@@ -22,55 +20,56 @@
 ; dip around Lv = 1 whose depth is a = 0.75 - 0.675*COMP/128 -- and a
 ; makeup 1/(1 - 0.3375*COMP/128). GLUE: 0.5 / 500 ms, K = 3. COMP: 0.5 /
 ; 63 ms, K = 4 (release coefficient $bd0 = 3024/2^23 per sample, tau = 62.9
-; ms; written as 50 ms until 21 Sep 2026). COMP 0 skips the stage, bit-exact.
-; The detector reads x:(r7+$32), the KEY; the station writes its own input
-; there.
+; ms). COMP 0 skips the stage, bit-exact. The key is the mono input, read
+; from the frame (untouched until the write-back).
 ;
 ; ---- r7 slots -------------------------------------------------------------
-;   $15/$16 L y1/y2, $17/$18 R y1/y2: TapeHead's SVF states (PERSISTENT, /4)
-;   $29 sat mode (0 TAPE = TapeHead, 1 TUBE = DaTube, 2 INFL = OInflator)  $30 k2  $31 k3mag  $48 d/8 (per block)
-;   per block:
-;   $20 m (MIX)   $21 fold gain/64  $22 K/4 (the detector's)  $2a TAPE trim (1/11)/d8 + 0.023
-;   $1d fold trim/2 (1/128)/gq   $24 tilt t/2   $26 comp amount    $27 makeup/4
-;   $28 the dip's a   $29 sat mode   $2b width side gain
-;   $2c width mid gain  $2d attack coeff   $2e release coeff
-;   $40 FX2-slot flag (set at init: 1 = this instance is on FX2, dry; per block)
-;   $41/$42 DC block L x1/y1, $43/$44 R x1/y1 (TUBE; PERSISTENT, zeroed at init; long-form slots)
-;   $37 d/2  $38 d  $4c (0.5+d)/2  $39 comp/4 (TUBE, per block)   $3a e/2  $3b 1-e (INFL, per block)
-;   $49 chtube's u/2 park (per sample)
-;   $4d DRV==0: skip the saturator (per block)
-;   per sample / persistent:
-;   $5a tilt lp L, $5b tilt lp R, $5c level_s (PERSISTENT; r3 walks them)
-;   $45 master flag (1 = position 3 on A: GLUE)
-;   $19 wet L, $1a wet R, $1b key (per sample; r4 -> $19, n4 = 2)
-;   $70..$7f the SAT ring (per block; r6, m6 = 15 in every mode -- the chip
-;     has only ever run power-of-two modulos): G/8 then TAPE k2 k3mag d8 d8 trim,
-;     TUBE (0.5+d)/2 d d/2 comp/2, INFL e/2 1-e, then 1/G; x2; the remainder
-;     to 16 is stepped once per sample by (r6)+n6 (n6 = 2 / 4 / 8 per mode)
-;   $60..$6f the main ring (per block; r5, m5 = 15), in the order the sample
-;     reads them: gq trim/2 gq trim/2 $4d $29 t/2 t/2 $26 $2d $2e $22 $28 $27
-;     $2b $20 -- COMP off steps over its five words (n5 = 5, else 0)
-;   $4e G/8, $4f the output scale after the curve (1, (1+d)/G, 1/G by mode; 23 Sep 2026)
-;   $1c, $25, $46/$47, $50..$59, $5d..$5f free (22 Sep 2026: the sample loop reads
-;   its coefficients through the rings and its state through r3/r4; the
-;   displaced move costs twice the pointer move on the chip, CHIP.md)
+; per block, read into the rings before the loop:
+;   $1d fold trim/2 (1/128)/gq   $20 m (MIX)   $21 fold gain/64 (gq)
+;   $22 K/4   $24 tilt t/2   $26 COMP amount   $27 makeup/4   $28 the dip's a
+;   $29 sat mode (0 TAPE = TapeHead, 1 TUBE = DaTube, 2 INFL = OInflator)
+;   $2a TAPE trim (1/11)/d8 + 0.023   $2b width side gain/2
+;   $2d attack coeff   $2e release coeff
+;   $30 k2   $31 k3mag   $48 d/8 (TAPE)
+;   $32 G/8   $33 the output scale after the curve (1, (1+d)/G, 1/G by mode)
+;   $37 d/2   $38 d   $39 comp/2   $4c (0.5+d)/2 (TUBE)   $3a e/2   $3b 1-e (INFL)
+;   $4d DRV == 0: skip the saturator
+;   $25 master flag (1 = position 3 on A: GLUE), $23 FX2-slot flag (set at
+;     init: 1 = this instance is on FX2, dry)
+; persistent, zeroed at init:
+;   $3e/$3f R y1/y2, $40/$41 L y1/y2: TapeHead's SVF states (/4)
+;   $42/$43 L x1/y1, $44/$45 R x1/y1: TUBE's DC blockers
+;   $5a tilt lp L, $5b tilt lp R, $5c level_s
+; per sample:
+;   $19 wet L, $1a wet R (r4 -> $19)
+;   $60..$6f the main ring (r5, m5 = 15), in the order the sample reads
+;     them: gq trim/2 gq trim/2 $4d $29 t/2 t/2 $26 $2d $2e $22 $28 $27 $2b
+;     $20 -- COMP off steps over its five words (n5 = 5, else 0)
+;   $70..$7f the SAT ring (r6, m6 = 15 in every mode -- the chip has only
+;     ever run power-of-two modulos): G/8 then TAPE k2 k3mag d8 d8 trim,
+;     TUBE (0.5+d)/2 d d/2 comp/2 R, INFL e/2 1-e, then the scale; x2; the
+;     remainder to 16 is stepped once per sample by (r6)+n6 (n6 = 2 / 2 / 8)
+; The loop's state pointers all go through n3 = $41: TapeHead's L y2 at
+; r7 + n3, TUBE's L pair at r7 + n3 + 1, the tilt block at r4 + n3 (an
+; address register steps only by its own N).
+; free: $15..$18, $1b, $1c, $2c, $34..$36, $3c/$3d, $46/$47, $49..$4b,
+; $4e..$59, $5d..$5f
 ;
 ; ---- the master, by position ---------------------------------------------
 ; On the master (dispatch position 3 on payload A, track 8) COMP runs the
-; GLUE law; everywhere else the channel law. Slot 4 is unused (the return
-; level until 20 Sep 2026; a stored byte there is never read). SAT is TAPE /
-; TUBE / INFL on every track; no knob changes meaning by mode.
+; GLUE law; everywhere else the channel law. SAT is TAPE / TUBE / INFL on
+; every track; no knob changes meaning by mode.
 ;
 ; CYCLES_FORWARD_BRANCHES -- the branches in the sample loop are forward and
 ; skip work, so the word span is the worst-case cycle count
-; (tools/build/cycle_count.py). The
-; saturation character and the compressor mode are per-block COEFFICIENTS
-; for exactly this reason: a dispatch inside the loop cannot be priced.
+; (tools/build/cycle_count.py). The saturation character and the
+; compressor mode are per-block coefficients for that reason: a dispatch
+; inside the loop cannot be priced.
 ;
-; Every mpy is `mpy x0,y1` (the audited-signed encoding) except the three
-; in the callees whose second operand is a non-negative coefficient, each
-; commented at its site. Every Tcc reads the ONE compare above it with nothing but moves
-; between (the flag-clobber trap).
+; Every mpy is `mpy x0,y1` or `mpy y0,x0` (the signed encodings) except
+; chtube's `mpy x1,y1` (mpysu; its second operand is the constant 1.0,
+; commented at its site). Every Tcc reads the one compare above it with
+; nothing but moves between (the flag-clobber trap).
 ; ---------------------------------------------------------------------------
 
 init:
@@ -132,21 +131,17 @@ proc:
         div     x0,a
         move    a0,x0
         move    x0,x:(r7+$1d)           ; fold trim/2
-; DRV 0 = NO saturation stage at all (13 Sep 2026): every mode's curve is
-; unity only for small signals. A per-block flag ($4d) skips the stage per
-; sample -- a forward skip, the class CYCLES_FORWARD_BRANCHES admits -- so
-; DRV 0 is bit-exact in
-; every mode on every track. (The DC blocker / low-pass state is NOT cleared
-; while skipped -- 9 words the BURN build on payload A did not have; a later
-; DRV resumes from stale filter history, one small step at most.)
+; DRV 0 skips the saturation stage (a per-block flag, $4d; a forward skip
+; per sample), so DRV 0 is bit-exact in every mode. The saturators' states
+; are not cleared while skipped: a later DRV resumes from them.
         move    x:(r6+$0),a             ; DRV
         clr     b                       ; b = 0 BEFORE the tst (the flag trap)
         move    #>$1,x0
         tst     a
         teq     x0,b                    ; DRV == 0 -> skip flag 1
         move    b,x:(r7+$4d)
-        move    x:(r6+$4),a             ; TONE: page-1 slot 4 since 20 Sep 2026
-        and     #>$7f0000,a             ; (the return's slot); a knob word, TONE << 16
+        move    x:(r6+$4),a             ; TONE, page-1 slot 4
+        and     #>$7f0000,a             ; a knob word, TONE << 16
         sub     #>$400000,a
         move    a,x:(r7+$24)            ; t/2, -0.5 .. +0.49
 ; COMP amount, straight from the knob
@@ -185,15 +180,12 @@ ch_cset:
         div     x0,a
         move    a0,x0
         move    x0,x:(r7+$27)           ; m/4 = 0.25/den: makeup/4
-ch_cdone:
-; SAT character (slot 6 select of r6+$c, the knob field) -> a MODE FLAG and per-mode words,
+; SAT (slot 6, r6+$c's knob field) -> the mode flag $29 and per-mode words,
 ; so the sample loop's SAT stage is a MODEFORK: TAPE (0) = TapeHead, TUBE (1)
-; = DaTube, INFL (2) = OInflator (all JClones, MIT;). The tanh
-; curve, its P table, FUZZ and the drive-keyed low-pass are gone. A stored 3
-; (the old BUS) lands on TAPE. Per-mode words, all from DRV = d (0..0.992):
+; = DaTube, INFL (2) = OInflator (JClones, MIT). A stored 3 lands on TAPE.
+; Per-mode words, all from DRV = d (0..0.992):
 ;   TUBE  $37 = d/2 (the positive half's scale)  $38 = d (the negative half's)
 ;         ($4c = (0.5 + d)/2 input gain and $39 = comp/2 below, every mode)
-;         (the DC blocker's k = 1, R = 0.999 are chtube's own immediates)
 ;   INFL  $3a = e/2 with e = d            $3b = 1 - e
         clr     a
         move    a,x:(r7+$29)            ; sat mode: 0 = TAPE
@@ -203,7 +195,7 @@ ch_cdone:
         beq     ch_stube
         cmp     #>$20000,a
         beq     ch_sinfd
-        bra     ch_sdone                ; TAPE (a stored 3, the old BUS, too)
+        bra     ch_sdone                ; TAPE (a stored 3 too)
 ch_stube:
         move    #>$1,x0
         move    x0,x:(r7+$29)           ; sat mode 1: TUBE
@@ -211,10 +203,9 @@ ch_stube:
         move    a,x:(r7+$38)            ; the negative half: d
         asr     #$1,a,a
         move    a,x:(r7+$37)            ; the positive half: d/2
-                                        ; (the DC blocker -- TUBE's asymmetry
-                                        ; leaves DC; JClones' own 3 Hz remover,
-                                        ; ours R = 0.999, ~7 Hz -- is chtube's,
-                                        ; its k and R immediates there)
+                                        ; (TUBE's asymmetry leaves DC; the DC
+                                        ; blocker in chtube, R = 0.999 ~7 Hz,
+                                        ; removes it)
         bra     ch_sdone
 ch_sinfd:
         move    #>$2,x0
@@ -324,9 +315,7 @@ ch_pos3:
 ; WDTH -> mid and side gains. 64 = (1, 1); 0 = (1, 0) mono; 127 = (1, ~2).
 ; side gain = WDTH/64, mid stays 1 -- widening only touches the difference,
 ; so a mono source is untouched at every setting.
-        move    x:(r6+$2),a             ; WDTH: page-1 slot 2 since 22 Sep 2026
-                                        ; (TXTR's, removed; page-2 slot 7 from
-                                        ; 20 to 22 Sep 2026) -> WDTH << 16
+        move    x:(r6+$2),a             ; WDTH, page-1 slot 2 -> WDTH << 16
 ; ⚠️ STORED HALVED. A y1 operand is a FRACTION, and a side gain of WDTH/64
 ; tops out near 2.0, which would wrap the word. The knob's own value IS
 ; WDTH/128, so it is stored as-is and the product is doubled back in the
@@ -410,13 +399,12 @@ ch_live:
         move    x0,x:(r3)+
         move    x:(r7+$20),x0           ; m
         move    x0,x:(r3)+
-; DRV's drive into the curve (23 Sep 2026, Sam: "much too subtle"): the
-; saturator's input is x*G with G = 1 + 3d (DRV 127 = +12 dB) and its output
-; is scaled back per mode -- INFL by 1/G (it barely compresses: unity small
-; signal), TUBE by (1+d)/G (half), TAPE by 1 (TapeHead's own trim already
-; holds its small signal at unity, and its smoothstep compresses the rest:
-; with 1/G on top a loop sat 18 dB under dry at DRV 127). G/8 at $4e, the
-; output scale at $4f (the ring words around each callee).
+; DRV's drive into the curve: the saturator's input is x*G with G = 1 + 3d
+; (DRV 127 = +12 dB) and its output is scaled back per mode -- INFL by 1/G
+; (unity small signal), TUBE by (1+d)/G, TAPE by 1 (TapeHead's own trim
+; holds its small signal at unity and its smoothstep compresses the rest;
+; with 1/G on top a loop sat 18 dB under dry at DRV 127). G/8 at $32, the
+; output scale at $33 (the ring words around each callee).
         move    x:(r6+$0),a             ; d = DRV/128
         move    a,x0
         move    #>$300000,y1            ; 0.375
@@ -736,7 +724,7 @@ ch_nosat:
 ; TONE 127 = +3.5 dB above / -6 dB below, 0 the mirror, 64 bit-exact.
 ; r3 -> the state block at r4 + n3 = $5a: lp L, lp R, level_s. y0 = k.
         move    r4,r3
-        move    #>$141893,y0            ; k
+        move    #>$141893,y0            ; k = 0.157: one pole at 1.2 kHz
         move    (r3)+n3
         move    x:(r4),a                ; L
         move    x:(r3),x0               ; lp
@@ -882,7 +870,7 @@ ch_bypass:
         rts
 
 ; ---------------------------------------------------------------------------
-; chtube -- DaTube per channel (JClones_DaTube.jsfx, MIT;).
+; chtube -- DaTube per channel (JClones_DaTube.jsfx, MIT).
 ; In: a = x, r3 -> the DC blocker's x1 (y1 the word above), r6 -> the ring
 ; ((0.5+d)/2, d, d/2, comp/2, R). Out: b.
 ;   xin = x*(0.5 + d)                           ((0.5+d)/2, halved)
@@ -953,7 +941,7 @@ chtube:
         move    a,b
         rts
 
-; chtape -- TapeHead per channel (JClones_TapeHead.jsfx, MIT;).
+; chtape -- TapeHead per channel (JClones_TapeHead.jsfx, MIT).
 ; In: a = x, r3 -> y2 (y1 the word below), both kept at /4 (the
 ; port's headroom: |y1| <= 1.46, |y2| <= 1.95 true), r6 -> the ring (k2,
 ; k3mag, d/8, d/8, trim), y0 = 0.7. Out: b = (g3*clip(y3)
@@ -985,7 +973,7 @@ chtape:
         tfr     x0,a            b,x:(r3)-
         asl     #$2,a,a                 ; 4*y3
         move    a,x0                    ; LIMITING move: clip(y3)
-        move    #>$33e5de,y1            ; |g3|*trim/2
+        move    #>$33e5de,y1            ; |g3|*trim/2 (g3 = -0.81, trim 1.0)
         mpy     x0,y1,b
         asl     #$1,b,b
         neg     b                       ; b = g3*trim*clip(y3)   (g3 < 0)
