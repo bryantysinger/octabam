@@ -6,14 +6,17 @@ hides the row.
 
 | page 1 | FREQ ⌐RES · ENV · LDP ⌐LSP · WDTH |
 |---|---|
-| page 2 | MODE (LADR LP BP ISO VOWL) · — · — · — · — · — |
+| page 2 | MODE (LADR LP BP ISO VOWL HP) · — · — · — · — · — |
 
 - **LADR** — the linear zero-delay Moog transistor ladder (audiojs/filter
   moogLadder, MIT), 24 dB/oct; RES 127 is the edge of self-oscillation,
   bounded there.
-- **LP / BP** — a driven Oberheim SEM zero-delay SVF (Zavalishin's
+- **LP / BP / HP** — a driven Oberheim SEM zero-delay SVF (Zavalishin's
   trapezoidal form, audiojs/filter oberheim, MIT); the cutoff ramps per
-  sample across the block.
+  sample across the block. HP is the sixth MODE (22 Sep 2026); six values
+  are past the tick widget's five, so MODE draws as the plain dial with
+  its word printed (the `WIDE_STEPPED` arc-scaling hook is not used: it has
+  not run on a unit).
 - **ISO** — an isolator (Airwindows Capacitor2; `capacitor2_ref.py` is the
   float reference). In ISO FREQ is LOW and RES is COLR, the dielectric colour.
 - **VOWL** — a three-formant bank (constant-peak-gain resonators) morphed

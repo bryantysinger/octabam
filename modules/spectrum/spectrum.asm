@@ -223,7 +223,7 @@ fs_msame:
         move    a,x:(r7+$25)
         move    #>$7fffff,x0
         move    x:(r6+$c),a             ; MODE, slot 6 = $c's knob field
-        and     #>$ff0000,a             ; 0 LADR, 1 LP, 2 BP, 3 ISO, 4 VOWL
+        and     #>$ff0000,a             ; 0 LADR, 1 LP, 2 BP, 3 ISO, 4 VOWL, 5 HP
         beq     fs_mladr                ; (LADR first, 14 Sep 2026: "moog is best")
         cmp     #>$20000,a
         beq     fs_mbp
@@ -231,13 +231,18 @@ fs_msame:
         beq     fs_mcap
         cmp     #>$40000,a
         beq     fs_mvowl
+        cmp     #>$50000,a
+        beq     fs_mhp
         move    x0,x:(r7+$23)           ; LP, and anything unexpected
         bra     fs_mdone
 fs_mbp:
         move    x0,x:(r7+$24)
         bra     fs_mdone
-; (HP went: the panel's tick widget draws FIVE positions and
-; the sixth was blank; CAP's HIGH is the high-pass now)
+fs_mhp:
+; the SVF's high-pass tap (22 Sep 2026, back as the sixth MODE: a select
+; past five positions draws as the plain dial printing its word)
+        move    x0,x:(r7+$25)
+        bra     fs_mdone
 fs_mcap:
 ; ---- ISO: Airwindows Capacitor2 (Chris Johnson, MIT), the
 ; isolator with a dielectric: a lowpass and a highpass (LOW = FREQ, HIGH =
