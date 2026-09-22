@@ -685,8 +685,7 @@ ch_nosat:
         move    x:(r3),x0               ; lp
         sub     x0,a
         move    a,x0                    ; x - lp
-        mpy     y0,x0,a
-        move    x:(r3),b
+        mpy     y0,x0,a         x:(r3),b
         add     b,a                     ; lp' = lp + k (x - lp)
         move    a,x:(r3)+
         move    a,x0
@@ -703,8 +702,7 @@ ch_nosat:
         move    x:(r3),x0
         sub     x0,a
         move    a,x0
-        mpy     y0,x0,a
-        move    x:(r3),b
+        mpy     y0,x0,a         x:(r3),b
         add     b,a
         move    a,x:(r3)+
         move    a,x0
@@ -735,15 +733,13 @@ ch_nosat:
         move    a,x0                    ; level
         move    x:(r3),b                ; level_s
         move    x0,a
-        sub     b,a                     ; d = level - level_s
-        move    x:(r5)+,x1              ; attack
+        sub     b,a             x:(r5)+,x1      ; d = level - level_s; attack
         move    x:(r5)+,b               ; release
         tst     a                       ; nothing between this and the Tcc
         tpl     x1,b                    ; rising: attack
         move    b,y1
         move    a,x0
-        mpy     x0,y1,a                 ; k*d
-        move    x:(r3),b
+        mpy     x0,y1,a         x:(r3),b        ; k*d; level_s
         add     b,a
         move    a,x:(r3)                ; level_s
         move    a,x0
@@ -765,9 +761,8 @@ ch_nosat:
         add     b,a                     ; gr = t^2 + a*Lv
         move    a,x0                    ; gr (the limiting move: <= 1)
         move    x:(r5)+,y1              ; makeup/4
-        mpy     x0,y1,a
+        mpy     x0,y1,a         x:(r4),x0
         move    a,y1                    ; gr*makeup/4
-        move    x:(r4),x0
         mpy     x0,y1,a
         asl     #$2,a,a
         move    a,x:(r4)+
@@ -793,8 +788,7 @@ ch_capd:
         move    a,y0                    ; scaled side
         move    x1,a
         add     y0,a                    ; mid + side
-        move    a,x:(r4)+
-        move    x1,a
+        tfr     x1,a            a,x:(r4)+
         sub     y0,a                    ; mid - side
         move    a,x:(r4)-
 ; ---- MIX and write back --------------------------------------------------
@@ -895,8 +889,7 @@ chtube:
         move    #>$7fffff,y1            ; k = 1.0 (an immediate: chtube is TUBE's)
         mpy     x1,y1,b                 ; k*x1 (mpysu: y1 is positive)
         move    x0,a
-        sub     b,a                     ; x - x1
-        move    x:(r3),x0               ; y1
+        sub     b,a             x:(r3),x0       ; x - x1; y1
         move    x:(r6)+,y1              ; R = 0.999
         mac     x0,y1,a                 ; + R*y1
         move    a,x:(r3)                ; y1 <- y
@@ -962,23 +955,19 @@ chtape:
         move    a,x1
         move    x:(r3)-,x0              ; y2
         move    x:(r6)+,y1              ; k2
-        mpy     x0,y1,a
-        move    x:(r3),b
+        mpy     x0,y1,a         x:(r3),b
         add     b,a                     ; y1n = y1 + k2*y2
         move    a,x0
-        move    x0,x:(r3)+
         move    #>$5b6db7,y1            ; k1 = 5/7
-        mpy     x0,y1,a
+        mpy     x0,y1,a         a,x:(r3)+       ; (the store is y1n, limited)
         move    x:(r3),b
         add     b,a
         sub     x1,a                    ; y3 = k1*y1n + y2 - Xs
         move    a,x0
         move    x:(r6)+,y1              ; k3mag
-        mpy     x0,y1,a
-        move    x:(r3),b
+        mpy     x0,y1,a         x:(r3),b
         sub     a,b                     ; y2n = y2 - k3mag*y3
-        move    b,x:(r3)-
-        move    x0,a
+        tfr     x0,a            b,x:(r3)-
         asl     #$2,a,a                 ; 4*y3
         move    a,x0                    ; LIMITING move: clip(y3)
         move    #>$33e5de,y1            ; |g3|*trim/2
@@ -1000,8 +989,7 @@ chtape:
         add     x0,a                    ; ss(v) = 1.5v - 0.5v^3
         move    a,x0
         mpy     y0,x0,a                 ; * 0.7 (y0, the caller's)
-        add     a,b
-        move    x:(r3),x0               ; y2n/4
+        add     a,b             x:(r3),x0       ; y2n/4
         move    x:(r6)+,y1
         mpy     x0,y1,a
         asl     #$5,a,a
