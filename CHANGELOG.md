@@ -7,6 +7,16 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- Spectrum loop pass (23 Sep 2026): one `do n7` per MODE dispatched once
+  per block (only the selected mode's stream is built), the input peak /
+  LADR's Grun / CAP's rotation count in address registers across the loop,
+  CAP's rings set up per block and written in read order, stock-shaped
+  parallel moves, `max a,b` for the peak, LADR's dead G' clamp removed
+  (G ≤ 0.645 by the table). Pricer words/sample SVF / VOWL / LADR / ISO
+  126 / 216 / 238 / 292 → 107 / 170 / 198 / 250; displaced moves per
+  sample 9 / 7 / 10 / 17 → 4 / 0 / 0 / 1. `verify-ident MOD=spectrum` and
+  `verify-spectrum-ident` bit-identical; payload A FREE 848 → 621.
+
 - Spectrum LADR RES makeup (23 Sep 2026, Sam: "the vol drop desperately
   needs it"): the ladder's output ×M = min(1 + k/2, 2.3), one per-block
   word and one multiply per channel. Loop RMS against dry at RES 64 / 127:
