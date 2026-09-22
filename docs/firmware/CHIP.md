@@ -61,7 +61,7 @@ part defaults FX1 = FILTER.
 | CPU | Freescale ColdFire MCF54454VR266, 32-bit big-endian, 266 MHz | ✅ board photo (an MKI board reads `MCF54454`; an earlier note said `MCF5445A`) |
 | CPU clock tree | crystal 24 MHz → VCO 528 → CPU 264 MHz, internal bus 132, FlexBus 66 | ✅ from the image + MCF54455RM (below) |
 | Audio DSP | Freescale Symphony DSP56721 (`DSPB56721AG`) | ✅ board photo |
-| DSP cores | two DSP5636x cores, 200 MHz / 200 MIPS each (the part's maximum) | ✅ datasheet. ✅ This board runs them at 199.9 MHz = 4,532 cycles/sample, measured on the unit 22 Sep 2026 (§2); ❌ the 183.456 MHz / 4,160 reading (the PLL at its reset default) was an inference from the payload's register writes and is retracted |
+| DSP cores | two DSP5636x cores, 200 MHz / 200 MIPS each (the part's maximum) | ✅ datasheet; ✅ 199.9 MHz = 4,532 cycles/sample on this board, measured 22 Sep 2026 (§2). ❌ 183.456 MHz / 4,160 (inferred from the payload's register writes, until 22 Sep 2026) |
 | External memory controller | none; all DSP memory is on-chip | ✅ datasheet |
 | Shared DSP memory | 8 blocks × 8 K words = 64 K words at `$030000`, reachable by both cores; P/X/Y alias there | ✅ reference manual + hardware |
 | ColdFire RAM | 128 MB SDRAM | ✅ `docs/remixer/PLACEMENT.md` |
@@ -104,7 +104,7 @@ reviewed; the falsifier is a hardware measurement of the unit's tick rate.
 | | | |
 |---|---|---|
 | per core, per sample @ 44.1 kHz, datasheet clock | 200 MIPS ÷ 44,100 = 4,535 | ✅ arithmetic; ✅ this board's: 4,532 measured (next row) |
-| per core, per sample, MEASURED | 4,532 (199.9 MHz): probe 55 (branch `probe55`, 22 Sep 2026) ran core 1's timer 0 free at CLK/2 and printed the per-frame advance (36,258) as an amplitude against a fixed reference; `tools/harness/clock_probe.py` on a MicroBook capture, gain-independent | ✅ hardware. ❌ the earlier row: "PLL never written → reset `0x2B60C2` = EXTAL × 195/24 → 4,160 / 183.456 MHz" was inferred from the payload's register writes; something (the ColdFire, or a crystal other than 22.5792 MHz with a different ESAI divide) puts the core at the rated clock. What sets it is not located |
+| per core, per sample, this board | 4,532 (199.9 MHz): probe 55 (branch `probe55`, 22 Sep 2026), core 1's timer 0 free-running at CLK/2, its per-frame advance (36,258) printed as an amplitude against a fixed reference, read from a MicroBook capture by `tools/harness/clock_probe.py` (gain-independent) | ✅ hardware. ❌ 4,160 / 183.456 MHz (the PLL at its reset default `0x2B60C2` = EXTAL × 195/24, inferred from the payload's register writes, until 22 Sep 2026). What sets the clock is not located |
 | measured ceiling for FX work | ~2,350 with 4× FX1 FILTER as environment | ✅ hardware, burn probe, two sweeps |
 | spare with the R46 reverb + 4× FILTER + running sequencer | 704 (breakup at p3=22 × 32; p3=23 = the high-pitch squeal, the deep-overrun signature) | ✅ hardware |
 | the R46 reverb's true cost | ≈1,650/sample (2,356 − 704); `cycle_count.py` prices it 1,384, so the pricer reads ~270 low on the reverb (and ~264 high on the delay) | ✅ two consistent sweeps |
@@ -112,7 +112,7 @@ reviewed; the falsifier is a hardware measurement of the unit's tick rate.
 | one FX1 FILTER's true cost | 192 cycles/sample ((1,088 − 704)/2) | ✅ hardware; ❌ the earlier ~260 inference |
 | total DSP-usable budget | ≈3,120 cycles/sample (three sweeps agree: 1,652 + 4×192 + 704 = 3,124; 964 + 768 + 1,392 the same) | ✅ triangulated |
 | safe planning number | ~500 on top of the current reverb in a 4-FILTER bank; ~900 with 2 | 🟡 sweep minus a contention margin |
-| stock's own share | ≈1,410 (4,532 − 3,120) | ✅ by subtraction (the 4,160 clock and its 1,040 retracted, 22 Sep 2026) |
+| stock's own share | ≈1,410 (4,532 − 3,120) | ✅ by subtraction. ❌ ≈1,040 (on the 4,160 clock, until 22 Sep 2026) |
 | the historic "1,392 spare" | the 7 Aug bank's spare (ceiling 964 + 1,392 = 2,356, consistent) | ✅ then; superseded as a headline |
 | ❌ "the budget is 1,080" | the load one probe build happened to survive, never a ceiling | |
 | ❌ "FILTER credit", +768 on top of 3,120 (12–15 Sep 2026) | the four environment FILTERs are inside the 3,120 (the sum above), so adding them back double-counted; removed from the pricer | |
