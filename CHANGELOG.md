@@ -31,6 +31,14 @@ flashed image was built from.
   description matches the code (6 + 2 words per line), the parameter list
   matches the manifest; `REVERB.md`'s TIME law, GATE hold (52–784 ms),
   memory table (bloom allpasses added) and register note follow the code.
+- Character efficiency pass (23 Sep 2026): the loop's state pointers go
+  through n3 alone (states relaid at `$3e..$45`, the tilt block at r4 +
+  n3), COMP's key read from the untouched frame, the tilt's k / TapeHead's
+  0.7 / TUBE's R loaded once per sample or from the ring, twelve parallel
+  moves, OInflator inlined. Pricer words TAPE 354 → 325, TUBE 339 → 321,
+  INFL 268 → 245; 903 → 888 words per payload. Bit-identical on
+  `verify-ident` (9 settings) and a T8 GLUE render. Stale header slot map
+  and comments (the return, TXTR, the old BUS mode) rewritten.
 
 - Spectrum LADR RES makeup (23 Sep 2026, Sam: "the vol drop desperately
   needs it"): the ladder's output ×M = min(1 + k/2, 2.3), one per-block
