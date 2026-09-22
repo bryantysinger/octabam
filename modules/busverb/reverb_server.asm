@@ -2196,26 +2196,23 @@ fbB:
         move    x:(r7+$5e),x0
         add     x0,a
         move    a,r5                    ; = write address
-        move    x:(r7+$6d),y1           ; g -- y1 by convention (y0 carried the
-        move    x:(r7+$15),x0           ; global gain before PLAN.md 1.1; it is
-                                        ; per-line now and y0 is free here)
+        move    x:(r7+$6d),y0           ; g, held in y0 across both lines
         move    y:(r5+n5),b             ; d0
 ; Interpolate against the PREVIOUS sample's d0.
         move    x:(r7+$5c),a            ; d1 = last sample's d0
         move    b,x:(r7+$5c)            ; carry forward
         sub     b,a                     ; d1 - d0
         move    a,x0
-        move    x:(r7+$53),y1           ; fraction (g is reloaded below)
+        move    x:(r7+$53),y1           ; fraction
         mpy     x0,y1,a                 ; f*(d1-d0)
         add     b,a                     ; + d0 -> interpolated tap
         move    a,b
-        move    x:(r7+$6d),y1           ; g back
         move    b,x0
-        mpy     x0,y1,a
+        mpy     y0,x0,a                 ; g*d, signed (y0,x0)
         move    x1,x0
         add     x0,a                    ; v = x + g*d
         move    a,x0                    ; x0 = v, limited as the store was
-        mpy     x0,y1,a
+        mpy     y0,x0,a                 ; g*v
         sub     a,b                     ; out = d - g*v
         move    x0,y:(r5)               ; store v
         move    b,a                     ; out -> the line
@@ -2233,24 +2230,21 @@ fbB:
         move    x:(r7+$5f),x0
         add     x0,a
         move    a,r5                    ; = write address
-        move    x:(r7+$6d),y1           ; g -- y1, NOT y0
-        move    x:(r7+$15),x0
         move    y:(r5+n5),b             ; d0
         move    x:(r7+$5d),a            ; d1 = last sample's d0
         move    b,x:(r7+$5d)            ; carry forward
         sub     b,a                     ; d1 - d0
         move    a,x0
-        move    x:(r7+$55),y1           ; fraction (g is reloaded below)
+        move    x:(r7+$55),y1           ; fraction
         mpy     x0,y1,a                 ; f*(d1-d0)
         add     b,a                     ; + d0 -> interpolated tap
         move    a,b
-        move    x:(r7+$6d),y1           ; g back
         move    b,x0
-        mpy     x0,y1,a
+        mpy     y0,x0,a                 ; g*d (y0 = g from line 0)
         move    x1,x0
         add     x0,a                    ; v = x + g*d
         move    a,x0                    ; x0 = v, limited as the store was
-        mpy     x0,y1,a
+        mpy     y0,x0,a                 ; g*v
         sub     a,b                     ; out = d - g*v
         move    x0,y:(r5)               ; store v
         move    #>$7ff,m5               ; back to the input diffusers' 2048
