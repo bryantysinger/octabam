@@ -54,8 +54,10 @@
 ; into the block there so every access is the one-word displaced move, and
 ; slot NN reads as x:(r7+(NN-$49)): $14 is x:(r7-$35), $88 is x:(r7+$3f).
 ;   r7+$14              call flag stash (proc entry accumulator)
-;   r7+$15/$16/$17      per-sample scratch (age / phase then g^2 / t0 then
-;                       tap); $15 doubles as the warm-up count stash
+;   r7+$15              warm-up count stash
+;   r7+$16              PITCH decode park (per block): f, then oct. Until
+;                       23 Sep 2026 this park was raw $49 = grain 3's
+;                       scatter word on line L, rewritten every block
 ;   r7+$18              grain PRNG state, 23-bit xorshift (persistent, seeded
 ;                       nonzero at warm-up)
 ;   r7+$19..$1f         GRAIN per-sample parks: window, frac, t0, read phase,
@@ -1116,15 +1118,15 @@ gvknob:
         asl     #$12,a,a                ; (e & 31) << 18 = f in Q23
         move    a1,x0
         move    x0,a
-        move    a,x:(r7+$0)            ; f, Q23 (park)
+        move    a,x:(r7-$33)            ; f, Q23 (park)
         move    x:(r7-$c),a
         asr     #$5,a,a                 ; oct = e >> 5, -2..1 (arithmetic)
         move    a1,x0
         move    x0,a
-        move    x:(r7+$0),x0
+        move    x:(r7-$33),x0
         move    x0,x:(r7-$c)           ; f into its slot
 gvoct:
-        move    a,x:(r7+$0)            ; park oct
+        move    a,x:(r7-$33)            ; park oct
 ; 2^f - 1 = f * (c1 + f * (c2 + c3 * f))
         move    x:(r7-$c),x0           ; f
         move    #>$072470,y1            ; c3 = 0.0558
@@ -1141,7 +1143,7 @@ gvoct:
         add     #>512,a                 ; rstep at oct 0: 512 .. 1023
 ; the octave: shift by oct
         move    a,x:(r7-$b)
-        move    x:(r7+$0),a
+        move    x:(r7-$33),a
         tst     a
         beq     gvrdone
         move    #>1,x0
