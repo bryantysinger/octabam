@@ -18,6 +18,19 @@ flashed image was built from.
   bit-identical on the new `make verify-ident MOD=modulation`. An
   accumulator-to-accumulator MOVE limits where TFR does not: `tfr a,b` with
   a parallel store changed the LINE renders and was reverted.
+- BusVerb's sample loop on pointers and registers (23 Sep 2026): the u
+  vectors, the wet sums and the FWHT walk `$16..$19` / `$3a..$3d` through
+  r4/r5/r6; the tank input rides y1 through fbA/fbB, the chain word y1
+  through the four diffusers, g y0 through the in-loop allpasses; M/S and
+  their high-cut values, the shimmer parks and the allpass phase sit in
+  x1/y1/b/n0; the aux write/read pointers in n2/n3. One-word displaced
+  accesses per sample 206 → 111, pricer 1,135 → 1,117; 28 bus-gate cases
+  bit-identical. Dead code out (two spacing loads, a dead `(r4)+`, two
+  redundant m5 writes, the m6 writes around the FWHT). The header's r7 map
+  is a census (sixteen free slots; it said full), the state-table
+  description matches the code (6 + 2 words per line), the parameter list
+  matches the manifest; `REVERB.md`'s TIME law, GATE hold (52–784 ms),
+  memory table (bloom allpasses added) and register note follow the code.
 
 - Spectrum LADR RES makeup (23 Sep 2026, Sam: "the vol drop desperately
   needs it"): the ladder's output ×M = min(1 + k/2, 2.3), one per-block
