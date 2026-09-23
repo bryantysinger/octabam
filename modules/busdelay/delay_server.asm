@@ -393,11 +393,27 @@ bus_mine:
 ; comes from raw $20 (the ROTLATCH slot), never y:>$900, and is already
 ; scaled by the 16-word stride. The chain write lands at the write rotation.
 ; The loop walks the read address in r3 and writes the chain at (r3+n3).
+; DIAG 91: WOW (page-2 slot 11) selects the bus-access variant, knob/16:
+; 0 normal, 1 the aux read takes the WRITE buffer, 2 the chain write lands
+; $80 higher (the reverb keeps reading the old buffer), 3 both, 4 the aux
+; read and the chain write go to core-private Y with the bus gain at 0
+; (5..7 are not used). Raw $17 holds it; the wobble is forced to 0.
+        move    x:(r6+$e),a
+        and     #>$7f00,a
+        asr     #$c,a,a                 ; knob/16
+        move    a1,x0
+        move    x0,a                    ; A2-clean
+        move    a,x:(r7-$32)            ; raw $17
         move    x:(r7-$29),a
         move    a,x1                    ; x1 = write offset (0..112)
         add     #>$50,a                 ; five buffers on == three buffers back
         and     #>$70,a                 ; mod 8
         move    a,x0                    ; x0 = the read offset
+        move    x:(r7-$32),a            ; DIAG 91 V1 (bit 0): read the write
+        and     #>$1,a                  ; buffer
+        beq     d91nv1
+        move    x1,x0
+d91nv1:
         move    #>$901,a
         add     x0,a
         move    x:(r7+$1e),b            ; this call's split-aware frame offset
@@ -407,6 +423,11 @@ bus_mine:
         move    #>$9d8,a                ; the CHAIN buffer (one-aux rig, 7 Sep
         add     x0,a                    ; 2026): 8 x 16 mono words since 22 Sep
         add     b,a                     ; 2026 (the map in send_client.asm)
+        move    x:(r7-$32),b            ; DIAG 91 V2 (bit 1): the chain write
+        and     #>$2,b                  ; $80 higher, 0x36158.. under XBUS
+        beq     d91nv2
+        add     #>$80,a
+d91nv2:
         move    a,x:(r7+$3a)            ; this call's CHAIN write address
         move    x:(r7+$1a),x0
         sub     x0,a
@@ -414,6 +435,15 @@ bus_mine:
         move    a,n3                    ; CHAIN write - ACC read - 1: the loop
                                         ; reads the ACC at y:(r3)+ and writes
                                         ; the CHAIN at y:(r3+n3)
+        move    x:(r7-$32),a            ; DIAG 91 V3: the loop's aux read and
+        sub     #>$4,a                  ; chain write go to core-private
+        bne     d91nv3                  ; Y:$a60.. and Y:$a80.. (the loop is
+        move    #>$a60,a                ; unchanged, the addresses leave the
+        move    x:(r7+$1e),b            ; shared window) and the bus gain is 0
+        add     b,a
+        move    a,x:(r7+$1a)
+        move    #>$1f,n3
+d91nv3:
 
 ; ---- bus auto-gain: resolve 1/sqrt(N) for this block's READ buffer --------
 ; N clients summing into one accumulator word drive the delay N x as hard as
@@ -458,6 +488,12 @@ bus_mine:
         move    n4,r5                   ; there is no store and no A2 to clean
         move    p:(r5+n5),a             ; 1/sqrt(N)
         move    a,x:(r7+$36)            ; this block's bus gain, used per sample
+        move    x:(r7-$32),a            ; DIAG 91 V3: gain 0, so the private
+        sub     #>$4,a                  ; read contributes nothing
+        bne     d91ng3
+        clr     a
+        move    a,x:(r7+$36)
+d91ng3:
 
         move    #>$ffffff,m0            ; audio is read and written via r0
         move    #>$ffffff,m4            ; GRAIN walks its table with r4 -- the
@@ -917,6 +953,9 @@ slewdn:
         move    a1,x0
         move    x0,a
         move    a,x:(r7-$1b)            ; FLTD = WOWD/8
+        clr     a                       ; DIAG 91: WOW is the variant select,
+        move    a,x:(r7-$1c)            ; the wobble stays at 0
+        move    a,x:(r7-$1b)
 
 ; ---- SCAT: GRAIN scatter depth ----------------------------------------------
 ; Page-2 slot 7's COMPANION field (r6+$c bits 8-15, the word MODE's knob

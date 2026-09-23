@@ -240,11 +240,24 @@ notfirst:
         move    #>$30000,a              ; this payload's base ($38000 on B)
         move    #>$38000,x0
         cmp     x0,a
-        beq     send_ok                 ; payload B: every position sends
+        beq     sb91pb                  ; payload B: every position sends
+        clr     b                       ; DIAG 91: payload A never burns
+        move    b,x:(r7+$65)
         move    r7,a
         move    #>$6b00,x0
         cmp     x0,a
         beq     send_refused            ; payload A position 3 = track 8
+        bra     send_ok
+sb91pb:
+; DIAG 91 V3: on payload B a nonzero SEND knob burns ~300 cycles before each
+; sample's accumulator read-modify-write, so this client's shared accesses
+; spread across the block the way the delay's do. r7+$65 is the flag.
+        clr     b
+        move    #>$1,x0
+        move    x:(r6),a
+        tst     a
+        tne     x0,b
+        move    b,x:(r7+$65)
 send_ok:
         move    x:(r7+$67),a
         tst     a
@@ -278,6 +291,21 @@ cnt_done:
         asr     #$4,a,a
         move    a,x:(r7+$16)             ; the per-sample step
         do      n7,>send_end
+; MODEFORK_BEGIN -- DIAG 91: the burn runs only while r7+$65 is set
+        move    x:(r7+$65),a            ; DIAG 91 V3: the burn flag
+        tst     a
+        beq     sb91skip
+; MODEFORK_MID -- alternative 1: the V3 burn
+        nop
+        do      #$4b,>sb91inner
+        nop
+        nop
+        nop
+        nop
+sb91inner:
+        nop
+; MODEFORK_END
+sb91skip:
         move    x:(r7+$15),a
         move    x:(r7+$16),x0
         add     x0,a
