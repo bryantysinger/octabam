@@ -768,7 +768,7 @@ measured; his freezes bracket it. Any reverb or granular on the ColdFire
 prices above the seven-instance point (BusVerb ~18,000 DSP cycles per
 frame, four-grain GRAIN ~28,400, each in the cheaper unit).
 
-## Bursts of garbage on the reverb host's frame while the delay runs on core 1 🔴 cause open, located to one class of access
+## Bursts of garbage on the reverb host's frame while the delay runs on core 1 🔴 cause open
 
 **Symptom (Sam, 23 Sep 2026, image 58 onward; heard as "intermittent
 clicks" since image 26).** With the rig hosted (BusDelay on T1, BusVerb on
@@ -776,8 +776,8 @@ T5), a sample playing on T1 and nothing sent, T5's print carries 24-40
 samples of near-full-scale garbage, 4-16 times in two minutes, on an
 otherwise digitally silent frame. `tools/rec` on the MicroBook with T1 BAL
 hard left and T5 hard right, and a second-difference census of the capture
-(`scratchpad/burst_census.py`, events absent one pattern period either
-side), is the instrument; the ear correlated them with knob moves, which
+(`tools/harness/burst_census.py`, events absent one pattern period either
+side; it reads input 3 as R and input 4 as L), is the instrument; the ear correlated them with knob moves, which
 was wrong.
 
 **Measured, one image per row, same setup, two minutes each:**
@@ -795,7 +795,7 @@ was wrong.
 | 90 | the aux read and the chain write as two 16-word bursts per block through stock's X scratch | 3 |
 | 58-83 | the rig; the reverb stubbed, on id 0x1e, cloned from SPRING REV, its private Y words in r7, its m0..m6 preserved, the live stamp a counter, the rotation read twice, the levels ramped | 4-16 |
 
-**What that says.** The delay's accesses from core 1 into core 0's half of
+**What those rows said (retracted by image 91 below).** The delay's accesses from core 1 into core 0's half of
 the shared RAM (the aux read at 0x36901.., the chain write at 0x360d8..)
 put the garbage into T5's frame; nothing the reverb does, and nothing on
 the ColdFire side, changes it. The SEND clients make the same per-sample
@@ -804,9 +804,34 @@ within the block (per sample or one burst), the address, and the delay's
 own line traffic in its own half (85, 86) do not matter. The port never
 reproduces any of it: it runs the cores in lock step over one shared array.
 
-**Open.** What distinguishes the delay's access from a SEND's. To decide:
-the whole bus scratch in core 1's half (only core 0's clients cross), or
-both engines on core 0 (the chain never crosses); each one image and one
-count. The record's "dead words at 0x360d3-5" (send_client.asm) sit in the
-same half and may be the same mechanism.
+**Every zero in that table is a two-minute take.** At the rate image 91
+measured (about one burst per two minutes), a two-minute take reads 0 by
+chance about 37% of the time, stock 1.40C included. None of the zeros
+above separates a cause.
+
+**Image 91 (23 Sep 2026, branch `diag91`, a new project, 120 BPM, 16
+steps, T1 trigs on 1/5/9/13, six minutes each).** WOW/16 selected a
+variant of the delay's two per-sample shared accesses:
+
+| take | the delay's aux read / chain write | bursts on T5 |
+|---|---|---|
+| 1 | as shipped | 3 |
+| 2 | read from the write buffer / written where the reverb never reads | 0 |
+| 2b | the same as take 2 | 2 |
+| 5 | both to core-private Y:$a60.., bus gain 0: no per-sample shared access | 4 |
+| 7 | as shipped, T1's trigs on 2/6/10/14 | 3 |
+
+Take 5 retracts the location above: with no per-sample shared access from
+the delay, the bursts continue at the same rate. 10 of 12 bursts start 14-18
+ms after the loud transient in T1's sample (repeating every 500 ms) and one
+at -0.8 ms each in takes 2b and 7; with T1's trigs moved 125 ms against the
+beat (take 7) they stayed at that phase against T1's audio, so they follow
+T1's trigs or T1's audio, not the beat. Where that transient sits against
+the trig is not known (it depends on the sample). Bursts are 23-53 samples.
+
+**Open.** Whether stock 1.40C bursts in a six-minute take (the stock row
+above is two minutes). Then: whether the trig or T1's audio sets them (T1
+AMP VOL 0, trigs running), and which layer (image 69, no engines, six
+minutes). The record's "dead words at 0x360d3-5" (send_client.asm) are
+unexplained and not tied to this any more.
 
