@@ -78,6 +78,8 @@ CASES = [
      dict(layout="SSSR")),
     ("SSS.SSSSR  seven senders -- the top of the reciprocal table (position 3 skipped)",
      dict(layout="SSS.SSSSR")),
+    ("RSSS.SSSS  the same seven senders with the reverb at position 0 (23 Sep 2026: a ninth instance sits at X:0x7a00, a block no unit has)",
+     dict(layout="RSSS.SSSS")),
     ("SSD     two senders into the delay bus",
      dict(layout="SSD", pick="D")),
     ("SSS.SSSSD  seven senders into the delay bus (position 3 skipped)",
@@ -145,6 +147,23 @@ CASES = [
      dict(layout="RS", rmode=2, gate=64, width=100, rtone=90, dur=0.3)),
     ("RS GATE  ROOM with the gate closing on the tail",
      dict(layout="RS", gate=100, dur=0.3, tail=0.5)),
+
+    # --- the chain hop under the reverb's hash, hot (23 Sep 2026) ---------
+    # RDS s5 hashes the DELAY's print; nothing above hashed the REVERB's
+    # print of a chain written across a split call, and every case ran at
+    # amp 0.5. Image 58 clicked on the unit with a sample on the delay host
+    # and its send up, heard in the reverb's wet; images 59/60 put it in
+    # the delay rewrite. Full-scale tone, the host's own send at 127, FDBK
+    # high, the reverb picked.
+    ("RDS HOT  reverb picked, delay host send hot, full scale, split 5",
+     dict(layout="RDS", pick="R", din=127, level=127, amp=1.0, split=5,
+          dfdbk=100, dur=0.3)),
+    ("RDS HOT2 the same with no split and the delay's WET at 0",
+     dict(layout="RDS", pick="R", din=127, level=127, amp=1.0, dfdbk=100,
+          dmix=0, dur=0.3)),
+    ("RDS HOT3 split 11, PING and TONE driven, both hosts sending",
+     dict(layout="RDS", pick="R", din=127, raux=127, level=127, amp=1.0,
+          split=11, dping=100, dtone=40, dur=0.3)),
 ]
 
 # Knobs held away from their defaults so the paths under test are actually

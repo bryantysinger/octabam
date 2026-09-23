@@ -71,7 +71,8 @@
 ; write target: three blocks of bus latency, 48 samples (two until 22 Sep
 ; 2026).
 ;
-; r7 slots used here: $14 (call flag), $67 (this call's frame offset; $65/$66
+; r7 slots used here: $14 (call flag), $15/$16 (the level ramp: current
+; value / per-sample step), $67 (this call's frame offset; $65/$66
 ; free since 21 Sep 2026), $68
 ; (the housekeeping election's last-seen rotation, payload A only: the XBUS
 ; gate excises the block on payload B), $69 (this block's resolved write
@@ -88,6 +89,9 @@ init:
 ; seed is the rotation as read, before or after a flip, so the label runs
 ; exact or one behind for the life of the instance; both are inside the
 ; eight buffers' margin (docs/effects/XBUS.md).
+        clr     a
+        move    a,x:(r7+$15)            ; the level ramp starts from 0
+        move    a,x:(r7+$16)            ; (r7 = this slot's block at init)
 ; ROTINIT
         rts
 
@@ -264,8 +268,21 @@ send_ok:
 cnt_done:
 
 ; ---- per-sample: mono dry sum, scaled into the ONE accumulator -----------
-        move    x:(r6),y1                ; AUX level, the one knob
+; The level is ramped across the block from where last block's ramp ended
+; to this block's knob word: the level stepped once per block until 23 Sep
+; 2026, and a turn on a loud source clicked once per block (dsp_host census
+; on a 0.3 FS tone: steps to 0.25 FS in the delay's print).
+        move    x:(r6),a                 ; AUX level, the one knob: the target
+        move    x:(r7+$15),x0            ; the ramp's current value
+        sub     x0,a
+        asr     #$4,a,a
+        move    a,x:(r7+$16)             ; the per-sample step
         do      n7,>send_end
+        move    x:(r7+$15),a
+        move    x:(r7+$16),x0
+        add     x0,a
+        move    a,x:(r7+$15)
+        move    a,y1                     ; this sample's level
         move    x:(r0)+,a                ; L
         move    x:(r0)+,x0               ; R, and r0 on to the next frame
         add     x0,a
