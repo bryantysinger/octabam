@@ -822,9 +822,9 @@ variant of the delay's two per-sample shared accesses:
 | 7 | as shipped, T1's trigs on 2/6/10/14 | 3 |
 
 Take 5 retracts the location above: with no per-sample shared access from
-the delay, the bursts continue at the same rate. 10 of 12 bursts start 14-18
-ms after the loud transient in T1's sample (repeating every 500 ms) and one
-at -0.8 ms each in takes 2b and 7; with T1's trigs moved 125 ms against the
+the delay, the bursts continue at the same rate. 9 of 12 bursts start 14-18 ms
+after the loud transient in T1's sample (repeating every 500 ms), 2 at
+-0.8 ms, 1 at +186 ms; with T1's trigs moved 125 ms against the
 beat (take 7) they stayed at that phase against T1's audio, so they follow
 T1's trigs or T1's audio, not the beat. Where that transient sits against
 the trig is not known (it depends on the sample). Bursts are 23-53 samples.
