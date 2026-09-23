@@ -91,7 +91,8 @@
 ;   r7+$7b        bloom g; $7e..$81 the diffuser taps (n5 values)
 ;   r7+$82        warm-up counter, $2c0000 | blocks, capped at 0x100
 ;   r7+$83        write phase (persistent, masked on load as well as save)
-;   free: $10..$13, $25..$27, $39, $64..$66, $68, $69, $6e, $71, $7c, $7d
+;   $71 WET ramped per sample, $7c its per-sample step (per block)
+;   free: $10..$13, $25..$27, $39, $64..$66, $68, $69, $6e, $7d
 ;   (sixteen; $25/$26 and $39 went to registers 23 Sep 2026)
 ;
 ; Parameters (page 1 slots 0-5, page 2 slots 6-11):
@@ -910,12 +911,18 @@ mdcpy:
 
 ; ---- WET: the reverb's level on top of the chain input -------------------
         move    x:(r6+$5),a             ; WET target
-        move    x:(r7+$70),x0
+        move    x:(r7+$70),x0           ; last block's glided WET: where this
+        move    x0,x:(r7+$71)           ; block's per-sample ramp starts
         sub     x0,a
         asr     #$3,a,a
         add     x0,a
         move    a,x:(r7+$70)            ; WET, glided (y:$09f3 is SIZE's
                                         ; glide state since 20 Sep 2026)
+        sub     x0,a                    ; this block's change, spread over its
+        asr     #$4,a,a                 ; 16 frames: the gain on the tail moved
+        move    a,x:(r7+$7c)            ; in one step per block until 23 Sep
+                                        ; 2026, a click per block while the
+                                        ; knob turned (images 58-66)
 
 ; ---- the tank modulation depth, scales the LFO triangle -------------------
         move    #$1e,x0                 ; the tank modulation depth, PINNED at
@@ -2270,7 +2277,11 @@ fbB:
 ; THE HOST PRINT: dry + wet*WET, in place. The chain input (the aux, or
 ; the delay's output while it is live) feeds the tank only; the dry the
 ; host hears is its own.
-        move    x:(r7+$70),y0           ; WET
+        move    x:(r7+$71),a            ; WET, ramped per sample: + this
+        move    x:(r7+$7c),y0           ; block's step
+        add     y0,a
+        move    a,x:(r7+$71)
+        move    a,y0
         mpy     y0,x0,a                 ; wet * WET
         asl     #$1,a,a                 ; x2: WET 127 = +6 dB (the stores
                                         ; below limit)
@@ -2287,7 +2298,7 @@ fbB:
         move    x:(r7+$62),y0           ; GLVL
         mpy     y0,x0,a                 ; wet * gate
         move    a,x0                    ; gated wet R
-        move    x:(r7+$70),y0           ; WET
+        move    x:(r7+$71),y0           ; WET, this sample's
         mpy     y0,x0,a                 ; wet * WET
         asl     #$1,a,a                 ; x2, as on L
         move    x:(r0),x0               ; dry R, still in place

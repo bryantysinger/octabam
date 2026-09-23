@@ -60,7 +60,9 @@
 ;                       scatter word on line L, rewritten every block
 ;   r7+$18              grain PRNG state, 23-bit xorshift (persistent, seeded
 ;                       nonzero at warm-up)
-;   r7+$17, $19..$25    free (23 Sep 2026: the per-sample parks went to
+;   r7+$19/$1b          SEND ramped per sample / its per-sample step
+;   r7+$1c/$1d          WET ramped per sample / its per-sample step
+;   r7+$17, $1e..$25    free (23 Sep 2026: the per-sample parks went to
 ;                       registers)
 ;   r7+$26              TIME, Q8: the ramp's running value at a call's start
 ;                       and end (the loop walks it in n4); the glide state
@@ -790,6 +792,10 @@ stpdn:
         move    a,x:(r7+$24)            ; WET, glided (raw $6d since 21 Sep
                                         ; 2026: raw $85 was in the $84..$8a
                                         ; range that hardware does not keep)
+        move    b,x:(r7-$2d)            ; the per-sample ramp: from last
+        sub     b,a                     ; block's glided value ($1c) by this
+        asr     #$4,a,a                 ; block's change over 16 frames ($1d)
+        move    a,x:(r7-$2c)
         bra     slewdn
 slew2:
         move    x:(r7-$23),a            ; the ramp's running value, Q8
@@ -800,7 +806,13 @@ slewdn:
 ; ---- SEND: this host's own send level into the aux --------------------------
         move    x:(r6),a                ; SEND, slot 0
         and     #>$7f0000,a
-        move    a,x:(r7+$2d)            ; SEND, this block
+        move    x:(r7+$2d),x0           ; last block's level: where this
+        move    x0,x:(r7-$30)           ; block's per-sample ramp starts ($19)
+        move    a,x:(r7+$2d)            ; SEND, this block: where it ends
+        sub     x0,a                    ; the change, spread over 16 frames
+        asr     #$4,a,a                 ; ($1b): the level stepped once per
+        move    a,x:(r7-$2e)            ; block until 23 Sep 2026, a click per
+                                        ; block while the knob turned
 
 ; ---- MODE: engine select, page-2 slot 6's knob field ($c bits 16-23) ------
 ; MSB-aligned, the same convention as BusVerb's MODE. The dispatch in the
@@ -1197,12 +1209,16 @@ gvrdone:
         do      n7,>dlyend
 
 ; ---- input: own dry mono sum + shared DELAY bus accumulator --------------
+        move    x:(r7-$30),a            ; SEND, ramped per sample: + this
+        move    x:(r7-$2e),x0           ; block's step
+        add     x0,a
+        move    a,x:(r7-$30)
+        move    a,y1                    ; this sample's send level
         move    x:(r0),a
         move    x:(r0+n0),x0
         add     x0,a
         asr     #$1,a,a
         move    a,x0                    ; own dry mono
-        move    x:(r7+$2d),y1           ; IN, this track's send level
         mpy     x0,y1,a                 ; our contribution to the bus
         asr     #$3,a,a                 ; the 3 bits of headroom every writer
                                         ; applies
@@ -1765,7 +1781,11 @@ pdone:
         asr     #$1,b,b                 ; wet/2 -> x1.5 both channels (R58)
         add     b,a
         move    a,x0                    ; wet L, final
-        move    x:(r7+$24),y1           ; WET
+        move    x:(r7-$2d),a            ; WET, ramped per sample
+        move    x:(r7-$2c),y1
+        add     y1,a
+        move    a,x:(r7-$2d)
+        move    a,y1
         mpy     x0,y1,a                 ; wet * WET
         move    a,x0                    ; x0 = wet*WET: what the host prints
         move    n6,b                    ; x_in, the passthrough term
@@ -1786,7 +1806,7 @@ pdone:
         asr     #$1,b,b
         add     b,a                     ; + wet*PING/4 -> R shelf 0.75*PING
         move    a,x0                    ; wet R, final
-        move    x:(r7+$24),y1           ; WET
+        move    x:(r7-$2d),y1           ; WET, this sample's
         mpy     x0,y1,a                 ; wet * WET
         move    a,x0                    ; x0 = wet*WET
         move    n6,b
