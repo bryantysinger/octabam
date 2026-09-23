@@ -767,3 +767,46 @@ per-frame work halved, or a freeze with settled controls.
 measured; his freezes bracket it. Any reverb or granular on the ColdFire
 prices above the seven-instance point (BusVerb ~18,000 DSP cycles per
 frame, four-grain GRAIN ~28,400, each in the cheaper unit).
+
+## Bursts of garbage on the reverb host's frame while the delay runs on core 1 🔴 cause open, located to one class of access
+
+**Symptom (Sam, 23 Sep 2026, image 58 onward; heard as "intermittent
+clicks" since image 26).** With the rig hosted (BusDelay on T1, BusVerb on
+T5), a sample playing on T1 and nothing sent, T5's print carries 24-40
+samples of near-full-scale garbage, 4-16 times in two minutes, on an
+otherwise digitally silent frame. `tools/rec` on the MicroBook with T1 BAL
+hard left and T5 hard right, and a second-difference census of the capture
+(`scratchpad/burst_census.py`, events absent one pattern period either
+side), is the instrument; the ear correlated them with knob moves, which
+was wrong.
+
+**Measured, one image per row, same setup, two minutes each:**
+
+| image | what | bursts on T5 |
+|---|---|---|
+| stock 1.40C | | 0 |
+| 69 | SEND + the stations, no engines, no caves | 0 |
+| 78 | + BusVerb present, unhosted | 0 |
+| 84 | the rig, the delay returning at its first instruction | 0 |
+| 86 (WOW 20) | the rig, the delay in full but never reading the aux or writing the chain | 0 |
+| 89 | only the chain write removed / only the aux read removed | 4 / 1 |
+| 85 | both delay lines in core 1's private memory | 8 |
+| 87 | the chain moved from Y:$9d8 to $a58 | 6 |
+| 90 | the aux read and the chain write as two 16-word bursts per block through stock's X scratch | 3 |
+| 58-83 | the rig; the reverb stubbed, on id 0x1e, cloned from SPRING REV, its private Y words in r7, its m0..m6 preserved, the live stamp a counter, the rotation read twice, the levels ramped | 4-16 |
+
+**What that says.** The delay's accesses from core 1 into core 0's half of
+the shared RAM (the aux read at 0x36901.., the chain write at 0x360d8..)
+put the garbage into T5's frame; nothing the reverb does, and nothing on
+the ColdFire side, changes it. The SEND clients make the same per-sample
+read and write into the same aux buffers and are clean (69, 78). Position
+within the block (per sample or one burst), the address, and the delay's
+own line traffic in its own half (85, 86) do not matter. The port never
+reproduces any of it: it runs the cores in lock step over one shared array.
+
+**Open.** What distinguishes the delay's access from a SEND's. To decide:
+the whole bus scratch in core 1's half (only core 0's clients cross), or
+both engines on core 0 (the chain never crosses); each one image and one
+count. The record's "dead words at 0x360d3-5" (send_client.asm) sit in the
+same half and may be the same mechanism.
+

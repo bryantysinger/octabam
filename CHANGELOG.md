@@ -7,6 +7,20 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- The level knobs ramp per sample across each block (23 Sep 2026): the
+  reverb's WET, the delay's WET, the delay host's SEND and every SEND
+  client's level. Each stepped once per block, the sends with no glide at
+  all; a turn on a loud source clicked once per block. dsp_host census on a
+  0.3 FS tone, worst step before -> after: a SEND client into the delay
+  0.25 -> 0.018 FS, the delay host's SEND 0.185 -> 0.025, the reverb's WET
+  0.035 -> 0.003, the delay's WET 0.027 -> 0.002. Knobs still, the renders
+  match after the glide-in; `make verify-bus` needs a re-stamp (SAVE=1) on
+  this commit. The bus gate also gains three hot chain-hop cases and a
+  seven-sender case with the reverb at position 0 (the ninth-instance slot
+  at X:0x7a00 is the harness's, and a state slot there renders differently).
+- The reverb host's frame bursts (images 58-90, 23 Sep 2026): located to
+  the delay's accesses from core 1 into core 0's half of the shared RAM,
+  cause open; `docs/remixer/FAILURE_MODES.md` has the table.
 - The ColdFire port's EMAC extension-register write knew only the
   fractional layout (23 Sep 2026, from Jannik Aßfalg's stock profile): the
   frame ISR saves and restores ACCext in integer mode every frame, so
