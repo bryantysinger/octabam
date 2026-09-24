@@ -92,7 +92,8 @@
 ;   r7+$82        warm-up counter, $2c0000 | blocks, capped at 0x100
 ;   r7+$83        write phase (persistent, masked on load as well as save)
 ;   $71 WET ramped per sample, $7c its per-sample step (per block)
-;   free: $10..$13, $25..$27, $39, $64..$66, $68, $69, $6e, $7d
+;   $10..$12 the block copy: its pointer, dry L, dry R (24 Sep 2026)
+;   free: $13, $25..$27, $39, $64..$66, $68, $69, $6e, $7d
 ;   (sixteen; $25/$26 and $39 went to registers 23 Sep 2026)
 ;
 ; Parameters (page 1 slots 0-5, page 2 slots 6-11):
@@ -168,7 +169,12 @@ bus_off_done:
 ; proc"); measured on the delay, this loop is longer still and sits at the
 ; same position on core 0. Y:$a80..$a9f, core-private, claimed in the
 ; manifest.
-        move    #$0,r3
+        move    x:(r7+$67),a            ; the block's base = r0 - 2 x this
+        asl     #$1,a,a                 ; call's frame offset: 0 on the unit,
+        move    a1,x0                   ; dsp_host's -audio elsewhere
+        move    r0,a
+        sub     x0,a
+        move    a,r3
         move    #>$a80,r4
         move    #>$ffffff,m3
         move    #>$ffffff,m4
@@ -1419,14 +1425,19 @@ lfrol:
                                         ; through n2/n3 (free: the priming's
                                         ; use of n2/n3 is over)
 
-        move    #>$a80,n0               ; the block copy, read as y:(r0+n0)
+        move    x:(r7+$67),a            ; the copy pointer for this call:
+        asl     #$1,a,a                 ; $a80 + 2 x the frame offset, kept
+        add     #>$a80,a                ; in $10 (n0 is the loop's phase and
+        move    a,x:(r7+$10)            ; r4 its walker, rebuilt before use)
         do      n7,>rvend
 
 ; ---- input: mono sum, plus the shared REVERB bus accumulator (BUS.md) ----
-        move    y:(r0+n0),a             ; L, from the copy
-        move    (r0)+
-        move    y:(r0+n0),x0            ; R, from the copy
-        move    (r0)-                   ; r0 back on L (m0 linear)
+        move    x:(r7+$10),r4           ; L and R, from the copy
+        move    y:(r4)+,a
+        move    y:(r4)+,x0
+        move    r4,x:(r7+$10)
+        move    a,x:(r7+$11)            ; parked for the output stage
+        move    x0,x:(r7+$12)
         add     x0,a
         asr     #$1,a,a
 ; The host's own send: dry mono x SEND (the knob's copy at y:$09f0: r6 walks
@@ -2305,7 +2316,7 @@ fbB:
         mpy     y0,x0,a                 ; wet * WET
         asl     #$1,a,a                 ; x2: WET 127 = +6 dB (the stores
                                         ; below limit)
-        move    y:(r0+n0),x0            ; dry L, from the copy
+        move    x:(r7+$11),x0           ; dry L, from the copy
         add     x0,a                    ; + dry at unity
         move    a,x:(r0)+               ; L in place -- dry + wet; r0 on to R
         move    y1,a
@@ -2321,7 +2332,7 @@ fbB:
         move    x:(r7+$71),y0           ; WET, this sample's
         mpy     y0,x0,a                 ; wet * WET
         asl     #$1,a,a                 ; x2, as on L
-        move    y:(r0+n0),x0            ; dry R, from the copy
+        move    x:(r7+$12),x0           ; dry R, from the copy
         add     x0,a                    ; + dry at unity
         move    a,x:(r0)+               ; R in place -- dry + wet; r0 on to
                                         ; the next frame (n0 is not used)
