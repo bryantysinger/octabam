@@ -340,29 +340,13 @@ bus_notfirst:
 ; that instead of the shared word.
 ; ROTLATCH
 
-; ---- server-role lock: only ONE DELAY SERVER may run per bank -----------------
-; Both servers use a FIXED, hardcoded Y base identical for every instance, so
-; two of the same role would share one set of buffers and drive each other's
-; feedback path -- measured on hardware as a solid, unchanging tone (BUS.md's
-; hardware test 3). The lock is released once per block by whichever effect is
-; position 0 (above) and claimed here in dispatch order: the first instance to
-; arrive owns the role for that block, any duplicate rts's without touching
-; the audio buffer at all, which is an exact dry passthrough.
-;
-; Keyed on r7 (this instance's own state block), so a split block's two calls
-; both match the same owner and the second is not mistaken for a duplicate.
-        move    y:>$9c1,a
-        move    a1,x0
-        move    x0,a                    ; A2-clean before the compare
-        tst     a
-        beq     bus_claim               ; free: take it
-        move    r7,x0
-        cmp     x0,a
-        beq     bus_mine                ; already ours (split block's 2nd call)
-        rts                             ; a duplicate: pass audio through
-bus_claim:
-        move    r7,a
-        move    a,y:>$9c1
+; ---- no server-role lock (image 94, 24 Sep 2026) --------------------------
+; HOSTGUARD runs this engine on core 1's position 0 only and the build
+; aliases its id to SEND on core 0, so one instance runs per block. The lock
+; this replaced read and wrote y:$9c1 (0x360c1, core 0's half of the shared
+; window) once per block, and the delay's proc cut straight after it (image
+; 93, WOW 24) still burst on T5's frame at the full rate
+; (docs/remixer/FAILURE_MODES.md).
 bus_mine:
 ; ---- r7 REBASE (14 Sep 2026): from here to `dry:` r7 points $49 INTO the
 ; state block. The one-word displaced move reaches -64..63 and the block
