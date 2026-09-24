@@ -917,6 +917,23 @@ slewdn:
         move    a1,x0
         move    x0,a
         move    a,x:(r7-$1b)            ; FLTD = WOWD/8
+; DIAG 92: WOW/16 = 5 moves the frame write-back off T1's frame to X:$20..
+; (stock scratch); r7-$2a (raw $1f) holds the per-block offset, 0 otherwise.
+; WOW is the variant select only, so the wobble stays at 0.
+        clr     a
+        move    a,x:(r7-$1c)            ; WOWD = 0
+        move    a,x:(r7-$1b)            ; FLTD = 0
+        move    x:(r6+$e),a
+        and     #>$7f00,a
+        asr     #$c,a,a                 ; knob/16
+        move    a1,x0
+        move    x0,a                    ; A2-clean
+        clr     b
+        move    #>$5,x0
+        cmp     x0,a
+        move    #>$20,x0
+        teq     x0,b                    ; variant 5 -> offset $20
+        move    b,x:(r7-$2a)
 
 ; ---- SCAT: GRAIN scatter depth ----------------------------------------------
 ; Page-2 slot 7's COMPANION field (r6+$c bits 8-15, the word MODE's knob
@@ -1769,6 +1786,10 @@ rmode:
                                         ; R line is not written in this mode)
 ; MODEFORK_END
 pdone:
+        move    r0,a                    ; DIAG 92: r4 = this frame's write
+        move    x:(r7-$2a),x0           ; target, r0 or r0 + $20
+        add     x0,a
+        move    a,r4
 
 ; ---- OUTPUT STAGE: out = in + wet*WET per channel, in = x_in (the chain
 ; input, this host's SEND included), wet = the final tap x1.5 (R also
@@ -1793,7 +1814,7 @@ pdone:
         move    b,x1                    ; parked for the chain's mono average
         move    x:(r0),b                ; dry L, still in place
         add     x0,b                    ; + dry at unity
-        move    b,x:(r0)                ; L in place -- dry + wet*WET
+        move    b,x:(r4)+               ; L in place -- dry + wet*WET (DIAG 92: via r4)
         move    x:(r7+$33),x0           ; wet R = fR
         move    x0,a
         move    x0,b
@@ -1813,7 +1834,7 @@ pdone:
         add     x0,b                    ; b = stage output R
         move    x:(r0+n0),a             ; dry R
         add     x0,a                    ; + dry at unity
-        move    a,x:(r0+n0)             ; R in place -- dry + wet*WET
+        move    a,x:(r4)                ; R in place -- dry + wet*WET (DIAG 92: via r4)
 ; ---- the CHAIN buffer: mono average of the stage output, at unity --------
         move    x1,a                    ; out L
         add     b,a                     ; + out R
