@@ -198,6 +198,12 @@ init:
 ; (docs/remixer/FAILURE_MODES.md); the coefficients glide in from whatever
 ; the slot held for ~20 ms after a select, as before.
 ; ROTINIT
+        move    #>$aa0,r4               ; frame-end split: the first block
+        move    #>$ffffff,m4            ; emits silence, nothing is waiting
+        clr     a
+        do      #$22,fe_zero
+        move    a,y:(r4)+
+fe_zero:
         rts
 
 proc:
@@ -364,6 +370,65 @@ bus_claim:
         move    r7,a
         move    a,y:>$9c1
 bus_mine:
+; ---- FRAME-END SPLIT (25 Sep 2026) ----------------------------------------
+; The compute runs from `frameend`, a detour the build plants at the
+; dispatcher's frame end on payload B (after the last read-back copy), on
+; the block this call saved. This call only swaps: its frames of the audio
+; block go to Y:$a80.. and the previous block's result comes out of Y:$aa0..,
+; so the proc returns in ~200 cycles and the dispatcher's copy of our block
+; lands before the ColdFire pulls the read-back. Measured on the unit
+; (images 33-38, 25 Sep 2026): the pull reaches T1's 64 words about 4.5
+; samples into core 1's frame, jittering by half a sample or more; the
+; delay's own copy sat inside it and the pull read the block mid-rewrite
+; (junk on main R, 0.5/min; 1266/min once the copy moved 300 cycles later).
+; Stock effects copy by +2 samples and never meet it; BusVerb copies late
+; too but core 0's pull is the ISR's first step. One frame of latency on the
+; host track's dry and wet.
+        move    #>$ffffff,m3
+        move    #>$ffffff,m4
+        move    #>$ffffff,m5
+        move    r0,r3                   ; this call's frames of the block
+        move    x:(r7+$67),a            ; this call's frame offset ...
+        asl     a
+        move    a1,x1                   ; ... in words (r0 less the block's
+                                        ; base: 0 on the unit, dsp_host's -audio)
+        move    #>$a80,a
+        add     x1,a
+        move    a,r4                    ; their input words -> Y:$a80+
+        move    #>$aa0,a
+        add     x1,a
+        move    a,r5                    ; the result words <- Y:$aa0+
+        move    n7,a
+        asl     a                       ; two words per frame
+        move    a1,x0
+        do      x0,fe_swap
+        move    x:(r3),x1
+        move    x1,y:(r4)+
+        move    y:(r5)+,x1
+        move    x1,x:(r3)+
+fe_swap:
+; The page: thirty-two words go to PAGE_SNAP, free words after the parked
+; P tables in the stock curve bank (build_bus XTABLE, identical on both
+; payloads), because the compute runs after every other track's call and a
+; page pointer is only good for the call it was passed to (dsp_host keeps
+; ONE page per core and rewrites it before each instance).
+        move    r6,r3
+        move    #>$fab1e1,r4            ; PAGE_SNAP: rewritten by build_bus.py
+        do      #$20,fe_page            ; knobs, companions, tempo24 at +$13
+        move    x:(r3)+,x1
+        move    x1,x:(r4)+
+fe_page:
+        move    r0,a
+        sub     x1,a
+        move    a,y:>$ac2               ; the block's base, for the compute
+        move    #>$1,a
+        move    a,y:>$ac1               ; a block is waiting
+        rts
+
+; ---- the compute: from here to `dry:` exactly as before the split, entered
+; by `frameend` with r7 = the host's raw instance block, r6 = the page,
+; r0 = 0, n7 = 16 and the audio block at X:0 holding the saved input.
+compute:
 ; ---- r7 REBASE (14 Sep 2026): from here to `dry:` r7 points $49 INTO the
 ; state block. The one-word displaced move reaches -64..63 and the block
 ; spans $14..$88, so with the raw r7 every slot from $40 up cost two words
@@ -1848,6 +1913,41 @@ dry:
                                         ; (m0/m4/m5 are set linear every block
                                         ; above and never changed: their
                                         ; restores here were no-ops)
+        rts
+
+frameend:
+; ---- FRAME END (payload B): the build plants `jsr <frameend` over the
+; two-word `move #>$421,r6` at the dispatcher's P:0x340, so the displaced
+; instruction runs first and the rts returns to the `jmp` that follows it.
+        move    #>$421,r6
+        move    y:>$ac1,a
+        tst     a
+        beq     fe_none                 ; no host call this frame
+        clr     a
+        move    a,y:>$ac1
+        move    #>$ffffff,m3
+        move    #>$ffffff,m4
+        move    #>$a80,r4               ; the saved input -> the audio block
+        move    y:>$ac2,r3
+        do      #$20,fe_in
+        move    y:(r4)+,x0
+        move    x0,x:(r3)+
+fe_in:
+        move    #>$fab1e1,r6            ; the page snapshot (PAGE_SNAP)
+        move    #>$6200,r7              ; the host's instance block (HOSTGUARD)
+        move    y:>$ac2,r0              ; the block's base
+        move    #>$10,n7                ; the whole block
+        clr     a
+        move    a,x:>$6267              ; frame offset 0 (raw $67)
+        move    a,x:>$6214              ; call flag 0 (raw $14)
+        jsr     compute
+        move    #>$aa0,r4               ; the result, emitted by the next call
+        move    y:>$ac2,r3
+        do      #$20,fe_out
+        move    x:(r3)+,x0
+        move    x0,y:(r4)+
+fe_out:
+fe_none:
         rts
 
 ; ---- modtap: the line read at this sample's lag, shared by both lines -----

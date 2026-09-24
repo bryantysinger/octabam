@@ -34,10 +34,13 @@ away from the fundamental is nonlinearity or a glitch -- exactly the
 send, take a steady-state window of the reverb's output, and report the total
 non-fundamental energy relative to the fundamental. MOD and SPEED are forced to
 0 because delay-line modulation makes legitimate sidebands."""
-import argparse, array, cmath, math, os, pathlib, struct, subprocess, sys, wave
+import os, argparse, array, cmath, math, os, pathlib, struct, subprocess, sys, wave
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-HOST = ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_host"
+# OCTABAM_DSP_HOST points every harness run at another dsp_host binary: a
+# branch that changes dsp_host.cpp is built in an isolated tree (CLAUDE.md),
+# and the staged binary in vendor/ is the main checkout's.
+HOST = pathlib.Path(os.environ.get("OCTABAM_DSP_HOST") or ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_host")
 
 SR = 44100
 FRAMES = 15                # dsp_host caps a block at 15 frames

@@ -377,6 +377,8 @@ struct Core {
     TWord pblock = 0, stateBase = 0, cnt = 0, ctlA = 0, ctlB = 0;
     Guard guard;
     std::vector<int> insts;               // global instance indices, dispatch order
+    TWord frameend = 0;                   // X:0x4840 of the dump: an entry the dispatcher
+                                          // calls at its frame end (BusDelay's compute), 0 = none
     // the meter: instructions per block on this core
     long blockInstr = 0, maxBlockInstr = 0; int maxBlock = -1;
     long initInstr = 0;
@@ -534,6 +536,7 @@ struct Call {
 } // namespace
 
 int main(int argc, char** argv) {
+    if (getenv("DSP_HOST_FETRACE")) setvbuf(stdout, nullptr, _IONBF, 0);
     Args a;
     for (int i = 1; i < argc; ++i) {
         std::string k = argv[i];
@@ -715,6 +718,17 @@ int main(int argc, char** argv) {
         int modules = 0; long words = 0;
         if (!loadMem(C, modules, words)) return 1;
         std::printf("core %d: loaded %d modules, %ld words from %s\n", c, modules, words, C.path.c_str());
+        {
+            // the module directory: word 0 of the parked-table region names a
+            // frame-end entry the dispatcher jsr's after the last read-back
+            // copy (build_bus FRAMEEND); the harness makes the same call once
+            // per block after this core's procs.
+            const TWord fe = C.mem->get(MemArea_X, 0x4840) & 0xffffff;
+            if (fe && fe < 0x20000 && C.loadedP[fe]) {
+                C.frameend = fe;
+                std::printf("core %d: frame-end entry P:0x%05x (X:0x4840)\n", c, fe);
+            }
+        }
 
         // ---- frame context --------------------------------------------------
         // The effects depend on control words that no module initialises; the
@@ -1134,7 +1148,19 @@ int main(int argc, char** argv) {
 
     // Start a call: what the dispatcher does before `jsr (r2)`.
     auto beginCall = [&](CoreRun& R, const Call& call) {
-        Core& C = *R.C; Instance& I = inst[call.inst];
+        Core& C = *R.C;
+        if (getenv("DSP_HOST_FETRACE")) std::printf("BEGIN block %d inst %d ctl %d\n", R.block, call.inst, (int)call.ctl);
+        if (call.inst < 0) {
+            // the frame-end entry: what the dispatcher's planted jsr does
+            // after the last read-back copy; no instance, no registers set
+            DSP& D = *C.dsp;
+            D.setPC(SENTINEL);
+            D.jsr(C.frameend);
+            R.cur = call; R.cur.steps = 0; R.inCall = true;
+            R.i0 = D.getInstructionCounter();
+            return;
+        }
+        Instance& I = inst[call.inst];
         if (a.allocProc == "perinst") setAlloc(C, I.alloc);
         setParams(C, I.pv);
         DSP& D = *C.dsp;
@@ -1187,7 +1213,9 @@ int main(int argc, char** argv) {
 
     // Finish a call: what the harness does after the rts.
     auto endCall = [&](CoreRun& R) {
-        Core& C = *R.C; Instance& I = inst[R.cur.inst]; DSP& D = *C.dsp;
+        Core& C = *R.C;
+        if (R.cur.inst < 0) { R.inCall = false; return; }      // the frame-end entry
+        Instance& I = inst[R.cur.inst]; DSP& D = *C.dsp;
         const int k = R.cur.inst, b = R.block;
         char who[32]; std::snprintf(who, sizeof who, "inst %d", k);
         R.inCall = false;
@@ -1282,6 +1310,21 @@ int main(int argc, char** argv) {
                         D.regs().m[5].var & 0xffffff,
                         (unsigned)(D.regs().x.var >> 24) & 0xffffff,
                         D.regs().n[7].var);
+        {
+            // a PC outside P memory would fault inside the emulator's opcode
+            // cache: say where the core came from instead
+            static TWord ring[16]; static unsigned rp = 0;
+            ring[rp++ & 15] = cur;
+            if (getenv("DSP_HOST_FETRACE") && ((R.cur.inst < 0 && R.block == 0) || (a.diff && R.block == a.diff - 1))) std::printf("fe pc=%06x r0=%06x r3=%06x r4=%06x n7=%06x sp=%02x\n", cur, D.regs().r[0].var & 0xffffff, D.regs().r[3].var & 0xffffff, D.regs().r[4].var & 0xffffff, D.regs().n[7].var & 0xffffff, D.regs().sp.var & 0xff);
+            if (cur >= 0x20000) {
+                std::printf("\nPC OUT OF P: 0x%06x in %s (core %d, block %d); last PCs:", cur,
+                            R.cur.inst < 0 ? "the frame-end entry" : "a proc", C.id, R.block);
+                for (unsigned q = 0; q < 16; ++q) std::printf(" %06x", ring[(rp + q) & 15]);
+                std::printf("\n");
+                dumpRegs(D, *C.mem);
+                return false;
+            }
+        }
         D.execInterpreter();
         ++R.cur.steps;
         return true;
@@ -1358,6 +1401,7 @@ int main(int argc, char** argv) {
                 if (!a.noctl && sp) R.calls.push_back(Call{k, true, 0});
                 R.calls.push_back(Call{k, false, 0});
             }
+            if (cores[c]->frameend) R.calls.push_back(Call{-1, false, 0});   // the frame-end entry
         }
         std::vector<uint64_t> i0(ncores);
         for (int c = 0; c < ncores; ++c) i0[c] = cores[c]->dsp->getInstructionCounter();

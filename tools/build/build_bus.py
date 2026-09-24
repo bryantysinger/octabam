@@ -578,6 +578,10 @@ def _roundtrip(list_out, blob, org, label):
                  f"in tools/build/build_bus.py updated:\n{sites or '    (no sites)'}")
 
 
+_LAST_SYMS = {}          # every symbol of the last assemble(): frameend etc.
+_frameend_dir = {}       # payload -> frameend entry (0 = none), X:0x4840
+
+
 def assemble(src_text, org, label=""):
     global _SCRATCH
     if _SCRATCH is None:
@@ -595,6 +599,8 @@ def assemble(src_text, org, label=""):
                 (l.split() for l in symf.read_text().split("\n") if l))
     if DISASM.exists() and os.environ.get("NOROUNDTRIP") != "1":
         _roundtrip(r.stdout, blob, org, label)
+    global _LAST_SYMS
+    _LAST_SYMS = syms
     return words, syms["init"], syms["proc"]
 
 
@@ -2512,6 +2518,7 @@ hostquit:
         # once and compare them.
         LFO01_MARK = "LFO lines 0-1: ROLLED TOO"
         PTABLE_MARK = "$fab1e0"          # schema.DspSection.ptable's literal
+        PAGE_MARK = "$fab1e1"            # a module's page snapshot: 32 free words after the parked tables
 
         # ---- XTABLE: the P tables go to the stock curve bank ------------
         _xt_base, _xt_words = stock_mod.CURVE_BANK
@@ -2536,7 +2543,7 @@ hostquit:
                   f"X:0x{_xt_base:05x} is not one identical 4,096-word "
                   f"record in both payloads of this image")
         elif _xt_tables:
-            _xa = _xt_base
+            _xa = _xt_base + 1          # word 0 = the module directory (frameend)
             for _k in _xt_tables:
                 _t = _texts[_k]
                 # A module may carry BOTH the LFO table and its own ptable
@@ -2555,6 +2562,23 @@ hostquit:
                   f"every stock reader of it "
                   f"({'/'.join(sorted({k for ks in _xt_readers.values() for k in ks}))}) "
                   f"is harvested (static scan, not a read-watch)")
+
+        _frameend_dir.setdefault(tag, 0)
+        _page_snap = None
+        if _xt_layout:
+            _page_snap = max(a + n for a, n in _xt_layout.values())
+            if _page_snap + 32 > _xt_base + _xt_words:
+                sys.exit(f"payload {tag}: no room for the page snapshot after the parked tables")
+
+        def _marks(src_):
+            """The page-snapshot literal -> its address (32 words after the parked
+            tables). A source that carries it needs the parked-table region."""
+            if PAGE_MARK not in src_:
+                return src_
+            if _page_snap is None:
+                sys.exit(f"payload {tag}: a module uses {PAGE_MARK} (the page snapshot) "
+                         f"but the P tables are not parked in the curve bank")
+            return src_.replace(PAGE_MARK, f"${_page_snap:x}")
 
         def place_x(words, start):
             """Write table words into this payload's copy of the curve bank."""
@@ -2633,7 +2657,7 @@ hostquit:
                     print(f"  {'PTABLE':13} P:0x{DEV_DELAY_P:05x}..0x{_at:05x} "
                           f"({len(_ptab):4d} words)  {name}'s table  (DEV: leads "
                           f"the out-of-region record)")
-                words, init_a, proc_a = assemble(src, _at, label=name)
+                words, init_a, proc_a = assemble(_marks(src), _at, label=name)
                 if _at + len(words) >= 0x20000:
                     sys.exit(f"payload {tag}: DEV delay overruns the "
                              f"entry-point plausibility bound "
@@ -2680,7 +2704,7 @@ hostquit:
                         _s2, _xt_sites[name] = _p2x(_s2, name)
                     else:
                         _c += len(_tab)
-                _w, _ia, _pa = assemble(_s2, _c, label=name)
+                _w, _ia, _pa = assemble(_marks(_s2), _c, label=name)
                 _last = (_c, len(_w))
                 if _c + len(_w) <= _end:
                     _fit = (_r, _tab, _s2, _c, _w, _ia, _pa)
@@ -2734,6 +2758,36 @@ hostquit:
             _r["cursor"] = cursor + len(words)
             wrw_p(pp["xtab"] + NEW_IDS[name] * 3, init_a)
             wrw_p(pp["xtab"] + (32 + NEW_IDS[name]) * 3, proc_a)
+            if "frameend" in _LAST_SYMS:
+                # FRAME-END DETOUR: the module's compute runs after the
+                # dispatcher's last read-back copy. A one-word `jsr` goes
+                # over the two-word `move #>$421,r6` at P:0x340 (payload B's
+                # frame end; the cave re-executes it), and the directory word
+                # at X:0x4840 (word 0 of the parked-table region) names the
+                # entry so dsp_host can make the same call once per block.
+                if tag != "B":
+                    sys.exit(f"{name} declares frameend; only payload B has "
+                             f"the frame-end site")
+                if not _xt_layout:
+                    sys.exit(f"{name} declares frameend; the directory word "
+                             f"needs the parked-table region (XTABLE)")
+                _fe = _LAST_SYMS["frameend"]
+                _site = 0x340
+                _rec = [m for m in mods if m[0] == 0 and m[1] <= _site < m[1] + m[2]]
+                if len(_rec) != 1:
+                    sys.exit(f"payload {tag}: no single P record holds 0x{_site:05x}")
+                _o = va + _rec[0][3] + (_site - _rec[0][1]) * 3
+                _have = [int.from_bytes(img[_o - BASE + 3 * k:_o - BASE + 3 * k + 3], "little") for k in (0, 1)]
+                if _have != [0x66f400, 0x000421]:
+                    sys.exit(f"payload {tag}: P:0x{_site:05x} holds "
+                             f"{' '.join(f'{w:06x}' for w in _have)}, not the "
+                             f"frame-end `move #>$421,r6`")
+                wrw_p(_o, 0x0d0000 | _fe)
+                wrw_p(_o + 3, 0)
+                _frameend_dir[tag] = _fe
+                print(f"  FRAMEEND: {name}'s compute runs from P:0x{_fe:05x} at "
+                      f"the dispatcher's frame end (jsr planted at P:0x{_site:05x}); "
+                      f"directory word X:0x{_xt_base:05x}")
             if name == REMIX.fallback:
                 wrw_p(pp["xtab"] + NONE_ID * 3, init_a)          # id 0 alias,
                 wrw_p(pp["xtab"] + (32 + NONE_ID) * 3, proc_a)   # fresh = send
@@ -2802,6 +2856,10 @@ hostquit:
             print(f"  {'SEND @ 0x08':13} P:0x{fb_init:05x} "
                   f"(reuses the SEND client)  id 0x{STOCK_DELAY_ID:02x} "
                   f"*** DELAY's slot now runs SEND; audio passes through ***")
+        if _xt_layout:
+            # the module directory: word 0 of the parked-table region names
+            # the frame-end entry (0 = none); dsp_host reads it
+            place_x([_frameend_dir[tag]], _xt_base)
         if len(runs) < 2:
             # ⚠️ WORDING FROZEN for a single run: the build report is API
             # (refhash hashes it verbatim, verify_* parse it).
