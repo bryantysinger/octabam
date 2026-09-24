@@ -40,9 +40,9 @@ module supplies it.
   hash gates pass, the window reads back equal to the linked image except his
   own state words, i.e. his code ran from DRAM during boot. Arms the control
   fixture's five tracks.
-- The submodule pin (`259a835`) is his 8.2 (`8cba0fa`) plus two commits of
-  ours: the 1.40MIDISC8 `gas_port.py` (region table checked against his
-  image) and a regeneration for 8.2 that links `cc_gate` only while his
+- The submodule pin is his `main` at `63ca127` (his PR #6, merged): his
+  8.2 (`8cba0fa`) plus two gas commits, the 1.40MIDISC8 `gas_port.py`
+  (region table checked against his image) and a regeneration for 8.2 that links `cc_gate` only while his
   CONTROL filter is on, as his `build.py` does. His `build.py` at `8cba0fa`
   stops at `SAFE_CAVE overrun 2068` (`SAFE_CAVE_END` allows 2060): the 8.2
   `xf_mix` probe adds 12 bytes. The linked units are unaffected (DRAM).
