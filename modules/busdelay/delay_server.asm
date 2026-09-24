@@ -201,6 +201,7 @@ init:
         rts
 
 proc:
+        rts                             ; DIAG 95: the delay's DSP proc does nothing
 ; ---- HOSTGUARD: a remix that hides or locks this engine has the build put
 ; its host-slot test here (r7 == 0x6200, this core's position 0: T1 on
 ; core 1, T5 on core 0); elsewhere the call returns before touching any
