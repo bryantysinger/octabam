@@ -5,7 +5,11 @@
   tools/hw/usb_counters.py            # once
   tools/hw/usb_counters.py --watch 1  # every second, deltas beside the values
 
-Needs libusb and pyusb: `brew install libusb`, `.venv/bin/pip install pyusb`.
+Needs libusb and pyusb. On this Mac Homebrew is the Intel build under
+/usr/local and the .venv python is arm64, so the x86_64 python takes the
+package: `brew install libusb`, then
+`/usr/local/bin/python3 -m pip install --user --break-system-packages pyusb`
+and run this with `/usr/local/bin/python3` (25 Sep 2026).
 A device-recipient control request needs no interface claim, so the
 audio and MIDI drivers macOS attaches stay attached. The unit must be
 running a `usb-audio` image; on any other image the request STALLs
@@ -42,7 +46,15 @@ def main():
         import usb.core
     except ImportError:
         sys.exit("pyusb is not installed: brew install libusb && .venv/bin/pip install pyusb")
-    dev = usb.core.find(idVendor=0x1935, idProduct=0x0002)
+    # pyusb's default search misses a Homebrew libusb on this Mac (Intel
+    # brew under /usr/local, 25 Sep 2026); name the library outright.
+    import glob
+    import usb.backend.libusb1
+    libs = (glob.glob("/usr/local/opt/libusb/lib/libusb-1.0.dylib") + glob.glob("/opt/homebrew/opt/libusb/lib/libusb-1.0.dylib")
+            + glob.glob("/usr/local/lib/libusb-1.0*.dylib") + glob.glob("/usr/local/Cellar/libusb/*/lib/libusb-1.0*.dylib")
+            + glob.glob("/opt/homebrew/lib/libusb-1.0*.dylib") + glob.glob("/opt/homebrew/Cellar/libusb/*/lib/libusb-1.0*.dylib"))
+    backend = usb.backend.libusb1.get_backend(find_library=lambda _: libs[0]) if libs else None
+    dev = usb.core.find(idVendor=0x1935, idProduct=0x0002, backend=backend)
     if dev is None:
         sys.exit("no Octatrack on USB (1935:0002)")
     try:
