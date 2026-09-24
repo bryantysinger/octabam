@@ -13,7 +13,7 @@ REMIX = Remix(
     doc="usb + USB AUDIO: sixteen channels of the tracks over USB (UAC2).",
     modules=("REVERB SERVER", "DELAY SERVER", "SEND",
              "SPECTRUM", "CHARACTER", "MODULATION",
-             "TEMPO SYNC", "CC PAGE 2", "MODE DEFAULTS", "RIG HOSTS",
+             "TEMPO SYNC", "CC MAP", "MODE DEFAULTS", "RIG HOSTS",
              "USB MIDI", "USB AUDIO"),
     fallback="SEND",
     hidden=("REVERB SERVER", "DELAY SERVER"),

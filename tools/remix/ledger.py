@@ -201,7 +201,7 @@ def check(selected) -> list[str]:
     # A FLOATING emit cave's poke ADDRESSES do not depend on where the cave
     # lands -- only the values written do -- so it is evaluated at a probe
     # address purely to learn its sites. Until it was skipped,
-    # and the matrix said Octakit and CC PAGE 2 compose while the build
+    # and the matrix said Octakit and CC MAP compose while the build
     # refused them: both rewrite the MIDI control-parameter dispatch entry
     # at 0x400d64a0 (her seven midi-control-parameter writes, its repoint).
     PROBE_ADDR = 0x400D7000

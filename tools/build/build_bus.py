@@ -987,7 +987,7 @@ def main():
     _cave_top = cave_end            # caves start past the descriptor clones
     _ovf_top = OVERFLOW_RUN
     # ROM-placed linked units go FIRST, so a cave may name a unit's global
-    # (ccpage2's CC_MODEDEF*, resolved to mode-defaults' cc_fx2 / cc_fx1 when
+    # (cc-map's CC_MODEDEF*, resolved to mode-defaults' cc_fx2 / cc_fx1 when
     # the module is in the image, its stub `rts` otherwise). Floating caves
     # take the run after them. 15 Sep 2026; until then units floated after
     # the caves, which is why no cave could reach one.

@@ -354,7 +354,7 @@ def assert_connections(clock, layout, verbose=True):
     the track's channel). Not just the rung's explicit knobs: after a stress
     the other knobs hold their last stress value (13 Sep 2026 -- the unit sat
     with the delay at FDBK 127 and the stations' page 1 at 0 after the first
-    stress run). Page 2 cannot be driven (FAILURE_MODES: CC PAGE 2 does not
+    stress run). Page 2 cannot be driven (FAILURE_MODES: CC MAP does not
     write on hardware)."""
     sys.path.insert(0, str(HERE.parent)); import toolpath  # noqa: E402,F401
     from remix import registry

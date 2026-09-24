@@ -1,25 +1,26 @@
-"""CC PAGE 2 -- MIDI CC 62-67 reach the FX2 effect's page-2 slots 6-11, CC 68-73
-the FX1 effect's.
+"""CC MAP -- MIDI CC numbers stock ignores, mapped to parameters stock CC
+cannot reach. Today: CC 62-67 -> the FX2 effect's page-2 slots 6-11, CC 68-73
+-> the FX1 effect's. README.md lists the free CC numbers.
 
-Stock incoming CC reaches only FX2 page 1 (CC 40-45; the handler admits
+Stock incoming CC reaches page 1 only (CC 16-45; the handler admits
 cc-16 < 30, docs/firmware/MIDI.md appendix A). The MIDI dispatch table entry
 0x400d6474[0xB] (the CC vector) is repointed from the stock handler
-0x4000e79c to the cave. The cave reads the CC number; anything but 62-73
-tail-calls CC_NEXT (stock, or Octakit's handler under the SCENES KITS
-bridge) with the argument intact. For 62-67 it rebuilds the channel->track
-map, gates on AUDIO CC IN, and writes page-2 slot (cc-62) on every audio
-track whose trig channel matches: Part, live byte and mirror, the stores
-the page-2 editor 0x4003a474 makes (traced; it does not touch TRACKB). For
-68-73 it writes the FX1 page-2 slot the same way the FX1 page-2 editor
-0x4003abe4 does (Part +0x8f07e, shadow 0x100a51cc, lane +0x32, the four
-dirty flags), clamped by the FX1 descriptor's min/count; count 0 (NONE)
-writes nothing. Selects are clamped to their count: an over-count stored
-value is used as an index and stalls the sequencer.
+0x4000e79c to the cave. The cave reads the CC number; anything outside its
+blocks tail-calls CC_NEXT (stock, or Octakit's handler under the SCENES KITS
+bridge) with the argument intact. Inside a block it rebuilds the
+channel->track map, gates on AUDIO CC IN, and on every audio track whose
+trig channel matches makes the stores of that page's editor: FX2 page 2
+as 0x4003aab2 (Part +0x8f084, shadow 0x100a51d2, lane +0x38), FX1 page 2
+as 0x4003abe4 (Part +0x8f07e, shadow 0x100a51cc, lane +0x32), plus the four
+dirty flags. FX2 writes only on BusDelay/BusVerb, clamped by the cave's
+count tables; FX1 writes on any id but NONE (0), clamped by the FX1
+descriptor's min/count. Selects are clamped to their count: an over-count
+stored value is used as an index and stalls the sequencer.
 
-Source is the truth: the build assembles and links cc_page2.s where the
+Source is the truth: the build assembles and links cc_map.s where the
 cave floats; `legacy_bytes()` is the hand-assembled oracle the linked
 source is compared against (CavePatch.reference, and
-tools/verify/verify_ccpage2.py, which also proves the write for all eight
+tools/verify/verify_ccmap.py, which also proves the write for all eight
 tracks in the emulator against the firmware editor)."""
 
 import pathlib
@@ -36,7 +37,7 @@ DISPATCH_CC = 0x400d64a0
 STOCK_CC = 0x4000e79c
 STOCK_RTS = 0x40027e1a           # a bare `rts` in stock (the tail of 0x40027e00)
 
-# The hand-assembled form of cc_page2.s, with 0x40bad000/4 placeholders
+# The hand-assembled form of cc_map.s, with 0x40bad000/4 placeholders
 # for its two count tables; legacy_bytes(addr) patches them in. The oracle
 # the linked source is compared against every build.
 CODE = bytes.fromhex(
@@ -89,15 +90,15 @@ def emit(addr):
 
 
 MODULE = Module(
-    name="ccpage2",
-    key="CC PAGE 2",
+    name="cc-map",
+    key="CC MAP",
     kind=Kind.CF_PATCH,
     doc="MIDI CC 62-67 drive the FX2 engine's page-2 slots 6-11; CC 68-73 the FX1 station's.",
     cf_patches=(CavePatch(
         label="CC->FX2/FX1 page-2 cave + dispatch repoint",
         cave_addr=None,                 # floats in the ColdFire free region
         pinned=b"",                     # the linked source is the bytes
-        source="modules/ccpage2/cc_page2.s",
+        source="modules/cc-map/cc_map.s",
         cpu="5407",
         reference=legacy_bytes,         # checked at whatever address it floats to
         # Where other CCs go: stock's handler, or Octakit's when the

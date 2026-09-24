@@ -11,7 +11,7 @@ REMIX = Remix(
     doc="The rig + MIDI SCENES.",
     modules=("REVERB SERVER", "DELAY SERVER", "SEND", "DELAY",
              "SPECTRUM", "CHARACTER", "MODULATION",
-             "TEMPO SYNC", "CC PAGE 2",
+             "TEMPO SYNC", "CC MAP",
              "MIDI SCENES"),
     fallback="SEND",
     fx1=("SPECTRUM", "CHARACTER", "MODULATION"),

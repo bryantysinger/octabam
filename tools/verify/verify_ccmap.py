@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Prove the CC->FX2 (CC 62-67) and CC->FX1 (CC 68-73) page-2 cave (modules/ccpage2) in the emulator.
+"""Prove the CC->FX2 (CC 62-67) and CC->FX1 (CC 68-73) page-2 cave (modules/cc-map) in the emulator.
 
-1. Re-assemble modules/ccpage2/cc_page2.s and check it matches the pinned
+1. Re-assemble modules/cc-map/cc_map.s and check it matches the pinned
    CODE in the manifest (drifted source cannot pass).
 2. Place the emitted cave at a test address; for each audio track 0..7 on its
    own trig channel, feed a CC 62 (slot 6 = page-2 MODE) message and confirm
@@ -32,7 +32,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 CAVE_AT = 0x40300000            # a fresh RWX page, away from the OS image
 STOCK_CC = 0x4000e79c
 MSG_AT = 0x47e00000            # scratch for the 3-byte MIDI message
-FIXTURE_REMIX = "bamsep26"     # carries ccpage2, BusVerb, BusDelay and Character; no DRAM platform
+FIXTURE_REMIX = "bamsep26"     # carries cc-map, BusVerb, BusDelay and Character; no DRAM platform
 
 
 def _build(remix):
@@ -41,7 +41,7 @@ def _build(remix):
     r = subprocess.run([sys.executable, str(ROOT / "tools/build/build_bus.py")],
                        env=env, capture_output=True, text=True, cwd=ROOT)
     if r.returncode:
-        sys.exit(f"verify_ccpage2: building {remix} failed:\n{(r.stdout + r.stderr)[-1500:]}")
+        sys.exit(f"verify_ccmap: building {remix} failed:\n{(r.stdout + r.stderr)[-1500:]}")
     return ROOT / "out/mainos_bus.bin"
 
 AUDIO_CC_IN = 0x80000049
@@ -57,7 +57,7 @@ DLY_COUNTS = (3, 128, 128, 4, 128, 2)
 
 def _manifest():
     spec = importlib.util.spec_from_file_location(
-        "ccpage2_manifest", ROOT / "modules/ccpage2/manifest.py")
+        "ccmap_manifest", ROOT / "modules/cc-map/manifest.py")
     m = importlib.util.module_from_spec(spec)
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
     spec.loader.exec_module(m)
@@ -77,7 +77,7 @@ def check_source_matches(m):
         with tempfile.TemporaryDirectory() as d:
             o, e, b = (pathlib.Path(d) / n for n in ("cc.o", "cc.elf", "cc.bin"))
             subprocess.run(["m68k-elf-as", "-mcpu=5407", "-o", str(o),
-                            str(ROOT / "modules/ccpage2/cc_page2.s")], check=True)
+                            str(ROOT / "modules/cc-map/cc_map.s")], check=True)
             # The cave's fall-through is a link-time symbol (CC_NEXT) so a
             # bridge can chain it in front of Octakit's CC handler; the
             # manifest's default is stock's handler, and that is what the
@@ -89,7 +89,7 @@ def check_source_matches(m):
                             str(e), str(b)], check=True)
             linked = b.read_bytes()
         want = m.legacy_bytes(addr)
-        assert linked == want, (f"cc_page2.s linked at 0x{addr:08x} differs from the "
+        assert linked == want, (f"cc_map.s linked at 0x{addr:08x} differs from the "
                                 f"hand-patched legacy bytes ({len(linked)} vs {len(want)} B)")
         assert linked[-12:] == m.VERB_COUNTS + m.DLY_COUNTS, "count tables drifted"
     print("  source links to the legacy bytes at two addresses (%d bytes, tables intact)" % len(linked))

@@ -13,7 +13,7 @@ REMIX = Remix(
     doc="bamsep26 + USB MIDI (class-compliant, mirrors DIN).",
     modules=("REVERB SERVER", "DELAY SERVER", "SEND",
              "SPECTRUM", "CHARACTER", "MODULATION",
-             "TEMPO SYNC", "CC PAGE 2", "MODE DEFAULTS", "RIG HOSTS",
+             "TEMPO SYNC", "CC MAP", "MODE DEFAULTS", "RIG HOSTS",
              "USB MIDI"),
     fallback="SEND",
     hidden=("REVERB SERVER", "DELAY SERVER"),

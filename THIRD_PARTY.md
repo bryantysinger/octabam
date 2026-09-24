@@ -39,7 +39,7 @@ transcribed).
 | `modules/octakit` (Octakit) | https://github.com/emuyia/ems-octakit | MIT, Copyright (c) 2026 June Kiff |
 | `tools/remix/loader.S` (the DRAM loader) | derived from Octakit's `runtime/loader.S` | MIT, Copyright (c) 2026 June Kiff |
 
-`modules/kits-reload`, `modules/scenes-kits`, `modules/ccpage2`,
+`modules/kits-reload`, `modules/scenes-kits`, `modules/cc-map`,
 `modules/tempo-sync`, `modules/mode-defaults`, `modules/flex-seekbind*`,
 `modules/recorder-spacing` and `modules/lofi-amf-fix` are written here
 (sambanks; the LO-FI fix from Bryan T's finding) and carry `LICENSE`.
