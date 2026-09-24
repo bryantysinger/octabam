@@ -201,6 +201,18 @@ init:
         rts
 
 proc:
+; DIAG 96: WOW/16 picks where the preamble stops (held in y1, never stored):
+; 1 before anything, 2 after the host check + call-flag stash + frame
+; offset, 3 after the rotation tracker; 0 runs everything.
+        move    x:(r6+$e),b
+        and     #>$7f00,b
+        asr     #$c,b,b                 ; knob/16
+        move    b1,y1
+        move    y1,b
+        sub     #>$1,b
+        bne     d96a
+        rts
+d96a:
 ; ---- HOSTGUARD: a remix that hides or locks this engine has the build put
 ; its host-slot test here (r7 == 0x6200, this core's position 0: T1 on
 ; core 1, T5 on core 0); elsewhere the call returns before touching any
@@ -230,6 +242,11 @@ proc:
         move    x0,a                    ; A2-clean
         move    a,x:(r7+$67)            ; this call's frame offset
 bus_off_done:
+        move    y1,b                    ; DIAG 96 stop 2
+        sub     #>$2,b
+        bne     d96b
+        rts
+d96b:
 
 ; ---- position-0 housekeeping: flip the shared bus rotation, clear the new
 ; write-target ACC buffers. Gated on r7==0x6200 AND offset==0 -- copied from
@@ -340,6 +357,11 @@ bus_notfirst:
 ; that instead of the shared word.
 ; ROTLATCH
 
+        move    y1,b                    ; DIAG 96 stop 3
+        sub     #>$3,b
+        bne     d96c
+        rts
+d96c:
 ; ---- server-role lock: only ONE DELAY SERVER may run per bank -----------------
 ; Both servers use a FIXED, hardcoded Y base identical for every instance, so
 ; two of the same role would share one set of buffers and drive each other's
