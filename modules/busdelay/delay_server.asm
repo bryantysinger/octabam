@@ -1242,10 +1242,12 @@ gvrdone:
         add     x0,a
         move    a,x:(r7-$30)
         move    a,y1                    ; this sample's send level
-        move    x:(r7-$2b),r4           ; dry L and R, from the copy
-        move    y:(r4)+,a
-        move    y:(r4)+,x0
-        move    r4,x:(r7-$2b)
+        move    x:(r7-$2b),a            ; dry L and R, from the copy (the
+        move    a,r4                    ; pointer goes through a: a displaced
+        move    y:(r4)+,a               ; move of an ADDRESS register with a
+        move    y:(r4)+,x0              ; negative displacement is a form
+        move    r4,b                    ; stock never runs, image 20 24 Sep)
+        move    b,x:(r7-$2b)
         move    a,x:(r7-$2a)            ; parked for the output stage (raw
         move    x0,x:(r7-$28)           ; $1f / $21)
         add     x0,a
