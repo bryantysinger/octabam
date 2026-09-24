@@ -210,6 +210,7 @@ namespace ot
 		void setStopwatch(const int _core, const uint32_t _start, const uint32_t _stop) { m_sw.core = _core; m_sw.start = _start; m_sw.stop = _stop; }
 		const Stopwatch& stopwatch() const { return m_sw; }
 		const std::vector<PcWatchHit>& pcWatchHits() const { return m_pcWatchHits; }
+		void setPcWatchAll(const bool _all) { m_pcWatchAll = _all; }
 		const std::vector<std::string>& writeMap() const { return m_writeMap; }
 
 		// Run both cores up to the due count now (the ticks only book it),
@@ -245,7 +246,7 @@ namespace ot
 		bool m_idleSkip = true;
 		bool m_capture = false, m_tones = false, m_mapOn = false, m_writesOn = false;
 		bool m_pulling = false;
-		bool m_pcWatchOn = false; int m_pcWatchCore = 0; uint32_t m_pcWatchPc = 0; uint64_t m_pcWatchFrom = 0;	// with a `from`, the FIRST 24 arrivals after it are kept
+		bool m_pcWatchAll = false; bool m_pcWatchOn = false; int m_pcWatchCore = 0; uint32_t m_pcWatchPc = 0; uint64_t m_pcWatchFrom = 0;	// with a `from`, the FIRST 24 arrivals after it are kept
 		std::vector<PcWatchHit> m_pcWatchHits;
 		Stopwatch m_sw;
 		bool m_watchOn = false; int m_watchCore = 0; char m_watchSpace = 'X'; uint32_t m_watchAddr = 0;

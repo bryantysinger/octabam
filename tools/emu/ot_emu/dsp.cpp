@@ -799,10 +799,10 @@ namespace ot
 					if(m_sw.last.size() < 4096) m_sw.last.push_back(static_cast<uint32_t>(d));
 				}
 			}
-			if(m_pcWatchOn && i == m_pcWatchCore && pc == m_pcWatchPc && c.executed >= m_pcWatchFrom && !(m_pcWatchFrom && m_pcWatchHits.size() >= 24))
+			if(m_pcWatchOn && i == m_pcWatchCore && pc == m_pcWatchPc && c.executed >= m_pcWatchFrom && !(m_pcWatchFrom && !m_pcWatchAll && m_pcWatchHits.size() >= 24))
 			{
 				const auto& r = c.dsp->regs();
-				if(m_pcWatchHits.size() >= 24)
+				if(!m_pcWatchAll && m_pcWatchHits.size() >= 24)
 					m_pcWatchHits.erase(m_pcWatchHits.begin());
 				m_pcWatchHits.push_back({c.executed,
 					static_cast<uint32_t>((r.a.var >> 24) & 0xffffff), static_cast<uint32_t>(r.a.var & 0xffffff),
