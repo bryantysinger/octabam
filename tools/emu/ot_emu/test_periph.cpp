@@ -437,11 +437,18 @@ int main()
 		u.write(U::R_EPPRIME, 4, 1u << 19, false);
 		replies.clear();
 		u.command("in 3 1024", reply);
+		check("iso: an IN waits for the host's poll tick", replies.empty());
+		u.isoPoll();
 		check("iso: one 704-byte packet per poll, not the chain", !replies.empty() && replies.back().rfind("in 3 0001", 0) == 0 && replies.back().size() == 5 + 1408 + 1);
 		check("iso: the second dTD is still ACTIVE and pending", (ld32(tdJ + 4) & 0x80u) && (u.read(U::R_EPSR, 4) & (1u << 19)));
 		replies.clear();
 		u.command("in 3 1024", reply);
+		u.isoPoll();
 		check("iso: the next poll takes the second", !replies.empty() && replies.back().rfind("in 3 8081", 0) == 0);
+		replies.clear();
+		u.command("in 3 1024", reply);
+		u.isoPoll();
+		check("iso: a poll with nothing primed answers empty (the host's ZLP)", !replies.empty() && replies.back() == "in 3\n");
 
 		// OUT: bytes land in the primed buffer; a ZLP answers "out n 0".
 		const uint32_t qh2out = 0x4ec94800 + 0x100, tdO = 0x4ec953e0, bufO = 0x4ecc9000;
@@ -473,6 +480,15 @@ int main()
 		st32(qh0in + 0x0c, 0x80u);
 		u.write(U::R_EPPRIME, 4, 1u << 16, false);
 		checkEq("an uninitialised dQH is counted", u.stats().badQh, 1);
+
+		// poke / call are queued for whoever runs the machine, and answered
+		// by them; nothing is written from the socket reader.
+		u.command("call 0x40010bc8 3 0x400d807c", reply);
+		ot::UsbDevice::Request rq;
+		check("a call is queued, not answered", u.hasRequest() && u.takeRequest(rq) && rq.kind == "call" && rq.addr == 0x40010bc8
+			&& rq.args == std::vector<uint32_t>{3, 0x400d807c} && !u.hasRequest());
+		u.command("poke 0x400d807c 903c64", reply);
+		check("a poke carries its bytes", u.takeRequest(rq) && rq.kind == "poke" && rq.addr == 0x400d807c && rq.bytes == std::vector<uint8_t>{0x90, 0x3c, 0x64});
 
 		// SOF: SRI only, no UI -- the stock USBINTR 0x57 has no SRE, so no
 		// interrupt (a UI beside it cleared a real completion; usb.cpp).

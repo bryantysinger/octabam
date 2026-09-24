@@ -42,6 +42,7 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -104,6 +105,27 @@ namespace ot
 		// direction. Replies go to `_reply`.
 		void command(const std::string& _line, const std::function<void(const std::string&)>& _reply);
 
+		// Two bench commands the machine itself has to serve, from OUTSIDE
+		// the run loop (a borrowed call re-enters it):
+		//   poke <addr> <hex>      write bytes into guest memory   -> poke ok
+		//   call <addr> [arg ...]  run a firmware routine as main   -> call <d0> | call err <why>
+		// The run loop stops when one is queued (`hasRequest`), the caller
+		// serves it and answers with `answerRequest`.
+		struct Request { std::string kind; uint32_t addr = 0; std::vector<uint32_t> args; std::vector<uint8_t> bytes; };
+		bool hasRequest() const { return m_request != nullptr; }
+		bool takeRequest(Request& _out);
+		void answerRequest(const std::string& _reply) { reply(_reply); }
+
+		// The host's isochronous poll, once per 500 us of DEVICE time (the
+		// bInterval-3 high-speed schedule): a pending IN on an isochronous
+		// endpoint is served now if a packet is primed, else answered empty
+		// -- the zero-length packet a real host gets, an underrun the guest
+		// can count. A bulk IN is served the moment it can be (tryAll);
+		// an isochronous one only here, so a host script that polls as fast
+		// as the socket allows still drains at the device's own rate.
+		void isoPoll();
+		bool isIso(int _ep, bool _in) const;
+
 		// The host's start-of-frame, raised by the run loop per audio block
 		// while a host is connected and the controller is running: USBSTS.SRI,
 		// an interrupt only if the guest enabled SRE (stock does not).
@@ -148,6 +170,7 @@ namespace ot
 		bool m_sawClient = false;
 		bool m_hostPresent = false;
 		bool m_resetPending = false;
+		std::unique_ptr<Request> m_request;
 		std::function<void(const std::string&)> m_sink;	// where replies go while a command is being served
 		std::string m_line;
 		Stats m_stats;

@@ -7,6 +7,21 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- USB MIDI and USB AUDIO (25 Sep 2026, markandrus/octemu's work on the
+  DRAM platform; remixes `usb` and `usb-audio`): class-compliant USB-MIDI
+  mirroring DIN, and a UAC2 sixteen-channel input of the tracks (post-FX
+  pre-fader) at high speed, the stereo sum at full speed. Under the port:
+  enumeration, MIDI in and out through the firmware's own paths, the
+  clock-source requests, a 22/23-frame stream at the 500 us poll. Nothing
+  on hardware. DRAM units are now assembled for the chip itself
+  (`-mcpu=54455`; every runtime bit-identical), `Linked.include` works
+  for DRAM units, and `Override` bridges the shared USB ISR site.
+- Route A (`emu_bringup.boot`) folds the OS image's uncached alias at
+  `0x48000000` into the same 32 MB as `0x40000000` (25 Sep 2026): octabam's
+  loader depacks the DRAM runtime through the alias, so every DRAM remix
+  had faulted in that boot (`UC_ERR_WRITE_UNMAPPED`, loader pc
+  `0x4010fe92`) and `verify_hidden`'s host-page render drew nothing for
+  them. euclid and the USB remixes now reach the handoff there.
 - The ColdFire port models the USB device controller and carries a
   scripted host (25 Sep 2026, `ot_emu --usb-host`, `tools/harness/usb_host.py`,
   `verify_usb` in `make verify`): the stock stack enumerates and answers

@@ -212,8 +212,12 @@ read-back bank swap -- octemu's open hypothesis for its mid-stream clicks
 under the port: its trampoline hooks `fs_card_detect_poll` (`0x4003f174`),
 the firmware routine the card-detect GPIO poll reaches, and the port mounts
 the card by posting the mount message directly, so that routine never runs
-(0 hits on a PC watch across a 800-frame run). A module on octabam's DRAM
-platform is installed by the loader and needs no such hook.
+(0 hits on a PC watch across a 800-frame run). The modules `usbmidi` and
+`usbaudio` carry the same code on octabam's loader instead, and
+`verify_usb` streams from them: the bench polls an isochronous endpoint
+once per 500 us of DEVICE time (`isoPoll`), which is what a real host's
+bInterval-3 schedule does; a script draining as fast as the socket allows
+starved the ring and pulled the rate servo down to 21/22 frames.
 
 ## The card (route A)
 
@@ -233,6 +237,16 @@ count.
 No audio, no display pixels (strings only), no key matrix; route A models
 no DSP. The C++ port (`make emu-cf`, `tools/emu/ot_emu`) runs both DSP
 cores and the host port and is what `make check`'s boot verifier uses.
+
+Route A's RAM map folds the OS image's uncached alias at `0x48000000` into
+the same 32 MB as `0x40000000` (25 Sep 2026; the port's `machine.h` folds
+it too). octabam's loader depacks the DRAM runtime through that alias and
+the code then runs from the cached address, so with two separate mappings
+every DRAM remix faulted in the boot (`UC_ERR_WRITE_UNMAPPED` at loader pc
+`0x4010fe92`, a1 `0x48a97000`) and `verify_hidden` drew nothing for their
+host pages. The `0x46000000` region's alias at `0x4e000000` is still
+separate here (grown on demand by `_prime_menu`'s hook); the port folds
+both.
 
 ## Speed (the port, measured 17 Sep 2026, M-series Mac, native arm64)
 

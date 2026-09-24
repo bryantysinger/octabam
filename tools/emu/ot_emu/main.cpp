@@ -1046,13 +1046,43 @@ int main(int _argc, char** _argv)
 			std::printf("usb        : holding for a bench client (up to %.0f wall ms; ends when the client disconnects)\n", usbHoldMs);
 			const auto start = std::chrono::steady_clock::now();
 			bool capped = false;
-			const auto rs = rtos.runUntil(1e15, [&]
+			ot::Rtos::Stop rs;
+			for(;;)
 			{
-				if(usb->sawClient() && !usb->connected())
-					return true;
-				capped = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() > usbHoldMs;
-				return capped;
-			});
+				rs = rtos.runUntil(1e15, [&]
+				{
+					if(usb->hasRequest() || (usb->sawClient() && !usb->connected()))
+						return true;
+					capped = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() > usbHoldMs;
+					return capped;
+				});
+				ot::UsbDevice::Request req;
+				if(rs != ot::Rtos::Stop::Gate || !usb->takeRequest(req))
+					break;
+				// Served here, outside the run loop: a borrowed call runs
+				// the machine itself.
+				if(req.kind == "poke")
+				{
+					for(size_t i = 0; i < req.bytes.size(); ++i)
+						m.write8(req.addr + uint32_t(i), req.bytes[i]);
+					usb->answerRequest("poke ok\n");
+				}
+				else
+				{
+					uint32_t d0 = 0;
+					// A borrowed call needs main parked in its idle spin; the
+					// request stopped the loop wherever a task was.
+					const bool ok = rtos.runToMainSpin() == ot::Rtos::Stop::Gate
+						&& rtos.callAsMain(req.addr, req.args, d0, 200000000);
+					char line[256];
+					if(ok)
+						std::snprintf(line, sizeof line, "call %#x\n", d0);
+					else
+						std::snprintf(line, sizeof line, "call err %s\n", rtos.why().c_str());
+					std::printf("usb        : bench %s %#x(%zu arg%s) -> %s", req.kind.c_str(), req.addr, req.args.size(), req.args.size() == 1 ? "" : "s", line);
+					usb->answerRequest(line);
+				}
+			}
 			std::printf("usb        : hold ended %s (%.1f s of machine time) -- %s\n", capped ? "on the wall cap" : "on the client's hangup",
 				rtos.ms() / 1000.0, rs == ot::Rtos::Stop::Gate ? "ok" : rtos.why().c_str());
 		}

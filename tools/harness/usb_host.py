@@ -88,6 +88,16 @@ class Bench:
             raise Stall(f"EP{ep} OUT stalled")
         return int(parts[2])
 
+    def poke(self, addr, data):
+        self.cmd(f"poke {addr:#x} {data.hex()}", "poke")
+
+    def call(self, addr, *args, timeout=None):
+        r = self.cmd("call " + " ".join(f"{v:#x}" for v in (addr, *args)), "call", timeout)
+        parts = r.split()
+        if len(parts) > 1 and parts[1] == "err":
+            raise RuntimeError(r)
+        return int(parts[1], 0)
+
     def ctrl_in(self, bm, breq, wval, widx, wlen):
         self.setup(bm, breq, wval, widx, wlen)
         data = self.ep_in(0, wlen)
@@ -217,6 +227,17 @@ def main(argv):
         enumerate_device(b)
         midi_send(b, bytes.fromhex(argv[3]))
         return 0
+    if what == "midi-tx":
+        # the firmware's own midi_send (0x40010bc8) on a message poked into
+        # its outbound staging buffer (0x400d807c), then drain EP2 IN
+        enumerate_device(b)
+        raw = bytes.fromhex(argv[3]) if len(argv) > 3 else bytes([0x90, 0x3c, 0x64])
+        b.poke(0x400d807c, raw)
+        b.call(0x40010bc8, len(raw), 0x400d807c)
+        pk = midi_recv(b, 2.0)
+        want = bytes([raw[0] >> 4]) + raw + bytes(3 - len(raw))
+        print(f"midi-tx: {'PASS' if want in pk else 'FAIL'} expected packet {want.hex()}")
+        return 0 if want in pk else 1
     if what == "audio":
         enumerate_device(b)
         ep, seconds, path = int(argv[3]), float(argv[4]), argv[5]

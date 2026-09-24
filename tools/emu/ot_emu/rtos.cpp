@@ -431,11 +431,21 @@ namespace ot
 		// from the DSP block close as well; the payload's packet builder is
 		// paced by the host's IN polls, not by this edge).
 		if(m_usb)
+		{
 			while(m_sample >= m_usbNextSof)
 			{
 				m_usb->sof();
 				m_usbNextSof += g_framePeriod;
 			}
+			// The host's isochronous poll: every 500 us of device time
+			// (22.05 samples), the bInterval-3 schedule the audio
+			// endpoint is described with.
+			while(m_sample >= m_usbNextIso)
+			{
+				m_usb->isoPoll();
+				m_usbNextIso += 44100.0 / 2000.0;
+			}
+		}
 	}
 
 	bool Rtos::anyPending() const

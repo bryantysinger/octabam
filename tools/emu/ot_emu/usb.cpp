@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <fcntl.h>
@@ -292,6 +293,12 @@ namespace ot
 		reply("ok\n");
 	}
 
+	bool UsbDevice::isIso(const int _ep, const bool _in) const
+	{
+		const uint32_t epctrl = m_regs[(R_EPCTRL0 + 4u * _ep) / 4];
+		return (((_in ? epctrl >> 18 : epctrl >> 2)) & 3u) == 1u;
+	}
+
 	void UsbDevice::tryAll()
 	{
 		busReset();
@@ -299,10 +306,46 @@ namespace ot
 			return;
 		for(int ep = 0; ep < g_endpoints; ++ep)
 		{
-			if(m_in[ep].pending && (m_regs[R_EPSR / 4] & (1u << (ep + 16))))
+			if(m_in[ep].pending && !isIso(ep, true) && (m_regs[R_EPSR / 4] & (1u << (ep + 16))))
 				service(ep, true);
-			if(m_out[ep].pending && (m_regs[R_EPSR / 4] & (1u << ep)))
+			if(m_out[ep].pending && !isIso(ep, false) && (m_regs[R_EPSR / 4] & (1u << ep)))
 				service(ep, false);
+		}
+	}
+
+	void UsbDevice::isoPoll()
+	{
+		if(!connected() || !m_regs[R_EPLISTADDR / 4])
+			return;
+		for(int ep = 0; ep < g_endpoints; ++ep)
+		{
+			// A DISABLED endpoint (TXE/RXE clear, the stream torn down at
+			// alt 0) answers the poll empty as well: nothing will ever be
+			// primed on it, and a real host's IN gets no data.
+			const uint32_t epctrl = m_regs[(R_EPCTRL0 + 4u * ep) / 4];
+			const bool txDisabled = ep != 0 && !(epctrl & (1u << 23)), rxDisabled = ep != 0 && !(epctrl & (1u << 7));
+			if(m_in[ep].pending && (isIso(ep, true) || txDisabled))
+			{
+				if(m_regs[R_EPSR / 4] & (1u << (ep + 16)))
+					service(ep, true);
+				else
+				{
+					m_in[ep].pending = false;
+					++m_stats.ins;
+					reply("in " + std::to_string(ep) + "\n");
+				}
+			}
+			if(m_out[ep].pending && (isIso(ep, false) || rxDisabled))
+			{
+				if(m_regs[R_EPSR / 4] & (1u << ep))
+					service(ep, false);
+				else
+				{
+					m_out[ep].pending = false;
+					++m_stats.outs;
+					reply("out " + std::to_string(ep) + " 0\n");
+				}
+			}
 		}
 	}
 
@@ -411,8 +454,40 @@ namespace ot
 			m_speedHs = l.compare(6, 2, "hs") == 0;
 			_reply("ok\n");
 		}
+		else if(l.rfind("poke ", 0) == 0 || l.rfind("call ", 0) == 0)
+		{
+			auto r = std::make_unique<Request>();
+			r->kind = l.substr(0, 4);
+			std::string rest = l.substr(5);
+			const auto sp = rest.find(' ');
+			r->addr = uint32_t(std::strtoul(rest.substr(0, sp).c_str(), nullptr, 0));
+			if(sp != std::string::npos)
+			{
+				rest = rest.substr(sp + 1);
+				if(r->kind == "poke")
+					hexBytes(rest.c_str(), r->bytes, g_maxTransfer);
+				else
+					for(size_t q = 0; q < rest.size();)
+					{
+						auto e = rest.find(' ', q);
+						if(e == std::string::npos) e = rest.size();
+						if(e > q) r->args.push_back(uint32_t(std::strtoul(rest.substr(q, e - q).c_str(), nullptr, 0)));
+						q = e + 1;
+					}
+			}
+			m_request = std::move(r);		// answered by whoever serves it
+		}
 		else
 			_reply("err unknown\n");
+	}
+
+	bool UsbDevice::takeRequest(Request& _out)
+	{
+		if(!m_request)
+			return false;
+		_out = *m_request;
+		m_request.reset();
+		return true;
 	}
 
 	// ---- the socket ---------------------------------------------------------
