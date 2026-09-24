@@ -6,7 +6,8 @@
   tools/harness/usb_host.py /tmp/ot-usb.sock msc           # + INQUIRY, TEST UNIT READY
   tools/harness/usb_host.py /tmp/ot-usb.sock midi-recv 5   # drain EP2 IN for 5 s
   tools/harness/usb_host.py /tmp/ot-usb.sock midi-send 903c64
-  tools/harness/usb_host.py /tmp/ot-usb.sock audio 3 2.0 out.pcm   # drain an iso IN endpoint
+  tools/harness/usb_host.py /tmp/ot-usb.sock audio 3 2.0 out.pcm   # drain an iso IN endpoint, then the counters
+  tools/harness/usb_host.py /tmp/ot-usb.sock counters       # USB AUDIO's twelve counters (vendor request)
 
 The line protocol is octemu's (markandrus, MIT), so its tests/usb-host.py
 drives this port too. Every transfer runs under a deadline: a hang IS the
@@ -193,6 +194,19 @@ def midi_send(b, raw):
     print(f"midi-send: {b.ep_out(2, pkt)} byte(s) accepted")
 
 
+COUNTERS = ("consumed", "acc", "overruns", "underruns", "lastn", "lastfill", "lastbank",
+            "bankdup", "lastsamp", "srcjump", "reprimes", "produced")
+
+
+def counters(b):
+    """USB AUDIO's twelve counters over the vendor request 0xc0/0x55 (48 big-endian bytes)."""
+    raw = b.ctrl_in(0xc0, 0x55, 0, 0, 48)
+    vals = struct.unpack(">12i", raw) if len(raw) == 48 else None
+    if vals is None:
+        raise RuntimeError(f"counters: {len(raw)} bytes")
+    return dict(zip(COUNTERS, vals))
+
+
 def audio(b, ep, seconds, path):
     """Drain an isochronous IN endpoint at the host's poll rate and keep the bytes."""
     n = int(seconds * 2000)
@@ -238,11 +252,18 @@ def main(argv):
         want = bytes([raw[0] >> 4]) + raw + bytes(3 - len(raw))
         print(f"midi-tx: {'PASS' if want in pk else 'FAIL'} expected packet {want.hex()}")
         return 0 if want in pk else 1
+    if what == "counters":
+        enumerate_device(b)
+        for k, v in counters(b).items():
+            print(f"  {k:10s} {v}")
+        return 0
     if what == "audio":
         enumerate_device(b)
         ep, seconds, path = int(argv[3]), float(argv[4]), argv[5]
         b.ctrl_nodata(0x01, 0x0b, 1, int(argv[6]) if len(argv) > 6 else 4)   # SET_INTERFACE alt 1
         audio(b, ep, seconds, path)
+        c = counters(b)
+        print("counters: " + " ".join(f"{k}={v}" for k, v in c.items() if k in ("underruns", "overruns", "bankdup", "reprimes", "produced", "consumed")))
         return 0
     print(f"unknown scenario {what}")
     return 2

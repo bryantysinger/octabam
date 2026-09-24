@@ -73,6 +73,51 @@ swap, his open hypothesis for the clicks he hears on hardware (the
 `usbaudio_bankdup` counter is in the unit's data for a hardware read-back).
 A lock-step emulator serialises the frame interrupt and the eDMA.
 
+## The counters, from a host
+
+The unit answers a vendor control request (bmRequestType 0xc0, bRequest
+0x55) with its twelve counters as 48 big-endian bytes: consumed, acc,
+overruns, underruns, lastn, lastfill, lastbank, bankdup, lastsamp,
+srcjump, reprimes, produced. `tools/hw/usb_counters.py [--watch 1]` reads
+them on a unit (`brew install libusb`, `.venv/bin/pip install pyusb`); the
+port's bench reads them with `usb_host.py … counters`, and `verify_usb`
+checks them after its stream (under the port: 0 underruns, 0 overruns,
+bankdup 2 at the frame engine's start).
+
+## Hardware test (image 64, the first flash)
+
+The question is his mid-stream clicks: not packet loss on his unit
+(0 overruns, 0 steady-state underruns), so either the producer reads a
+read-back bank twice or skips one (`bankdup` moves) or the fault is on the
+host side (`bankdup` stays). One flash, one recording.
+
+1. `make image REMIX=usb-audio BUILD=64` → `out/OCTATRACK_OCTABAM64.bin`
+   to the card root, PROJECT → SYSTEM → OS UPGRADE; the rig modules are
+   bamsep26's, so the current project plays as before.
+2. USB to the Mac. Audio MIDI Setup should list the unit as a 16-channel
+   input at 44.1 kHz (the MIDI Studio shows its MIDI port too). If it does
+   not enumerate, `system_profiler SPUSBDataType | grep -A12 Octatrack`.
+3. `tools/hw/usb_counters.py` once: produced counts up while idle (the
+   producer runs from the frame interrupt whether or not anyone listens);
+   underruns, overruns and bankdup should sit at 0 while nothing streams.
+4. Record while the project plays, 60 s, all sixteen channels:
+   `sox -t coreaudio "Elektron Octatrack" -c 16 -r 44100 -b 16 out/usb_take1.wav trim 0 60`
+   (the exact device name is in `sox -V6 -n -t coreaudio /dev/null 2>&1 | grep -i octa`
+   or Audio MIDI Setup), with `tools/hw/usb_counters.py --watch 5` in a
+   second terminal from before the recording starts to after it stops.
+5. Read the take: `python3 tools/harness/click_scan.py out/usb_take1.wav`
+   lists per-channel sample steps above 8× the channel's 99th percentile
+   with their times; line them up against the counter watch.
+
+Outcomes: bankdup increments during the take → the producer (the frame
+interrupt's read of the previous bank lands against the eDMA's swap; the
+fix is a copy taken at a proven-safe point, the shape of #397). bankdup
+still, underruns still, clicks present → the host or the cable; try a
+second host and USB port before touching the unit. Clicks absent → his
+caveat does not reproduce here. A freeze, a hang or a wedge on plugging
+in: power off, recover per `docs/remixer/FLASHING.md`, and the FAILURE_MODES
+entry gets the symptom.
+
 ## Ground
 
 | what | where |
