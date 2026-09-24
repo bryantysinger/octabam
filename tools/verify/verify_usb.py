@@ -112,6 +112,11 @@ def main():
             sizes = sorted({len(g) for g in got[10:]})           # the first polls may land before the first prime
             check("USB AUDIO: 400 polls on EP3 carry 22/23-frame packets and none empty after the first ten",
                   bool(sizes) and all(s in (704, 736) for s in sizes), f"sizes {sizes}")
+            c = usb_host.counters(b)
+            print("  counters: " + " ".join(f"{k}={v}" for k, v in c.items()))
+            check("USB AUDIO: the vendor request reads the counters back: frames produced and consumed, no overrun",
+                  c["produced"] > c["consumed"] > 0 and c["overruns"] == 0,
+                  f"produced {c['produced']} consumed {c['consumed']} overruns {c['overruns']} underruns {c['underruns']} bankdup {c['bankdup']}")
             b.ctrl_nodata(0x01, 0x0b, 0, 4)
             after = [len(b.ep_in(3, 1024)) for _ in range(8)]
             check("USB AUDIO: alt 0 stops the stream (empty polls)", all(a == 0 for a in after[2:]), str(after))

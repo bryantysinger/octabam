@@ -1029,6 +1029,21 @@ audio_frame_shim_body:
     .global audio_ctrl_shim
 audio_ctrl_shim:
     mvzb    SETUP_BMREQ,%d0
+    | octabam: a vendor GET (bmRequestType 0xc0, bRequest 0x55) reads the
+    | twelve counters below back over EP0 as 48 big-endian bytes, so a
+    | host -- the port's bench, or tools/hw/usb_counters.py on a unit --
+    | can watch underruns, overruns and the bank-duplicate count during a
+    | stream. Any driver a host attached to the interfaces is bypassed: a
+    | device-recipient control request needs no interface claim.
+    cmpil   #0xc0,%d0
+    bnes    .Lctrl_class
+    mvzb    SETUP_BREQ,%d0
+    cmpil   #0x55,%d0
+    bne     .Lctrl_stock
+    pea     usbaudio_consumed
+    moveq   #48,%d0
+    bra     .Lctrl_send
+.Lctrl_class:
     cmpil   #0xa1,%d0               | class GET, interface recipient
     bne     .Lctrl_stock
     mvzb    SETUP_IFACE,%d0
@@ -1086,6 +1101,8 @@ uac2_clock_valid: .byte 0x01
     .global usbaudio_underruns, usbaudio_lastn, usbaudio_lastfill
     .global usbaudio_lastbank, usbaudio_bankdup, usbaudio_srcjump
     .global usbaudio_reprimes
+| The twelve longs from usbaudio_consumed to aud_produced are what the
+| vendor request 0xc0/0x55 returns, in this order.
 usbaudio_consumed: .long 0          | frames pulled from the ring
 usbaudio_acc:      .long 0          | frames-per-packet accumulator (x100)
 usbaudio_overruns: .long 0

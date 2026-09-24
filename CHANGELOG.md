@@ -7,6 +7,11 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- USB AUDIO's counters over a vendor control request (25 Sep 2026,
+  `tools/hw/usb_counters.py`, the bench's `counters`, checked by
+  `verify_usb`), `tools/harness/click_scan.py`, and image 64 packed from
+  `usb-audio` for the first hardware run (the protocol in
+  `modules/usbaudio/README.md`). Unflashed.
 - USB MIDI and USB AUDIO (25 Sep 2026, markandrus/octemu's work on the
   DRAM platform; remixes `usb` and `usb-audio`): class-compliant USB-MIDI
   mirroring DIN, and a UAC2 sixteen-channel input of the tracks (post-FX
