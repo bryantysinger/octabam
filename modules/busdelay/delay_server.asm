@@ -395,6 +395,10 @@ bus_mine:
         asl     a
         move    a1,x1                   ; ... in words (r0 less the block's
                                         ; base: 0 on the unit, dsp_host's -audio)
+        move    r0,a
+        sub     x1,a
+        move    a,y:>$ac2               ; the block's base, for the compute
+                                        ; (before the loop: it reuses x1)
         move    #>$a80,a
         add     x1,a
         move    a,r4                    ; their input words -> Y:$a80+
@@ -420,9 +424,6 @@ fe_swap:
         move    x:(r3)+,x1
         move    x1,y:(r4)+
 fe_page:
-        move    r0,a
-        sub     x1,a
-        move    a,y:>$ac2               ; the block's base, for the compute
         move    #>$1,a
         move    a,y:>$ac1               ; a block is waiting
         rts
@@ -472,6 +473,8 @@ fe_pg2:
         move    x:(r3)+,x0
         move    x0,y:(r4)+
 fe_out:
+        move    #>$421,r6               ; the displaced instruction's effect:
+                                        ; P:0x342.. copies X:$421..$425 through r6
 fe_none:
         rts
 
