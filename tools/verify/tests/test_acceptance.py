@@ -125,6 +125,22 @@ class GateTests(unittest.TestCase):
         a.write_report(self.out, report)
         self.assertEqual(json.loads((self.out / "report.json").read_text())["status"], "passed")
 
+    def test_external_project_audio_and_metadata_are_fingerprinted(self):
+        project = self.out / "project"
+        project.mkdir()
+        (project / "project.work").write_text(
+            "[SAMPLE]\nTYPE=FLEX\nSLOT=001\nPATH=../sample.wav\n[/SAMPLE]\n")
+        sample = self.out / "sample.wav"
+        metadata = self.out / "sample.ot"
+        sample.write_bytes(b"first fixture")
+        metadata.write_bytes(b"sample metadata")
+        first = a.sample_inventory(project)
+        self.assertEqual(first["../sample.wav"]["metadata_sha256"], a.sha256(metadata))
+        sample.write_bytes(b"changed fixture")
+        self.assertNotEqual(first, a.sample_inventory(project))
+        sample.unlink()
+        self.assertIsNone(a.sample_inventory(project)["../sample.wav"]["sha256"])
+
     def test_generated_audio_is_repeatable_stereo_and_nonzero(self):
         import wave
         from stress_project import make_sample

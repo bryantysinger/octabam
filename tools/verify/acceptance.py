@@ -48,6 +48,22 @@ def inventory(path):
             for p in sorted(path.rglob("*")) if p.is_file()}
 
 
+def sample_inventory(project):
+    """Project sample paths may point outside the project, e.g. ../AUDIO."""
+    from ot_project import read_project
+    _, slots = read_project(project)
+    result = {}
+    for slot in slots:
+        rel = slot["path"]
+        if not rel:
+            continue
+        path = (project / rel).resolve()
+        metadata = path.with_suffix(".ot")
+        result[rel] = dict(sha256=sha256(path) if path.is_file() else None,
+                           metadata_sha256=sha256(metadata) if metadata.is_file() else None)
+    return result
+
+
 def git(*args):
     return subprocess.check_output(["git", *args], cwd=ROOT, text=True).strip()
 
@@ -260,6 +276,7 @@ def main(argv=None):
                 return 1
             record(dict(name="fixture", status="passed", reason="operator-supplied project"))
         report["fixtures"]["project"] = inventory(project)
+        report["fixtures"]["referenced_samples"] = sample_inventory(project)
         env["OT_PROJECT"] = str(project)
         report["parameters"] = dict(build=env["BUILD"], bank=env.get("OT_BANK"),
                                     pressure=dict(top=6, sample=4, seed=1, seconds=2, frames=16))

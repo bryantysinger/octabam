@@ -92,6 +92,8 @@ before reading it.
   tested image hashes. Uncommitted source is identifiable too.
 - `modules`: selected keys, kinds and manifest hashes.
 - `fixtures`: relative filenames and hashes, never project/audio bytes.
+  Referenced samples outside the project (including their `.ot` metadata)
+  are fingerprinted too; missing referenced files have null hashes.
 - `parameters`: build/bank and pressure sampling settings.
 - `measurements`: existing cycle/price/render JSON, preserving its units
   and per-layout findings rather than translating it to a CPU percentage.
