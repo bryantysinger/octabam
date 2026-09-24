@@ -7,6 +7,13 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- The ColdFire port models the USB device controller and carries a
+  scripted host (25 Sep 2026, `ot_emu --usb-host`, `tools/harness/usb_host.py`,
+  `verify_usb` in `make verify`): the stock stack enumerates and answers
+  mass-storage INQUIRY under the port; octemu's USB-MIDI image built from
+  the same stock bytes enumerates with three interfaces and its received
+  packets reach the firmware's MIDI FIFO. Off by default, so every earlier
+  gate is unchanged. `docs/remixer/EMU.md` "USB".
 - The level knobs ramp per sample across each block (23 Sep 2026): the
   reverb's WET, the delay's WET, the delay host's SEND and every SEND
   client's level. Each stepped once per block, the sends with no glide at
