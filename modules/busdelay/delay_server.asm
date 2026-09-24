@@ -428,6 +428,41 @@ fe_page:
 ; ---- the compute: from here to `dry:` exactly as before the split, entered
 ; by `frameend` with r7 = the host's raw instance block, r6 = the page,
 ; r0 = 0, n7 = 16 and the audio block at X:0 holding the saved input.
+frameend:
+; ---- FRAME END (payload B): the build plants `jsr <frameend` over the
+; two-word `move #>$421,r6` at the dispatcher's P:0x340, so the displaced
+; instruction runs first and the rts returns to the `jmp` that follows it.
+        move    #>$421,r6
+        move    y:>$ac1,a
+        tst     a
+        beq     fe_none                 ; no host call this frame
+        clr     a
+        move    a,y:>$ac1
+        move    #>$ffffff,m3
+        move    #>$ffffff,m4
+        move    #>$a80,r4               ; the saved input -> the audio block
+        move    y:>$ac2,r3
+        do      #$20,fe_in
+        move    y:(r4)+,x0
+        move    x0,x:(r3)+
+fe_in:
+        move    #>$fab1e1,r6            ; the page snapshot (PAGE_SNAP)
+        move    #>$6200,r7              ; the host's instance block (HOSTGUARD)
+        move    y:>$ac2,r0              ; the block's base
+        move    #>$10,n7                ; the whole block
+        clr     a
+        move    a,x:>$6267              ; frame offset 0 (raw $67)
+        move    a,x:>$6214              ; call flag 0 (raw $14)
+        bsr     compute                 ; PC-relative: cycle_count assembles this file at a high org
+        move    #>$aa0,r4               ; the result, emitted by the next call
+        move    y:>$ac2,r3
+        do      #$20,fe_out
+        move    x:(r3)+,x0
+        move    x0,y:(r4)+
+fe_out:
+fe_none:
+        rts
+
 compute:
 ; ---- r7 REBASE (14 Sep 2026): from here to `dry:` r7 points $49 INTO the
 ; state block. The one-word displaced move reaches -64..63 and the block
@@ -1913,41 +1948,6 @@ dry:
                                         ; (m0/m4/m5 are set linear every block
                                         ; above and never changed: their
                                         ; restores here were no-ops)
-        rts
-
-frameend:
-; ---- FRAME END (payload B): the build plants `jsr <frameend` over the
-; two-word `move #>$421,r6` at the dispatcher's P:0x340, so the displaced
-; instruction runs first and the rts returns to the `jmp` that follows it.
-        move    #>$421,r6
-        move    y:>$ac1,a
-        tst     a
-        beq     fe_none                 ; no host call this frame
-        clr     a
-        move    a,y:>$ac1
-        move    #>$ffffff,m3
-        move    #>$ffffff,m4
-        move    #>$a80,r4               ; the saved input -> the audio block
-        move    y:>$ac2,r3
-        do      #$20,fe_in
-        move    y:(r4)+,x0
-        move    x0,x:(r3)+
-fe_in:
-        move    #>$fab1e1,r6            ; the page snapshot (PAGE_SNAP)
-        move    #>$6200,r7              ; the host's instance block (HOSTGUARD)
-        move    y:>$ac2,r0              ; the block's base
-        move    #>$10,n7                ; the whole block
-        clr     a
-        move    a,x:>$6267              ; frame offset 0 (raw $67)
-        move    a,x:>$6214              ; call flag 0 (raw $14)
-        jsr     compute
-        move    #>$aa0,r4               ; the result, emitted by the next call
-        move    y:>$ac2,r3
-        do      #$20,fe_out
-        move    x:(r3)+,x0
-        move    x0,y:(r4)+
-fe_out:
-fe_none:
         rts
 
 ; ---- modtap: the line read at this sample's lag, shared by both lines -----
