@@ -1710,6 +1710,9 @@ def main():
     print("=== DSP: code placed, dispatch wired, both payloads ===")
     delay_src = (pathlib.Path(ASM_SRC["DELAY SERVER"]).read_text()
                  if "DELAY SERVER" in ASM_SRC else None)
+    LINES16 = os.environ.get("LINES16") == "1"
+    if LINES16 and (os.environ.get("XBUS") != "1" or DEV):
+        sys.exit("LINES16=1 is a cross-core bus diagnostic; it requires XBUS=1 and cannot be combined with DEV=1")
     if delay_src is not None:
         # The line geometry follows the placement: `; @B` lines ship (two
         # 32K lines, LineR in core 1's private FX2 buffer region), `; @DEV`
@@ -1717,9 +1720,16 @@ def main():
         # 16K lines in the shared half). tools/remix/geom.py.
         from remix import geom as _geom
         _nb, _nd = _geom.census(delay_src)
-        delay_src = _geom.select(delay_src, DEV)
-        print(f"  DELAY SERVER: line geometry {'DEV (16K lines, payload A)' if DEV else 'shipping (32K lines, LineR private)'}"
-              f" -- {_nd if DEV else _nb} placement lines kept, {_nb if DEV else _nd} dropped")
+        delay_src = _geom.select(delay_src, DEV or LINES16)
+        if LINES16:
+            # Diagnostic: free the B payload's shared 0x38000..0x3ffff half
+            # by putting both 16K delay lines in core 1's private Y. This
+            # allows XBUS_BASE=3c000 to move every bus word into B's half.
+            if delay_src.count("#>$30000,x0") != 1:
+                sys.exit("LINES16=1 expected one shared LineL base literal")
+            delay_src = delay_src.replace("#>$30000,x0", "#>$4000,x0", 1)
+        print(f"  DELAY SERVER: line geometry {'DEV (16K lines, payload A)' if DEV else ('diagnostic (16K lines, both private, payload B)' if LINES16 else 'shipping (32K lines, LineR private)')}"
+              f" -- {_nd if (DEV or LINES16) else _nb} placement lines kept, {_nb if (DEV or LINES16) else _nd} dropped")
     if delay_src is None:
         # The overrides below splice into the delay's source. Asking for one
         # in a remix that has no delay is a mistake worth naming, not a
@@ -1938,7 +1948,11 @@ mkgo:""",
     # ---- XBUS=1: move the bus scratch into the SHARED window ---------------
     if os.environ.get("XBUS") == "1":
         # Overridable so the next round is a one-liner, not a code edit.
-        XBUS_BASE = int(os.environ.get("XBUS_BASE", "36000"), 16)
+        _default_xbus_base = "3c000" if LINES16 else "36000"
+        XBUS_BASE = int(os.environ.get("XBUS_BASE", _default_xbus_base), 16)
+        if LINES16 and XBUS_BASE != 0x3c000:
+            sys.exit("LINES16=1 requires XBUS_BASE=3c000 so the moved scratch "
+                     "occupies a free 8K block in core 1's shared half")
 
         def xbus(src, name, label):
             n = len(re.findall(r"\$9[0-9a-f]{2}\b", src))
@@ -2026,6 +2040,8 @@ mkgo:""",
     # $30000 as its payload discriminator. The gate is emitted per payload now
     # and carries no literal, so only the Y base remains.
     _want = (1 if DEV or SPEC else 0) if os.environ.get("XBUS") == "1" else 1
+    if LINES16 and delay_src is not None:
+        _want = 0  # the only $30000 literal was the LineL base above
     if delay_src is not None and delay_src.count("$30000") != _want:
         sys.exit(f"expected exactly {_want} $30000 literal(s) in the DELAY source")
 
