@@ -29,7 +29,7 @@
         .globl  fx2_hook, fx1_hook, CC_MODEDEF2, CC_MODEDEF1
 fx2_hook:
         jsr     DIRTY
-CC_MODEDEF2:                           | CC PAGE 2's entry (its cave sets the
+CC_MODEDEF2:                           | CC MAP's entry (its cave sets the
         lea     %sp@(-44),%sp          | flags itself): a2 = slot2, d2 = value,
         movem.l %d2-%d7/%a2-%a6,%sp@   | d4 = track, d5 = part
         moveq   #1,%d6                 | d6 = FX2

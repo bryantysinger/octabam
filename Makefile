@@ -195,9 +195,9 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	@if [ -x .venv/bin/python3 ]; then \
 	  .venv/bin/python3 tools/verify/verify_labels.py $(REMIX) && \
 	  .venv/bin/python3 tools/verify/verify_modenames.py $(REMIX) && \
-	  REMIX=$(REMIX) BUILD=$(BUILD) .venv/bin/python3 tools/verify/verify_ccpage2.py && \
+	  REMIX=$(REMIX) BUILD=$(BUILD) .venv/bin/python3 tools/verify/verify_ccmap.py && \
 	  .venv/bin/python3 tools/verify/verify_hidden.py $(REMIX); \
-	else echo "  [SKIP] labels / mode names / cc page-2 / hidden engines: no .venv (make emu-setup)"; fi
+	else echo "  [SKIP] labels / mode names / cc map / hidden engines: no .venv (make emu-setup)"; fi
 	python3 tools/verify/verify_grains.py $(REMIX)
 	@# The station and insert gates: each renders its module through dsp_host
 	@# on a scratch image the audition builds (remix-independent; Character's

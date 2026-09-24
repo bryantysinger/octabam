@@ -12,7 +12,7 @@ REMIX = Remix(
     doc="The rig + MIDI SCENES + Octakit, bridged.",
     modules=("REVERB SERVER", "DELAY SERVER", "SEND", "DELAY",
              "SPECTRUM", "CHARACTER", "MODULATION",
-             "TEMPO SYNC", "CC PAGE 2",
+             "TEMPO SYNC", "CC MAP",
              "MIDI SCENES", "OCTAKIT", "SCENES KITS", "KITS RELOAD"),
     fallback="SEND",
     fx1=("SPECTRUM", "CHARACTER", "MODULATION"),

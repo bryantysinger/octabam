@@ -193,7 +193,7 @@ TIME inert" was reading the material's own eighth and quarter at 121 BPM
 (248 / 496 ms) and is retracted; measure a delay time from the spacing of
 the decaying repeats after the source stops.
 
-## CC PAGE 2 did not write on hardware ✅ fixed (image 96)
+## CC MAP (named CC PAGE 2 until 25 Sep 2026) did not write on hardware ✅ fixed (image 96)
 
 **Symptom.** CC 62-67 changed nothing on the panel, transport stopped or
 running, on an image whose dispatch vector held the cave's address.
@@ -203,7 +203,7 @@ running, on an image whose dispatch vector held the cave's address.
 never touched FX2's. The FX2 editor's stores are Part `+0x8f084`, shadow
 `0x100a51d2`, lane +0x38.
 
-**Fix.** The cave uses those; `verify_ccpage2` proves the write against the
+**Fix.** The cave uses those; `verify_ccmap` proves the write against the
 FX2 editor; CC 63 on channel 5 moved SHMR on the panel and raised the
 tail's 2-8 kHz bands 5-8 dB (image 96). Every page-2 sweep taken over the
 old cave is void.
@@ -552,7 +552,7 @@ wet bus's path to the outputs, not a source); the stored project (a
 reload measured −104.6 dBFS with zero ticks against −73.9 and 23 before:
 the tick needs a live edit the card does not hold); the input path;
 BusVerb page 1 (every knob to extremes over verified CCs: zero ticks).
-Page 2 was untested (the CC PAGE 2 fault) and is not cleared.
+Page 2 was untested (the CC MAP fault) and is not cleared.
 
 **Candidates for 2048.** BusVerb's diffusers, allpasses, shimmer and
 pre-delay are 2048-word modulo buffers (`m5 = $7ff`); Modulation's
