@@ -876,3 +876,42 @@ broadband burst, so a raw-data search is weak evidence either way.
 the bursts need. Branches: `diag91`..`diag98`, `core1scratch99`,
 `nolock94`, `fix97`; captures in `out/hw/v9*.wav` (machine-local). The
 record's "dead words at 0x360d3-5" (send_client.asm) are unexplained.
+
+**24 Sep 2026, the takes re-read and three zero-flash takes (image 99 on
+the card, census with the aligned-copy check, `tools/harness/burst_census.py`).**
+The event detector had only looked at the channel that crossed 0.35 FS.
+Aligning the OTHER channel against its own copy one or two trigs earlier
+(the audio repeats every trig; corr 0.99-1.00) shows T1's print deviating
+in the SAME 16-sample block in 29 of 32 bursts across images 91-99, by
+0.03-0.35 FS, below the threshold. The burst on the other side is one
+block of broadband words that clip (-1.00 twice in one burst), near full
+scale, while that channel is otherwise at -64 dBFS rms. The same T1 audio
+instant gives the same burst waveform every time (12 copies of one
+cluster across 91, 92, 93, 94, 99), so the content is a function of T1's
+audio. Two earlier readings did not survive: "the T1 block is
+sign-flipped" (the swap take put deviations of the same sign as T1's
+audio) and "T1's gain/pan are torn in the 64-word block core 0 hands core 1
+at X:0x30004" (under the port that block is input audio A-D x 16 samples
+for THRU machines; a STATIC T1 does not pass through it). The AMP VOL 0
+zero of take 8 was a true zero, not a chance one.
+
+| take (12 min each) | change | bursts | T1's side deviates |
+|---|---|---|---|
+| v99_23_swap | T1 BAL hard right, T5 hard left | 4, on the side opposite T1 | 3 of 4 (one alignment poor) |
+| v99_24_t5lvl0 | + T5 LEVEL 0 | 6, same side | 5 of 6 |
+| v99_25_cue | CUE L/R recorded instead of MAIN, T1 cued | 5, same side | 4 of 5 |
+
+So: the junk is in T1's stereo block, on both channels of it, full scale
+on the side T1 is panned away from; it is there before the main mix (the
+CUE mix shows it) and it is not T5's block (LEVEL 0 changes nothing).
+With the 23 Sep bisect (the lock-only delay that writes no audio bursts,
+the preamble-only delay does not) it is not the delay's audio output
+either. The dispatcher re-sets r0, r1, n1, r3, x1 and y1 before the
+read-back packer (`P:0x303-0x35e` on B), so a data-register left by proc
+is not a path; m0-m6 were saved on image 83 and it still burst. Where
+between T1's audio block after proc and the read-back words at
+`X:0x2600` the junk appears is the open question. The pan swap does NOT
+discriminate T1's block from T5's (both put the burst opposite T1); T5
+LEVEL 0 does. The CUE outs carry nothing until the track is cued.
+`tools/rec` needs the device name as its third argument (without it it
+looks for EVO4 and exits at once).
