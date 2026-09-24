@@ -952,13 +952,22 @@ voice's trig, on a 4 s cycle that is the voice's on/off pattern, jittered
 by the card stream.
 
 Fix (branch `blockcopy`): BusDelay copies X:0..0x1f to Y:$a60..$a7f at proc
-entry and its loop reads dry L/R from the copy (r4 walks it); BusVerb, at
-core 0's position 0 with a longer loop and the same late re-read of "dry,
-still in place", copies to Y:$a80..$a9f and reads through `y:(r0+n0)`.
-Both ranges are claimed in the manifests. The outputs are unchanged, so
-the bit-identity gates are the audit. What would falsify the model: bursts
-on the shipping rig with the copy in; a burst on 108 with the right side
-silent.
+entry; its loop reads dry L/R from the copy at the top of each sample (the
+pointer in raw $1e, r4 as a temp, rebuilt by GRAIN before its own use) and
+parks them in raw $1f/$21 for the output stage. The range is claimed in
+the manifest. The outputs are unchanged, so the bit-identity gates are the
+audit. What would falsify the model: bursts on the shipping rig with the
+copy in; a burst on 108 with the right side silent.
+
+**BusVerb is NOT fixed and has the same exposure** (core 0's position 0, a
+longer loop, the same late re-read of "dry, still in place"). The same copy
+(Y:$a80..$a9f, pointer in $10, parks in $11/$12) passed every gate and put
+continuous junk on the right side for the whole 2 s of every 4 s T1 sounds
+(take v19_45, 213 events in 60 s, rms -30 dBFS): T5 hears T1 through the
+chain, and no gate feeds the reverb host's dry input, so the harness never
+exercised that path. Reverted, cause not found. Before another try: a
+harness case that feeds T5's dry, and a look at whether anything on the
+unit writes $10..$12 or Y:$a80.. on core 0.
 
 Retracted by this: "the bursts are on the reverb host's frame" (main R is
 main R; T5 was never involved), "the delay's shared-memory accesses" (every

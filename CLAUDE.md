@@ -543,8 +543,9 @@ block of full-scale junk on the right channel about once every 3 minutes
 for six weeks (24 Sep 2026, `docs/remixer/FAILURE_MODES.md`). The port
 cannot show it: it serialises the ColdFire's transfers and the cores'
 frames. Rule: a proc that reads the block after its first few hundred
-cycles reads a COPY taken at entry (BusDelay Y:$a60, BusVerb Y:$a80); a
-burst on one channel that needs a voice sounding and scales with the
+cycles reads a COPY taken at entry (BusDelay Y:$a60; BusVerb's first
+attempt at the same put continuous junk on the unit and is reverted, open);
+a burst on one channel that needs a voice sounding and scales with the
 proc's length is this, not memory corruption.
 
 **A parameter slot can draw a knob and publish nothing.** The page descriptor

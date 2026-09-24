@@ -155,7 +155,6 @@ MODULE = Module(
     # The eight tank lines are hardcoded into Y:0x4000-0xBFFF, the per-core
     # FX2 instance buffer region; the ledger refuses anything else that owns
     # memory there on the same core.
-    claims=Claims(reserved_private_y=tuple(range(0x0a80, 0x0aa0)),  # the block copy
-                  owns_fx2_buffers=True),
+    claims=Claims(owns_fx2_buffers=True),
     harness=Harness(layout_char="R", is_server=True),
 )
