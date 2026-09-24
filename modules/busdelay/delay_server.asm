@@ -507,7 +507,8 @@ dwarmq:                                                                    ; @B
         move    b,x:(r7+$28)
         move    b,x:(r7+$2e)
         move    b,x:(r7+$2f)
-        move    b,y:>$981               ; the reverb host's SEND field: zeroed
+        move    #>$981,r5               ; the reverb host's SEND field: zeroed
+        move    b,y:(r5)                ; through a register (image 97)
                                         ; once here, so a rig without a reverb
                                         ; never counts garbage in it
 ; ---- ONE LOOP CLEARS RAW $27..$5e: the LFO phases, the TIME ramp, the
@@ -559,7 +560,9 @@ dwarmdone:
 ; by the reverb. Not written during the warm-up above, so a warming delay is
 ; not live: the reverb reads the aux accumulator.
         move    #>$1,x0
-        move    x0,y:>$9c3
+        move    #>$9c3,r4               ; through a register (image 97): an
+        move    x0,y:(r4)               ; absolute store from core 1 into the
+                                        ; shared window burst T5's frame
         move    x:(r7-$18),x0           ; LineL base
 
 ; ---- per-block: TIME, FDBK, TONE, PING, -VRB, IN, ... ---------------------
