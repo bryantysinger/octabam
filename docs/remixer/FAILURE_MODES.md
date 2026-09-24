@@ -3,6 +3,59 @@
 Symptom → cause (measured, inferred or open) → fix. Add an entry the moment
 a mode is seen on hardware.
 
+## Junk on main R for one frame, from T1 with BusDelay, about twice a minute ✅ measured on the unit (images 32-38, 25 Sep 2026), fix built (image 39)
+
+**Symptom.** With BusDelay hosted on T1 (STATIC, panned hard left), main R
+carries 16-24 samples of random full-scale words about 0.5/min, always at
+one phase of the 4-second pattern cycle; main L is off by about its own rms
+in the same block. `tools/harness/burst_census.py` on a `tools/rec` take is
+the instrument; at 0.5/min a 90 s take has a 47 % chance of showing
+nothing, so only 10-minute takes count.
+
+**Measured.** Four in-frame detectors in the delay (page words changed, R
+input nonzero at entry, R output above -6 dBFS at exit, the previous
+frame's read-back R words at X:$2602 at the next entry) never fired while
+the junk ran: the DSP writes a clean read-back block and it is still clean
+at the next call. A NOP burn placed after the loop, before the dispatcher's
+copy, set from the WOW knob (image 36): +0 cycles 1266 junk runs/min, +256
+16/min, +512 0/min over 60 s and 1.4/min over 10 min, +2048 0/60 s. The
+junk's phase inside the 4-second cycle moves with the burn. Every detector
+image made the rate worse as its cycles moved the copy later.
+
+**Cause.** Core 1's frame start reads core 0's bank word (`P:0x57-0x7a`,
+payload B) and both picks the read-back buffer (`X:$2600` or `X:$4600`,
+`X:$206`) and patches the host handlers' address masks (`P:$371`/`P:$380`)
+so the ColdFire's constant command lands in the SAME buffer: the read-back
+is one buffer per frame, and the ColdFire's pull (DMA channel 1, armed at
+`P:0x37c`) must finish before the first FX2 copy overwrites it. The ISR
+pulls core 0 first, then the ESAI, then core 1; on the unit core 1's pull
+reaches T1's 64 words about 4.5 samples after T1's proc entry (the port
+models +0.26), and jitters by half a sample or more with the pattern
+position. Stock effects copy by +2 samples and never meet it; BusVerb on
+core 0 copies late too, but core 0's pull is the ISR's first step; BusDelay
+on core 1 copied inside the pull and the pull read the block mid-rewrite.
+The 4-second grid is the pattern cycle: the pull's position drifts with it.
+
+**Not a fix.** Polling the pull's DMA registers at exit (DSR1 in image 37,
+DCR1.DE in image 38): neither showed the pull in progress at our exit, and
+both images ran worse. A fixed pad past the pull (image 36 at +512..+2048)
+lowers the rate to the jitter's tail, 1.4/min.
+
+**Fix (image 39, branch `frameend`).** The delay's proc is a 32-word swap:
+its frames go to Y:$a80, the previous block's result comes out of Y:$aa0,
+the page is snapshotted to Y:$ac3 and it returns in ~200 cycles, so the
+dispatcher's copy lands where a stock effect's does. The compute runs from
+a `frameend` entry after the last read-back copy: the build plants a
+one-word `jsr` over the dispatcher's `move #>$421,r6` at payload B
+`P:0x340` (the cave re-executes it) and names the entry in the directory
+word `X:0x4840` (word 0 of the parked-table region, tagged `$fe0000`);
+`dsp_host` reads that word and makes the same call once per block after
+the core's procs. A remix that keeps a stock curve-bank reader has no
+parked-table region: there the delay computes inline (its `$fab1e2`
+literal is 0) and the tear stands. One frame of latency on the host track.
+Under the port the entry runs once per frame; the tempo gate and the
+control renders pass under an isolated `dsp_host` (`OCTABAM_DSP_HOST`).
+
 ## A white-noise wash from a sample host with trigs on it ✅ measured on the unit, fixed (image 43)
 
 **Symptom.** BusDelay on a track with its own trigs: T3 STATIC with a trig

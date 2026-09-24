@@ -384,6 +384,9 @@ bus_mine:
 ; Stock effects copy by +2 samples and never meet it; BusVerb copies late
 ; too but core 0's pull is the ISR's first step. One frame of latency on the
 ; host track's dry and wet.
+        move    #>$fab1e2,a             ; FRAMEEND: 1 when the build planted
+        tst     a                       ; the detour, 0 = compute inline (a
+        beq     compute                 ; remix without the parked-table region)
         move    #>$ffffff,m3
         move    #>$ffffff,m4
         move    #>$ffffff,m5

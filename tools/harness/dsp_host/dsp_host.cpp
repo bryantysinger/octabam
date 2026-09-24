@@ -723,8 +723,8 @@ int main(int argc, char** argv) {
             // frame-end entry the dispatcher jsr's after the last read-back
             // copy (build_bus FRAMEEND); the harness makes the same call once
             // per block after this core's procs.
-            const TWord fe = C.mem->get(MemArea_X, 0x4840) & 0xffffff;
-            if (fe && fe < 0x20000 && C.loadedP[fe]) {
+            const TWord dw = C.mem->get(MemArea_X, 0x4840) & 0xffffff, fe = dw & 0xffff;
+            if ((dw >> 16) == 0xfe && fe && fe < 0x20000 && C.loadedP[fe]) {   // tagged: stock data never is
                 C.frameend = fe;
                 std::printf("core %d: frame-end entry P:0x%05x (X:0x4840)\n", c, fe);
             }

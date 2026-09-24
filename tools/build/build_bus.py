@@ -2641,6 +2641,7 @@ hostquit:
                     print(f"  {'PTABLE':13} P:0x{DEV_DELAY_P:05x}..0x{_at:05x} "
                           f"({len(_ptab):4d} words)  {name}'s table  (DEV: leads "
                           f"the out-of-region record)")
+                src = src.replace("$fab1e2", "$1" if (tag == "B" and _xt_layout) else "$0")   # FRAMEEND planted?
                 words, init_a, proc_a = assemble(src, _at, label=name)
                 if _at + len(words) >= 0x20000:
                     sys.exit(f"payload {tag}: DEV delay overruns the "
@@ -2688,6 +2689,7 @@ hostquit:
                         _s2, _xt_sites[name] = _p2x(_s2, name)
                     else:
                         _c += len(_tab)
+                _s2 = _s2.replace("$fab1e2", "$1" if (tag == "B" and _xt_layout) else "$0")
                 _w, _ia, _pa = assemble(_s2, _c, label=name)
                 _last = (_c, len(_w))
                 if _c + len(_w) <= _end:
@@ -2742,19 +2744,19 @@ hostquit:
             _r["cursor"] = cursor + len(words)
             wrw_p(pp["xtab"] + NEW_IDS[name] * 3, init_a)
             wrw_p(pp["xtab"] + (32 + NEW_IDS[name]) * 3, proc_a)
-            if "frameend" in _LAST_SYMS:
+            if "frameend" in _LAST_SYMS and _xt_layout:
                 # FRAME-END DETOUR: the module's compute runs after the
                 # dispatcher's last read-back copy. A one-word `jsr` goes
                 # over the two-word `move #>$421,r6` at P:0x340 (payload B's
                 # frame end; the cave re-executes it), and the directory word
-                # at X:0x4840 (word 0 of the parked-table region) names the
-                # entry so dsp_host can make the same call once per block.
+                # at X:0x4840 (word 0 of the parked-table region, tagged
+                # $fe0000) names the entry so dsp_host can make the same call
+                # once per block. Without the parked-table region the module
+                # computes inline (its $fab1e2 literal is 0): the old
+                # behaviour, with the read-back tear FAILURE_MODES.md records.
                 if tag != "B":
                     sys.exit(f"{name} declares frameend; only payload B has "
                              f"the frame-end site")
-                if not _xt_layout:
-                    sys.exit(f"{name} declares frameend; the directory word "
-                             f"needs the parked-table region (XTABLE)")
                 _fe = _LAST_SYMS["frameend"]
                 _site = 0x340
                 _rec = [m for m in mods if m[0] == 0 and m[1] <= _site < m[1] + m[2]]
@@ -2768,10 +2770,13 @@ hostquit:
                              f"frame-end `move #>$421,r6`")
                 wrw_p(_o, 0x0d0000 | _fe)
                 wrw_p(_o + 3, 0)
-                _frameend_dir[tag] = _fe
+                _frameend_dir[tag] = 0xfe0000 | _fe
                 print(f"  FRAMEEND: {name}'s compute runs from P:0x{_fe:05x} at "
                       f"the dispatcher's frame end (jsr planted at P:0x{_site:05x}); "
                       f"directory word X:0x{_xt_base:05x}")
+            elif "frameend" in _LAST_SYMS:
+                print(f"  FRAMEEND: {name} computes INLINE -- no parked-table region "
+                      f"for the directory word, no detour")
             if name == REMIX.fallback:
                 wrw_p(pp["xtab"] + NONE_ID * 3, init_a)          # id 0 alias,
                 wrw_p(pp["xtab"] + (32 + NONE_ID) * 3, proc_a)   # fresh = send
