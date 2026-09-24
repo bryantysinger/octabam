@@ -7,6 +7,17 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- MIDI SCENES re-pinned to bkkbrls-del's 1.40MIDISC8.2 (25 Sep 2026):
+  MIDI track-1 scene locks no longer reach other tracks (`xf_mix`'s LFO
+  probes index `track*32+param`), and an unlocked knob sends its own CC
+  again (`write_mix` no longer reloads `d2` from the voice). `gas/*.s`
+  regenerated from his 8.2 encoder, every region identical to his bytes;
+  `voice_reload` has no caller and is no longer linked (twelve units). His
+  own 8.2 `build.py` stops at `SAFE_CAVE overrun 2068`; the linked units
+  are placed in DRAM and unaffected. Submodule at `259a835` (his 8.2 plus
+  the gas regeneration, bkkbrls-del/midisc#6). `make check` passes on
+  `ok-ms` and `midi-scenes` with OCTABAM89_setgate under the port. Nothing
+  on hardware.
 - USB AUDIO's counters over a vendor control request (25 Sep 2026,
   `tools/hw/usb_counters.py`, the bench's `counters`, checked by
   `verify_usb`), `tools/harness/click_scan.py`, and image 64 packed from

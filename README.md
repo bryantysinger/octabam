@@ -34,7 +34,7 @@ Every module, with its author. Those with a repository are built from it.
 
 | module | author | what it does | proof |
 |---|---|---|---|
-| **MIDI SCENES** | [bkkbrls-del/midisc](https://github.com/bkkbrls-del/midisc) | per-scene parameter locks driven over MIDI | his sources (submodule, GNU-as form), thirteen units in DRAM, 38 detours, 4 pokes; every region equals his encoder's bytes |
+| **MIDI SCENES** | [bkkbrls-del/midisc](https://github.com/bkkbrls-del/midisc) | per-scene parameter locks driven over MIDI | his sources (submodule, GNU-as form), twelve units in DRAM, 38 detours, 4 pokes; every region equals his encoder's bytes |
 | **USB MIDI** | [markandrus/octemu](https://github.com/markandrus/octemu) | class-compliant USB-MIDI in and out on the OT's own USB port, mirroring DIN: the firmware's dormant transmit encoder wired in, a receive decoder into its MIDI path | his shims as a DRAM unit, seven detours, four pointer rewrites; enumerates, receives and transmits under the ColdFire port (`verify_usb`); not on hardware |
 | **USB AUDIO** | [markandrus/octemu](https://github.com/markandrus/octemu) | sixteen channels of the tracks over USB (UAC2, post-FX pre-fader), the stereo sum at full speed | his producer, packet builder and servo as a DRAM unit on the loader instead of his card payload; streams 22/23-frame packets at the device's poll cadence under the port; not on hardware |
 | **OCTAKIT** | [emuyia/ems-octakit](https://github.com/emuyia/ems-octakit) | 256 Kits per Project in place of 64 bank-tied Parts, with names, copy/paste, undo, migration of old projects | her recipe (submodule) compiled, packed and appended by the build; stock + her writes + her append reproduces her own OS image |
