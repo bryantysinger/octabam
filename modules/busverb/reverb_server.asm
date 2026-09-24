@@ -160,6 +160,23 @@ proc:
         move    x0,a                    ; A2-clean
         move    a,x:(r7+$67)            ; this call's frame offset
 bus_off_done:
+; ---- BLOCK COPY (24 Sep 2026): the loop reads its dry words from a private
+; copy of the audio block taken here, at proc entry, through y:(r0+n0) with
+; n0 = the copy's base. On the unit the ColdFire's next-frame voice records
+; land on X:0..0x3f while a long proc is still reading the block
+; (docs/remixer/FAILURE_MODES.md, "the block is not stable for a long
+; proc"); measured on the delay, this loop is longer still and sits at the
+; same position on core 0. Y:$a80..$a9f, core-private, claimed in the
+; manifest.
+        move    #$0,r3
+        move    #>$a80,r4
+        move    #>$ffffff,m3
+        move    #>$ffffff,m4
+        do      #<$20,blkcopy
+        move    x:(r3)+,x0
+        move    x0,y:(r4)+
+        nop
+blkcopy:
 
 ; ---- position-0 housekeeping: flip the shared bus rotation, clear the new
 ; write-target ACC buffers. Gated on r7==0x6200 AND offset==0 -- copied from
@@ -1402,11 +1419,14 @@ lfrol:
                                         ; through n2/n3 (free: the priming's
                                         ; use of n2/n3 is over)
 
+        move    #>$a80,n0               ; the block copy, read as y:(r0+n0)
         do      n7,>rvend
 
 ; ---- input: mono sum, plus the shared REVERB bus accumulator (BUS.md) ----
-        move    x:(r0)+,a               ; L
-        move    x:(r0)-,x0              ; R, and r0 back on L (m0 linear)
+        move    y:(r0+n0),a             ; L, from the copy
+        move    (r0)+
+        move    y:(r0+n0),x0            ; R, from the copy
+        move    (r0)-                   ; r0 back on L (m0 linear)
         add     x0,a
         asr     #$1,a,a
 ; The host's own send: dry mono x SEND (the knob's copy at y:$09f0: r6 walks
@@ -2285,7 +2305,7 @@ fbB:
         mpy     y0,x0,a                 ; wet * WET
         asl     #$1,a,a                 ; x2: WET 127 = +6 dB (the stores
                                         ; below limit)
-        move    x:(r0),x0               ; dry L, still in place
+        move    y:(r0+n0),x0            ; dry L, from the copy
         add     x0,a                    ; + dry at unity
         move    a,x:(r0)+               ; L in place -- dry + wet; r0 on to R
         move    y1,a
@@ -2301,7 +2321,7 @@ fbB:
         move    x:(r7+$71),y0           ; WET, this sample's
         mpy     y0,x0,a                 ; wet * WET
         asl     #$1,a,a                 ; x2, as on L
-        move    x:(r0),x0               ; dry R, still in place
+        move    y:(r0+n0),x0            ; dry R, from the copy
         add     x0,a                    ; + dry at unity
         move    a,x:(r0)+               ; R in place -- dry + wet; r0 on to
                                         ; the next frame (n0 is not used)

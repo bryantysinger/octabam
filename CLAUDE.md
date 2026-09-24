@@ -535,6 +535,18 @@ never reads r1 between them. Proc may use r1 (the dispatcher reloads it
 after proc). `tools/verify/verify_initregs.py` refuses an init that writes
 r1/n1/m1 and runs in `make check`. Zero through r5.
 
+**THE AUDIO BLOCK IS NOT STABLE FOR THE LENGTH OF A LONG PROC.** The
+ColdFire's next-frame voice records land on X:0..0x3f by host DMA while a
+long FX2 proc is still reading the block; stock effects finish first, the
+delay (326-1126 cycles a sample) did not, and the record's odd words put a
+block of full-scale junk on the right channel about once every 3 minutes
+for six weeks (24 Sep 2026, `docs/remixer/FAILURE_MODES.md`). The port
+cannot show it: it serialises the ColdFire's transfers and the cores'
+frames. Rule: a proc that reads the block after its first few hundred
+cycles reads a COPY taken at entry (BusDelay Y:$a60, BusVerb Y:$a80); a
+burst on one channel that needs a voice sounding and scales with the
+proc's length is this, not memory corruption.
+
 **A parameter slot can draw a knob and publish nothing.** The page descriptor
 and the DSP-side read are separate mechanisms; `dsp_host` pokes r6 directly, so
 everything looks live locally even when the real unit would publish nothing.

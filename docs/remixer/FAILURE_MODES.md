@@ -915,3 +915,52 @@ discriminate T1's block from T5's (both put the burst opposite T1); T5
 LEVEL 0 does. The CUE outs carry nothing until the track is cued.
 `tools/rec` needs the device name as its third argument (without it it
 looks for EVO4 and exits at once).
+
+**24 Sep 2026, evening: CAUSE FOUND, FIX MEASURED.** The audio block at
+X:0..0x1f is not stable for the length of a long proc. The ColdFire's
+next-frame voice records (64 words, four per-voice records, `DSP.md`
+section 6c) land on X:0..0x3f by host DMA while T1's FX2 proc is still
+reading the block; the record's odd words are large (`--dsp-peek` of X:0
+with a voice sounding: 0x516cb8, 0x7fffff), so the right channel takes a
+block of junk and the left a small step. Stock effects finish before the
+DMA lands; the delay's loop (326-1126 cycles a sample) does not.
+
+Established with image 105 (full delay on main plus a read-back probe),
+which bursts about 54 times a minute on the same project where images
+91-99 burst once in 2-3 minutes (the cause of that ratio is not known),
+so every question below took a 90-second take (`tools/rec 90`):
+
+| change (90 s each) | bursts |
+|---|---|
+| baseline, WOW 0 | ~70 |
+| T5 LEVEL 0; WET 0; FDBK 0; TIME 2; T5 on SEND; LFOs 32 to 16 | unchanged |
+| T1 AMP VOL minimum (the voice stops) | 0 |
+| cut before the sample loop (WOW 64) | 0, right side at -99 dBFS |
+| right output = dry right only (106, WOW 80) | 7 |
+| no right output store at all (106, WOW 96) | 11 |
+| no right line write (106, WOW 112) | 38 |
+| T1 as a FLEX machine (no card stream) | 5 |
+| 107: DMA channel 0/1 active at the loop's end | the marker on for the whole 2.5 s the voice sounds, every 4 s |
+| **108: the loop reads its dry words from a copy taken at proc entry** | **0, right side at -99 dBFS, left unchanged** |
+
+The rate tracks the loop's length, not its arithmetic; the junk arrives in
+both the block's right word and, through the wet path, the right line;
+host DMAs run concurrently with T1's proc on the unit (never under the port,
+which serialises the ColdFire's transfers and the cores' frames: this class
+is invisible to it). The bursts cluster in the first 0.4 s after the
+voice's trig, on a 4 s cycle that is the voice's on/off pattern, jittered
+by the card stream.
+
+Fix (branch `blockcopy`): BusDelay copies X:0..0x1f to Y:$a60..$a7f at proc
+entry and its loop reads dry L/R from the copy (r4 walks it); BusVerb, at
+core 0's position 0 with a longer loop and the same late re-read of "dry,
+still in place", copies to Y:$a80..$a9f and reads through `y:(r0+n0)`.
+Both ranges are claimed in the manifests. The outputs are unchanged, so
+the bit-identity gates are the audit. What would falsify the model: bursts
+on the shipping rig with the copy in; a burst on 108 with the right side
+silent.
+
+Retracted by this: "the bursts are on the reverb host's frame" (main R is
+main R; T5 was never involved), "the delay's shared-memory accesses" (every
+image 91-99), and this morning's "a timing window at proc entry" (the
+sweep diluted a rare event; what matters is the proc's total length).

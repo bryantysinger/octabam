@@ -230,6 +230,24 @@ proc:
         move    x0,a                    ; A2-clean
         move    a,x:(r7+$67)            ; this call's frame offset
 bus_off_done:
+; ---- BLOCK COPY (24 Sep 2026): the loop reads its dry words from a private
+; copy of the audio block taken here, at proc entry. On the unit the
+; ColdFire's next-frame voice records land on X:0..0x3f while a long proc
+; is still reading the block (docs/remixer/FAILURE_MODES.md, "the block is
+; not stable for a long proc"): the record's odd words are large, so the
+; right channel took one block of junk and the left a small step, about
+; once every 3 minutes on the rig and 70 times a minute on image 105. The
+; copy closes the window to this loop. Y:$a60..$a7f, core-private, claimed
+; in the manifest.
+        move    #$0,r3
+        move    #>$a60,r4
+        move    #>$ffffff,m3
+        move    #>$ffffff,m4
+        do      #<$20,blkcopy
+        move    x:(r3)+,x0
+        move    x0,y:(r4)+
+        nop
+blkcopy:
 
 ; ---- position-0 housekeeping: flip the shared bus rotation, clear the new
 ; write-target ACC buffers. Gated on r7==0x6200 AND offset==0 -- copied from
@@ -1206,6 +1224,9 @@ gvrdone:
         move    #>$ffffff,m3
         move    x:(r7-$23),a
         move    a,n4                    ; the TIME ramp, Q8, walked per sample
+        move    r0,a                    ; r4 walks the block copy from this
+        add     #>$a60,a                ; call's offset
+        move    a,r4
         do      n7,>dlyend
 
 ; ---- input: own dry mono sum + shared DELAY bus accumulator --------------
@@ -1214,8 +1235,8 @@ gvrdone:
         add     x0,a
         move    a,x:(r7-$30)
         move    a,y1                    ; this sample's send level
-        move    x:(r0),a
-        move    x:(r0+n0),x0
+        move    y:(r4),a                ; dry L and R, from the copy
+        move    y:(r4+$1),x0
         add     x0,a
         asr     #$1,a,a
         move    a,x0                    ; own dry mono
@@ -1791,7 +1812,7 @@ pdone:
         move    n6,b                    ; x_in, the passthrough term
         add     x0,b                    ; b = stage output L
         move    b,x1                    ; parked for the chain's mono average
-        move    x:(r0),b                ; dry L, still in place
+        move    y:(r4),b                ; dry L, from the copy
         add     x0,b                    ; + dry at unity
         move    b,x:(r0)                ; L in place -- dry + wet*WET
         move    x:(r7+$33),x0           ; wet R = fR
@@ -1811,7 +1832,7 @@ pdone:
         move    a,x0                    ; x0 = wet*WET
         move    n6,b
         add     x0,b                    ; b = stage output R
-        move    x:(r0+n0),a             ; dry R
+        move    y:(r4+$1),a             ; dry R, from the copy
         add     x0,a                    ; + dry at unity
         move    a,x:(r0+n0)             ; R in place -- dry + wet*WET
 ; ---- the CHAIN buffer: mono average of the stage output, at unity --------
@@ -1824,6 +1845,8 @@ pdone:
 
         move    (r0)+n0                 ; advance one stereo frame: two
         move    (r0)+n0                 ; steps, n0 stays 1 (14 Sep 2026)
+        move    (r4)+                   ; the copy keeps pace
+        move    (r4)+
 dlyend:
         move    n4,a
         move    a,x:(r7-$23)            ; the ramp, where the next call's
