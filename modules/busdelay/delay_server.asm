@@ -62,8 +62,7 @@
 ;                       nonzero at warm-up)
 ;   r7+$19/$1b          SEND ramped per sample / its per-sample step
 ;   r7+$1c/$1d          WET ramped per sample / its per-sample step
-;   r7+$1e/$1f/$21      the block copy: its pointer, dry L, dry R (24 Sep 2026)
-;   r7+$17, $20, $22..$25 free (23 Sep 2026: the per-sample parks went to
+;   r7+$17, $1e..$25    free (23 Sep 2026: the per-sample parks went to
 ;                       registers)
 ;   r7+$26              TIME, Q8: the ramp's running value at a call's start
 ;                       and end (the loop walks it in n4); the glide state
@@ -1232,9 +1231,9 @@ gvrdone:
         move    a,n4                    ; the TIME ramp, Q8, walked per sample
         move    x:(r7+$1e),a            ; the copy pointer for this call:
         asl     #$1,a,a                 ; $a60 + 2 x the frame offset, kept
-        add     #>$a60,a                ; in raw $1e (r4 is GRAIN's in the
-        move    a,x:(r7-$2b)            ; loop, rebuilt there before use)
-        do      n7,>dlyend
+        add     #>$a60,a                ; in Y:$a5f beside the copy (images
+        move    a,y:>$a5f               ; 19-21: X words of this block did not
+        do      n7,>dlyend              ; hold it on the unit; r4 is GRAIN's)
 
 ; ---- input: own dry mono sum + shared DELAY bus accumulator --------------
         move    x:(r7-$30),a            ; SEND, ramped per sample: + this
@@ -1242,14 +1241,10 @@ gvrdone:
         add     x0,a
         move    a,x:(r7-$30)
         move    a,y1                    ; this sample's send level
-        move    x:(r7-$2b),a            ; dry L and R, from the copy (the
-        move    a,r4                    ; pointer goes through a: a displaced
-        move    y:(r4)+,a               ; move of an ADDRESS register with a
-        move    y:(r4)+,x0              ; negative displacement is a form
-        move    r4,b                    ; stock never runs, image 20 24 Sep)
-        move    b,x:(r7-$2b)
-        move    a,x:(r7-$2a)            ; parked for the output stage (raw
-        move    x0,x:(r7-$28)           ; $1f / $21)
+        move    y:>$a5f,a               ; dry L and R, from the copy
+        move    a,r4
+        move    y:(r4)+,a
+        move    y:(r4),x0
         add     x0,a
         asr     #$1,a,a
         move    a,x0                    ; own dry mono
@@ -1825,7 +1820,9 @@ pdone:
         move    n6,b                    ; x_in, the passthrough term
         add     x0,b                    ; b = stage output L
         move    b,x1                    ; parked for the chain's mono average
-        move    x:(r7-$2a),b            ; dry L, from the copy
+        move    y:>$a5f,b               ; dry L, from the copy (r4 again:
+        move    b,r4                    ; GRAIN rebuilt it above)
+        move    y:(r4)+,b
         add     x0,b                    ; + dry at unity
         move    b,x:(r0)                ; L in place -- dry + wet*WET
         move    x:(r7+$33),x0           ; wet R = fR
@@ -1845,7 +1842,7 @@ pdone:
         move    a,x0                    ; x0 = wet*WET
         move    n6,b
         add     x0,b                    ; b = stage output R
-        move    x:(r7-$28),a            ; dry R, from the copy
+        move    y:(r4)+,a               ; dry R, from the copy
         add     x0,a                    ; + dry at unity
         move    a,x:(r0+n0)             ; R in place -- dry + wet*WET
 ; ---- the CHAIN buffer: mono average of the stage output, at unity --------
@@ -1855,6 +1852,8 @@ pdone:
         move    a,y:(r3+n3)             ; CHAIN[write][i] = the stage output --
                                         ; a STORE, not an accumulate: one
                                         ; writer, and nobody clears this buffer
+        move    r4,a                    ; the copy pointer, one frame on
+        move    a,y:>$a5f
 
         move    (r0)+n0                 ; advance one stereo frame: two
         move    (r0)+n0                 ; steps, n0 stays 1 (14 Sep 2026)
