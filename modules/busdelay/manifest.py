@@ -161,6 +161,6 @@ MODULE = Module(
     # is not established.
     # LineR is the core's private FX2 buffer region: the ledger refuses a
     # second owner on the same payload (BusVerb's tank is payload A's).
-    claims=Claims(reserved_private_y=(0x0903,) + tuple(range(0x0a80, 0x0ac3)), owns_fx2_buffers=True),
+    claims=Claims(reserved_private_y=(0x0903,) + tuple(range(0x0a80, 0x0ae3)), owns_fx2_buffers=True),
     harness=Harness(layout_char="D", is_server=True),
 )

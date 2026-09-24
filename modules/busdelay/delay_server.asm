@@ -407,16 +407,15 @@ bus_mine:
         move    y:(r5)+,x1
         move    x1,x:(r3)+
 fe_swap:
-; The page: thirty-two words go to PAGE_SNAP, free words after the parked
-; P tables in the stock curve bank (build_bus XTABLE, identical on both
-; payloads), because the compute runs after every other track's call and a
+; The page: thirty-two words (knobs, companions, tempo24 at +$13) go to
+; Y:$ac3.., because the compute runs after every other track's call and a
 ; page pointer is only good for the call it was passed to (dsp_host keeps
 ; ONE page per core and rewrites it before each instance).
         move    r6,r3
-        move    #>$fab1e1,r4            ; PAGE_SNAP: rewritten by build_bus.py
-        do      #$20,fe_page            ; knobs, companions, tempo24 at +$13
+        move    #>$ac3,r4
+        do      #$20,fe_page
         move    x:(r3)+,x1
-        move    x1,x:(r4)+
+        move    x1,y:(r4)+
 fe_page:
         move    r0,a
         sub     x1,a
@@ -446,7 +445,17 @@ frameend:
         move    y:(r4)+,x0
         move    x0,x:(r3)+
 fe_in:
-        move    #>$fab1e1,r6            ; the page snapshot (PAGE_SNAP)
+; the page snapshot -> the block's scratch words X:base+$20.. (stock's own
+; per-block scratch, idle at the frame end; a dsp_host instance's 64 words)
+        move    y:>$ac2,a
+        add     #>$20,a
+        move    a,r3
+        move    a,r6                    ; the page, as the host call saw it
+        move    #>$ac3,r4
+        do      #$20,fe_pg2
+        move    y:(r4)+,x0
+        move    x0,x:(r3)+
+fe_pg2:
         move    #>$6200,r7              ; the host's instance block (HOSTGUARD)
         move    y:>$ac2,r0              ; the block's base
         move    #>$10,n7                ; the whole block

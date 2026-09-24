@@ -2518,7 +2518,6 @@ hostquit:
         # once and compare them.
         LFO01_MARK = "LFO lines 0-1: ROLLED TOO"
         PTABLE_MARK = "$fab1e0"          # schema.DspSection.ptable's literal
-        PAGE_MARK = "$fab1e1"            # a module's page snapshot: 32 free words after the parked tables
 
         # ---- XTABLE: the P tables go to the stock curve bank ------------
         _xt_base, _xt_words = stock_mod.CURVE_BANK
@@ -2564,21 +2563,6 @@ hostquit:
                   f"is harvested (static scan, not a read-watch)")
 
         _frameend_dir.setdefault(tag, 0)
-        _page_snap = None
-        if _xt_layout:
-            _page_snap = max(a + n for a, n in _xt_layout.values())
-            if _page_snap + 32 > _xt_base + _xt_words:
-                sys.exit(f"payload {tag}: no room for the page snapshot after the parked tables")
-
-        def _marks(src_):
-            """The page-snapshot literal -> its address (32 words after the parked
-            tables). A source that carries it needs the parked-table region."""
-            if PAGE_MARK not in src_:
-                return src_
-            if _page_snap is None:
-                sys.exit(f"payload {tag}: a module uses {PAGE_MARK} (the page snapshot) "
-                         f"but the P tables are not parked in the curve bank")
-            return src_.replace(PAGE_MARK, f"${_page_snap:x}")
 
         def place_x(words, start):
             """Write table words into this payload's copy of the curve bank."""
@@ -2657,7 +2641,7 @@ hostquit:
                     print(f"  {'PTABLE':13} P:0x{DEV_DELAY_P:05x}..0x{_at:05x} "
                           f"({len(_ptab):4d} words)  {name}'s table  (DEV: leads "
                           f"the out-of-region record)")
-                words, init_a, proc_a = assemble(_marks(src), _at, label=name)
+                words, init_a, proc_a = assemble(src, _at, label=name)
                 if _at + len(words) >= 0x20000:
                     sys.exit(f"payload {tag}: DEV delay overruns the "
                              f"entry-point plausibility bound "
@@ -2704,7 +2688,7 @@ hostquit:
                         _s2, _xt_sites[name] = _p2x(_s2, name)
                     else:
                         _c += len(_tab)
-                _w, _ia, _pa = assemble(_marks(_s2), _c, label=name)
+                _w, _ia, _pa = assemble(_s2, _c, label=name)
                 _last = (_c, len(_w))
                 if _c + len(_w) <= _end:
                     _fit = (_r, _tab, _s2, _c, _w, _ia, _pa)
