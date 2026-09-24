@@ -364,6 +364,20 @@ bus_claim:
         move    r7,a
         move    a,y:>$9c1
 bus_mine:
+; DIAG 93: WOW/16 picks where this proc stops and leaves T1 dry: 1 here
+; (after the role lock), 2 after the bus gain, 3 after the warm-up and the
+; live stamp, 4 before the sample loop; 0 runs everything. Raw $17 holds
+; it; the wobble is forced to 0.
+        move    x:(r6+$e),a
+        and     #>$7f00,a
+        asr     #$c,a,a                 ; knob/16
+        move    a1,x0
+        move    x0,a                    ; A2-clean
+        move    a,x:(r7+$17)
+        sub     #>$1,a
+        bne     d93c1
+        rts
+d93c1:
 ; ---- r7 REBASE (14 Sep 2026): from here to `dry:` r7 points $49 INTO the
 ; state block. The one-word displaced move reaches -64..63 and the block
 ; spans $14..$88, so with the raw r7 every slot from $40 up cost two words
@@ -458,6 +472,9 @@ bus_mine:
         move    n4,r5                   ; there is no store and no A2 to clean
         move    p:(r5+n5),a             ; 1/sqrt(N)
         move    a,x:(r7+$36)            ; this block's bus gain, used per sample
+        move    x:(r7-$32),a            ; DIAG 93 cut 2
+        sub     #>$2,a
+        beq     dry
 
         move    #>$ffffff,m0            ; audio is read and written via r0
         move    #>$ffffff,m4            ; GRAIN walks its table with r4 -- the
@@ -576,6 +593,9 @@ dwarmdone:
 ; not live: the reverb reads the aux accumulator.
         move    #>$1,x0
         move    x0,y:>$9c3
+        move    x:(r7-$32),a            ; DIAG 93 cut 3
+        sub     #>$3,a
+        beq     dry
         move    x:(r7-$18),x0           ; LineL base
 
 ; ---- per-block: TIME, FDBK, TONE, PING, -VRB, IN, ... ---------------------
@@ -917,6 +937,9 @@ slewdn:
         move    a1,x0
         move    x0,a
         move    a,x:(r7-$1b)            ; FLTD = WOWD/8
+        clr     a                       ; DIAG 93: WOW is the cut select,
+        move    a,x:(r7-$1c)            ; the wobble stays at 0
+        move    a,x:(r7-$1b)
 
 ; ---- SCAT: GRAIN scatter depth ----------------------------------------------
 ; Page-2 slot 7's COMPANION field (r6+$c bits 8-15, the word MODE's knob
@@ -1199,6 +1222,9 @@ gvrdone:
 ; from x:>$208 / x:>$419 before every proc call (payload B P:0x29c..0x2f8);
 ; m6 is not, and stays untouched.
 
+        move    x:(r7-$32),a            ; DIAG 93 cut 4
+        sub     #>$4,a
+        beq     dry
         move    #$1,n0                  ; the frame stride (a byte lands
                                         ; LOW in an address register)
         move    x:(r7+$1a),a
