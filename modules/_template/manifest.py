@@ -40,9 +40,10 @@ MODULE = Module(
         build_tag=False,           # append the image's build tag to the name
     ),
 
-    # Exactly twelve slots. Page 1 is 0-5; page 2 is 6-11 and alternates
-    # knob, select, knob, select, knob, select -- a stepped control can only
-    # live on 7, 9 or 11.
+    # Exactly twelve slots. Page 1 is 0-5; page 2 is 6-11. The page-2
+    # knob field carries even slots, the companion field odd slots.
+    # Either can carry a stepped value; put MODE on an EVEN slot, where
+    # the panel's page-2 knob editor has been proven to reach it (Param).
     #
     #   name=None inherits the donor's label; b"" blanks it. Prefer writing
     #   the label even when the donor has it: the test harness reads these.

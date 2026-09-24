@@ -1,0 +1,217 @@
+"""Failure-path tests use tiny subprocesses, not proprietary firmware."""
+import contextlib
+import io
+import json
+import os
+import pathlib
+import sys
+import tempfile
+import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+import acceptance as a
+
+
+class GateTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.out = pathlib.Path(self.tmp.name)
+
+    def run_child(self, code, timeout=5):
+        with contextlib.redirect_stdout(io.StringIO()):
+            return a.run_gate("probe", [sys.executable, "-c", code],
+                              self.out, dict(os.environ), timeout)
+
+    def test_skip_with_zero_exit_blocks(self):
+        result = self.run_child("print('  [SKIP] missing emulator')")
+        self.assertEqual(result["exit_code"], 0)
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["skips"], ["[SKIP] missing emulator"])
+
+    def test_stderr_skip_also_blocks(self):
+        result = self.run_child("import sys; print('SKIP: missing project', file=sys.stderr)")
+        self.assertEqual(result["status"], "blocked")
+
+    def test_not_applicable_is_explicit_and_allowed(self):
+        result = self.run_child("print('[N/A] no DRAM code'); print('[PASS] audio')")
+        self.assertEqual(result["status"], "passed")
+        self.assertEqual(len(result["not_applicable"]), 1)
+
+    def test_summary_mentioning_skip_is_not_a_skipped_check(self):
+        result = self.run_child("print('all runnable checks passed (a [SKIP] line names omissions)')")
+        self.assertEqual(result["status"], "passed")
+
+    def test_failure_marker_cannot_hide_behind_zero_exit(self):
+        self.assertEqual(self.run_child("print('[FAIL] memory guard')")["status"], "failed")
+
+    def test_nonzero_exit_overrides_skip(self):
+        result = self.run_child("print('[SKIP] optional'); raise SystemExit(7)")
+        self.assertEqual((result["status"], result["exit_code"]), ("failed", 7))
+
+    def test_timeout_is_not_a_pass(self):
+        result = self.run_child("import time; time.sleep(30)", timeout=0.1)
+        self.assertEqual(result["status"], "failed")
+        self.assertIn("timed out", result["reason"])
+
+    def test_missing_executable_is_reported(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            result = a.run_gate("absent", [str(self.out / "nonexistent")],
+                                self.out, dict(os.environ), 5)
+        self.assertEqual(result["status"], "failed")
+        self.assertIsNone(result["exit_code"])
+
+    def test_json_stdout_is_separate_from_diagnostics(self):
+        code = "import sys, json; print(json.dumps(dict(worst_core=100))); print('diagnostic', file=sys.stderr)"
+        result = self.run_child(code)
+        self.assertEqual(json.loads((self.out / result["stdout"]).read_text())["worst_core"], 100)
+        self.assertIn("diagnostic", (self.out / result["log"]).read_text())
+
+    def test_budget_rejects_overrun(self):
+        self.assertEqual(a.budget_result(dict(worst_core=3121, usable=3120)), "failed")
+        self.assertEqual(a.budget_result(dict(worst_core=3120, usable=3120)), "passed")
+        with self.assertRaises(ValueError):
+            a.budget_result(dict(worst_core=1))
+        with self.assertRaises(ValueError):
+            a.budget_result(dict(worst_core=1, usable=0))
+
+    def test_unrun_checks_cannot_be_accepted(self):
+        self.assertEqual(a.aggregate([dict(status="passed"), dict(status="not_run")]), "blocked")
+        self.assertEqual(a.aggregate([dict(status="blocked"), dict(status="failed")]), "failed")
+        self.assertEqual(a.aggregate([dict(status="passed"), dict(status="not_applicable")]), "passed")
+
+    def test_unknown_dsp_profile_blocks_instead_of_using_defaults(self):
+        status, _ = a.pressure_profile([SimpleNamespace(key="NEW EFFECT", dsp=object())])
+        self.assertEqual(status, "blocked")
+        status, _ = a.pressure_profile([SimpleNamespace(key="CF PATCH", dsp=None)])
+        self.assertEqual(status, "not_applicable")
+
+    def test_missing_prerequisites_produce_partial_json_and_nonzero_exit(self):
+        out = self.out / "run"
+        with patch.object(a, "ROOT", self.out), patch.object(a, "provenance", return_value={}), \
+                patch.object(a.registry, "remix", return_value=object()), \
+                patch.object(a.registry, "selected", return_value=[]), \
+                patch.dict(os.environ, {}, clear=True), contextlib.redirect_stdout(io.StringIO()):
+            rc = a.main(["--remix", "test", "--out", str(out)])
+        report = json.loads((out / "report.json").read_text())
+        self.assertEqual(rc, 1)
+        self.assertEqual(report["status"], "blocked")
+        self.assertFalse(report["hardware_validated"])
+        self.assertEqual(report["gates"][0]["status"], "blocked")
+        self.assertTrue(all(g["status"] == "not_run" for g in report["gates"][1:]))
+
+    def test_existing_report_directory_cannot_be_reused(self):
+        marker = self.out / "report.json"
+        marker.write_text("old evidence")
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            a.main(["--out", str(self.out)])
+        self.assertEqual(marker.read_text(), "old evidence")
+
+    def test_missing_pressure_meter_is_not_evidence(self):
+        price = dict(cores={"core 0 (T5-8)": {"layouts": 1}, "core 1 (T1-4)": {"layouts": 1}})
+        rows = [dict(core=c, rc=0, flags=[], meter={str(c): [1600, 100]}) for c in (0, 1)]
+        self.assertIsNone(a.pressure_evidence_error(rows, price))
+        rows[0]["meter"] = {}
+        self.assertIn("meter", a.pressure_evidence_error(rows, price))
+        self.assertIn("incomplete", a.pressure_evidence_error(rows[1:], price))
+
+    def test_pass_is_not_published_until_report_is_final(self):
+        report = dict(gates=[dict(name="last", status="passed")])
+        a.write_report(self.out, report)
+        self.assertEqual(json.loads((self.out / "report.json").read_text())["status"], "running")
+        report["finished_at"] = "2026-01-01T00:00:00+00:00"
+        a.write_report(self.out, report)
+        self.assertEqual(json.loads((self.out / "report.json").read_text())["status"], "passed")
+
+    def test_generated_audio_is_repeatable_stereo_and_nonzero(self):
+        import wave
+        from stress_project import make_sample
+        first, second = self.out / "a.wav", self.out / "b.wav"
+        make_sample(first)
+        make_sample(second)
+        self.assertEqual(a.sha256(first), a.sha256(second))
+        with wave.open(str(first)) as wav:
+            self.assertEqual((wav.getnchannels(), wav.getframerate(), wav.getnframes()),
+                             (2, 44100, 88200))
+            self.assertTrue(any(wav.readframes(88200)))
+
+class WorkflowTests(unittest.TestCase):
+    """Exercise the orchestration without an OS image or emulator."""
+    def run_workflow(self, stop_at=None, over=False, empty_render=False):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            project = root / "project"
+            project.mkdir()
+            (project / "project.work").write_text("private fixture")
+            (project / "bank01.work").write_text("private bank")
+            for rel in ("out/raw/section_3_MAIN_OS.bin", "out/emu/ot_emu",
+                        ".venv/bin/python3", "out/mainos_bus.bin"):
+                p = root / rel
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text("synthetic test input")
+            calls = []
+
+            def gate(name, command, out, env, timeout):
+                calls.append(name)
+                self.assertEqual(env["REMIX"], "test")
+                self.assertEqual(env["OT_PROJECT"], str(project))
+                self.assertNotIn("MAKEFLAGS", env)
+                if name == "cycles":
+                    (out / "cycles.stdout").write_text(json.dumps(
+                        dict(worst_core=3121 if over else 100, usable=3120)))
+                if name == "pressure_price":
+                    dest = pathlib.Path(command[command.index("--out") + 1])
+                    self.assertTrue(dest.is_relative_to(out))
+                    dest.mkdir()
+                    (dest / "test_price.json").write_text(json.dumps(
+                        dict(cores={"core 0 (T5-8)": {"over": 0, "layouts": 1},
+                                    "core 1 (T1-4)": {"over": 0, "layouts": 1}})))
+                if name == "pressure_render":
+                    dest = pathlib.Path(command[command.index("--out") + 1])
+                    rows = [] if empty_render else [
+                        dict(core=c, rc=0, flags=[], meter={str(c): [1600, 100]})
+                        for c in (0, 1)]
+                    (dest / "test_render.json").write_text(json.dumps(rows))
+                return dict(name=name, status="blocked" if name == stop_at else "passed",
+                            exit_code=0, skips=["missing fixture"] if name == stop_at else [])
+
+            out = root / "result"
+            with patch.object(a, "ROOT", root), patch.object(a, "provenance", return_value={}), \
+                    patch.object(a.registry, "remix", return_value=object()), \
+                    patch.object(a.registry, "selected", return_value=[]), \
+                    patch.object(a, "pressure_profile", return_value=("ready", "test profile")), \
+                    patch.object(a, "run_gate", side_effect=gate), \
+                    patch.dict(os.environ, {"MAKEFLAGS": "-j8"}, clear=True), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                rc = a.main(["--remix", "test", "--project", str(project), "--out", str(out)])
+            return rc, json.loads((out / "report.json").read_text()), calls
+
+    def test_complete_report_contains_measurements_and_fingerprints(self):
+        rc, report, calls = self.run_workflow()
+        self.assertEqual((rc, report["status"]), (0, "passed"))
+        self.assertEqual(calls, ["check", "cycles", "pressure_price", "pressure_render"])
+        self.assertEqual(len(report["fixtures"]["stems"]), 8)
+        self.assertEqual(len(report["provenance"]["image_sha256"]), 64)
+        self.assertIn("pressure_render", report["measurements"])
+
+    def test_zero_exit_skip_stops_dependent_stages(self):
+        rc, report, calls = self.run_workflow(stop_at="check")
+        self.assertEqual((rc, report["status"]), (1, "blocked"))
+        self.assertEqual(calls, ["check"])
+        self.assertEqual(report["gates"][-1]["status"], "not_run")
+
+    def test_cycle_overrun_stops_before_pressure(self):
+        rc, report, calls = self.run_workflow(over=True)
+        self.assertEqual((rc, report["status"]), (1, "failed"))
+        self.assertEqual(calls, ["check", "cycles"])
+
+    def test_empty_render_cannot_be_accepted(self):
+        rc, report, _ = self.run_workflow(empty_render=True)
+        self.assertEqual((rc, report["status"]), (1, "failed"))
+        self.assertEqual(report["gates"][-1]["status"], "failed")
+
+
+if __name__ == "__main__":
+    unittest.main()

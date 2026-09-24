@@ -86,7 +86,7 @@ def main():
     for f in fails:
         print(f"  [FAIL] {f}")
     if not checked:
-        print(f"  [SKIP] {name} has no labelled selects")
+        print(f"  [N/A] {name} has no labelled selects")
     print("OK" if not fails else f"{len(fails)} FAILED")
     return 1 if fails else 0
 

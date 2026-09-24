@@ -317,6 +317,7 @@ def oddities(a):
 
 
 def main():
+    global OUT
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("price"); p.add_argument("--remix", default=os.environ.get("REMIX", "bamsep26"))
@@ -334,7 +335,11 @@ def main():
     o.add_argument("--image", default="out/mainos_bus.bin")
     o.add_argument("--seconds", type=float, default=2.0)
     o.add_argument("--stems", default="out/test_audio/rig")
+    for parser in (p, r, o):
+        parser.add_argument("--out", type=pathlib.Path, default=OUT,
+                            help="price, render and evidence directory")
     a = ap.parse_args()
+    OUT = a.out
     return {"price": price, "render": render, "oddities": oddities}[a.cmd](a)
 
 
