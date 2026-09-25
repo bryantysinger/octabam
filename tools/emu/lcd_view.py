@@ -134,18 +134,22 @@ def watch(path, on_frame, period=0.05):
 
 # Key codes are the panel controller's: the keymap the firmware installs
 # ([0x46c901dc]) is the identity, so code = row*8 + bit. Names from
-# docs/firmware/PANEL.md (octalab's list) and the 18 Sep 2026 probe under the
-# port (PLAY/STOP/REC/MIDI...); an unlisted code is drawn by its number.
+# docs/firmware/PANEL.md (octalab's list, the 18 Sep 2026 probe under the
+# port) and the 25 Sep 2026 survey under the port (TEMPO, SCENE A/B, PAGE,
+# PART, ARR, MIX); a trailing "?" marks a name inferred, not measured.
 KEYS = {
     **{i: f"{i + 1}" for i in range(16)},          # trig keys
     **{0x10 + i: f"T{i + 1}" for i in range(8)},   # track keys
-    0x1C: "MENU", 0x20: "DOWN", 0x21: "RIGHT", 0x22: "SRC", 0x23: "AMP", 0x24: "LFO", 0x25: "FX1", 0x26: "FX2",
-    0x28: "PLAY", 0x29: "REC", 0x2A: "STOP",
-    0x2D: "FUNC", 0x2E: "PTN", 0x2F: "BANK", 0x31: "YES", 0x32: "NO", 0x33: "UP", 0x34: "LEFT",
-    0x35: "MIDI",
+    0x18: "TEMPO", 0x19: "SCENE A", 0x1A: "SCENE B", 0x1B: "PAGE", 0x1C: "MENU", 0x1D: "PART", 0x1F: "ARR",
+    0x20: "DOWN", 0x21: "RIGHT", 0x22: "SRC", 0x23: "AMP", 0x24: "LFO", 0x25: "FX1", 0x26: "FX2",
+    0x27: "CUE?", 0x28: "PLAY", 0x29: "REC", 0x2A: "STOP", 0x2B: "REC1?", 0x2C: "REC2?",
+    0x2D: "FUNC", 0x2E: "PATTERN", 0x2F: "BANK", 0x30: "MIX", 0x31: "YES", 0x32: "NO", 0x33: "UP", 0x34: "LEFT",
+    0x35: "MIDI", 0x36: "REC3?",
     **{0x38 + i: f"push {'ABCDEF'[i]}" for i in range(6)}, 0x3E: "push LEV",
 }
-ENCODERS = ["A", "B", "C", "D", "E", "F", "LEV"]
+ENCODERS = ["A", "B", "C", "D", "E", "F", "LEVEL"]
+# Codes the survey has not named; drawn in their own group by number.
+UNNAMED = (0x1E, 0x37, 0x3F)
 
 
 class Panel:
@@ -181,64 +185,108 @@ class Panel:
         self.send(f"pot {int(v)}")
 
 
-def build_panel(tk, root, panel):
-    frame = tk.Frame(root)
-    frame.pack(fill="x", padx=4, pady=4)
+def build_panel(tk, root, panel, canvas):
+    """The screen in the middle of an Octatrack-shaped panel: LEVEL and the
+    track keys to its left, the six knobs, the page keys and the arrows to
+    its right, the mode keys under it, trigs and transport along the
+    bottom. Every key sends press and release; a knob is `<< < NAME > >>`
+    (the wheel over its name turns it, a click on the name pushes it)."""
+    BG, GROUP = "#2b2b2b", "#bbbbbb"
+    root.configure(bg=BG)
 
-    def keybtn(parent, code, width=5):
-        b = tk.Button(parent, text=KEYS.get(code, f"{code:02x}"), width=width)
+    def box(parent, title):
+        return tk.LabelFrame(parent, text=title, fg=GROUP, bg=BG, padx=4, pady=3, bd=1, relief="groove")
+
+    def keybtn(parent, code, width=6):
+        b = tk.Button(parent, text=KEYS.get(code, f"{code:02x}"), width=width, highlightbackground=BG)
         b.bind("<ButtonPress-1>", lambda e, c=code: panel.key(c, True))
         b.bind("<ButtonRelease-1>", lambda e, c=code: panel.key(c, False))
         return b
 
-    # encoders: label (wheel), -4 -1 +1 +4, push
-    enc = tk.Frame(frame)
-    enc.pack(fill="x")
-    for n, name in enumerate(ENCODERS):
-        col = tk.Frame(enc)
-        col.pack(side="left", padx=2)
-        lab = tk.Label(col, text=name, width=4, relief="ridge")
-        lab.pack()
-        lab.bind("<MouseWheel>", lambda e, i=n: panel.enc(i, 1 if e.delta > 0 else -1))
-        lab.bind("<Button-4>", lambda e, i=n: panel.enc(i, 1))
-        lab.bind("<Button-5>", lambda e, i=n: panel.enc(i, -1))
-        row = tk.Frame(col)
-        row.pack()
-        for d in (-4, -1, 1, 4):
-            tk.Button(row, text=f"{d:+d}", width=2, command=lambda i=n, dd=d: panel.enc(i, dd)).pack(side="left")
-        keybtn(col, 0x38 + n, width=8).pack()
-    pot = tk.Scale(enc, from_=255, to=0, orient="vertical", label="MAIN", length=80, command=panel.pot)
+    def knob(parent, n):
+        f = tk.Frame(parent, bg=BG)
+        for d, t in ((-4, "«"), (-1, "‹")):
+            tk.Button(f, text=t, width=1, highlightbackground=BG,
+                      command=lambda dd=d: panel.enc(n, dd)).pack(side="left")
+        lab = tk.Label(f, text=ENCODERS[n], width=6, relief="raised", bg="#444444", fg="white")
+        lab.pack(side="left", padx=2)
+        push = 0x38 + n if n < 6 else 0x3E
+        lab.bind("<ButtonPress-1>", lambda e: panel.key(push, True))
+        lab.bind("<ButtonRelease-1>", lambda e: panel.key(push, False))
+        lab.bind("<MouseWheel>", lambda e: panel.enc(n, 1 if e.delta > 0 else -1))
+        lab.bind("<Button-4>", lambda e: panel.enc(n, 1))
+        lab.bind("<Button-5>", lambda e: panel.enc(n, -1))
+        for d, t in ((1, "›"), (4, "»")):
+            tk.Button(f, text=t, width=1, highlightbackground=BG,
+                      command=lambda dd=d: panel.enc(n, dd)).pack(side="left")
+        return f
+
+    top = tk.Frame(root, bg=BG)
+    top.pack(padx=6, pady=6)
+
+    # left of the screen: LEVEL, the main volume, the track keys
+    left = tk.Frame(top, bg=BG)
+    left.grid(row=0, column=0, sticky="n", padx=(0, 8))
+    lev = box(left, "LEVEL")
+    lev.pack(fill="x")
+    knob(lev, 6).pack()
+    pot = tk.Scale(lev, from_=0, to=255, orient="horizontal", label="MAIN volume", length=150,
+                   command=panel.pot, bg=BG, fg=GROUP, highlightthickness=0)
     pot.set(200)
-    pot.pack(side="left", padx=6)
+    pot.pack()
+    trk = box(left, "TRACKS")
+    trk.pack(fill="x", pady=(6, 0))
+    for i in range(8):
+        keybtn(trk, 0x10 + i, width=4).grid(row=i // 4, column=i % 4, padx=1, pady=1)
+    cue = box(left, "")
+    cue.pack(fill="x", pady=(6, 0))
+    keybtn(cue, 0x27, width=6).pack(side="left", padx=1)
+    keybtn(cue, 0x2D, width=6).pack(side="left", padx=1)
 
-    # navigation + page keys + transport
-    nav = tk.Frame(frame)
-    nav.pack(fill="x", pady=2)
+    canvas.grid(in_=top, row=0, column=1, sticky="n")
+
+    # right of the screen: data entry, pages, navigation
+    right = tk.Frame(top, bg=BG)
+    right.grid(row=0, column=2, sticky="n", padx=(8, 0))
+    data = box(right, "DATA ENTRY")
+    data.pack(fill="x")
+    for n in range(6):
+        knob(data, n).grid(row=n // 3, column=n % 3, padx=3, pady=2)
+    pages = box(right, "PAGES")
+    pages.pack(fill="x", pady=(6, 0))
     for code in (0x22, 0x23, 0x24, 0x25, 0x26):
-        keybtn(nav, code).pack(side="left")
-    tk.Label(nav, text=" ").pack(side="left")
-    for code in (0x34, 0x33, 0x20, 0x21, 0x31, 0x32):
-        keybtn(nav, code).pack(side="left")
-    tk.Label(nav, text=" ").pack(side="left")
-    for code in (0x28, 0x2A, 0x29):
-        keybtn(nav, code).pack(side="left")
+        keybtn(pages, code, width=5).pack(side="left", padx=1)
+    nav = box(right, "NAVIGATE")
+    nav.pack(fill="x", pady=(6, 0))
+    keybtn(nav, 0x33, width=6).grid(row=0, column=1)
+    keybtn(nav, 0x34, width=6).grid(row=1, column=0)
+    keybtn(nav, 0x20, width=6).grid(row=1, column=1)
+    keybtn(nav, 0x21, width=6).grid(row=1, column=2)
+    tk.Frame(nav, width=16, bg=BG).grid(row=0, column=3)
+    keybtn(nav, 0x32, width=6).grid(row=1, column=4)
+    keybtn(nav, 0x31, width=6).grid(row=1, column=5)
 
-    # mode keys: everything not placed above, by code
-    placed = set(range(16)) | set(range(0x10, 0x18)) | {0x22, 0x23, 0x24, 0x25, 0x26, 0x34, 0x33, 0x20, 0x21, 0x31, 0x32, 0x28, 0x2A, 0x29} | set(range(0x38, 0x3F))
-    modes = tk.Frame(frame)
-    modes.pack(fill="x", pady=2)
-    for code in range(0x40):
-        if code not in placed:
-            keybtn(modes, code, width=4).pack(side="left")
+    # under the screen: the mode keys
+    modes = box(top, "MODES")
+    modes.grid(row=1, column=0, columnspan=3, sticky="we", pady=(6, 0))
+    for code in (0x1C, 0x18, 0x30, 0x1D, 0x1F, 0x35, 0x1B, 0x2E, 0x2F, 0x19, 0x1A):
+        keybtn(modes, code, width=7).pack(side="left", padx=1)
 
-    tracks = tk.Frame(frame)
-    tracks.pack(fill="x", pady=2)
-    for code in range(0x10, 0x18):
-        keybtn(tracks, code, width=3).pack(side="left")
-    trigs = tk.Frame(frame)
-    trigs.pack(fill="x", pady=2)
-    for code in range(16):
-        keybtn(trigs, code, width=3).pack(side="left")
+    # the bottom: trigs, recorders, transport
+    bottom = tk.Frame(top, bg=BG)
+    bottom.grid(row=2, column=0, columnspan=3, sticky="we", pady=(6, 0))
+    trigs = box(bottom, "TRIGS")
+    trigs.pack(side="left")
+    for i in range(16):
+        keybtn(trigs, i, width=2).pack(side="left", padx=(6 if i and i % 4 == 0 else 1, 1))
+    other = box(bottom, "UNNAMED")
+    other.pack(side="left", padx=(8, 0))
+    for code in UNNAMED:
+        keybtn(other, code, width=3).pack(side="left", padx=1)
+    tr = box(bottom, "RECORD / TRANSPORT")
+    tr.pack(side="right")
+    for code in (0x2B, 0x2C, 0x36, 0x29, 0x28, 0x2A):
+        keybtn(tr, code, width=5).pack(side="left", padx=1)
 
     # keyboard
     kb = {"Left": 0x34, "Right": 0x21, "Up": 0x33, "Down": 0x20, "Return": 0x31, "Escape": 0x32, "space": 0x28,
@@ -293,9 +341,10 @@ def main():
     root.resizable(False, False)
     root.title(os.path.basename(a.plane) + (" + panel" if a.panel else ""))
     canvas = tk.Canvas(root, width=W * a.scale, height=H * a.scale, bg="#%02x%02x%02x" % OFF, highlightthickness=0)
-    canvas.pack()
     if a.panel:
-        build_panel(tk, root, Panel(a.panel))
+        build_panel(tk, root, Panel(a.panel), canvas)
+    else:
+        canvas.pack()
     on = "#%02x%02x%02x" % ON
     state = {"img": None}
 
