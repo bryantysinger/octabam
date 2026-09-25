@@ -9,7 +9,7 @@ each engine's parameters with the values the host page would show.
 | UP / DOWN | move the cursor one row in the focused box, with key repeat; the box scrolls, four rows visible |
 | A | edits the selected parameter on the host track; ×7 while A is pushed (the stock fast turn) |
 | B | the same as A |
-| LEFT / RIGHT | focus DELAY / REVERB |
+| LEFT / RIGHT | focus DELAY / REVERB; the cursor stays on the same screen line |
 | LEVEL | BPM in whole steps; ×7 while LEVEL is pushed (stock) |
 | FUNC + LEVEL | BPM in 0.1 steps (the step stock gives UP / DOWN) |
 | C–F | held while the window is open |
@@ -24,10 +24,14 @@ while the pattern tempo is on (the stock TEMPO draw's test, `0x80000024`,
 - the arrows: the font's ◀ and ▶ (`0x13`, `0x14`) around the stock ▲ and
   ▼ icons (`0x400b9d8c`, `0x400b9da0`).
 
-- **Rows and labels.** The rows are each engine's named slots, taken from
-  its manifest when the remix is built. Labels are the engine descriptor's
-  names, so a mode's `---` and GLEN/SLEN show here as they do on the host
-  page. The MODE row is labelled MODE, and its value is the mode.
+- **Rows and labels.** The rows are each engine's named slots (a mask per
+  engine, taken from its manifest when the remix is built), minus the ones
+  the current mode names `---`: CLEAN lists 8 delay rows, GRAIN 12,
+  REVERSE 8. The list is rebuilt on every draw from the descriptor's names
+  after the MODE formatter has renamed them (`rows` in `helpers.s`), so a
+  MODE change adds or drops rows at once. Labels are the descriptor's names
+  (GLEN/SLEN as on the host page); the MODE row is labelled MODE, and its
+  value is the mode.
 - **Values.** Values are printed by the slot's own formatter: TEMPO SYNC's
   divisions, the select labels. A slot with no formatter prints a plain
   number.
@@ -61,10 +65,11 @@ SYNC (`0x4006730c`) screens make:
 The input layer format is in `docs/firmware/MAINMENU.md` §6c.
 
 Two units, both pinned in measured free runs:
-- `helpers.s` (314 B) at `0x400d24d0`, the start of the overflow run. The
-  floating caves take the run after it.
-- `tempobus.s` (1,316 B) at `0x400d64e0`, below the FX2 chooser's NONE
-  row.
+- `helpers.s` (384 B, with the row list) at `0x400d24d0`, the start of the
+  overflow run. The floating caves take the run after it (bamsep26: next
+  free `0x400d2c38` of `0x400d2ce0`).
+- `tempobus.s` (1,524 B) at `0x400d64e0`, below the FX2 chooser's NONE
+  row; its region ends at `0x400d6b00` (1,568 B).
 
 ## Measured
 
