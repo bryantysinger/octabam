@@ -204,7 +204,7 @@ KEYS_MK2 = [
     (0x30, "MIX", "Click", 399, 513, 62, 58),
     (0x1F, "ARR", "Arr Mode", 483, 513, 62, 58),
     (0x2D, "FUNC", "", 165, 648, 90, 56),
-    (0x27, "CUE", "Reload Part", 315, 648, 90, 56),
+    (0x2A, "CUE", "Reload Part", 315, 648, 90, 56),     # 0x25.2 (KEYMAP.md; the key table gives 0x2a a press and a release handler, 0x4004e978/0x4004e968)
     (0x2E, "PTN", "Pattern Settings", 165, 773, 90, 56),
     (0x2F, "BANK", "Track Trig Edit", 315, 773, 90, 56),
     (0x31, "YES", "Arm", 447, 690, 58, 58),
@@ -220,7 +220,7 @@ KEYS_MK2 = [
     (0x26, "FX2", "Ctrl 2", 1078, 625, 58, 58),
     (0x29, "\u25cb", "Copy", 860, 773, 90, 58),
     (0x28, "\u25b7", "Clear", 958, 773, 90, 58),
-    (0x2A, "\u25a1", "Paste", 1058, 773, 90, 58),
+    (0x27, "\u25a1", "Paste", 1058, 773, 90, 58),     # STOP = 0x24.7 (KEYMAP.md, E2 `stop`); same handler 0x4004aca4 in both keymaps
     (0x18, "TEMPO", "Tap Tempo\nPickup Sync", 1344, 490, 62, 62),
     (0x19, "A", "Mute", 1252, 733, 92, 92),
     (0x1A, "B", "Mute", 1755, 733, 92, 92),

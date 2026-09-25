@@ -572,6 +572,37 @@ int main()
 		check("SOF interrupts once the guest enables SRE", u.irq());
 	}
 
+	// ---- the MKII panel's replies (periph.h MkiiPanel, docs/firmware/PANEL.md)
+	{
+		ot::Uart uart("UART@fc064000", 0xfc064000);
+		ot::MkiiPanel panel(uart, 8);
+		uart.setFarEnd([&panel](uint8_t _b) { panel(_b); });
+		const auto drain = [&uart]()
+		{
+			std::vector<uint8_t> v;
+			while(uart.read(0x04, 1) & ot::Uart::RXRDY)
+				v.push_back(static_cast<uint8_t>(uart.read(0x0c, 1)));
+			return v;
+		};
+		const auto send = [&uart](std::initializer_list<uint8_t> _b) { for(const auto b : _b) uart.write(0x0c, 1, b, false); };
+		check("an MKI-style stream gets no answer", (send({0x43, 0x3f, 0x00, 0x20, 0x55}), drain().empty()));
+		send({0x60, 0x02, 0x70, 0x00});
+		check("the loader query `60 02 70 00` gets `70 05 <version> 00 00`",
+			drain() == std::vector<uint8_t>{0x70, 0x05, 0x08, 0x00, 0x00});
+		send({0x60, 0x00});
+		send({0x10, 0x00, 0x74, 0x00, 0x74, 0x00, 0x74, 0x00, 0x74, 0x00});	// an LCD block full of 74 00
+		check("0x74 inside an LCD block is not a command", drain().empty());
+		send({0x70, 0x00});
+		check("`70 00` outside the loader gets no answer", drain().empty());
+		send({0x74, 0x00});
+		const auto rep = drain();
+		check("`74 00` gets the 0x7r report: header + 9 bytes, byte 1 = version, byte 3 = 1 (UI tested)",
+			rep.size() == 10 && rep[0] == 0x70 && rep[2] == 0x08 && rep[4] == 0x01 && rep[5] == 0x00);
+		send({0x74, 0x00});
+		check("a replayed write is not seen by the far end",
+			(uart.write(0x0c, 1, 0x74, true), uart.write(0x0c, 1, 0x00, true), drain().size() == 10));
+	}
+
 	std::printf("%s\n", g_failures ? "PERIPHERAL GATE FAILED" : "peripheral gate passed.");
 	return g_failures ? 1 : 0;
 }

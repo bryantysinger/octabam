@@ -211,6 +211,10 @@ namespace ot
 		// at any baud (11 Sep 2026, --interactive).
 		void rxPush(const uint8_t _b) { m_rx.push_back(_b); }
 		size_t rxPending() const { return m_rx.size(); }
+		// The device on the far end of the line: called with every byte the
+		// firmware transmits (not on a replayed write), and may answer with
+		// rxPush. Unset: nothing answers (the MKI panel under this port).
+		void setFarEnd(std::function<void(uint8_t)> _f) { m_farEnd = std::move(_f); }
 
 		uint32_t read(uint32_t _off, uint32_t _size);
 		void write(uint32_t _off, uint32_t _size, uint32_t _val, bool _replay);
@@ -219,9 +223,79 @@ namespace ot
 		const char* m_name;
 		uint32_t m_base;
 		uint32_t m_imr = 0;
+		std::function<void(uint8_t)> m_farEnd;
 		std::vector<uint8_t> m_tx;
 		std::vector<uint8_t> m_rx;
 		std::unordered_map<uint32_t, uint32_t> m_regs;
+	};
+
+	// ---- the MKII front panel's replies (docs/firmware/PANEL.md) -----------
+	// The far end of UART@fc064000 when the firmware runs as an MKII
+	// (0x46c8d18c = 1). Two exchanges, read 25 Sep 2026 from the image:
+	//   * the polled loader handshake 0x4001f4dc, interrupts off: the CPU
+	//     sends `60 02 70 00` and reads five bytes; `70 05 <v>` with v equal
+	//     to the long at 0x400d81a4 (the panel firmware image's version, 8
+	//     in 1.40C) means the panel runs the current firmware, and the CPU
+	//     sends `60 00` and returns 0. Any other v and it reflashes the
+	//     panel from 0x400d81a8 (never taken here); any other first two
+	//     bytes and it returns -1. With no answer it spins at 0x4001f540
+	//     forever (measured: the TX stream stops at `60 02 70 00`).
+	//   * `74 00` (0x4001f98a): answered with the 0x7r report the RX parser
+	//     0x4009228c copies to 0x46100b48 (nine bytes after the header).
+	//     Readers: 0x40061c94 (byte 3 == 0 -> "UI NOT TESTED!", byte 4 == 22
+	//     -> 0x46c8d188) and the system info page 0x400698a6 (UI VERSION
+	//     "1.<byte 1>.<byte 4 == 22>"). The model reports a tested panel,
+	//     byte 1 = the loader version, every other byte 0 (inferred values:
+	//     no MKII panel's report has been captured).
+	// The TX stream is framed by the opcode lengths of PANEL_LINK.md so that
+	// LCD and LED bytes are never read as a command.
+	class MkiiPanel
+	{
+	public:
+		MkiiPanel(Uart& _uart, uint8_t _version) : m_uart(_uart), m_version(_version) {}
+
+		void operator()(uint8_t _b)
+		{
+			m_msg.push_back(_b);
+			if(m_msg.size() < length(m_msg[0]))
+				return;
+			const auto m = m_msg;
+			m_msg.clear();
+			if(m.size() == 2 && m[0] == 0x60)
+				m_loader = m[1] == 0x02;
+			else if(m.size() == 2 && m[0] == 0x70 && m_loader)
+				answer({0x70, 0x05, m_version, 0x00, 0x00});
+			else if(m.size() == 2 && m[0] == 0x74)
+				answer({0x70, 0x00, m_version, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00});
+		}
+
+		uint64_t answers() const { return m_answers; }
+
+	private:
+		static size_t length(uint8_t _op)
+		{
+			switch(_op >> 4)
+			{
+			case 0x1: return 10;						// LCD block
+			case 0x2: case 0x3: case 0xa: return 2;		// LED row / level
+			case 0x4: return 1;							// one-byte command
+			case 0x6: case 0x7: return 2;				// 60 xx, 70 xx, 74 xx
+			case 0xb: return _op == 0xb5 ? 6 : 2;		// b5 palette entry, b7 backlight
+			default: return 1;							// unknown: one byte, as PanelLink
+			}
+		}
+		void answer(std::initializer_list<uint8_t> _bytes)
+		{
+			for(const auto b : _bytes)
+				m_uart.rxPush(b);
+			++m_answers;
+		}
+
+		Uart& m_uart;
+		uint8_t m_version;
+		bool m_loader = false;
+		std::vector<uint8_t> m_msg;
+		uint64_t m_answers = 0;
 	};
 
 	// ---- DSPI --------------------------------------------------------------

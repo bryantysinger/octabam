@@ -43,7 +43,9 @@ for _op in list(range(0x20, 0x30)) + list(range(0x30, 0x40)) + list(range(0xa0, 
     _MSG_LEN[_op] = 2
 for _op in range(0x40, 0x50):
     _MSG_LEN[_op] = 1
-_MSG_LEN.update({0x60: 2, 0x74: 2, 0xb5: 6, 0xb7: 2})
+# 0x70: `70 00`, the version query of the MKII panel loader handshake
+# (0x4001f4dc, only on an MKII; docs/firmware/PANEL.md)
+_MSG_LEN.update({0x60: 2, 0x70: 2, 0x74: 2, 0xb5: 6, 0xb7: 2})
 
 
 def opcode_family(op):
@@ -56,7 +58,7 @@ def opcode_family(op):
         return "led_level"
     if 0x40 <= op < 0x50:
         return "cmd1"
-    return {0x60: "cmd60", 0x74: "cmd74", 0xb5: "palette", 0xb7: "backlight"}.get(op, "unknown")
+    return {0x60: "cmd60", 0x70: "cmd70", 0x74: "cmd74", 0xb5: "palette", 0xb7: "backlight"}.get(op, "unknown")
 
 
 class PanelLink:

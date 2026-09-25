@@ -344,7 +344,9 @@ namespace
 		static void serveInteractiveMarker() {}
 	};
 
-	int serveInteractive(ot::Machine& _m, ot::Rtos& _rtos, ot::DspPair* _dsp, ot::AtaCard* _card)
+	// _afterRun: called after every `run` (main passes the --lcd flush, so the
+	// plane file holds the screen as the run left it)
+	int serveInteractive(ot::Machine& _m, ot::Rtos& _rtos, ot::DspPair* _dsp, ot::AtaCard* _card, const std::function<void()>& _afterRun = {})
 	{
 		SelfProfiler prof;
 		if(const char* e = std::getenv("OT_SELFPROF"); e && std::atof(e) > 0.0)
@@ -681,6 +683,8 @@ namespace
 					st = _rtos.runUntil(ms, stop, ot::Rtos::Changes::OnEvent);
 				}
 				wallInRun += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+				if(_afterRun)
+					_afterRun();
 				std::snprintf(buf, sizeof buf, "ok sample=%.3f frames=%llu stop=%s", _rtos.sample(),
 					static_cast<unsigned long long>(_rtos.frameCount()), wallHit ? "wall" : stopWord(st));
 				reply(buf);
@@ -1126,9 +1130,8 @@ int main(int _argc, char** _argv)
 	std::string memDump;		// O10.21: "addr,len=path[;...]" -- ColdFire memory ranges, raw bytes, to FILE at the very end (peeks only support one word, pre-sequencer; this is a range, post-run)
 	std::string cardOut;		// the card image as the firmware left it, to FILE at the very end (the load's WRITEs: emu_card.extract_image reads it back)
 	bool mainLevelGiven = false;	// 12 Sep 2026: --interactive defaults it to 64 (the panel wants sound); `--main-level off` keeps the -1. The batch default stays -1.
-	bool interactive = false;
-	bool mkii = false;			// boot as an MKII (the GPIO loopback the boot probe tests)
-	// 11 Sep 2026: after the boot (and load), serve the line protocol on stdin/stdout (serveInteractive above)
+	bool interactive = false;	// 11 Sep 2026: after the boot (and load), serve the line protocol on stdin/stdout (serveInteractive above)
+	bool mkii = false;			// boot as an MKII: the GPIO loopback the boot probe tests, the MKII panel's replies (docs/firmware/PANEL.md)
 	std::string rtc;			// 11 Sep 2026: the DSPI chip-select-2 clock -- "host", "off", or <epoch seconds> (UTC, frozen); default off, host under --interactive (Dspi::RtcClock)
 
 	for(int i = 1; i < _argc; ++i)
@@ -1474,29 +1477,19 @@ int main(int _argc, char** _argv)
 	{
 		std::printf("vbr        : %#x (the firmware's own `movec %%a0,%%vbr` at 0x40000db6)\n", m.vbr());
 		ot::Rtos rtos(m, ips, 264e6, frame);
-		// --mkii: the MKII panel answers the firmware's handshake with a 0x7r
-		// report of 9 bytes (copied to 0x46100b48, pointer 0x46100b52 by the
-		// panel ISR at 0x40092608). At boot an MKII reads it (0x40061c94):
-		// byte 3 == 0 puts up "UI NOT TESTED!" (the factory UI test flag),
-		// byte 4 == 22 sets 0x46c8d188 (meaning not established). The port's
-		// panel never answers, and bytes queued before the boot are lost to
-		// the UART's init, so the record of a tested panel (byte 3 = 1, the
-		// rest 0) is placed where the ISR would put it at the first write of
-		// the input-layer list head 0x460d165c -- main's keymap push at
-		// 0x40061bda, after RAM is cleared and before the check.
+		// --mkii: the far end of the panel UART answers as an MKII panel
+		// (ot::MkiiPanel, periph.h): the loader handshake 0x4001f4dc and the
+		// 0x7r report asked for by `74 00`. The loader version it reports is
+		// the one the image carries (the long at 0x400d81a4), so the firmware
+		// never starts a panel reflash.
+		std::unique_ptr<ot::MkiiPanel> mkiiPanel;
 		if(mkii)
 		{
-			auto placed = std::make_shared<bool>(false);
-			m.addWriteWatch(0x460d165c, 0x460d165f, [&m, placed](uint32_t, uint8_t, uint32_t, uint32_t)
-			{
-				if(*placed)
-					return;
-				*placed = true;
-				for(uint32_t i = 0; i < 9; ++i)
-					m.write8(0x46100b48 + i, i == 3 ? 1 : 0);
-				m.poke32(0x46100b52, 0x46100b48);
-				m.write8(0x400d16b8, 1);	// what the ISR also sets on the report (0x40092644)
-			});
+			const uint32_t off = 0x400d81a4 - ot::Machine::g_imageBase;
+			const uint8_t ver = off + 4 <= img.size() ? img[off + 3] : 0;
+			mkiiPanel = std::make_unique<ot::MkiiPanel>(rtos.uartA(), ver);
+			rtos.uartA().setFarEnd([p = mkiiPanel.get()](uint8_t _b) { (*p)(_b); });
+			std::printf("mkii       : the panel UART answers as an MKII panel (loader version %u)\n", ver);
 		}
 		if(bootLogo)
 		{
@@ -2221,7 +2214,7 @@ int main(int _argc, char** _argv)
 				std::printf("main level : sys command %u posted with %d -> gain table[0] = %#x%s (bit 0 of 0x8000004a = %u)\n",
 					ot::g_setMainLevelCase, mainLevel, g, g ? "" : " -- NOT FILLED", m.read8(0x8000004a) & 1);
 			}
-			return serveInteractive(m, rtos, dspPair.get(), card.get());
+			return serveInteractive(m, rtos, dspPair.get(), card.get(), [&] { if(!lcd.empty() && lcdDirty) lcdFlush(); });
 		}
 
 		// The bench: hold the machine here, every other phase done, until

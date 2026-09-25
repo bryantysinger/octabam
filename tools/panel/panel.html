@@ -1406,10 +1406,32 @@ async function poll() {
 }
 let pollN = 0;
 
+// The MKII's extra keys (key_map.json "mkii_only"): drawn when /map says the
+// port child runs as an MKII (panel_server's default; --mki turns it off).
+// PROJ/PART/AED/ARR as a 2x2 block left of MIXER/MIDI, REC3 beside the two
+// record keys; the MKI's SCALE key is the MKII's PAGE (same matrix cell).
+const KEYS_MKII = [
+  ["proj", 105, 262, 28, 28, "round", "gray"], ["part", 160, 262, 28, 28, "round", "gray"],
+  ["aed", 105, 337, 28, 28, "round", "gray"], ["arr", 160, 337, 28, 28, "round", "gray"],
+  ["rec3", 383, 232, 40, 40, "round", "red"],
+];
+const LABELS_MKII = [
+  ["Proj", 105, 295], ["Part", 160, 295], ["AED", 105, 370], ["Arr", 160, 370],
+  ["Record", 383, 271], ["Edit", 383, 283, "r"], ["Page", 1315, 628, "s"],
+];
+let mkiiDrawn = false;
+function drawMkii() {
+  if (mkiiDrawn) return;
+  mkiiDrawn = true;
+  for (const [id, x, y, w, h, shape, col] of KEYS_MKII) { const k = el(`k ${shape} ${col}`, x, y, w, h); k.dataset.id = id; }
+  for (const [t, x, y, cls] of LABELS_MKII) label(t, x, y, cls);
+}
+
 async function loadMap() {
   try {
     const m = await fetch("/map").then(x => x.json());
     mapKeys = m.keys || {}; mapKnobs = m.knobs || {}; mapLeds = m.leds || {};
+    if (m.model === "mkii") drawMkii();
   } catch (e) {}
   refreshMapped();
 }
