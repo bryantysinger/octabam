@@ -6,6 +6,8 @@ Tim Hastie's records from his fork
 they describe (`tools/emu/ot_emu`, `tools/panel`) on 25 Sep 2026. The text
 is his, unedited; the paths in it are this tree's. Comments in the port
 that cite "COLDFIRE_PORT.md O15c" and the like point here.
+`CONTEXT.md`, which the text cites, is his fork's session notes and
+stays there.
 
 Milestones O1-O14 (the port's own, 7-12 Sep 2026) are in
 `git show 3ceba41:docs/history/COLDFIRE_PORT.md`. His O14i-O14k are not
