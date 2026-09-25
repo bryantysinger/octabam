@@ -33,7 +33,7 @@ MODULE = Module(
         Detour(0x4001d4b2, H("23d04ec95028"), "usbaudio", "audio_ep0page_shim",
                "usb_ep0_send fills the dTD's buffer page 1 too: a configuration straddling a 4 KB page transmitted truncated"),
         Detour(0x4000d9a0, H("42b946104d4e"), "usbaudio", "audio_frame_shim",
-               "frame_isr's last instruction: the per-block producer (16 channels + the sum into the rings) and the packet builder"),
+               "frame_isr's last instruction: the per-block producer (20 channels: tracks, MAIN, CUE; + the sum into the rings) and the packet builder"),
         Detour(0x4001e606, H("2039fc0b01ac"), "usbaudio", "audio_isr_shim",
                "usb_isr UI path: retire EP3 IN completions, then USB MIDI's shim"),
     ),

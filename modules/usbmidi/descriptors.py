@@ -28,7 +28,7 @@ import struct
 # endpoint is polled every 250 us (bInterval 2): 11.025 frames x 64 B, at
 # most 12 frames = 768 B a packet.
 SUBSLOT, BITS = 4, 24
-HS_CHANNELS, HS_MAXPKT, HS_BINTERVAL = 16, 12 * 64, 2     # 11/12 frames x 64 B every 250 us
+HS_CHANNELS, HS_MAXPKT, HS_BINTERVAL = 20, 12 * 80, 2     # 11/12 frames x 80 B every 250 us (16 tracks + MAIN + CUE)
 FS_CHANNELS, FS_MAXPKT, FS_BINTERVAL = 2, 45 * 8, 1       # 44/45 stereo frames x 8 B every 1 ms
 UAC2_AC_IFACE, UAC2_AS_IFACE = 3, 4                        # usbaudio.s .set: the same numbers
 UAC2_CLOCK_ID, UAC2_IT_ID, UAC2_OT_ID = 0x10, 0x11, 0x12

@@ -9,6 +9,36 @@ the tracks, 24-bit as well. markandrus's proof of concept
 octabam's DRAM platform and widened to 24 bits here (25 Sep 2026). Needs
 USB MIDI: the audio function is added to its composite.
 
+**Channels 17–20: MAIN and CUE (Bryan T, 25 Sep 2026; on hardware as
+`usb-lean` image 90).** At high speed the stream carries twenty channels: the sixteen
+track channels above, then MAIN L/R on 17/18 and CUE L/R on 19/20. These
+are the words core 0 sends to the DACs (ESAI TX slots 2/3 and 0/1), which
+its mixdown also packs into the host read-back after the track blocks
+(`P:0x2df`, `P:0x2e2`); the frame ISR's eDMA chain ch1 → ch6 → ch7 lands
+them at `0x80005e60` (MAIN) and `0x80005ee0` (CUE), 16 × (L,R) each, the
+same buffer the stock recorder reads for SRC3 = MAIN / CUE. MAIN and CUE
+therefore include everything the outputs do (track levels, crossfader,
+master stages), unlike channels 1–16. The ring slot is 80 bytes (the
+index math multiplies by 80 instead of shifting), packets are at most
+12 × 80 = 960 B (one high-speed transaction), and the full-speed stream is
+unchanged (the tracks' stereo sum). Which half of `0x80005e60` is MAIN
+rests on the recorder's SRC3 byte being raw−1 (8 = MAIN), and hardware
+confirms it: on Bryan's MKII (image 90, 25 Sep 2026) channels 17/18 carried
+MAIN and 19/20 CUE (an uncued track on MAIN, a cued track on CUE).
+`MC_MAIN_OFF` / `MC_CUE_OFF` stay as they are.
+Open: on hardware MAIN lags the track channels (Bryan T, 25 Sep 2026; lag
+not measured). The producer reads MAIN/CUE from the current pull and the
+tracks from the previous bank, so core 0's mixdown path adds more than one
+block. Aligning them means delaying channels 1-16 by the measured lag.
+
+Measured under the port: `verify_usb` (960 B / bInterval 2, AS_GENERAL
+20 channels, 880/960 B packets, low bytes zero, 0 under/overruns); and a
+throwaway build with `MC_BASE` pointed at a frame- and channel-coded
+pattern in the unit: 8,709 streamed frames, every channel 17–20 subslot
+the expected word in order, frame indices consecutive, channels 1–16
+untouched. The port's project is silent, so MAIN/CUE content itself was
+not measured there.
+
 ## What it is
 
 - **Source.** The read-back arena at SRAM `0x80003190`: the eDMA deposits
