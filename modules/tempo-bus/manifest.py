@@ -2,8 +2,8 @@
 
 The TEMPO key opens the stock TEMPO window at the menu window's size
 (118 x 64) with a stock-style settings screen in place of its big-digit
-draw: the header ("TMP 121.2" at the left, then a key: a page dial,
-"A VALUE", the four arrows; the rule) and two titled boxes, DELAY and
+draw: the header ("TMP 121.2" at the left, then a key: "VALUE", the
+four arrows, "A" and the font's knob glyph; the rule, at the window's top) and two titled boxes, DELAY and
 REVERB, listing each engine's named parameters with the values its own
 formatters print. UP/DOWN move the cursor in the focused box, A (or B)
 edits (x7 while pushed, as stock),

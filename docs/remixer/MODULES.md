@@ -195,7 +195,7 @@ A multi-mode effect reuses its knobs. Declare the difference:
 mode_slot=7,                       # which slot carries the MODE select
 mode_views=(
     ModeView(mode=0, defaults={0: 40, 1: 60}),          # CLEAN
-    ModeView(mode=1, names={6: b"SCAT", 8: b"DENS"},    # GRAIN
+    ModeView(mode=1, names={6: b"SCTR", 8: b"DENS"},    # GRAIN
              defaults={0: 36, 6: 40, 8: 127}),
 ),
 ```
@@ -206,7 +206,7 @@ operator arrives at this mode.
 
 | | the remixer | the unit |
 |---|---|---|
-| `names` | the UNIT pane's rows follow the current MODE (`Module.knob_map_in`); `send_probe --set SCAT=40` resolves the alias | `tools/build/mode_names.py` emits a MODE formatter that rewrites the descriptor's name fields before printing its own word |
+| `names` | the UNIT pane's rows follow the current MODE (`Module.knob_map_in`); `send_probe --set SCTR=40` resolves the alias | `tools/build/mode_names.py` emits a MODE formatter that rewrites the descriptor's name fields before printing its own word |
 | `defaults` | applied the moment MODE changes | `modules/mode-defaults` (in the rig): the FX1 and FX2 page-2 editors are detoured, and a MODE turned on the panel writes the view -- page 1 through the stock page-1 writer, page 2 with the editor's own stores; without the module, `stamp-defaults` writes them; a MODE over CC MAP goes through the same unit (the cave calls it) |
 
 The unit half needs no new hook: a descriptor carries its twelve parameter

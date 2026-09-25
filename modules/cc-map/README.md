@@ -112,7 +112,7 @@ cave must match the busverb and busdelay page-2 counts.
   CC 68 over UART0 reaches the FX1 page-2 lane and the DSP record
   (15 Sep 2026).
 - MODE DEFAULTS over CC, under the port: CC 62 = 1 on T1's channel lands
-  GRAIN's view in the lane; a CC 63 in the same frame then sets SCAT.
+  GRAIN's view in the lane; a CC 63 in the same frame then sets SCTR.
 
 ## On the unit
 

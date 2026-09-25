@@ -301,7 +301,7 @@ def knob_labels(mod, name: str):
 
 def knob_max(mod, name: str) -> int:
     """Highest legal value: count-1 where the manifest states a count,
-    else the stock 0..127 dial. Accepts a MODE-view alias (SCAT for MDEP)
+    else the stock 0..127 dial. Accepts a MODE-view alias (SCTR for MDEP)
     as well as the Param's own name."""
     slot = mod.knob_map_all()[name]
     count = mod.params[slot].count

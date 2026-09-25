@@ -1661,7 +1661,7 @@ class RemixerScreen(Screen):
                 out.append(f"[reverse]{line}[/]" if here else line)
                 continue
             # ⚠️ THE DISPLAY NAME IS NOT THE STORAGE KEY. A mode view renames
-            # a slot (MDEP -> SCAT in GRAIN); storing under the display name
+            # a slot (MDEP -> SCTR in GRAIN); storing under the display name
             # would make the value look reset every time the mode moved.
             canon = mod.canon_name(slot)
             v = vals.get(canon, 0)

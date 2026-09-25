@@ -65,7 +65,7 @@ at the target).
 |---|---|---|---|
 | page 1: SEND · TIME ⌐FDBK · TONE · PING · WET | the same everywhere | | PING reads `---` (the mode pins it to 0) |
 | MODE (p6) | CLEAN | GRAIN | REVRS |
-| SCAT (p7) | `---` | how far apart the grains read | `---` |
+| SCTR (p7) | `---` | how far apart the grains read | `---` |
 | DENS ⌐(p8) | `---` | density, level-flat | `---` |
 | SIZE (p9) | `---` | GLEN: grain length 46 / 93 / 23 ms, XTRM 186 ms | SLEN: segment; XTRM = 371 ms |
 | PTCH ⌐(p10) | `---` | ±2 oct, 64 = unison; a held MIDI note overrides | `---` |

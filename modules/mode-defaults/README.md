@@ -33,7 +33,7 @@ image (ROM units are linked before the caves since 15 Sep 2026; the cave's
 ratified-bytes oracle is set aside for it, as for a bridged CC_NEXT) and
 to a stock `rts` (0x40027e1a) otherwise. Measured under the port: CC 62 =
 1 on T1's channel lands GRAIN's view in the lane, and a CC 63 in the same
-frame then sets SCAT over it.
+frame then sets SCTR over it.
 
 ## The table
 

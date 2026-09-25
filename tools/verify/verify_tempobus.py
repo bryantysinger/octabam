@@ -117,7 +117,7 @@ def main():
         key(KEY_TEMPO, 1.0)
         for _ in range(6):
             key(KEY_DOWN, 0.3)                            # DOWN x6: row 6 (MODE)
-        send("enc 0 -5", 0.6)                             # A: CLEAN (SCAT DENS SIZE PTCH are ---)
+        send("enc 0 -5", 0.6)                             # A: CLEAN (SCTR DENS SIZE PTCH are ---)
         key(KEY_DOWN, 0.3)                                # row 7: WOW, the --- rows hidden
         send("enc 0 -64"); send("enc 0 -64"); send("enc 0 4", 0.6)
         key(KEY_UP, 0.3)                                  # row 6 (MODE)
@@ -184,7 +184,7 @@ def main():
         check(f"delay: FDBK (T{dly + 1} page-1 flat 26) = 5", L(dly, 26) == 5, f"{L(dly, 26)}")
         check(f"delay: MODE (T{dly + 1} page-2 slot 0) = 1, GRAIN", L(dly, 0x38) == 1, f"{L(dly, 0x38)}")
         check(f"delay: CLEAN's --- rows hidden, DOWN from MODE set WOW (page-2 slot 5) = 4",
-              L(dly, 0x3d) == 4, f"WOW {L(dly, 0x3d)}, SCAT {L(dly, 0x39)}")
+              L(dly, 0x3d) == 4, f"WOW {L(dly, 0x3d)}, SCTR {L(dly, 0x39)}")
         if "MODE DEFAULTS" in mods:
             check(f"delay: GRAIN's view landed (PTCH, page-2 slot 4 = 96)", L(dly, 0x3c) == 96, f"{L(dly, 0x3c)}")
         check(f"reverb: SEND (T{vrb + 1} page-1 flat 24) = 3", L(vrb, 24) == 3, f"{L(vrb, 24)}")
