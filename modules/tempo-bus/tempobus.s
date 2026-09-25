@@ -2,13 +2,13 @@
 |
 | The TEMPO key opens the stock TEMPO window at the menu window's size;
 | its draw is replaced by a stock-style settings screen: the header
-| ("TMP 121.2" at the left, then the key: a page dial, "A VALUE" and the
-| four arrows; the rule) and two titled boxes, DELAY and REVERB, each
+| ("TEMPO 121.2" at the left, then the key: the four arrows, "A" and the
+| font's knob glyph; the rule) and two titled boxes, DELAY and REVERB, each
 | listing its engine's named parameters with values printed by the
 | engine's own formatters. UP/DOWN move the cursor in the focused box; A
 | (or B) edits the selected parameter on the host track, LEFT/RIGHT move
-| between the boxes, C-F are held while the window is open. LEVEL steps whole BPM (the stock handler) and 0.1 BPM
-| while FUNC is held (the step UP/DOWN made in the stock window). YES/NO/
+| between the boxes, C-F are held while the window is open. LEVEL steps
+| whole BPM (the stock handler) and 0.1 BPM while FUNC is held (the step UP/DOWN made in the stock window). YES/NO/
 | TEMPO (close) stay the stock window's.
 |
 | Every drawing call is one the stock CONTROL INPUT and MIDI SYNC screens
@@ -32,7 +32,7 @@
         .set    ICON,     0x400128a8   | (icon, surf, x, y)
         .set    ARRUP,    0x400b9d8c   | stock icons, 7 x 5: the up triangle
         .set    ARRDN,    0x400b9da0   | and the down one
-        .set    KEYX,     55           | the key's left edge (it ends at x 112)
+        .set    KEYX,     70           | the key's left edge (it ends at x 112)
         .set    SPRINTF,  0x40013a08   | (buf, fmt, ...)
         .set    TEMPOGET, 0x4009c5f4   | (&whole, &tenths)
         .set    LPUSH,    0x40031494   | (layer): register an input layer
@@ -235,7 +235,7 @@ tb_draw:
         addql   #4,%sp
         movel   %a5@(4),%d7
         subil   #14,%d7                | d7 = h - 14: the header text 6 px under the top
-| header: "TMP 121.2" at the left, the key at the right, the rule
+| header: "TEMPO 121.2" at the left, the key at the right, the rule
         pea     %a6@(20)
         pea     %a6@(16)
         jsr     TEMPOGET
@@ -258,7 +258,7 @@ tb_draw:
         addql   #2,%d1
         lea     %a6@,%a0
         bsr.w   text
-| the key, right-aligned: "NAV" and the arrows for the cursor, then "A"
+| the key, right-aligned: the arrows for the cursor, then "A"
 | and the font's knob (0x02), the value knob, at the right edge. An icon's y is its bottom row,
 | as the text's.
         moveq   #KEYX,%d0
@@ -266,11 +266,11 @@ tb_draw:
         addql   #2,%d1
         lea     T_KEY,%a0
         bsr.w   text
-        moveq   #KEYX+21,%d0
+        moveq   #KEYX+6,%d0
         moveq   #2,%d1
         lea     ARRUP,%a0
         bsr.s   icon
-        moveq   #KEYX+28,%d0
+        moveq   #KEYX+13,%d0
         moveq   #2,%d1
         lea     ARRDN,%a0
         bsr.s   icon
@@ -463,7 +463,7 @@ bxdone: movel   %sp@+,%d7
 
 | ---- data -------------------------------------------------------------
 HDRFMT: .asciz  "%s %d.%d"
-T_PROJ: .asciz  "TMP"
+T_PROJ: .asciz  "TEMPO"
 T_PTN:  .asciz  "PTN"
 T_MODE: .asciz  "MODE"
 DECFMT: .asciz  "%d"
@@ -471,7 +471,7 @@ T_DLY:  .asciz  "DELAY"
 T_VRB:  .asciz  "REVERB"
 | the key: the font's left and right triangles (0x13, 0x14) with room
 | between them for the up and down icons; A (the knob) turns the value
-T_KEY:  .asciz  "NAV \x13     \x14 A \x02"
+T_KEY:  .asciz  "\x13     \x14 A \x02"
         .even
 TITLES: .long   T_DLY, T_VRB
 FOCUS:  .byte   0
