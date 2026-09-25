@@ -77,7 +77,7 @@ DELAY_ID = SERVER_ID.get("D")
 REV_FLAGS = {"time": "TIME", "mix": "WET", "raux": "SEND",
              "shmr": "SHMR",                  # page-1 slot 2 since 15 Sep 2026 (MOD's; the tank mod is pinned)
              "rmode": "MODE", "width": "SHFT", "gate": "GATE",
-             "rtone": "TONE"}
+             "rtone": "TONE", "rdly": "DLY"}
 DELAY_FLAGS = {"dtime": "TIME", "dfdbk": "FDBK", "dtone": "TONE",
                "dping": "PING", "dmix": "WET", "din": "SEND",
                "dmode": "MODE", "drate": "DENS", "dptch": "SIZE",
@@ -418,7 +418,7 @@ def write_wav(path, L, R):
         w.writeframes(bytes(b))
 
 
-REV_PARAMS  = [0, 64, 0, 127, 64, 127, 0, 0, 64, 0, 0, 0]   # slot 2 = SHMR since 15 Sep 2026 (the tank mod is pinned; slots 7/11 blank)
+REV_PARAMS  = [0, 64, 0, 127, 64, 127, 0, 0, 64, 0, 127, 0]   # slot 2 = SHMR since 15 Sep 2026 (the tank mod is pinned); slot 10 = DLY, 127 = its default (25 Sep 2026)
 # send: x:(r6+0) = AUX, the one send; main() sets it from --level
 SEND_PARAMS = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 DELAY_PARAMS = [0, 40, 60, 100, 64, 127, 0, 0, 64, 0, 64, 0]
@@ -444,6 +444,9 @@ def main():
                     help="reverb WET 0..127 (slot 5, default 127): the reverb's\n"
                          "level on top of the chain input, which passes at\n"
                          "unity (15 Sep 2026; a crossfade before).")
+    ap.add_argument("--rdly", type=int, default=None,
+                    help="reverb DLY 0..127 (page-2 slot 10, default 127): how much\n"
+                         "of the delay's repeats the chain carries into the reverb.")
     ap.add_argument("--raux", "--rin", "--rdel", type=int, default=0, dest="raux",
                     help="reverb AUX 0..127 (slot 0): the host's own dry send\n"
                          "into the one aux bus. 0 = not a client. --rdel and\n"
@@ -594,7 +597,7 @@ def main():
         rev[_rs[_f]] = _v
     for _f, val in (("rmode", a.rmode), ("width", a.width),
                     ("gate", a.gate),
-                    ("rtone", a.rtone)):
+                    ("rtone", a.rtone), ("rdly", a.rdly)):
         if val is not None:
             rev[_rs[_f]] = val
     if a.dvrbw is not None:

@@ -7,6 +7,12 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- DLY on BusVerb's page-2 slot 10 (25 Sep 2026): the delay→reverb chain
+  carries `in + wet × DLY`; the delay's WET sets only T1's print. The reverb
+  publishes the knob to `Y:0x982`, the delay glides it as WET. Default 127
+  = the chain as before; a part saved earlier holds 0 there (stamp or
+  `ot_project.py host`). `verify_onebus`: DLY 0 == reverb-only three blocks
+  later (−120 dB), T1 bit-identical at DLY 0. Nothing on hardware.
 - Image 64 (`usb-audio`) ran on Sam's MKII (25 Sep 2026): enumerates as a
   16-channel 44.1 kHz input and a MIDI port at high speed; every channel
   carries its track's tone; 9.6 minutes of takes with zero discontinuities

@@ -30,7 +30,10 @@
 ;                        own count it as one more client while nonzero; the
 ;                        delay's warm-up zeroes it. A single-writer word in
 ;                        place of a cross-core count RMW.
-;   Y:0x982..0x9c0      free
+;   Y:0x982            BusVerb's DLY knob field (page-2 slot 10, value<<16):
+;                        the reverb writes it every block, the delay scales
+;                        the wet it writes into the chain buffer by it
+;   Y:0x983..0x9c0      free
 ;   Y:0x9c1             DELAY SERVER role owner (lock)
 ;   Y:0x9c2             REVERB SERVER role owner (lock)
 ;   Y:0x9c3             DELAY LIVE stamp for the REVERB (clear-on-read): the

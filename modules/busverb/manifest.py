@@ -110,9 +110,9 @@ MODULE = Module(
         Param(b"SHFT", 0, 4, active=True, formatter=_STEP, link=True,
               labels=("+12", "+19", "+7", "-12"),
               doc="shimmer interval in semitones -- heard once SHMR is up"),
-        # WET: the reverb's level. The tank hears the chain input (the
-        # delay's output while the delay is live, else the aux); the host
-        # prints wet*WET under its own dry.
+        # WET: the reverb's level. The tank hears the chain input (the send
+        # plus the delay's repeats x DLY while the delay is live, else the
+        # aux); the host prints wet*WET under its own dry.
         Param(b"WET", 127, active=True, formatter=_PLAIN,
               doc="the reverb's level on this host (127 = the wet at +6 dB)"),
         # ---- page 2 ---------------------------------------------------------
@@ -135,7 +135,12 @@ MODULE = Module(
         # GATE on slot 9 ($d's companion field): page 2 fills from the top left
         Param(b"GATE", 0, 128, active=True, formatter=_PLAIN,
               doc="gated-reverb hold -- higher holds longer; the useful range is low (8-20)"),
-        _BLANK, _BLANK,
+        # DLY on slot 10 ($e's KNOB field): published to y:$982, read by the
+        # delay. 127 = the chain as it was before the knob (the delay's WET
+        # default is 127 too).
+        Param(b"DLY", 127, 128, active=True, formatter=_PLAIN,
+              doc="how much of the delay's repeats go into the reverb; 0 = the send alone"),
+        _BLANK,
     ),
     mode_slot=6,                      # MODE names itself (ROOM / PLATE / BIG)
     dsp=DspSection(

@@ -415,6 +415,14 @@ bus_mine:
 ; own core-private words ($0901-$0904, $0907-$090d).
         move    a,y:>$09f0              ; SEND level, for the loop
 
+; ---- DLY: how much of the delay's repeats the chain carries ---------------
+; Page-2 slot 10, $e's KNOB field, published to y:$982 every block (one
+; writer, one word, like $981); the delay reads it per block and scales the
+; wet it writes into the chain buffer. 0 = the tank hears the send alone.
+        move    x:(r6+$e),a             ; DLY: page-2 slot 10
+        and     #>$7f0000,a             ; knob field only
+        move    a1,y:>$982              ; A1: the A2 an AND leaves is stale
+
         move    #>$ffffff,m0            ; audio is read and written via r0
         move    #>$4000,x0
         move    x0,x:(r7+$31)

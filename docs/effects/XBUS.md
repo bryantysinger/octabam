@@ -49,16 +49,21 @@ CORE 1 (payload B)  tracks 1–4   BusDelay  Y:0x4000–0xBFFF (private) + Y:0x3
 - The chain: the delay stamps `Y:0x9c3` every block it runs (after its
   warm-up); the reverb reads it, clear-on-read, one writer one reader,
   three blocks of grace. The delay's stage output goes mono at
-  unity into the chain buffer `Y:0x901..0x940` (four rotations × 16 words,
+  unity into the chain buffer `Y:0x9d8..0xa57` (eight rotations × 16 words,
   stored, never cleared). While the delay is live the reverb reads the
   chain buffer with bus gain 1/8 (the loop's `asl #3` lands the sample
   untouched); otherwise the aux accumulator with the 1/√N auto-gain.
   Delay only, reverb only, both, or neither all work.
-- WET on each engine (slot 5). The delay's stage output into the chain is
-  `in + wet × WET`, `in` the aux passing at unity, so the reverb hears the
-  sends and the repeats; delay WET 0 = a clean reverb send with the delay in
-  the chain (sample-exact against a reverb-only run three blocks later). Each
-  host prints `wet × WET` under its own dry: T1 (the delay host) the
+- WET on each engine (slot 5), DLY on the reverb (page-2 slot 10, 25 Sep
+  2026). The delay's stage output into the chain is `in + wet × DLY`, `in`
+  the aux passing at unity, so the reverb hears the sends and the repeats
+  × DLY. The reverb publishes DLY's knob field to `Y:0x982` every block
+  (one writer, like `0x981`); the delay reads it per block and glides it as
+  it glides WET. DLY 0 = a clean reverb send with the delay in the chain
+  (sample-exact against a reverb-only run three blocks later,
+  `verify_onebus`); DLY 127 = the chain as it was, when the delay's WET was
+  the chain's coefficient (15–25 Sep 2026). Each host prints `wet × WET`
+  under its own dry: T1 (the delay host) the
   repeats, T5 (the reverb host) the tail. Until 15 Sep 2026 each stage
   crossfaded (`in × (1 − MIX) + wet × MIX`), so the reverb's MIX faded the
   delay out.
@@ -91,7 +96,7 @@ touches only the ids a station replaced):
 | | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | SEND | SEND | | | | | | | | | | | |
-| BusVerb | SEND | TIME | SIZE | SHMR | SHFT | WET | MODE | TONE | DIFF | GATE | — | — |
+| BusVerb | SEND | TIME | SIZE | SHMR | SHFT | WET | MODE | TONE | DIFF | GATE | DLY | — |
 | BusDelay | SEND | TIME | FDBK | TONE | PING | WET | MODE | SCAT | DENS | SIZE | PTCH | WOW |
 | Character | DRV | FOLD | WDTH | COMP | TONE | MIX | SAT | — | — | — | — | — |
 
