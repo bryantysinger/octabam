@@ -270,6 +270,20 @@ def install_rtc(clock=None):
     er.Dspi.write = write
 
 
+LCD_ON, LCD_OFF = bytes((0xe8, 0xf0, 0x60)), bytes((0x18, 0x20, 0x10))   # lit / unlit LCD pixel, RGB
+
+
+def _png_rgb(w, h, rows):
+    """Minimal 8-bit RGB PNG (stdlib only): rows of w*3 bytes."""
+    def chunk(tag, data):
+        c = tag + data
+        return struct.pack(">I", len(data)) + c + struct.pack(">I", zlib.crc32(c))
+    ihdr = struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)
+    raw = b"".join(b"\x00" + r for r in rows)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr)
+            + chunk(b"IDAT", zlib.compress(raw, 6)) + chunk(b"IEND", b""))
+
+
 def _png_gray(w, h, rows):
     """Minimal 8-bit grayscale PNG (stdlib only)."""
     def chunk(tag, data):
@@ -1907,10 +1921,12 @@ class Panel:
         # has no such flag and renders every call, as before.
         if self._feed_link() and self.frame and not self.link.dirty:
             return
-        on, off = b"\x1a", b"\xc9"   # dark pixels on a pale LCD
+        # the MKII's display: lit pixels bright on a dark screen (the MKI's
+        # LCD, dark on pale, was 0x1a on 0xc9 in grey)
+        on, off = LCD_ON, LCD_OFF
         lcd = self._lcd_rows(uc)
         rows = [b"".join(on if px else off for px in row) for row in lcd]
-        png = _png_gray(128, 64, rows)
+        png = _png_rgb(128, 64, rows)
         if self.link is not None:
             self.link.dirty = False
         with self.lock:
@@ -3846,7 +3862,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, skin_js(), "application/javascript; charset=utf-8")
         elif path == "/screen.png":
             with p.lock:
-                self._send(200, p.frame or _png_gray(128, 64, [b"\x40" * 128] * 64), "image/png")
+                self._send(200, p.frame or _png_rgb(128, 64, [LCD_OFF * 128] * 64), "image/png")
         elif path == "/screen.txt":
             # the frame as 64 lines of '#' (dark) / '.' -- for agents that grep, not view
             with p.lock:
