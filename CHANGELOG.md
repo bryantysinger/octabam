@@ -7,6 +7,12 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- SEND splits into DEL (slot 0, into the delay) and REV (slot 1, into the
+  reverb), 25 Sep 2026. A second accumulator (`Y:0xa58..0xad7`) and count
+  (`0x983..0x98a`), cleared by the housekeeper with the aux. The chain
+  carries `wet × DLY` only; the reverb hears the REV sends plus the chain.
+  T1's SEND goes into the delay, T5's into the reverb. `verify_onebus`
+  rewritten for it. Stored parts: the send byte becomes DEL; stamp REV.
 - DLY on BusVerb's page-2 slot 10 (25 Sep 2026): the delay→reverb chain
   carries `in + wet × DLY`; the delay's WET sets only T1's print. The reverb
   publishes the knob to `Y:0x982`, the delay glides it as WET. Default 127

@@ -18,7 +18,7 @@ the machine back:
             wrote over 18-21 on every bus host until 15 Sep 2026)
   audio     every track whose record carries audio has a chain output
             (the read-back slot); the main out's TX0 counts are printed
-  midi      CC 40 (AUX, FX2 page 1 slot 0) at 100 on T2's channel over the
+  midi      CC 40 and 41 (DEL and REV, FX2 page 1 slots 0/1) at 100 on T2's channel over the
             port's MIDI IN (UART0) moves T2's record halfword 12 to 100;
             with CC MAP in the remix, CC 68 at 77 on T1's channel lands
             in T1's FX1 page-2 lane and record halfword 18 (the queue ->
@@ -209,7 +209,8 @@ def main():
     chans = midi_channels(pdir)
     ccmap = "CC MAP" in registry.remix(a.remix).modules
     midi = OUT / "in.midi"
-    lines = [f"40 B{chans[1] & 0xf:X} 28 64"]
+    lines = [f"40 B{chans[1] & 0xf:X} 28 64",      # CC 40: DEL (slot 0)
+             f"40 B{chans[1] & 0xf:X} 29 64"]      # CC 41: REV (slot 1), so T2 reaches both hosts
     ccmap = ccmap and part["fx1"][0] != 0          # the cave guards FX1 id 0 (NONE)
     if ccmap:
         lines.append(f"40 B{chans[0] & 0xf:X} 44 4D")

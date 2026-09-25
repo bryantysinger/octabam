@@ -241,8 +241,9 @@ two flashes and a session chasing "R13 is dead" (it was alive on tracks 5-8).
 Kept deliberately: delay on low tracks, reverb downstream. Test the reverb on
 **track 5**, not track 1.
 
-**`→DELAY` and `→REVERB` are separate knobs**: `x:(r6+0)` and `x:(r6+1)`.
-Driving the wrong one renders silence, which reads as a broken algorithm.
+**SEND's `DEL` and `REV` are separate knobs**: `x:(r6+0)` and `x:(r6+1)`
+(again since 25 Sep 2026; one knob from 6 Sep). Driving the wrong one
+renders silence, which reads as a broken algorithm.
 
 **A DESCRIPTOR'S DISPLAY FORMATTER OVERRIDES ITS VALUE COUNT, and a cloned
 descriptor inherits the DONOR's.** A slot can carry a correct count, default,

@@ -65,10 +65,10 @@ MODULE = Module(
     ),
     params=(
         # ---- page 1 -------------------------------------------------------
-        # SEND at slot 0 on every track, hosts included: this host's own dry
-        # send into the aux (headroomed, summed, counted only while nonzero).
+        # SEND at slot 0: this host's own dry send into the aux, the delay's
+        # input (headroomed, summed, counted only while nonzero).
         Param(b"SEND", 0, active=True, formatter=_PLAIN,
-              doc="this track's send into the one aux bus (delay, then reverb; the wet on each host)"),
+              doc="this host's own send into the delay"),
         Param(b"TIME", 20, active=True, formatter=_PLAIN,
               doc="delay time, 1.5 .. 739 ms -- a free dial that sticky-snaps to tempo divisions"),
         Param(b"FDBK", 60, active=True, formatter=_PLAIN, link=True,
@@ -82,9 +82,8 @@ MODULE = Module(
         Param(b"PING", 0, active=True, formatter=_PLAIN,
               doc="stereo ping-pong spread; 0 = centred, the alternation is in the top quarter"),
         # WET: the repeats' level on this host, wet*WET under its dry. The
-        # chain to the reverb carries in + wet*DLY, DLY being BusVerb's
-        # page-2 knob (the send passes at unity; a crossfade until 15 Sep
-        # 2026).
+        # chain to the reverb carries wet*DLY, DLY being BusVerb's page-2
+        # knob (a crossfade until 15 Sep 2026).
         Param(b"WET", 127, active=True, formatter=_PLAIN,
               doc="the repeats' level on this host (the reverb's DLY sets what goes into the reverb)"),
         # ---- page 2 -------------------------------------------------------

@@ -197,7 +197,8 @@ def render(mem, case, bump_level=0, extra_send=""):
         if key in kw:
             rev[rk[key]] = kw[key]
     snd = list(send_probe.SEND_PARAMS)
-    snd[0] = kw["level"]             # AUX, the one send (dlevel is its alias)
+    snd[0] = kw["level"]             # DEL (dlevel is its alias)
+    snd[1] = kw["level"]             # REV: the same level, both buses exercised
     dpar = list(send_probe.DELAY_PARAMS)
     for key in ("dtime", "dfdbk", "din", "dmix", "dtone", "dping", "dmode",
                 "dspray", "drate", "dptch", "dpitch", "dwow"):

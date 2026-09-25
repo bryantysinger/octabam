@@ -264,7 +264,7 @@ def main():
             # needs a rotation, i.e. a housekeeper. A lone delay under the
             # DEV hatch is never the housekeeper (it behaves as payload B),
             # so the engine renders with a SEND at the other slot, fed the
-            # tone at AUX 127: SEND's self-healing election keeps the bus
+            # tone at DEL 127 and REV 127: SEND's self-healing election keeps the bus
             # turning whichever slot the engine is on, and "runs" means the
             # sent tone comes out of the engine as wet.
             sinit, sproc = send_probe.entry_points(mem, send_probe.SERVER_ID["S"])
@@ -286,7 +286,7 @@ def main():
                                          # guard's dry pass is INPUT == OUTPUT
                  "-frames", str(FRAMES), "-blocks", str(N // FRAMES),
                  "-in", str(src), "-out", str(out), "-params", params,
-                 "-params", "127,0,0,0,0,0,0,0,0,0,0,0"],
+                 "-params", "127,127,0,0,0,0,0,0,0,0,0,0"],   # SEND: DEL and REV
                 capture_output=True, text=True)
             if r.returncode != 0:
                 return None

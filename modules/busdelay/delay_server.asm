@@ -44,8 +44,8 @@
 ; modules/send/send_client.asm describes (copied byte for byte: a divergent
 ; copy desyncs the bus silently), sums the shared DELAY accumulator into its
 ; input, multiplies by the auto-gain 1/sqrt(N) and writes its stage output
-; (in + wet*DLY, mono, DLY = BusVerb's page-2 knob via y:$982) to the chain
-; buffer for the reverb. The host track prints wet*WET under its dry (20 Sep 2026: the wet leaves through the
+; (wet*DLY, mono, DLY = BusVerb's page-2 knob via y:$982) to the chain buffer
+; for the reverb. The host track prints wet*WET under its dry (20 Sep 2026: the wet leaves through the
 ; host and the chain and nowhere else; the published stereo stage output and
 ; the T8 return went); its own audio reaches the engine only through SEND.
 ;
@@ -162,7 +162,7 @@
 ;   p4 PING  -> crossfeed, 0 (centred) .. ~0.99 (full ping-pong), Q1.23
 ;   p5 WET   -> the wet level this host prints, wet*WET, glided
 ;   DLY      -> y:$982, BusVerb's page-2 slot 10 knob field: the chain
-;               carries in + wet*DLY, glided
+;               carries wet*DLY, glided
 ;   p6 MODE  -> page-2 slot 6 KNOB field (r6+$c bits 16-23): 0 CLEAN,
 ;               1 GRAIN, 2 REVERSE, anything else CLEAN
 ;   p7 SCAT  -> slot 7 companion (r6+$c bits 8-15): GRAIN scatter depth
@@ -313,6 +313,13 @@ bus_dohk:                               ; nobody did -- take over this block
         do      y0,>bus_zclr
         move    a,y:(r2)+
 bus_zclr:
+        move    #>$9d8,b                ; the REV accumulator: the chain's
+        add     #>$80,b                 ; base plus its length
+        add     x0,b
+        move    b,r2                    ; r2 = REV ACC[new] base
+        do      y0,>bus_racclr
+        move    a,y:(r2)+
+bus_racclr:
         nop
 ; ---- release both server-role locks for this block (BUS.md hardware test 3)
 ; a is still 0 from the clear loop above. Whichever of the three effects is
@@ -329,6 +336,12 @@ bus_zclr:
         move    #>$ffffff,m3
         clr     a
         move    a,y:(r3)                ; AUX count = 0
+        move    r3,b                    ; the REV count, same index: 0x983
+        move    #>$44,x0                ; sits 0x44 below the AUX count
+        sub     x0,b                    ; 0x9c7 (both relocate together)
+        move    b,r3
+        nop
+        move    a,y:(r3)                ; REV count = 0
 bus_seen:
         move    y:>$900,a               ; remember this block's offset so next
         and     #>$70,a                 ; block we can tell whether anybody
@@ -447,14 +460,6 @@ bus_mine:
         and     #>$7f0000,a             ; knob field only
         tst     a
         tne     x0,b                    ; sending -> b = 1: we count ourselves
-; The reverb host's SEND knob field at y:$981 (written by BusVerb every
-; block, a single-writer word) is one more client while nonzero. x0 is still
-; the increment; the Tcc reads the tst with nothing between. The warm-up
-; below zeroes the word, so a rig with no reverb never counts boot garbage.
-        move    y:>$981,a
-        tst     a
-        tne     x0,a                    ; a = 1 if the reverb host is sending
-        add     a,b                     ; ... one more client
         move    y:(r5),a                ; clients that wrote the buffer we read
         add     b,a                     ; ... plus ourselves, if sending
         and     #>$7,a                  ; masked: boot garbage cannot index wild
@@ -528,9 +533,6 @@ dwarmq:                                                                    ; @B
         move    b,x:(r7+$28)
         move    b,x:(r7+$2e)
         move    b,x:(r7+$2f)
-        move    b,y:>$981               ; the reverb host's SEND field: zeroed
-                                        ; once here, so a rig without a reverb
-                                        ; never counts garbage in it
 ; ---- ONE LOOP CLEARS RAW $27..$5e: the LFO phases, the TIME ramp, the
 ; GRAIN records and age, REVERSE's phase, and the free slots between them
         move    r7,a
@@ -1792,10 +1794,10 @@ rmode:
 ; MODEFORK_END
 pdone:
 
-; ---- OUTPUT STAGE: in = x_in (the chain input, this host's SEND included),
-; wet = the final tap x1.5 (R also ping-shelved). The host prints wet*WET
-; under its own dry; the mono average of in + wet*DLY per channel goes to the
-; CHAIN buffer at unity. Every mpy
+; ---- OUTPUT STAGE: wet = the final tap x1.5 (R also ping-shelved). The host
+; prints wet*WET under its own dry; the mono average of wet*DLY per channel
+; goes to the CHAIN buffer, the reverb's view of the repeats (the sends
+; themselves reach the reverb through REV, 25 Sep 2026). Every mpy
 ; is an audited-signed order: y0,x0 or x0,y1.
         move    x:(r7+$32),x0           ; wet L = fL
         move    x0,a
@@ -1809,9 +1811,8 @@ pdone:
         move    a,x:(r7-$2b)
         move    a,y1
         mpy     x0,y1,a                 ; wet * DLY
-        move    n6,b                    ; x_in, the passthrough term
-        add     a,b                     ; b = the chain's stage output L
-        move    b,x1                    ; parked for the chain's mono average
+        move    a,x1                    ; the chain's L, parked for the mono
+                                        ; average
         move    x:(r7-$2d),a            ; WET, ramped per sample
         move    x:(r7-$2c),y1
         add     y1,a
@@ -1836,15 +1837,14 @@ pdone:
         move    a,x0                    ; wet R, final
         move    x:(r7-$2b),y1           ; DLY, this sample's
         mpy     x0,y1,a                 ; wet * DLY
-        move    n6,b
-        add     a,b                     ; b = the chain's stage output R
+        move    a,b                     ; b = the chain's R
         move    x:(r7-$2d),y1           ; WET, this sample's
         mpy     x0,y1,a                 ; wet * WET
         move    a,x0                    ; x0 = wet*WET
         move    x:(r0+n0),a             ; dry R
         add     x0,a                    ; + dry at unity
         move    a,x:(r0+n0)             ; R in place -- dry + wet*WET
-; ---- the CHAIN buffer: mono average of the stage output, at unity --------
+; ---- the CHAIN buffer: mono average of wet*DLY ---------------------------
         move    x1,a                    ; out L
         add     b,a                     ; + out R
         asr     #$1,a,a                 ; mono
