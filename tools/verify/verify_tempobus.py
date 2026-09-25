@@ -12,9 +12,14 @@ on the panel link), dumps RAM at the end and checks:
   window   TEMPO opens a 118 x 64 window (the menu window's size)
   delay    on the delay host: A to row 6 (MODE), B to 0 then +1 -> page-2
            lane slot 0 = 1 (GRAIN), and with MODE DEFAULTS in the image the
-           GRAIN view's PTCH (page-2 slot 4) = 96; then A to row 2 (FDBK), B
-           to 0 then +5 -> page-1 lane flat 26 = 5 (after the view's 40)
-  reverb   RIGHT, B to 0 then +3 on row 0 (SEND) -> page-1 lane flat 24 = 3
+           GRAIN view's PTCH (page-2 slot 4) = 96; then UP x4 to row 2
+           (FDBK), B to 0 then +5 -> page-1 lane flat 26 = 5 (after the
+           view's 40)
+  reverb   RIGHT, B to 0 then +3 on row 0 (SEND) -> page-1 lane flat 24 = 3;
+           DOWN x3, UP x1 to row 2 (SIZE), B to 0 then +7 -> flat 26 = 7
+  tempo    LEVEL to the 30.0 floor and +5, then FUNC + LEVEL +3 -> 35.3 BPM
+           (project tempo 0x80000020 = BPM x 24; skipped while the pattern
+           tempo is on)
   close    after TEMPO again the window handle is 0 and no input layer in
            the list lies inside the module's code
   run      the port ends on `quit`, not on a fault
@@ -40,7 +45,8 @@ TABLE, STRIDE, PLANES = 0x46c7d34c, 56, 0x460d1f7b
 LIVEB = 0x80000810
 DUMP_BASE, DUMP_LEN = 0x460d0000, 0xbb0000
 ROM_BASE, ROM_LEN = 0x400b0000, 0x28000        # the stock layers and ours live here
-KEY_TEMPO, KEY_NO, KEY_RIGHT = 0x18, 0x32, 0x21
+KEY_TEMPO, KEY_NO, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_FUNC = 0x18, 0x32, 0x21, 0x33, 0x20, 0x2d
+TEMPO = 0x80000020
 
 
 def png(path, w, h, px, scale=4):
@@ -80,9 +86,10 @@ def main():
     fifo = work / "live"
     os.mkfifo(fifo)
     dump, lanes, rom, log = work / "ram.bin", work / "lanes.bin", work / "rom.bin", OUT / "port.txt"
+    tmp = work / "tempo.bin"
     cmd = [str(EMU), "--image", str(image), "--card", str(run_card), "--set", setname,
            "--project", name, "--load-ms", "20000", "--live", str(fifo),
-           "--mem-dump", f"{DUMP_BASE:#x},{DUMP_LEN:#x}={dump};{LIVEB:#x},0x240={lanes};"
+           "--mem-dump", f"{DUMP_BASE:#x},{DUMP_LEN:#x}={dump};{LIVEB:#x},0x240={lanes};{TEMPO:#x},8={tmp};"
                          f"{ROM_BASE:#x},{ROM_LEN:#x}={rom}"]
     with open(log, "w") as lf:
         proc = subprocess.Popen(cmd, cwd=ROOT, stdout=lf, stderr=subprocess.STDOUT)
@@ -107,11 +114,20 @@ def main():
         key(KEY_TEMPO, 1.0)
         send("enc 0 -50"); send("enc 0 6")                # A: row 6 (MODE)
         send("enc 1 -5"); send("enc 1 1", 0.6)            # GRAIN (its view re-defaults FDBK)
-        send("enc 0 -4")                                  # A: row 2 (FDBK)
+        for _ in range(4):
+            key(KEY_UP, 0.3)                              # UP x4: row 2 (FDBK)
         send("enc 1 -64"); send("enc 1 -64"); send("enc 1 5")
         key(KEY_RIGHT)
         send("enc 0 -50")                                 # A: row 0 (SEND)
         send("enc 1 -64"); send("enc 1 -64"); send("enc 1 3", 0.6)
+        for k in (KEY_DOWN, KEY_DOWN, KEY_DOWN, KEY_UP):
+            key(k, 0.3)                                   # row 2 (SIZE)
+        send("enc 1 -64"); send("enc 1 -64"); send("enc 1 7", 0.6)
+        send("enc 6 -128"); send("enc 6 -128")            # LEVEL: to the 30.0 floor
+        send("enc 6 5", 0.4)                              # LEVEL: +5 BPM
+        send(f"key {KEY_FUNC:#x} down", 0.2)
+        send("enc 6 3", 0.4)                              # FUNC + LEVEL: +0.3 BPM
+        send(f"key {KEY_FUNC:#x} up", 0.6)
         key(KEY_TEMPO, 1.0)                               # close
         send("quit", 1.0)
         os.close(fd)
@@ -163,6 +179,13 @@ def main():
         if "MODE DEFAULTS" in mods:
             check(f"delay: GRAIN's view landed (PTCH, page-2 slot 4 = 96)", L(dly, 0x3c) == 96, f"{L(dly, 0x3c)}")
         check(f"reverb: SEND (T{vrb + 1} page-1 flat 24) = 3", L(vrb, 24) == 3, f"{L(vrb, 24)}")
+        check(f"reverb: DOWN/UP to SIZE (T{vrb + 1} page-1 flat 26) = 7", L(vrb, 26) == 7, f"{L(vrb, 26)}")
+    traw, ptn = struct.unpack(">I", tmp.read_bytes()[:4])[0], tmp.read_bytes()[4]
+    if ptn:
+        print("  [SKIP] tempo: the pattern tempo is on")
+    else:
+        check("tempo: LEVEL floor +5, FUNC + LEVEL +3 -> 35.3 BPM",
+              traw // 24 == 35 and traw % 24 != 0, f"raw {traw} = {traw / 24:.2f} BPM")
     check("close: the TEMPO window handle is 0", u32(WINH) == 0, f"{u32(WINH):#x}")
     node, inside, walked = u32(LAYERS), [], 0
     while node and walked < 32:

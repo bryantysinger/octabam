@@ -1,16 +1,18 @@
 | TEMPO BUS -- the TEMPO window carries the bus engines' knobs.
 |
 | The TEMPO key opens the stock TEMPO window at the menu window's size;
-| its draw is replaced by a stock-style settings screen: the header (icon,
+| its draw is replaced by a stock-style settings screen: the header (legend,
 | "TEMPO 121.2" right-aligned, rule) and two titled boxes, DELAY and
 | REVERB, each listing its engine's named parameters with values printed
 | by the engine's own formatters. Knob A moves the cursor in the focused
-| box, B edits the selected parameter on the host track, LEFT/RIGHT move
-| between the boxes, C-F are held while the window is open. LEVEL (BPM),
-| UP/DOWN (PROJ/PTN) and YES/NO/TEMPO (close) stay the stock window's.
+| box, as do UP/DOWN one row at a time; B edits the selected parameter on
+| the host track, LEFT/RIGHT move between the boxes, C-F are held while the
+| window is open. LEVEL steps whole BPM (the stock handler) and 0.1 BPM
+| while FUNC is held (the step UP/DOWN made in the stock window). YES/NO/
+| TEMPO (close) stay the stock window's.
 |
 | Every drawing call is one the stock CONTROL INPUT and MIDI SYNC screens
-| make (0x40065674, 0x4006730c): header text and width, icon, rule, titled
+| make (0x40065674, 0x4006730c): header text and width, rule, titled
 | box, row text at a 7-pixel pitch, the invert bar. Edits go through the
 | firmware's page-1 writer (FX2 flat 24..29) and, for page 2, the FX2
 | page-2 editor's stores (CC MAP's write path), then MODE DEFAULTS'
@@ -23,16 +25,19 @@
         .set    FONT,     0x400ba876   | the small UI font
         .set    TEXT,     0x40012bd8   | (font, surf, x, y, limit, str)
         .set    TWIDTH,   0x40012f30   | (font, limit, str) -> pixels
-        .set    ICON,     0x400128a8   | (icon, surf, x, y)
         .set    RULE,     0x40011910   | (surf, x, y, x2, 1)
         .set    BOX,      0x4007efd0   | (surf, x, y, w, h, title, 0, focused)
         .set    INVERT,   0x40012254   | (surf, x1, y1, x2, y2, -1)
         .set    SPRINTF,  0x40013a08   | (buf, fmt, ...)
         .set    TEMPOGET, 0x4009c5f4   | (&whole, &tenths)
-        .set    TICON,    0x400cbc5c   | CONTROL's category icon, as CONTROL INPUT
         .set    LPUSH,    0x40031494   | (layer): register an input layer
         .set    LPOP,     0x4003146c   | (layer): unregister it
         .set    PUSHED,   0x4003171c   | (key): nonzero while that key is held
+        .set    KROWS,    0x46100b18   | bytes: the panel's held keys, code = row*8 + bit
+        .set    KFUNC,    0x2d         | FUNCTION: row 5, bit 5
+        .set    KUP,      0x33
+        .set    TSTEP,    0x4004b824   | (whole, tenths): the stock tempo step, redraws
+        .set    TLEVEL,   0x4004b918   | (index, delta): the stock LEVEL handler, whole BPM
         .set    P1WRITE,  0x40054cd8   | (track, flat, value): page-1 writer
         .set    DESC2,    0x400d5fdc   | FX2 descriptor table [id] -> P
         .set    DBPTR,    0x46c82456   | long: Part DB base
@@ -166,6 +171,30 @@ tb_right:
         moveb   %d0,FOCUS
         bra.w   tb_draw
 
+| ---- UP / DOWN: the cursor, as knob A one row at a time ---------------
+tb_ud:  moveq   #1,%d0
+        moveq   #KUP,%d1
+        cmpl    %sp@(4),%d1
+        bne.s   1f
+        moveq   #-1,%d0
+1:      movel   %d0,%sp@-
+        clrl    %sp@-
+        bsr.w   tb_enc
+        addql   #8,%sp
+        rts
+
+| ---- LEVEL: whole BPM (stock); 0.1 BPM while FUNC is held -------------
+tb_lvl: moveq   #0,%d0
+        moveb   KROWS+(KFUNC>>3),%d0
+        btst    #(KFUNC&7),%d0
+        bne.s   1f
+        jmp     TLEVEL
+1:      movel   %sp@(8),%sp@-          | tenths = delta
+        clrl    %sp@-                  | whole = 0
+        jsr     TSTEP
+        addql   #8,%sp
+        rts
+
 | ---- slotof: d1 = box, d0 = row -> d6 = the row's slot, -1 past the end.
 slotof: moveq   #-1,%d6
         lea     NROWS,%a0
@@ -206,7 +235,7 @@ tb_draw:
         addql   #4,%sp
         movel   %a5@(4),%d7
         subil   #20,%d7                | d7 = h - 20, the header line
-| header: "TEMPO 121.2" right-aligned, the icon, the rule
+| header: "TEMPO 121.2" right-aligned, the knob legend, the rule
         pea     %a6@(20)
         pea     %a6@(16)
         jsr     TEMPOGET
@@ -229,12 +258,39 @@ tb_draw:
         movel   %d7,%d1
         addql   #2,%d1
         bsr.w   rtext
-        movel   %d7,%sp@-
-        pea     6
+| the knob legend where the stock screens put the category icon: each
+| knob letter inverted, then what it turns
+        lea     LEGEND,%a4
+lgnd:   moveq   #0,%d5
+        moveb   %a4@+,%d5              | x, 0 ends the legend
+        beq.s   lgdone
+        moveb   %a4@+,%d6              | nonzero: a knob letter
+        movel   %d5,%d0
+        movel   %d7,%d1
+        addql   #2,%d1
+        moveal  %a4,%a0
+        bsr.w   text
+1:      tstb    %a4@+
+        bne.s   1b
+        tstb    %d6
+        beq.s   lgnd
+        pea     -1
+        movel   %d7,%d0
+        addql   #7,%d0
+        movel   %d0,%sp@-
+        movel   %d5,%d0
+        addql   #3,%d0
+        movel   %d0,%sp@-
+        movel   %d7,%d0
+        addql   #1,%d0
+        movel   %d0,%sp@-
+        subql   #1,%d5
+        movel   %d5,%sp@-
         movel   %a5,%sp@-
-        pea     TICON
-        jsr     ICON
-        lea     %sp@(16),%sp
+        jsr     INVERT
+        lea     %sp@(24),%sp
+        bra.s   lgnd
+lgdone:
         pea     1
         movel   %a5@,%d0
         subql   #6,%d0
@@ -414,6 +470,16 @@ T_MODE: .asciz  "MODE"
 DECFMT: .asciz  "%d"
 T_DLY:  .asciz  "DELAY"
 T_VRB:  .asciz  "REVERB"
+| {x, knob letter?, string}: the header's left end
+LEGEND: .byte   5, 1
+        .asciz  "A"
+        .byte   11, 0
+        .asciz  "ROW"
+        .byte   28, 1
+        .asciz  "B"
+        .byte   34, 0
+        .asciz  "VALUE"
+        .byte   0
         .even
 TITLES: .long   T_DLY, T_VRB
 FOCUS:  .byte   0
@@ -432,6 +498,12 @@ TB_KEYS:
         .byte   0x21, 0
         .long   tb_right, 0, 0, 0, 0
         .word   0, 0
+        .byte   0x33, 0
+        .long   tb_ud, 0, tb_ud, 0, 0
+        .word   15, 5
+        .byte   0x20, 0
+        .long   tb_ud, 0, tb_ud, 0, 0
+        .word   15, 5
         .byte   0xff, 0
         .long   0, 0, 0, 0, 0
         .word   0, 0
@@ -441,5 +513,7 @@ TB_ENCS:
         .byte   \k, 0
         .long   tb_enc, 0, 0, 0, 0
         .endr
+        .byte   6, 0
+        .long   tb_lvl, 0, 0, 0, 0
         .byte   0xff, 0
         .long   0, 0, 0, 0, 0
