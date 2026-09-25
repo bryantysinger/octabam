@@ -13,8 +13,9 @@ a host's stream IS its engine's wet*WET); there is no return station.
                T1 (delay host) prints the delay
   the delay reaches the reverb
                T5's print with the delay in the layout != without it
-  passthrough  delay WET 0 with both engines == reverb only fed the tone two
-               blocks later (the chain buffer's own latency), within -80 dB
+  passthrough  reverb DLY 0 with both engines == reverb only fed the tone
+               three blocks later (the chain buffer's own latency), within
+               -80 dB; the delay's WET 0 alone does not (WET is T1's print)
   delay only   no reverb in the layout: T1 prints the delay
   reverb only  no delay: T5 prints the reverb (it reads the aux directly)
   WET 0        a host at WET 0 prints nothing but its (silent) dry
@@ -215,19 +216,24 @@ def main():
           f"rms {rms_db(st_r[0][0]):.1f} dB")
     check("both != reverb only (the reverb hears the delay)", t5 != st_r[0])
 
-    print("\n== the passthrough: delay WET 0 == no delay, three blocks later ==")
+    print("\n== the passthrough: reverb DLY 0 == no delay, three blocks later ==")
     # The chain buffer costs three blocks (two until 22 Sep 2026), and the
     # reverb is time-variant even at MOD 0 (a fixed-depth allpass
     # modulator), so the reference is NOT the reverb-only output shifted --
     # it is the reverb-only run fed the SAME tone three blocks later, which
     # the chain then reproduces sample for sample. What is left is one auto-gain table against the other:
     # rounding, -100 dB or so.
-    pt = [R(), S6(), D(WET=0), S2()]
+    pt = [R(DLY=0), S6(), D(), S2()]
     st_p = run(mems, pt, tag="pass")
     st_r45 = run(mems, ronly, tag="ronly45", tone="tone45.raw")
     lag, db = best_lag(st_r45[0][0], st_p[0][0], lo=0, hi=2)
-    check(f"delay WET 0: T5 == reverb-only fed the tone 3 blocks later (lag {lag})",
+    check(f"reverb DLY 0: T5 == reverb-only fed the tone 3 blocks later (lag {lag})",
           lag == 0 and db < -80, f"residual {db:.1f} dB")
+    check("T1's print with the reverb at DLY 0 == delay only, bit for bit", st_p[2] == run(mems, [S6(), D(), S2()], tag="donly_p")[1])
+    st_w0 = run(mems, [R(), S6(), D(WET=0), S2()], tag="dwet0")
+    check("delay WET 0 with DLY 127: T5 still hears the repeats (!= the DLY 0 run)", st_w0[0] != st_p[0])
+    st_w0p = run(mems, [R(DLY=0), S6(), D(WET=0), S2()], tag="dwet0dly0")
+    check("delay WET 0 changes T5 NOT AT ALL at DLY 0", st_w0p[0] == st_p[0])
 
     print("\n== delay only, and WET 0 ==")
     donly = [S6(), D(), S2()]

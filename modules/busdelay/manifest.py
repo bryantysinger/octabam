@@ -81,12 +81,12 @@ MODULE = Module(
         # 5: L/R = 1/feedback).
         Param(b"PING", 0, active=True, formatter=_PLAIN,
               doc="stereo ping-pong spread; 0 = centred, the alternation is in the top quarter"),
-        # WET: the repeats' level. out = in + wet*WET goes on to the reverb
-        # (the send passes through the pedal at unity, WET adds the repeats;
-        # a crossfade until 15 Sep 2026); the host prints wet*WET under its
-        # dry. The chain itself is hardwired.
+        # WET: the repeats' level on this host, wet*WET under its dry. The
+        # chain to the reverb carries in + wet*DLY, DLY being BusVerb's
+        # page-2 knob (the send passes at unity; a crossfade until 15 Sep
+        # 2026).
         Param(b"WET", 127, active=True, formatter=_PLAIN,
-              doc="the repeats' level, on this host and into the reverb"),
+              doc="the repeats' level on this host (the reverb's DLY sets what goes into the reverb)"),
         # ---- page 2 -------------------------------------------------------
         # MODE on slot 6: an even slot is the one the panel's page-2 knob
         # editor writes (docs/firmware/MAINMENU.md 9c-ii). The DSP reads $c's

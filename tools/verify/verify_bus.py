@@ -160,7 +160,9 @@ CASES = [
           dfdbk=100, dur=0.3)),
     ("RDS HOT2 the same with no split and the delay's WET at 0",
      dict(layout="RDS", pick="R", din=127, level=127, amp=1.0, dfdbk=100,
-          dmix=0, dur=0.3)),
+          dmix=0, rdly=0, dur=0.3)),     # rdly 0: the chain without the
+                                         # repeats, which WET 0 gave until
+                                         # DLY (25 Sep 2026)
     ("RDS HOT3 split 11, PING and TONE driven, both hosts sending",
      dict(layout="RDS", pick="R", din=127, raux=127, level=127, amp=1.0,
           split=11, dping=100, dtone=40, dur=0.3)),
@@ -191,7 +193,7 @@ def render(mem, case, bump_level=0, extra_send=""):
     rev[rk["raux"]] = kw["raux"]                 # 0 unless a case drives it:
                                                  # a phantom host client must
                                                  # NOT leak into every case
-    for key in ("rmode", "shmr", "gate", "width", "rtone"):
+    for key in ("rmode", "shmr", "gate", "width", "rtone", "rdly"):
         if key in kw:
             rev[rk[key]] = kw[key]
     snd = list(send_probe.SEND_PARAMS)

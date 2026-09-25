@@ -44,8 +44,8 @@
 ; modules/send/send_client.asm describes (copied byte for byte: a divergent
 ; copy desyncs the bus silently), sums the shared DELAY accumulator into its
 ; input, multiplies by the auto-gain 1/sqrt(N) and writes its stage output
-; (in + wet*WET, mono) to the chain buffer for the reverb. The host track
-; prints wet*WET under its dry (20 Sep 2026: the wet leaves through the
+; (in + wet*DLY, mono, DLY = BusVerb's page-2 knob via y:$982) to the chain
+; buffer for the reverb. The host track prints wet*WET under its dry (20 Sep 2026: the wet leaves through the
 ; host and the chain and nowhere else; the published stereo stage output and
 ; the T8 return went); its own audio reaches the engine only through SEND.
 ;
@@ -62,7 +62,10 @@
 ;                       nonzero at warm-up)
 ;   r7+$19/$1b          SEND ramped per sample / its per-sample step
 ;   r7+$1c/$1d          WET ramped per sample / its per-sample step
-;   r7+$17, $1e..$25    free (23 Sep 2026: the per-sample parks went to
+;   r7+$1e/$1f          DLY (the repeats into the reverb) ramped per
+;                       sample / its per-sample step
+;   r7+$21              DLY coefficient, glided (per block)
+;   r7+$17, $20, $22..$25  free (23 Sep 2026: the per-sample parks went to
 ;                       registers)
 ;   r7+$26              TIME, Q8: the ramp's running value at a call's start
 ;                       and end (the loop walks it in n4); the glide state
@@ -157,7 +160,9 @@
 ;   p2 FDBK  -> feedback gain, 0 .. ~0.87 (FDBK=0 is a single echo)
 ;   p3 TONE  -> one-pole coefficient, 0.125 (dark) .. 0.99 (bright)
 ;   p4 PING  -> crossfeed, 0 (centred) .. ~0.99 (full ping-pong), Q1.23
-;   p5 WET   -> the wet level: out = in + wet*WET, glided
+;   p5 WET   -> the wet level this host prints, wet*WET, glided
+;   DLY      -> y:$982, BusVerb's page-2 slot 10 knob field: the chain
+;               carries in + wet*DLY, glided
 ;   p6 MODE  -> page-2 slot 6 KNOB field (r6+$c bits 16-23): 0 CLEAN,
 ;               1 GRAIN, 2 REVERSE, anything else CLEAN
 ;   p7 SCAT  -> slot 7 companion (r6+$c bits 8-15): GRAIN scatter depth
@@ -796,6 +801,23 @@ stpdn:
         sub     b,a                     ; block's glided value ($1c) by this
         asr     #$4,a,a                 ; block's change over 16 frames ($1d)
         move    a,x:(r7-$2c)
+
+; DLY: how much of the repeats goes into the reverb, BusVerb's page-2 slot
+; 10 knob field, which the reverb publishes to y:$982 every block. Glided and
+; ramped exactly as WET is; WET sets only what this host prints.
+        move    y:>$982,a               ; DLY knob field, value<<16
+        and     #>$7f0000,a
+        move    a1,x0
+        move    x0,a                    ; A2-clean (a boot-garbage word)
+        move    x:(r7-$28),b            ; last block's glided DLY (raw $21)
+        sub     b,a
+        asr     #$3,a,a
+        add     b,a
+        move    a,x:(r7-$28)            ; DLY, glided
+        move    b,x:(r7-$2b)            ; the per-sample ramp starts ($1e)
+        sub     b,a
+        asr     #$4,a,a
+        move    a,x:(r7-$2a)            ; ... and its step ($1f)
         bra     slewdn
 slew2:
         move    x:(r7-$23),a            ; the ramp's running value, Q8
@@ -1770,10 +1792,10 @@ rmode:
 ; MODEFORK_END
 pdone:
 
-; ---- OUTPUT STAGE: out = in + wet*WET per channel, in = x_in (the chain
-; input, this host's SEND included), wet = the final tap x1.5 (R also
-; ping-shelved); the host prints wet*WET under its own dry and the mono
-; average of the stage output goes to the CHAIN buffer at unity. Every mpy
+; ---- OUTPUT STAGE: in = x_in (the chain input, this host's SEND included),
+; wet = the final tap x1.5 (R also ping-shelved). The host prints wet*WET
+; under its own dry; the mono average of in + wet*DLY per channel goes to the
+; CHAIN buffer at unity. Every mpy
 ; is an audited-signed order: y0,x0 or x0,y1.
         move    x:(r7+$32),x0           ; wet L = fL
         move    x0,a
@@ -1781,6 +1803,15 @@ pdone:
         asr     #$1,b,b                 ; wet/2 -> x1.5 both channels (R58)
         add     b,a
         move    a,x0                    ; wet L, final
+        move    x:(r7-$2b),a            ; DLY, ramped per sample
+        move    x:(r7-$2a),y1
+        add     y1,a
+        move    a,x:(r7-$2b)
+        move    a,y1
+        mpy     x0,y1,a                 ; wet * DLY
+        move    n6,b                    ; x_in, the passthrough term
+        add     a,b                     ; b = the chain's stage output L
+        move    b,x1                    ; parked for the chain's mono average
         move    x:(r7-$2d),a            ; WET, ramped per sample
         move    x:(r7-$2c),y1
         add     y1,a
@@ -1788,9 +1819,6 @@ pdone:
         move    a,y1
         mpy     x0,y1,a                 ; wet * WET
         move    a,x0                    ; x0 = wet*WET: what the host prints
-        move    n6,b                    ; x_in, the passthrough term
-        add     x0,b                    ; b = stage output L
-        move    b,x1                    ; parked for the chain's mono average
         move    x:(r0),b                ; dry L, still in place
         add     x0,b                    ; + dry at unity
         move    b,x:(r0)                ; L in place -- dry + wet*WET
@@ -1806,11 +1834,13 @@ pdone:
         asr     #$1,b,b
         add     b,a                     ; + wet*PING/4 -> R shelf 0.75*PING
         move    a,x0                    ; wet R, final
+        move    x:(r7-$2b),y1           ; DLY, this sample's
+        mpy     x0,y1,a                 ; wet * DLY
+        move    n6,b
+        add     a,b                     ; b = the chain's stage output R
         move    x:(r7-$2d),y1           ; WET, this sample's
         mpy     x0,y1,a                 ; wet * WET
         move    a,x0                    ; x0 = wet*WET
-        move    n6,b
-        add     x0,b                    ; b = stage output R
         move    x:(r0+n0),a             ; dry R
         add     x0,a                    ; + dry at unity
         move    a,x:(r0+n0)             ; R in place -- dry + wet*WET

@@ -228,6 +228,13 @@ def main():
                 sys.exit(f"{key} on T{t + 1}: payload {'A' if t >= 4 else 'B'} does not carry it "
                          f"(it runs as SEND there); host it on T{cores[0] + 1}-T{cores[-1] + 1}")
             hosts.append((key, t))
+    # BusVerb's DLY (FX2 page-2 slot 10 = CC 66 under CC MAP) at 55 on its
+    # host's channel: the reverb publishes the knob field to the shared word
+    # the delay reads (Y:0x982, 0x36082 under XBUS), read back on both cores.
+    dly_host = next((t for key, t in hosts if key == "REVERB SERVER"), None) \
+        if "CC MAP" in mods else None
+    if dly_host is not None:
+        lines.append(f"40 B{chans[dly_host] & 0xf:X} 42 37")
     if a.midi_file:
         for ln in pathlib.Path(a.midi_file).read_text().splitlines():
             ln = ln.split("#")[0].strip()
@@ -249,7 +256,8 @@ def main():
                "--sequencer", "--internal-clock", "--frames", str(a.frames), "--load-ms", str(a.load_ms),
                "--dsp", "--main-level", "64", "--audio-in", "tones", "--poke-trig", "2", "--midi", str(midi),
                "--block-dump", str(blocks), "--cmd-log", str(cmds), "--card-out", str(card_after),
-               "--mem-dump", f"{LIVE_IDS:#x},16={dumps['ids']};{RECORDS:#x},512={dumps['records']};{LANES:#x},576={dumps['lanes']}"] + a.extra.split()
+               "--mem-dump", f"{LIVE_IDS:#x},16={dumps['ids']};{RECORDS:#x},512={dumps['records']};{LANES:#x},576={dumps['lanes']}",
+               "--dsp-peek", "0:Y:36082,1;1:Y:36082,1"] + a.extra.split()
         with open(log, "w") as f:
             f.write(" ".join(cmd) + "\n"); f.flush()
             r = subprocess.run(cmd, cwd=ROOT, stdout=f, stderr=subprocess.STDOUT)
@@ -308,6 +316,11 @@ def main():
         lane_v, rec_v = lanes[0x32], recs[2 * 18]
         check(f"midi: CC 68 = 77 on T1's channel reached T1's FX1 page-2 slot 6 (CC MAP; count {cnt} -> {want})",
               lane_v == want and rec_v == want, f"lane +0x32 = {lane_v}, record halfword 18 high byte = {rec_v}")
+    if dly_host is not None:
+        pk = dict(re.findall(r"core (\d) Y:0x36082: ([0-9a-f]{6})", text))
+        check(f"midi: CC 66 = 55 on T{dly_host + 1}'s channel reached BusVerb's DLY, published to "
+              f"Y:0x36082 on both cores", pk.get("0") == pk.get("1") == "370000",
+              f"core 0 {pk.get('0', '?')}, core 1 {pk.get('1', '?')}")
     m = re.search(r"midi in    : (\d+) byte\(s\) still queued", text)
     check("midi: the firmware took every byte", m is not None and m.group(1) == "0",
           f"{m.group(1) if m else '?'} queued at the end")
