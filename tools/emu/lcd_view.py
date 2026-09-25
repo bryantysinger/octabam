@@ -244,6 +244,7 @@ def build_panel(tk, root, panel, canvas):
     keybtn(cue, 0x2D, width=6).pack(side="left", padx=1)
 
     canvas.grid(in_=top, row=0, column=1, sticky="n")
+    root.tk.call("raise", canvas._w, top._w)   # created before `top`: raise it above the frame it sits in (Canvas.lift raises items)
 
     # right of the screen: data entry, pages, navigation
     right = tk.Frame(top, bg=BG)
