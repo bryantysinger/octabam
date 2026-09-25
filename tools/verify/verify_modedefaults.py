@@ -162,8 +162,8 @@ def main():
             ok = got == want
             print(f"  [{'ok' if ok else 'FAIL'}]   slot {slot:2d} {m.params[slot].name.decode():4s} untouched = {got} (default {want})")
             fails += not ok
-    # ---- the MIDI path: CC PAGE 2's cave calls the unit after its write --------
-    if "CC PAGE 2" in remix.modules and cases:
+    # ---- the MIDI path: CC MAP's cave calls the unit after its write --------
+    if "CC MAP" in remix.modules and cases:
         kind, k, m = cases[0]
         t = tracks[kind]
         slot2 = m.mode_slot - 6
@@ -186,7 +186,7 @@ def main():
             got_mode = lane[PAGE2[kind] + slot2]
             view = expect_view(m, got_mode) if got_mode == want_mode else None
             ok = view is not None
-            print(f"  [{'ok' if ok else 'FAIL'}] {k} T{t + 1}: CC {cc} = {want_mode} over MIDI IN -> MODE {got_mode} (CC PAGE 2's cave calls the unit)")
+            print(f"  [{'ok' if ok else 'FAIL'}] {k} T{t + 1}: CC {cc} = {want_mode} over MIDI IN -> MODE {got_mode} (CC MAP's cave calls the unit)")
             fails += not ok
             if ok:
                 for slot, val in sorted(view.defaults.items()):

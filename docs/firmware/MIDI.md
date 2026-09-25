@@ -24,7 +24,7 @@ level, 47 cue, 8 AMP BAL, 48 crossfader, 49-51 mute/solo/cue, 52-54 arm,
 `0x8000000c`. Unused: 0-6, 9-15, 62-111.
 
 Page 2 is unreachable from stock CC: `cc−16 < 30` and the writer derives
-`slot = flat % 6`. `modules/ccpage2` adds CC 62-67 (FX2 page 2) and
+`slot = flat % 6`. `modules/cc-map` adds CC 62-67 (FX2 page 2) and
 68-73 (FX1 page 2).
 
 **The generic writer `FUN_40054cd8(track, flat, value)`** ✅ resolves the
@@ -367,7 +367,7 @@ writes the lane byte, sets the redraw flag `0x46c7d244[slot2*20+4] = 0x14`
 and tail-jumps to the page redraw. The FX2 dial reads the displayed value
 from the Part via the page cache.
 
-`modules/ccpage2` (CC 62-67 → FX2 page 2, CC 68-73 → FX1 page 2) makes the
+`modules/cc-map` (CC 62-67 → FX2 page 2, CC 68-73 → FX1 page 2) makes the
 FX2 editor's stores for 62-67 and the FX1 editor's for 68-73. Its first
 versions used the PLAYBACK editor's stores (reading `0x4003a474` as "the
 page-2 editor"), so CCs corrupted the track's PLAYBACK page-2 byte and never
@@ -379,7 +379,7 @@ page-2 edit at the panel reaches the DSP on a THRU track
 Tooling: `tools/hw/hw_bus_test.py` (synchronous paired A/B over MIDI with
 capture, a page-1 control proving the harness each run), an emulator
 write-diff of the editor against the cave (every store, same inputs),
-`tools/verify/verify_ccpage2.py` (the cave's writes for all eight tracks
+`tools/verify/verify_ccmap.py` (the cave's writes for all eight tracks
 against the FX2 editor under the emulator).
 
 

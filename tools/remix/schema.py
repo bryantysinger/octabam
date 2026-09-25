@@ -336,7 +336,7 @@ class CavePatch:
     # may therefore hold absolute references to itself, and symbols it needs
     # from the build (the address of a data field, a clone's slot) arrive as
     # `defsyms` -- `ld --defsym NAME=value` -- instead of placeholder words
-    # patched into hand-assembled hex (busscreen's MARKS, ccpage2's VCOUNT).
+    # patched into hand-assembled hex (busscreen's MARKS, cc-map's VCOUNT).
     # An emit() that returns b"" for its bytes says "the source is the only
     # truth"; an emit() that still returns bytes takes the legacy path,
     # unlinked and unchecked, exactly as before. Without a toolchain the
@@ -347,7 +347,7 @@ class CavePatch:
     # A FLOATING source-linked cave has no fixed `pinned` to be held against
     # (its bytes depend on where it lands), so it may supply the oracle as a
     # callable instead: reference(addr) -> the ratified bytes AT that
-    # address -- ccpage2 keeps its hand-patched legacy form for exactly this.
+    # address -- cc-map keeps its hand-patched legacy form for exactly this.
     # Checked on every build; a drift refuses.
     reference: object | None = None
 

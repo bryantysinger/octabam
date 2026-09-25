@@ -20,9 +20,9 @@ the machine back:
             (the read-back slot); the main out's TX0 counts are printed
   midi      CC 40 (AUX, FX2 page 1 slot 0) at 100 on T2's channel over the
             port's MIDI IN (UART0) moves T2's record halfword 12 to 100;
-            with CC PAGE 2 in the remix, CC 68 at 77 on T1's channel lands
+            with CC MAP in the remix, CC 68 at 77 on T1's channel lands
             in T1's FX1 page-2 lane and record halfword 18 (the queue ->
-            main -> DSP leg verify_ccpage2 cannot run); on a bus remix each
+            main -> DSP leg verify_ccmap cannot run); on a bus remix each
             engine's host track must then carry T2's send (the wet comes
             out on the host since 20 Sep 2026), and an engine on the wrong
             core (BusVerb on T1-4, BusDelay on T5-8: it runs as SEND there)
@@ -204,14 +204,14 @@ def main():
             sys.exit(f"verify_set: building {a.remix} failed:\n{(r.stdout + r.stderr)[-1500:]}")
         shutil.copy2(ROOT / "out/mainos_bus.bin", image)
 
-    # MIDI IN: AUX to 100 on T2 at frame 40; with CC PAGE 2, FX1 page-2 slot 6
+    # MIDI IN: AUX to 100 on T2 at frame 40; with CC MAP, FX1 page-2 slot 6
     # to 77 on T1 at frame 40 (the page-1 slew takes ~30 frames).
     chans = midi_channels(pdir)
-    ccpage2 = "CC PAGE 2" in registry.remix(a.remix).modules
+    ccmap = "CC MAP" in registry.remix(a.remix).modules
     midi = OUT / "in.midi"
     lines = [f"40 B{chans[1] & 0xf:X} 28 64"]
-    ccpage2 = ccpage2 and part["fx1"][0] != 0          # the cave guards FX1 id 0 (NONE)
-    if ccpage2:
+    ccmap = ccmap and part["fx1"][0] != 0          # the cave guards FX1 id 0 (NONE)
+    if ccmap:
         lines.append(f"40 B{chans[0] & 0xf:X} 44 4D")
     # the bus engines' hosts: each prints its wet on its own track, so T2's
     # send must reach every host's chain output. Payload A serves T5-8 and
@@ -299,14 +299,14 @@ def main():
         # an unimplemented id runs the fallback, whose page publishes no slot 0
         print(f"  [skip] midi: CC 40 -> T2 slot 0: the part's T2 FX2 id 0x{part['fx2'][1]:02x} "
               f"is not a module of this remix")
-    if ccpage2:
+    if ccmap:
         # the cave clamps to the slot's count from the descriptor: slot 6 is
         # every effect's MODE since 16 Sep 2026, so 77 lands as count - 1
         fx1_mod = registry.by_id(part["fx1"][0])
         cnt = (fx1_mod.params[6].count or 128) if fx1_mod is not None and fx1_mod.params else 128
         want = min(77, cnt - 1)
         lane_v, rec_v = lanes[0x32], recs[2 * 18]
-        check(f"midi: CC 68 = 77 on T1's channel reached T1's FX1 page-2 slot 6 (CC PAGE 2; count {cnt} -> {want})",
+        check(f"midi: CC 68 = 77 on T1's channel reached T1's FX1 page-2 slot 6 (CC MAP; count {cnt} -> {want})",
               lane_v == want and rec_v == want, f"lane +0x32 = {lane_v}, record halfword 18 high byte = {rec_v}")
     m = re.search(r"midi in    : (\d+) byte\(s\) still queued", text)
     check("midi: the firmware took every byte", m is not None and m.group(1) == "0",

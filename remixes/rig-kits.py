@@ -1,4 +1,4 @@
-"""rig-kits -- bamsep26 + Octakit (SCENES KITS bridges CC PAGE 2 and Octakit).
+"""rig-kits -- bamsep26 + Octakit (SCENES KITS bridges CC MAP and Octakit).
 
 No LO-FI AMF fix (Character replaces LO-FI). Unmeasured: whether the part
 bytes that place the rig's hosts (ot_project.py stamp-defaults) survive
@@ -12,7 +12,7 @@ REMIX = Remix(
     doc="The rig + Octakit.",
     modules=("REVERB SERVER", "DELAY SERVER", "SEND", "DELAY",
              "SPECTRUM", "CHARACTER", "MODULATION",
-             "TEMPO SYNC", "CC PAGE 2",
+             "TEMPO SYNC", "CC MAP",
              "OCTAKIT", "SCENES KITS"),
     fallback="SEND",
     fx1=("SPECTRUM", "CHARACTER", "MODULATION"),

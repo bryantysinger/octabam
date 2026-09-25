@@ -401,7 +401,7 @@ out/emu/ot_emu --image out/mainos_bus.bin --card out/card.img --set OCTABAM --pr
   source 26) and the firmware's own RX ISR, framer and MIDI thread take
   them: CC 40 = 100 on T2's channel moved T2's SEND halfword (with the
   page-1 slew, ~30 frames), CC 68 landed in the FX1 page-2 lane through
-  the CC PAGE 2 cave, `pre C0 10` switched to bank B while stopped. A
+  the CC MAP cave, `pre C0 10` switched to bank B while stopped. A
   program change while playing waits for the pattern's end (thousands of
   frames).
 - `--dsp-dirty [SEED]` fills both cores' X/Y and the shared window with a
@@ -433,7 +433,7 @@ every track with record audio has a chain output; the main out's TX0
 counts are printed (informational: on OCTABAM89_setgate only T8's chain
 output ever reached TX0 under the port, measured 20 Sep 2026 with and
 without the return; which tracks reach TX0 under the port is open); CC 40
-over MIDI IN moved T2's SEND and (CC PAGE 2) CC 68 reached
+over MIDI IN moved T2's SEND and (CC MAP) CC 68 reached
 T1's FX1 page 2; on a bus remix each engine's host carries T2's send on
 its chain output (the wet prints on the host since 20 Sep 2026; the
 engines warm up 256 blocks each) and an engine on the wrong core is

@@ -1,10 +1,12 @@
-| CC PAGE 2 -- the MIDI CC dispatch entry (0x400d64a0) is repointed here.
-| CC 62-67 write the track's FX2 page-2 slot (cc-62) the way the page-2
-| editor 0x4003a474 does (Part, live byte, mirror; no TRACKB); CC 68-73
-| write the FX1 page-2 slot the way the FX1 page-2 editor 0x4003abe4 does
-| (Part +0x8f07e, shadow 0x100a51cc, lane +0x32, the four dirty flags),
-| clamped by the FX1 descriptor's min/count. Selects are clamped to their
-| count. Every other CC tail-calls CC_NEXT with the argument intact.
+| CC MAP -- the MIDI CC dispatch entry (0x400d64a0) is repointed here.
+| Each CC block maps CC numbers stock ignores onto one page's slots:
+|   62-67  FX2 page-2 slot (cc-62), the FX2 page-2 editor 0x4003aab2's
+|          stores, on BusDelay/BusVerb tracks, clamped by VCOUNT/DCOUNT
+|   68-73  FX1 page-2 slot (cc-68), the FX1 page-2 editor 0x4003abe4's
+|          stores (Part +0x8f07e, shadow 0x100a51cc, lane +0x32, the four
+|          dirty flags), clamped by the FX1 descriptor's min/count
+| Every other CC tail-calls CC_NEXT with the argument intact. A new block
+| needs a range test at CAVE and its own write path.
 |
 | CC_NEXT is where anything but 62-73 goes: the stock CC handler
 | (0x4000e79c), or -- when Octakit is in the image and the scenes-kits
@@ -130,7 +132,7 @@ wclamp: moveq   #0,%d1
         ble.s   wpos
         movel   %d1,%d2                | clamp to max
 wpos:   | d2 = clamped value (>=0 by construction)
-        | Part = DB + part*6322 + P2OFF + track*30 + 18 + slot2
+        | Part = DB + part*6322 + P2OFF + track*30 + slot2
         movel   DBPTR,%d0
         moveq   #0,%d1
         moveb   PARTB,%d1
@@ -147,12 +149,12 @@ wpos:   | d2 = clamped value (>=0 by construction)
         addal   %d1,%a0
         addal   %d4,%a0
         moveb   %d2,%a0@               | Part <- value
-        | display = base + DISPOFF + track*30 + 6 + slot2 -- the byte the stock
+        | display = base + DISPOFF + track*30 + slot2 -- the byte the stock
         | FX2 dial READS (0x8f084, confirmed by an emu read-hook). d0 still
         | holds base, d1 still holds track*30 from the Part write above.
         moveal  %d0,%a0
         addal   #DISPOFF,%a0
-        addal   %d1,%a0                | (page*6 already in the base)
+        addal   %d1,%a0
         addal   %d4,%a0
         moveb   %d2,%a0@               | displayed value <- value
         | live = LIVEB + track*72 + 0x38 + slot2 -- the FX2 page-2 lane the per-frame
@@ -172,7 +174,7 @@ wpos:   | d2 = clamped value (>=0 by construction)
         moveq   #30,%d1
         mulu.l  %d1,%d3                | d3 = track*30
         movel   %d0,%d1
-        subl    DBPTR,%d1              | d1 = part*6322 + page*6
+        subl    DBPTR,%d1              | d1 = part*6322
         addl    %d3,%d1
         addil   #SHADOW,%d1
         moveal  %d1,%a0
@@ -314,6 +316,6 @@ modedef1:
 
 | ---- per-engine page-2 value counts, slot2 order (slots 6..11) -----------
 | Must match the engines' manifests (busverb / busdelay page-2 counts);
-| tools/verify/verify_ccpage2.py checks them against VERB_COUNTS / DLY_COUNTS.
+| tools/verify/verify_ccmap.py checks them against VERB_COUNTS / DLY_COUNTS.
 VCOUNT: .byte   3, 128, 128, 4, 128, 128  | MODE (blank) DIFF SHFT GATE (blank)
 DCOUNT: .byte   3, 128, 128, 4, 128, 128  | MODE SCAT DENS SIZE PTCH WOW

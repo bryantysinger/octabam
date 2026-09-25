@@ -209,7 +209,7 @@ Writers:
   `+0x8ef5a + track*30 + machine*6 + slot`, index `0x460d5c30`, live
   `0x80000830 + track*72 + slot`); FX1 `0x4003abe4` (Part `+0x8f07e`, live
   +0x32); FX2 `0x4003a9dc` (Part `+0x8f084`, live +0x38). Retracted 13 Sep
-  2026: "`0x4003a474` is the FX page-2 editor" (the `cc_page2.s` cave built
+  2026: "`0x4003a474` is the FX page-2 editor" (the `cc_map.s` cave built
   on it wrote PLAYBACK's bytes until then; `PARAM_PAGES.md` §5b). Slot
   argument is 0–5 (`moveq #5,d4; cmp a3,d4; bcs exit`); the `a3 == 6` arm
   is a repeat-by-delta loop gated on `0x460d1a48 == 1`. The delta comes
@@ -250,7 +250,7 @@ window ctor `FUN_4005829c`, list drawer `FUN_40037590`, `sprintf`
 `0x40013a08`; the FX2 page stages index 0, so a screen reading the Part's
 page-2 bytes at `+24+slot2` was self-consistent and audible (the editor's
 live-lane write carries the value) but did not survive a part reload
-(`modules/ccpage2`, tag 13).
+(`modules/cc-map`, tag 13).
 
 ## 8. Undecoded
 

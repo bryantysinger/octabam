@@ -26,7 +26,7 @@ preserved as the displaced callee preserves them.
 
 ## Over MIDI
 
-CC PAGE 2's cave calls `CC_MODEDEF2` / `CC_MODEDEF1` after its page-2
+CC MAP's cave calls `CC_MODEDEF2` / `CC_MODEDEF1` after its page-2
 write (a2 = slot2, d2 = the clamped value, d4 = track, d5 = part); the
 build resolves the two symbols to this unit's entries when it is in the
 image (ROM units are linked before the caves since 15 Sep 2026; the cave's
@@ -58,5 +58,5 @@ the knobs, on FX1 and FX2.
 
 ## Open
 
-- The Part bytes are written by the same formulas `modules/ccpage2` proves
+- The Part bytes are written by the same formulas `modules/cc-map` proves
   against the editor; the verifier reads the live lane only.
