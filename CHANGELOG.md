@@ -7,6 +7,15 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- TEMPO BUS (25 Sep 2026):
+  - The TEMPO window lists and edits BusDelay's and BusVerb's parameters
+    in two boxes, drawn with the stock settings-screen routines: A = row,
+    B = value, LEFT/RIGHT = box. LEVEL (BPM) and UP/DOWN (tempo step) are
+    unchanged.
+  - Edits go through the page-1 writer and the FX2 page-2 stores. A MODE
+    change re-defaults its knobs through MODE DEFAULTS.
+  - `verify_tempobus` drives it under the port.
+  - Nothing on hardware.
 - SEND splits into DEL (slot 0, into the delay) and REV (slot 1, into the
   reverb), 25 Sep 2026. A second accumulator (`Y:0xa58..0xad7`) and count
   (`0x983..0x98a`), cleared by the housekeeper with the aux. The chain

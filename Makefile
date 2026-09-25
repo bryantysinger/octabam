@@ -229,6 +229,9 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	@# A MODE turned on the panel re-defaults its knobs (the FX1 and FX2
 	@# page-2 editors called under the port); SKIPs without OT_PROJECT (above).
 	python3 tools/verify/verify_modedefaults.py $(REMIX)
+	@# TEMPO BUS: the TEMPO window's bus screen driven through the port's live
+	@# panel on verify_set's staged card; SKIPs without it (above).
+	python3 tools/verify/verify_tempobus.py $(REMIX)
 
 .PHONY: verify-roll
 verify-roll: ## Prove an alternate REVERB engine is bit-identical: make verify-roll CAND=cand.asm [REF=modules/busverb/reverb_server.asm]
