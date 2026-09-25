@@ -17,9 +17,9 @@ each engine's parameters with the values the host page would show.
 
 The header prints the tempo at its left as `TMP 121.2`, or `PTN 121.2`
 while the pattern tempo is on (the stock TEMPO draw's test, `0x80000024`,
-`0x460d1aec`). To its right is the key: `VALUE`; the arrows, the font's ◀ and ▶ (`0x13`,
+`0x460d1aec`). To its right is the key: `NAV` and the arrows, the font's ◀ and ▶ (`0x13`,
 `0x14`) around the stock ▲ and ▼ icons (`0x400b9d8c`, `0x400b9da0`); then
-`A` and the font's knob glyph (`0x02`) at the right edge. The header line sits 1 px under
+`A` and the font's knob glyph (`0x02`), the value knob, at the right edge. The header line sits 1 px under
 the window's top edge; the boxes take the rest (48 px, six rows).
 
 - **Rows and labels.** The rows are each engine's named slots (a mask per
