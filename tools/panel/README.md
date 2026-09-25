@@ -23,6 +23,9 @@ REC3 have no MKI equivalent.
 
 ## In octabam
 
+`docs/remixer/EMU.md` lists the other ways to run the port (`make
+emu-live`, scripted runs, the gates).
+
 ```sh
 make panel REMIX=bamsep26                       # OT_PROJECT=<dir>, or the path in ~/.octabam_project
 make panel REMIX=bamsep26 PANEL_PORT=8571 PANELARGS='--sound off'
