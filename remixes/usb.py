@@ -4,6 +4,7 @@ bamsep26's selection with USB MIDI (markandrus/octemu's completion of the
 firmware's dormant USB-MIDI half) on the DRAM platform: the unit appears
 to a host as a composite mass-storage + MIDI class device, and the MIDI
 function mirrors the DIN ports. Nothing else changes.
+docs/remixes/usb.md has the build and use steps.
 """
 
 from remix.schema import Remix

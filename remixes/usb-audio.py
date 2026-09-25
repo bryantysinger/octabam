@@ -3,7 +3,8 @@
 `usb` with USB AUDIO (markandrus/octemu's UAC2 proof of concept) on the
 DRAM platform: at USB high speed the unit is also a 16-channel 44.1 kHz
 16-bit audio input, track N's post-FX pre-fader L/R on channels 2N-1/2N;
-at full speed the stereo sum of the tracks. Nothing on hardware yet.
+at full speed the stereo sum of the tracks. On hardware as image 64
+(25 Sep 2026). docs/remixes/usb.md has the build and use steps.
 """
 
 from remix.schema import Remix
