@@ -7,7 +7,8 @@ draw: the header ("TMP 121.2" at the left, then a key: a page dial,
 REVERB, listing each engine's named parameters with the values its own
 formatters print. UP/DOWN move the cursor in the focused box, A (or B)
 edits (x7 while pushed, as stock),
-LEFT / RIGHT switch boxes, C-F are held while the window is open. LEVEL
+LEFT / RIGHT switch boxes (the cursor keeps its screen line); a mode's
+"---" slots are left out of the list. C-F are held while the window is open. LEVEL
 steps whole BPM (the stock 0x4004b918) and 0.1 BPM with FUNC held (the
 stock step 0x4004b824(0, +-1) that UP/DOWN made). YES/NO/TEMPO (close) keep the
 stock window's handlers (layer 0x400bb4ec).
@@ -34,18 +35,19 @@ ENGINES = ("DELAY SERVER", "REVERB SERVER")    # box 0, box 1
 
 
 def table_inc(modules):
-    """ENGIDS (the two FX2 ids), NROWS, ROWSLOT (12 per box): each engine's
-    named slots in slot order. An engine not in the remix has no rows."""
-    ids, counts, slots = [], [], []
+    """ENGIDS (the two FX2 ids) and NAMED (per box, a bit per slot the
+    engine's manifest names). The screen lists a named slot while its
+    current name is not the mode's "---". An engine not in the remix has
+    no rows."""
+    ids, masks = [], []
     for key in ENGINES:
         m = modules.get(key)
         named = [i for i, p in enumerate(m.params) if p.name] if m is not None else []
         ids.append(m.menu.fx2_id if m is not None else 0xff)
-        counts.append(len(named))
-        slots.extend(named + [0] * (12 - len(named)))
+        masks.append(sum(1 << i for i in named))
     return ("ENGIDS: .byte   " + ", ".join(map(str, ids)) + "\n"
-            "NROWS:  .byte   " + ", ".join(map(str, counts)) + "\n"
-            "ROWSLOT: .byte  " + ", ".join(map(str, slots)) + "\n")
+            "        .even\n"
+            "NAMED:  .word   " + ", ".join(f"{m:#x}" for m in masks) + "\n")
 
 
 MODULE = Module(

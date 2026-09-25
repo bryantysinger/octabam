@@ -151,13 +151,22 @@ edone:  movem.l %sp@,%d2-%d7/%a2-%a6
         lea     %sp@(44),%sp
         bra.w   tb_draw
 
-| ---- LEFT / RIGHT: the focused box -------------------------------------
-tb_left:
-        clrb    FOCUS
-        bra.w   tb_draw
-tb_right:
+| ---- LEFT / RIGHT: the focused box; the cursor keeps its line ---------
+tb_lr:  moveq   #0,%d0
+        moveb   FOCUS,%d0
+        lea     SEL,%a0                | SEL[2], then SCR[2]
+        moveb   %a0@(0,%d0:l),%d1
+        moveb   %d1,%a0@
+        moveb   %d1,%a0@(1)
+        moveb   %a0@(2,%d0:l),%d1
+        moveb   %d1,%a0@(2)
+        moveb   %d1,%a0@(3)
+        moveq   #0,%d0
+        moveq   #0x21,%d1              | RIGHT
+        cmpl    %sp@(4),%d1
+        bne.s   1f
         moveq   #1,%d0
-        moveb   %d0,FOCUS
+1:      moveb   %d0,FOCUS
         bra.w   tb_draw
 
 | ---- UP / DOWN: the cursor, one row, held at the box's ends -----------
@@ -175,7 +184,7 @@ tb_ud:  movel   %d2,%sp@-
         moveb   %a1@,%d2
         addl    %d0,%d2                | the row asked for
         bmi.s   2f                     | above the first: stay
-        lea     NROWS,%a0
+        lea     NV,%a0
         moveq   #0,%d0
         moveb   %a0@(0,%d1:l),%d0
         cmpl    %d0,%d2
@@ -197,14 +206,15 @@ tb_lvl: moveq   #0,%d0
         rts
 
 | ---- slotof: d1 = box, d0 = row -> d6 = the row's slot, -1 past the end.
+| The rows are the ones the last draw listed (VIS, NV).
 slotof: moveq   #-1,%d6
-        lea     NROWS,%a0
+        lea     NV,%a0
         cmpb    %a0@(0,%d1:l),%d0
         bcc.s   1f
         movel   %d1,%d6
         mulu.w  #12,%d6
         addl    %d0,%d6
-        lea     ROWSLOT,%a0
+        lea     VIS,%a0
         moveb   %a0@(0,%d6:l),%d6
         extb.l  %d6
 1:      rts
@@ -365,11 +375,10 @@ dbox:   movel   %d7,%sp@-
         pea     %a6@
         jsr     %a2@
         addql   #8,%sp
-| keep the selection inside the rows and the view around it
+| the rows: each named slot whose current name is not the mode's "---"
 1:      movel   %a6@(28),%d1
-        lea     NROWS,%a0
-        moveq   #0,%d3
-        moveb   %a0@(0,%d1:l),%d3      | d3 = rows
+        jsr     rows                   | d3 = rows
+| keep the selection inside the rows and the view around it
         lea     SEL,%a0
         moveq   #0,%d0
         moveb   %a0@(0,%d1:l),%d0
@@ -480,7 +489,7 @@ TITLES: .long   T_DLY, T_VRB
 FOCUS:  .byte   0
 SEL:    .byte   0, 0
 SCR:    .byte   0, 0
-        .include "remix.inc"           | ENGIDS, NROWS, ROWSLOT
+        .include "remix.inc"           | ENGIDS, NAMED (rows reads NAMED)
         .even
 | An input layer as the stock ones: {0, keys, encoders, 0, 0, -1, -1}.
 TB_LAYER:
@@ -488,10 +497,10 @@ TB_LAYER:
 | Key records, 26 B: {code, 0, press, release, repeat, aux, 0, delay, rate}.
 TB_KEYS:
         .byte   0x34, 0
-        .long   tb_left, 0, 0, 0, 0
+        .long   tb_lr, 0, 0, 0, 0
         .word   0, 0
         .byte   0x21, 0
-        .long   tb_right, 0, 0, 0, 0
+        .long   tb_lr, 0, 0, 0, 0
         .word   0, 0
         .byte   0x33, 0
         .long   tb_ud, 0, tb_ud, 0, 0

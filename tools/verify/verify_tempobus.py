@@ -10,13 +10,16 @@ card.img), drives the panel through `ot_emu --live` (key and encoder events
 on the panel link), dumps RAM at the end and checks:
 
   window   TEMPO opens a 118 x 64 window (the menu window's size)
-  delay    on the delay host: DOWN x6 to row 6 (MODE), A to 0 then +1 -> page-2
+  delay    on the delay host: DOWN x6 to row 6 (MODE), A to 0 (CLEAN); DOWN
+           to row 7, which is WOW with CLEAN's four --- rows hidden, A to 0
+           then +4 -> page-2 lane slot 5 = 4; UP, A +1 -> page-2
            lane slot 0 = 1 (GRAIN), and with MODE DEFAULTS in the image the
            GRAIN view's PTCH (page-2 slot 4) = 96; then UP x4 to row 2
            (FDBK), B to 0 then +5 -> page-1 lane flat 26 = 5 (after the
            view's 40)
-  reverb   RIGHT, UP (held at row 0), A to 0 then +3 on SEND -> page-1 lane flat 24 = 3;
-           DOWN x3, UP x1 to row 2 (SIZE), B to 0 then +7 -> flat 26 = 7
+  reverb   RIGHT keeps the line: row 2 (SIZE), B to 0 then +7 -> page-1
+           lane flat 26 = 7; UP x3 (held at row 0), A to 0 then +3 on SEND ->
+           flat 24 = 3
   tempo    LEVEL to the 30.0 floor and +5, then FUNC + LEVEL +3 -> 35.3 BPM
            (project tempo 0x80000020 = BPM x 24; skipped while the pattern
            tempo is on)
@@ -114,16 +117,19 @@ def main():
         key(KEY_TEMPO, 1.0)
         for _ in range(6):
             key(KEY_DOWN, 0.3)                            # DOWN x6: row 6 (MODE)
-        send("enc 0 -5"); send("enc 0 1", 0.6)            # A: GRAIN (its view re-defaults FDBK)
+        send("enc 0 -5", 0.6)                             # A: CLEAN (SCAT DENS SIZE PTCH are ---)
+        key(KEY_DOWN, 0.3)                                # row 7: WOW, the --- rows hidden
+        send("enc 0 -64"); send("enc 0 -64"); send("enc 0 4", 0.6)
+        key(KEY_UP, 0.3)                                  # row 6 (MODE)
+        send("enc 0 1", 0.6)                              # A: GRAIN (its view re-defaults FDBK)
         for _ in range(4):
             key(KEY_UP, 0.3)                              # UP x4: row 2 (FDBK)
         send("enc 1 -64"); send("enc 1 -64"); send("enc 1 5")
         key(KEY_RIGHT)
-        key(KEY_UP, 0.3)                                  # UP at row 0: stays on SEND
+        send("enc 1 -64"); send("enc 1 -64"); send("enc 1 7", 0.6)   # the same line: row 2 (SIZE)
+        for _ in range(3):
+            key(KEY_UP, 0.3)                              # UP x3: row 0 (SEND), held there
         send("enc 0 -64"); send("enc 0 -64"); send("enc 0 3", 0.6)   # A: SEND
-        for k in (KEY_DOWN, KEY_DOWN, KEY_DOWN, KEY_UP):
-            key(k, 0.3)                                   # row 2 (SIZE)
-        send("enc 1 -64"); send("enc 1 -64"); send("enc 1 7", 0.6)
         send("enc 6 -128"); send("enc 6 -128")            # LEVEL: to the 30.0 floor
         send("enc 6 5", 0.4)                              # LEVEL: +5 BPM
         send(f"key {KEY_FUNC:#x} down", 0.2)
@@ -177,10 +183,12 @@ def main():
     else:
         check(f"delay: FDBK (T{dly + 1} page-1 flat 26) = 5", L(dly, 26) == 5, f"{L(dly, 26)}")
         check(f"delay: MODE (T{dly + 1} page-2 slot 0) = 1, GRAIN", L(dly, 0x38) == 1, f"{L(dly, 0x38)}")
+        check(f"delay: CLEAN's --- rows hidden, DOWN from MODE set WOW (page-2 slot 5) = 4",
+              L(dly, 0x3d) == 4, f"WOW {L(dly, 0x3d)}, SCAT {L(dly, 0x39)}")
         if "MODE DEFAULTS" in mods:
             check(f"delay: GRAIN's view landed (PTCH, page-2 slot 4 = 96)", L(dly, 0x3c) == 96, f"{L(dly, 0x3c)}")
         check(f"reverb: SEND (T{vrb + 1} page-1 flat 24) = 3", L(vrb, 24) == 3, f"{L(vrb, 24)}")
-        check(f"reverb: DOWN/UP to SIZE (T{vrb + 1} page-1 flat 26) = 7", L(vrb, 26) == 7, f"{L(vrb, 26)}")
+        check(f"reverb: RIGHT from delay row 2 lands on SIZE (T{vrb + 1} page-1 flat 26) = 7", L(vrb, 26) == 7, f"{L(vrb, 26)}")
     traw, ptn = struct.unpack(">I", tmp.read_bytes()[:4])[0], tmp.read_bytes()[4]
     if ptn:
         print("  [SKIP] tempo: the pattern tempo is on")
