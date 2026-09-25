@@ -92,6 +92,88 @@ namespace ot
 		arm(_now);
 	}
 
+	// ---- DMA timer ---------------------------------------------------------
+	double DmaTimer::periodSamples() const
+	{
+		const uint32_t clk = (m_dtmr >> 1) & 3;             // 01 bus, 10 bus/16, 11 DTIN
+		const double div = clk == 2 ? 16.0 : 1.0;
+		const double pre = static_cast<double>(((m_dtmr >> 8) & 0xff) + 1);
+		return (static_cast<double>(m_dtrr) + 1.0) * pre * div / m_clockHz * g_sampleHz;
+	}
+
+	void DmaTimer::arm(const double _now)
+	{
+		const uint32_t clk = (m_dtmr >> 1) & 3;
+		m_armed = (m_dtmr & RST) && (clk == 1 || clk == 2) && m_dtrr != 0;
+		m_start = _now;
+		if(m_armed)
+			m_expiry = _now + periodSamples();
+	}
+
+	uint32_t DmaTimer::read(const uint32_t _off, const uint32_t _size, const double _now) const
+	{
+		switch(_off)
+		{
+		case 0x0: return m_dtmr;
+		case 0x3: return m_dter;
+		case 0x4: return m_dtrr;
+		case 0xc:
+		{
+			if(!m_armed)
+				return 0;
+			const double period = std::max(periodSamples(), 1e-9);
+			const double frac = std::max(0.0, _now - (m_expiry - period)) / period;
+			return static_cast<uint32_t>(frac * static_cast<double>(m_dtrr));
+		}
+		default: return _size == 4 ? 0 : 0;
+		}
+	}
+
+	void DmaTimer::write(const uint32_t _off, const uint32_t _size, const uint32_t _val, const double _now)
+	{
+		if(_off == 0x0 && _size >= 2)
+		{
+			m_dtmr = _val & 0xffff;
+			arm(_now);
+		}
+		else if(_off == 0x0 && _size == 1)
+		{
+			m_dtmr = (m_dtmr & 0x00ff) | ((_val & 0xff) << 8);
+			arm(_now);
+		}
+		else if(_off == 0x1 && _size == 1)
+		{
+			m_dtmr = (m_dtmr & 0xff00) | (_val & 0xff);
+			arm(_now);
+		}
+		else if(_off == 0x3)
+			m_dter &= ~(_val & 3);                          // write-1-to-clear
+		else if(_off == 0x4 && _size == 4)
+		{
+			m_dtrr = _val;
+			if(m_dtmr & RST)
+				arm(_now);
+		}
+		else if(_off == 0xc)
+			arm(_now);                                      // any write clears the counter
+	}
+
+	uint32_t DmaTimer::advance(const double _now)
+	{
+		uint32_t n = 0;
+		while(m_armed && _now >= m_expiry)
+		{
+			m_dter |= DTER_REF;
+			++m_fired;
+			++n;
+			if(m_dtmr & FRR)
+				m_expiry += periodSamples();
+			else
+				m_armed = false;                            // free-run: wraps after 2^32, never again here
+		}
+		return n;
+	}
+
 	// ---- UART --------------------------------------------------------------
 	uint32_t Uart::read(const uint32_t _off, const uint32_t _size)
 	{
