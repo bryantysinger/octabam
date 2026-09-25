@@ -13,7 +13,7 @@ flashed image was built from.
   BusVerb. UP/DOWN pick the row, A (or B) the value, LEFT/RIGHT the box
   (the cursor keeps its line), LEVEL whole BPM, FUNC + LEVEL 0.1 BPM. A
   mode's `---` rows are left out. Header: `TMP 121.2`, then the key
-  `NAV ◀▲▼▶ A ●`; six rows per box.
+  `NAV ◀▲▼▶ A ●`; five rows per box.
 
 - The virtual panel's face is the MKII's (25 Sep 2026): Mark Roberts' octemu
   skin generator (`tools/panel/skin/gen_svg.py`, MIT) in a dark palette,

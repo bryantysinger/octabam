@@ -6,7 +6,7 @@ each engine's parameters with the values the host page would show.
 
 | control | does |
 |---|---|
-| UP / DOWN | move the cursor one row in the focused box, with key repeat; the box scrolls, six rows visible |
+| UP / DOWN | move the cursor one row in the focused box, with key repeat; the box scrolls, five rows visible |
 | A | edits the selected parameter on the host track; ×7 while A is pushed (the stock fast turn) |
 | B | the same as A |
 | LEFT / RIGHT | focus DELAY / REVERB; the cursor stays on the same screen line |
@@ -19,8 +19,8 @@ The header prints the tempo at its left as `TMP 121.2`, or `PTN 121.2`
 while the pattern tempo is on (the stock TEMPO draw's test, `0x80000024`,
 `0x460d1aec`). To its right is the key: `NAV` and the arrows, the font's ◀ and ▶ (`0x13`,
 `0x14`) around the stock ▲ and ▼ icons (`0x400b9d8c`, `0x400b9da0`); then
-`A` and the font's knob glyph (`0x02`), the value knob, at the right edge. The header line sits 1 px under
-the window's top edge; the boxes take the rest (48 px, six rows).
+`A` and the font's knob glyph (`0x02`), the value knob, at the right edge. The header text sits 6 px under
+the window's top edge; the boxes are 41 px, five rows, 3 px under the rule.
 
 - **Rows and labels.** The rows are each engine's named slots (a mask per
   engine, taken from its manifest when the remix is built), minus the ones
