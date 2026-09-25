@@ -32,7 +32,7 @@
         .set    ICON,     0x400128a8   | (icon, surf, x, y)
         .set    ARRUP,    0x400b9d8c   | stock icons, 7 x 5: the up triangle
         .set    ARRDN,    0x400b9da0   | and the down one
-        .set    KEYX,     51           | the key's left edge (it ends at x 112)
+        .set    KEYX,     55           | the key's left edge (it ends at x 112)
         .set    SPRINTF,  0x40013a08   | (buf, fmt, ...)
         .set    TEMPOGET, 0x4009c5f4   | (&whole, &tenths)
         .set    LPUSH,    0x40031494   | (layer): register an input layer
@@ -267,19 +267,19 @@ tb_draw:
         addql   #2,%d1
         lea     %a6@,%a0
         bsr.w   text
-| the key, right-aligned: "VALUE", the arrows for the cursor, then "A" and
-| the font's knob (0x02) at the right edge. An icon's y is its bottom row,
+| the key, right-aligned: "NAV" and the arrows for the cursor, then "A"
+| and the font's knob (0x02), the value knob, at the right edge. An icon's y is its bottom row,
 | as the text's.
         moveq   #KEYX,%d0
         movel   %d7,%d1
         addql   #2,%d1
         lea     T_KEY,%a0
         bsr.w   text
-        moveq   #KEYX+29,%d0
+        moveq   #KEYX+21,%d0
         moveq   #2,%d1
         lea     ARRUP,%a0
         bsr.s   icon
-        moveq   #KEYX+36,%d0
+        moveq   #KEYX+28,%d0
         moveq   #2,%d1
         lea     ARRDN,%a0
         bsr.s   icon
@@ -473,7 +473,7 @@ T_DLY:  .asciz  "DELAY"
 T_VRB:  .asciz  "REVERB"
 | the key: the font's left and right triangles (0x13, 0x14) with room
 | between them for the up and down icons; A (the knob) turns the value
-T_KEY:  .asciz  "VALUE \x13     \x14 A\x02"
+T_KEY:  .asciz  "NAV \x13     \x14 A \x02"
         .even
 TITLES: .long   T_DLY, T_VRB
 FOCUS:  .byte   0
