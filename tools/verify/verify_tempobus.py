@@ -10,12 +10,12 @@ card.img), drives the panel through `ot_emu --live` (key and encoder events
 on the panel link), dumps RAM at the end and checks:
 
   window   TEMPO opens a 118 x 64 window (the menu window's size)
-  delay    on the delay host: A to row 6 (MODE), B to 0 then +1 -> page-2
+  delay    on the delay host: DOWN x6 to row 6 (MODE), A to 0 then +1 -> page-2
            lane slot 0 = 1 (GRAIN), and with MODE DEFAULTS in the image the
            GRAIN view's PTCH (page-2 slot 4) = 96; then UP x4 to row 2
            (FDBK), B to 0 then +5 -> page-1 lane flat 26 = 5 (after the
            view's 40)
-  reverb   RIGHT, B to 0 then +3 on row 0 (SEND) -> page-1 lane flat 24 = 3;
+  reverb   RIGHT, UP (held at row 0), A to 0 then +3 on SEND -> page-1 lane flat 24 = 3;
            DOWN x3, UP x1 to row 2 (SIZE), B to 0 then +7 -> flat 26 = 7
   tempo    LEVEL to the 30.0 floor and +5, then FUNC + LEVEL +3 -> 35.3 BPM
            (project tempo 0x80000020 = BPM x 24; skipped while the pattern
@@ -112,14 +112,15 @@ def main():
 
         key(KEY_NO, 1.0)                                  # the boot's date prompt
         key(KEY_TEMPO, 1.0)
-        send("enc 0 -50"); send("enc 0 6")                # A: row 6 (MODE)
-        send("enc 1 -5"); send("enc 1 1", 0.6)            # GRAIN (its view re-defaults FDBK)
+        for _ in range(6):
+            key(KEY_DOWN, 0.3)                            # DOWN x6: row 6 (MODE)
+        send("enc 0 -5"); send("enc 0 1", 0.6)            # A: GRAIN (its view re-defaults FDBK)
         for _ in range(4):
             key(KEY_UP, 0.3)                              # UP x4: row 2 (FDBK)
         send("enc 1 -64"); send("enc 1 -64"); send("enc 1 5")
         key(KEY_RIGHT)
-        send("enc 0 -50")                                 # A: row 0 (SEND)
-        send("enc 1 -64"); send("enc 1 -64"); send("enc 1 3", 0.6)
+        key(KEY_UP, 0.3)                                  # UP at row 0: stays on SEND
+        send("enc 0 -64"); send("enc 0 -64"); send("enc 0 3", 0.6)   # A: SEND
         for k in (KEY_DOWN, KEY_DOWN, KEY_DOWN, KEY_UP):
             key(k, 0.3)                                   # row 2 (SIZE)
         send("enc 1 -64"); send("enc 1 -64"); send("enc 1 7", 0.6)

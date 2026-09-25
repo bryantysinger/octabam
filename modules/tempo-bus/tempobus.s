@@ -1,19 +1,20 @@
 | TEMPO BUS -- the TEMPO window carries the bus engines' knobs.
 |
 | The TEMPO key opens the stock TEMPO window at the menu window's size;
-| its draw is replaced by a stock-style settings screen: the header (legend,
-| "TEMPO 121.2" right-aligned, rule) and two titled boxes, DELAY and
-| REVERB, each listing its engine's named parameters with values printed
-| by the engine's own formatters. Knob A moves the cursor in the focused
-| box, as do UP/DOWN one row at a time; B edits the selected parameter on
-| the host track, LEFT/RIGHT move between the boxes, C-F are held while the
-| window is open. LEVEL steps whole BPM (the stock handler) and 0.1 BPM
+| its draw is replaced by a stock-style settings screen: the header
+| ("TMP 121.2" at the left, then the key: a page dial, "A VALUE" and the
+| four arrows; the rule) and two titled boxes, DELAY and REVERB, each
+| listing its engine's named parameters with values printed by the
+| engine's own formatters. UP/DOWN move the cursor in the focused box; A
+| (or B) edits the selected parameter on the host track, LEFT/RIGHT move
+| between the boxes, C-F are held while the window is open. LEVEL steps whole BPM (the stock handler) and 0.1 BPM
 | while FUNC is held (the step UP/DOWN made in the stock window). YES/NO/
 | TEMPO (close) stay the stock window's.
 |
 | Every drawing call is one the stock CONTROL INPUT and MIDI SYNC screens
 | make (0x40065674, 0x4006730c): header text and width, rule, titled
-| box, row text at a 7-pixel pitch, the invert bar. Edits go through the
+| box, row text at a 7-pixel pitch, the invert bar; the key's dial is the
+| parameter pages' (0x400479b4) and its arrows are stock icons. Edits go through the
 | firmware's page-1 writer (FX2 flat 24..29) and, for page 2, the FX2
 | page-2 editor's stores (CC MAP's write path), then MODE DEFAULTS'
 | re-default when that module is in the image. The rows (each engine's
@@ -28,6 +29,12 @@
         .set    RULE,     0x40011910   | (surf, x, y, x2, 1)
         .set    BOX,      0x4007efd0   | (surf, x, y, w, h, title, 0, focused)
         .set    INVERT,   0x40012254   | (surf, x1, y1, x2, y2, -1)
+        .set    ICON,     0x400128a8   | (icon, surf, x, y)
+        .set    DIALRING, 0x400bd15a   | the page dial's ring, 11 x 13 (0x400479b4)
+        .set    DIALPTR,  0x400bdb6e   | its pointer icons [0..127]
+        .set    ARRUP,    0x400b9d8c   | stock icons, 7 x 5: the up triangle
+        .set    ARRDN,    0x400b9da0   | and the down one
+        .set    KEYX,     43           | the key's left edge (it ends at x 112)
         .set    SPRINTF,  0x40013a08   | (buf, fmt, ...)
         .set    TEMPOGET, 0x4009c5f4   | (&whole, &tenths)
         .set    LPUSH,    0x40031494   | (layer): register an input layer
@@ -95,30 +102,12 @@ tb_enc:
         moveb   FOCUS,%d1              | d1 = box
         lea     SEL,%a2
         addal   %d1,%a2                | a2 = &SEL[box]
-        tstl    %d0
-        beq.s   enc_a
-        subql   #1,%d0
-        beq.s   enc_b
-        bra.w   edone                  | C-F: held
-| A: the cursor, clamped to the box's rows
-enc_a:  moveq   #0,%d3
-        moveb   %a2@,%d3
-        addl    %d7,%d3
-        bpl.s   1f
-        moveq   #0,%d3
-1:      lea     NROWS,%a0
-        moveq   #0,%d0
-        moveb   %a0@(0,%d1:l),%d0
-        cmpl    %d0,%d3
-        blt.s   2f
-        movel   %d0,%d3
-        subql   #1,%d3
-        bpl.s   2f
-        moveq   #0,%d3
-2:      moveb   %d3,%a2@
-        bra.w   edone
-| B: the value, x7 while B is pushed (the stock fast turn)
-enc_b:  pea     0x39
+        moveq   #1,%d3
+        cmpl    %d3,%d0
+        bhi.w   edone                  | C-F: held
+| A, B: the value, x7 while that knob is pushed (the stock fast turn)
+        addil   #0x38,%d0              | the knob's push key
+        movel   %d0,%sp@-
         jsr     PUSHED
         addql   #4,%sp
         tstl    %d0
@@ -171,17 +160,29 @@ tb_right:
         moveb   %d0,FOCUS
         bra.w   tb_draw
 
-| ---- UP / DOWN: the cursor, as knob A one row at a time ---------------
-tb_ud:  moveq   #1,%d0
+| ---- UP / DOWN: the cursor, one row, held at the box's ends -----------
+tb_ud:  movel   %d2,%sp@-
+        moveq   #1,%d0
         moveq   #KUP,%d1
-        cmpl    %sp@(4),%d1
+        cmpl    %sp@(8),%d1
         bne.s   1f
         moveq   #-1,%d0
-1:      movel   %d0,%sp@-
-        clrl    %sp@-
-        bsr.w   tb_enc
-        addql   #8,%sp
-        rts
+1:      moveq   #0,%d1
+        moveb   FOCUS,%d1
+        lea     SEL,%a1
+        addal   %d1,%a1                | a1 = &SEL[box]
+        moveq   #0,%d2
+        moveb   %a1@,%d2
+        addl    %d0,%d2                | the row asked for
+        bmi.s   2f                     | above the first: stay
+        lea     NROWS,%a0
+        moveq   #0,%d0
+        moveb   %a0@(0,%d1:l),%d0
+        cmpl    %d0,%d2
+        bge.s   2f                     | past the last: stay
+        moveb   %d2,%a1@
+2:      movel   %sp@+,%d2
+        bra.w   tb_draw
 
 | ---- LEVEL: whole BPM (stock); 0.1 BPM while FUNC is held -------------
 tb_lvl: moveq   #0,%d0
@@ -235,7 +236,7 @@ tb_draw:
         addql   #4,%sp
         movel   %a5@(4),%d7
         subil   #20,%d7                | d7 = h - 20, the header line
-| header: "TEMPO 121.2" right-aligned, the knob legend, the rule
+| header: "TMP 121.2" at the left, the key at the right, the rule
         pea     %a6@(20)
         pea     %a6@(16)
         jsr     TEMPOGET
@@ -253,44 +254,35 @@ tb_draw:
         pea     %a6@
         jsr     SPRINTF
         lea     %sp@(20),%sp
-        movel   %a5@,%d0
-        subql   #6,%d0
+        moveq   #4,%d0
         movel   %d7,%d1
         addql   #2,%d1
-        bsr.w   rtext
-| the knob legend where the stock screens put the category icon: each
-| knob letter inverted, then what it turns
-        lea     LEGEND,%a4
-lgnd:   moveq   #0,%d5
-        moveb   %a4@+,%d5              | x, 0 ends the legend
-        beq.s   lgdone
-        moveb   %a4@+,%d6              | nonzero: a knob letter
-        movel   %d5,%d0
-        movel   %d7,%d1
-        addql   #2,%d1
-        moveal  %a4,%a0
+        lea     %a6@,%a0
         bsr.w   text
-1:      tstb    %a4@+
-        bne.s   1b
-        tstb    %d6
-        beq.s   lgnd
-        pea     -1
-        movel   %d7,%d0
-        addql   #7,%d0
-        movel   %d0,%sp@-
-        movel   %d5,%d0
-        addql   #3,%d0
-        movel   %d0,%sp@-
-        movel   %d7,%d0
-        addql   #1,%d0
-        movel   %d0,%sp@-
-        subql   #1,%d5
-        movel   %d5,%sp@-
-        movel   %a5,%sp@-
-        jsr     INVERT
-        lea     %sp@(24),%sp
-        bra.s   lgnd
-lgdone:
+| the key, right-aligned: a page dial (ring and pointer, as the parameter
+| pages draw them) for the value knob, then the arrows for the cursor. An
+| icon's y is its bottom row; the header text's is d7+2.
+        moveq   #KEYX,%d0
+        moveq   #1,%d1
+        lea     DIALRING,%a0
+        bsr.s   icon
+        moveq   #KEYX+2,%d0
+        moveq   #3,%d1
+        moveal  DIALPTR+4*64,%a0       | the pointer at noon
+        bsr.s   icon
+        moveq   #KEYX+13,%d0
+        movel   %d7,%d1
+        addql   #2,%d1
+        lea     T_KEY,%a0
+        bsr.w   text
+        moveq   #KEYX+49,%d0
+        moveq   #2,%d1
+        lea     ARRUP,%a0
+        bsr.s   icon
+        moveq   #KEYX+56,%d0
+        moveq   #2,%d1
+        lea     ARRDN,%a0
+        bsr.s   icon
         pea     1
         movel   %a5@,%d0
         subql   #6,%d0
@@ -310,6 +302,16 @@ lgdone:
         movel   %d0,SCRDIRTY
 dexit:  movem.l %sp@,%d2-%d7/%a2-%a6
         lea     %sp@(84),%sp
+        rts
+
+| icon: a0 at x d0, header line + d1 (clobbers d0/d1/a0/a1)
+icon:   addl    %d7,%d1
+        movel   %d1,%sp@-
+        movel   %d0,%sp@-
+        movel   %a5,%sp@-
+        movel   %a0,%sp@-
+        jsr     ICON
+        lea     %sp@(16),%sp
         rts
 
 | rtext: a6@ (the buffer) right-aligned at d0, row d1 (clobbers d0/d1/a0/a1)
@@ -464,22 +466,15 @@ bxdone: movel   %sp@+,%d7
 
 | ---- data -------------------------------------------------------------
 HDRFMT: .asciz  "%s %d.%d"
-T_PROJ: .asciz  "TEMPO"
-T_PTN:  .asciz  "PTN TEMPO"
+T_PROJ: .asciz  "TMP"
+T_PTN:  .asciz  "PTN"
 T_MODE: .asciz  "MODE"
 DECFMT: .asciz  "%d"
 T_DLY:  .asciz  "DELAY"
 T_VRB:  .asciz  "REVERB"
-| {x, knob letter?, string}: the header's left end
-LEGEND: .byte   5, 1
-        .asciz  "A"
-        .byte   11, 0
-        .asciz  "ROW"
-        .byte   28, 1
-        .asciz  "B"
-        .byte   34, 0
-        .asciz  "VALUE"
-        .byte   0
+| the key: A turns the value; the font's left and right triangles (0x13,
+| 0x14) with room between them for the up and down icons
+T_KEY:  .asciz  "A VALUE \x13     \x14"
         .even
 TITLES: .long   T_DLY, T_VRB
 FOCUS:  .byte   0

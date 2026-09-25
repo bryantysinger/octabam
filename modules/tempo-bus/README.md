@@ -6,20 +6,23 @@ each engine's parameters with the values the host page would show.
 
 | control | does |
 |---|---|
-| A | moves the cursor in the focused box (the box scrolls, four rows visible) |
-| UP / DOWN | move the cursor one row (with key repeat) |
-| B | edits the selected parameter on the host track; ×7 while B is pushed (the stock fast turn) |
+| UP / DOWN | move the cursor one row in the focused box, with key repeat; the box scrolls, four rows visible |
+| A | edits the selected parameter on the host track; ×7 while A is pushed (the stock fast turn) |
+| B | the same as A |
 | LEFT / RIGHT | focus DELAY / REVERB |
 | LEVEL | BPM in whole steps; ×7 while LEVEL is pushed (stock) |
 | FUNC + LEVEL | BPM in 0.1 steps (the step stock gives UP / DOWN) |
 | C–F | held while the window is open |
 | [TEMPO], [YES], [NO] | close (stock) |
 
-The header's left end is a legend, `A ROW  B VALUE`, with each knob letter
-inverted; the stock screens have their category icon there. The header
-prints the tempo as `TEMPO 121.2`. It prints `PTN TEMPO` while
-the pattern tempo is on, using the same test the stock TEMPO draw uses
-(`0x80000024`, `0x460d1aec`).
+The header prints the tempo at its left as `TMP 121.2`, or `PTN 121.2`
+while the pattern tempo is on (the stock TEMPO draw's test, `0x80000024`,
+`0x460d1aec`). To its right is the key:
+- a page dial (the parameter pages' ring `0x400bd15a` and pointer
+  `0x400bdb6e[64]`, as `0x400479b4` draws them);
+- `A VALUE`;
+- the arrows: the font's ◀ and ▶ (`0x13`, `0x14`) around the stock ▲ and
+  ▼ icons (`0x400b9d8c`, `0x400b9da0`).
 
 - **Rows and labels.** The rows are each engine's named slots, taken from
   its manifest when the remix is built. Labels are the engine descriptor's
@@ -49,7 +52,7 @@ the pattern tempo is on, using the same test the stock TEMPO draw uses
 Every draw call is one the stock CONTROL INPUT (`0x40065674`) and MIDI
 SYNC (`0x4006730c`) screens make:
 - header text `0x40012bd8` and its width `0x40012f30`, in font `0x400ba876`;
-- the invert bar `0x40012254` over each knob letter of the legend;
+- the key's dial, ring and pointer icons, and the arrow icons, through `0x400128a8`;
 - the rule `0x40011910`;
 - the titled box `0x4007efd0`, with the focused box's title inverted;
 - rows at a 7-pixel pitch;
