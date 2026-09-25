@@ -185,93 +185,113 @@ class Panel:
         self.send(f"pot {int(v)}")
 
 
-# The MKII's front, from Elektron's own layout (the product photo): every
-# key where it sits on the unit, its name on the key and its FUNC name under
-# it. (x, y) are the key's centre on a 1500 x 840 canvas; w, h its size.
-LCD_SCALE = 3
-LCD_AT = (558, 238)                                 # the screen's top left
+# The MKII's front, placed from Elektron's product photo (1930 x 1110 px):
+# every coordinate below is the photo's, and the canvas draws them scaled by
+# F from an origin at the panel's top left. The screen is the LCD at 2x,
+# which is the photo's own screen size at this scale.
+F, PX0, PY0 = 0.862, 60, 100
+LCD_SCALE = 2
+LCD_CENTRE = (913, 413)
+# code, label, under, x, y, w, h (photo px)
 KEYS_MK2 = [
-    # code, label, under, x, y, w, h
-    (0x35, "MIDI", "MIDI Sync", 110, 300, 62, 50),
-    (0x2B, "REC1", "Setup 1", 235, 280, 62, 50),
-    (0x2C, "REC2", "Setup 2", 315, 280, 62, 50),
-    (0x36, "REC3", "Rec Edit", 395, 280, 62, 50),
-    (0x1C, "PROJ", "Save Proj", 110, 410, 62, 50),
-    (0x1D, "PART", "Part Edit", 190, 410, 62, 50),
-    (0x1E, "AED", "Slice Grid", 270, 410, 62, 50),
-    (0x30, "MIX", "Click", 350, 410, 62, 50),
-    (0x1F, "ARR", "Arr Mode", 430, 410, 62, 50),
-    (0x2D, "FUNC", "", 120, 530, 80, 50),
-    (0x27, "CUE", "Reload Part", 250, 530, 80, 50),
-    (0x2E, "PTN", "Pattern Settings", 120, 640, 80, 50),
-    (0x2F, "BANK", "Track Trig Edit", 250, 640, 80, 50),
-    (0x31, "YES", "Arm", 360, 565, 54, 50),
-    (0x32, "NO", "Disarm", 360, 640, 54, 50),
-    (0x33, "\u2227", "Trig Mode", 500, 565, 54, 50),
-    (0x34, "<", "\u00b5Time -", 430, 640, 54, 50),
-    (0x20, "\u2228", "Trig Mode", 500, 640, 54, 50),
-    (0x21, ">", "\u00b5Time +", 570, 640, 54, 50),
-    (0x22, "SRC", "Note", 610, 510, 58, 50),
-    (0x23, "AMP", "Arp", 690, 510, 58, 50),
-    (0x24, "LFO", "LFO Setup", 770, 510, 58, 50),
-    (0x25, "FX1", "Ctrl 1", 850, 510, 58, 50),
-    (0x26, "FX2", "Ctrl 2", 930, 510, 58, 50),
-    (0x29, "\u25cb", "Copy (REC)", 690, 640, 74, 50),
-    (0x28, "\u25b7", "Clear (PLAY)", 770, 640, 74, 50),
-    (0x2A, "\u25a1", "Paste (STOP)", 850, 640, 74, 50),
-    (0x18, "TEMPO", "Tap Tempo", 1110, 360, 62, 50),
-    (0x19, "A", "Scene A / Mute", 1110, 510, 70, 60),
-    (0x1A, "B", "Scene B / Mute", 1420, 510, 70, 60),
-    (0x1B, "PAGE", "Scale", 1420, 650, 70, 50),
-] + [(0x10 + i, f"T{i + 1}", "Cue/Mute", 500 if i < 4 else 1020, 170 + 75 * (i % 4), 54, 48) for i in range(8)] \
-  + [(i, str(i + 1), f"T{i % 8 + 1}", 100 + 80 * i, 760, 68, 58) for i in range(16)]
-KNOBS_MK2 = [   # encoder index, label, under, x, y
-    (6, "LEVEL", "Cursor Pos", 1120, 230),
-    (0, "A", "Start Pos", 1220, 230), (1, "B", "Loop Pos", 1320, 230), (2, "C", "End Pos", 1420, 230),
-    (3, "D", "Zoom", 1220, 360), (4, "E", "Scroll", 1320, 360), (5, "F", "Zoom", 1420, 360),
+    (0x35, "MIDI", "MIDI Sync", 148, 408, 60, 58),
+    (0x2B, "REC1", "Setup 1\nPickup +", 315, 378, 62, 58),
+    (0x2C, "REC2", "Setup 2\nPickup \u25b7/\u25a1", 398, 378, 62, 58),
+    (0x36, "REC3", "Rec Edit\nErase", 482, 378, 62, 58),
+    (0x1C, "PROJ", "Save Proj", 148, 513, 62, 58),
+    (0x1D, "PART", "Part Edit", 231, 513, 62, 58),
+    (0x1E, "AED", "Slice Grid", 315, 513, 62, 58),
+    (0x30, "MIX", "Click", 399, 513, 62, 58),
+    (0x1F, "ARR", "Arr Mode", 483, 513, 62, 58),
+    (0x2D, "FUNC", "", 165, 648, 90, 56),
+    (0x27, "CUE", "Reload Part", 315, 648, 90, 56),
+    (0x2E, "PTN", "Pattern Settings", 165, 773, 90, 56),
+    (0x2F, "BANK", "Track Trig Edit", 315, 773, 90, 56),
+    (0x31, "YES", "Arm", 447, 690, 58, 58),
+    (0x32, "NO", "Disarm", 447, 773, 58, 58),
+    (0x33, "\u2227", "Trig Mode", 615, 690, 58, 58),
+    (0x34, "<", "\u00b5Time -", 530, 773, 58, 58),
+    (0x20, "\u2228", "Trig Mode", 615, 773, 58, 58),
+    (0x21, ">", "\u00b5Time +", 698, 773, 58, 58),
+    (0x22, "SRC", "Note", 742, 625, 58, 58),
+    (0x23, "AMP", "Arp", 826, 625, 58, 58),
+    (0x24, "LFO", "LFO", 910, 625, 58, 58),
+    (0x25, "FX1", "Ctrl 1", 994, 625, 58, 58),
+    (0x26, "FX2", "Ctrl 2", 1078, 625, 58, 58),
+    (0x29, "\u25cb", "Copy", 860, 773, 90, 58),
+    (0x28, "\u25b7", "Clear", 958, 773, 90, 58),
+    (0x2A, "\u25a1", "Paste", 1058, 773, 90, 58),
+    (0x18, "TEMPO", "Tap Tempo\nPickup Sync", 1344, 490, 62, 62),
+    (0x19, "A", "Mute", 1252, 733, 92, 92),
+    (0x1A, "B", "Mute", 1755, 733, 92, 92),
+    (0x1B, "PAGE", "Scale", 1755, 910, 92, 64),
+] + [(0x10 + i, f"T{i + 1}", "Cue / Mute", 644 if i < 4 else 1176, 292 + 83.7 * (i % 4), 56, 56) for i in range(8)] \
+  + [(i, str(i + 1), f"T{i % 8 + 1}", 165 + 99.4 * i, 907, 88, 88) for i in range(16)]
+KNOBS_MK2 = [   # encoder index, label, under, x, y (photo px)
+    (6, "Level", "Cursor Pos", 1342, 345),
+    (0, "A", "Start Pos", 1483, 345), (1, "B", "Loop Pos", 1625, 345), (2, "C", "End Pos", 1767, 345),
+    (3, "D", "Zoom \u2195", 1483, 490), (4, "E", "Scroll \u2194", 1625, 490), (5, "F", "Zoom \u2194", 1767, 490),
 ]
-# Codes the survey has not placed: small keys by number, bottom right.
-SPARE_MK2 = [(0x37, 1380, 800), (0x3F, 1440, 800)]
+SPARE_MK2 = [(0x37, 1680, 1015), (0x3F, 1740, 1015)]    # codes not yet placed
 
 
 def build_panel(tk, root, panel):
     """The MKII's front as one canvas: every key sends press and release,
     a knob turns with the mouse wheel (Shift: x4) and pushes on a click,
-    the top-left knob is the MAIN pot. Returns the canvas and where the
+    the headphones knob drives the port's MAIN pot. Returns the canvas and where the
     screen goes on it."""
-    BG, KEY, TXT, SUB, EDGE = "#1c1c1e", "#2a2a2d", "#d8d8d8", "#8a8a8a", "#3a3a3e"
-    cv = tk.Canvas(root, width=1500, height=790, bg="#101012", highlightthickness=0)
+    BG, KEY, TXT, SUB, EDGE = "#1d1d1f", "#2b2b2e", "#d4d4d4", "#8e8e8e", "#38383c"
+    X = lambda px: (px - PX0) * F
+    Y = lambda py: (py - PY0) * F
+    Wd, Hd = X(1860), Y(1075)
+    cv = tk.Canvas(root, width=int(Wd), height=int(Hd), bg="#0e0e10", highlightthickness=0)
     cv.pack()
-    bg = cv.create_rectangle(20, 20, 1480, 820, fill=BG, outline="#2c2c30", width=2)
+    cv.create_rectangle(X(75), Y(115), X(1845), Y(1035), fill=BG, outline="#2e2e32", width=2)
+    for sx, sy in ((120, 145), (1795, 145), (120, 1010), (918, 1010), (1795, 1010)):
+        cv.create_oval(X(sx) - 7, Y(sy) - 7, X(sx) + 7, Y(sy) + 7, fill="#2a2a2d", outline="#3a3a3e")
+    for text, px in (("Main Out", 257), ("Cue Out", 349), ("Input A B", 451), ("Input C D", 543),
+                     ("MIDI In", 655), ("MIDI Out", 760), ("MIDI Thru", 865), ("Compact Flash", 1117),
+                     ("USB", 1329), ("DC In", 1540), ("Power", 1691)):
+        cv.create_text(X(px), Y(143), text=text, fill="#9a9a9a", font=("Helvetica", 9))
+    cv.create_oval(X(1197) - 5, Y(186) - 5, X(1197) + 5, Y(186) + 5, fill="#c8b640", outline="")
+    cv.create_text(X(1197), Y(207), text="Card Status", fill="#9a9a9a", font=("Helvetica", 9))
 
     def rrect(x0, y0, x1, y1, r, **kw):
         pts = [x0 + r, y0, x1 - r, y0, x1, y0, x1, y0 + r, x1, y1 - r, x1, y1, x1 - r, y1,
                x0 + r, y1, x0, y1, x0, y1 - r, x0, y0 + r, x0, y0]
         return cv.create_polygon(pts, smooth=True, **kw)
 
-    def key(code, label, under, x, y, w, h):
+    def key(code, label, under, px, py, pw, ph):
         tag = f"key{code}"
-        rrect(x - w / 2, y - h / 2, x + w / 2, y + h / 2, 8, fill=KEY, outline=EDGE, width=2, tags=(tag, tag + "b"))
-        cv.create_text(x, y, text=label, fill=TXT, font=("Helvetica", 12, "bold"), tags=tag)
+        x, y, w, h = X(px), Y(py), pw * F, ph * F
+        fill, ink = (("#b9b9bd", "#1a1a1a") if code == 0x2D else (KEY, TXT))
+        outline = "#3f8f5a" if code in (0, 4, 8, 12) else EDGE
+        rrect(x - w / 2, y - h / 2, x + w / 2, y + h / 2, 9, fill=fill, outline=outline, width=2,
+              tags=(tag, tag + "b"))
+        size = 15 if code < 16 else 11
+        cv.create_text(x, y, text=label, fill=ink, font=("Helvetica", size, "bold"), tags=tag)
         if under:
-            cv.create_text(x, y + h / 2 + 11, text=under, fill=SUB, font=("Helvetica", 9))
+            cv.create_text(x, y + h / 2 + 7, text=under, fill=SUB, font=("Helvetica", 9), anchor="n",
+                           justify="center")
 
         def down(e):
-            cv.itemconfigure(tag + "b", fill="#55555a")
+            cv.itemconfigure(tag + "b", fill="#5a5a60")
             panel.key(code, True)
 
         def up(e):
-            cv.itemconfigure(tag + "b", fill=KEY)
+            cv.itemconfigure(tag + "b", fill=fill)
             panel.key(code, False)
         cv.tag_bind(tag, "<ButtonPress-1>", down)
         cv.tag_bind(tag, "<ButtonRelease-1>", up)
 
     wheel = {}                      # canvas tag -> (event, +-1): the wheel is the canvas's
 
-    def knob(n, label, under, x, y, r=28):
+    def knob(n, label, under, px, py, r=38):
         tag = f"knob{n}"
-        cv.create_oval(x - r, y - r, x + r, y + r, fill="#2e2e32", outline="#4a4a50", width=2, tags=tag)
-        cv.create_oval(x - r + 6, y - r + 6, x + r - 6, y + r - 6, fill="#252528", outline="", tags=tag)
+        x, y, r = X(px), Y(py), r * F
+        cv.create_oval(x - r - 3, y - r - 3, x + r + 3, y + r + 3, fill="#141416", outline="", tags=tag)
+        cv.create_oval(x - r, y - r, x + r, y + r, fill="#3a3a3f", outline="#505056", width=1, tags=tag)
+        cv.create_oval(x - r * 0.72, y - r * 0.72, x + r * 0.72, y + r * 0.72, fill="#2f2f33", outline="", tags=tag)
         cv.create_text(x, y + r + 12, text=label, fill=TXT, font=("Helvetica", 11, "bold"))
         cv.create_text(x, y + r + 26, text=under, fill=SUB, font=("Helvetica", 9))
         push = 0x38 + n if n < 6 else 0x3E
@@ -279,33 +299,65 @@ def build_panel(tk, root, panel):
         cv.tag_bind(tag, "<ButtonRelease-1>", lambda e: panel.key(push, False))
         wheel[tag] = lambda e, d: panel.enc(n, d * (4 if e.state & 1 else 1))
 
-    # the screen's bezel
-    lx, ly = LCD_AT
-    cv.create_rectangle(lx - 34, ly - 50, lx + W * LCD_SCALE + 34, ly + H * LCD_SCALE + 62, fill="#0b0b0c", outline="")
-    cv.create_text(lx, ly - 30, anchor="w", text="8 Track Dynamic Performance Sampler", fill="#cfcfcf",
+    # the screen's bezel and legends
+    lw, lh = W * LCD_SCALE, H * LCD_SCALE
+    lx, ly = X(LCD_CENTRE[0]) - lw / 2, Y(LCD_CENTRE[1]) - lh / 2
+    cv.create_rectangle(X(718), Y(270), X(1105), Y(560), fill="#0a0a0b", outline="#222")
+    cv.create_text(X(750), Y(310), anchor="w", text="8 Track Dynamic Performance Sampler", fill="#d0d0d0",
                    font=("Helvetica", 10, "bold"))
-    cv.create_text(lx, ly + H * LCD_SCALE + 34, anchor="w", text="Octatrack MKII  (octabam port)", fill="#dddddd",
-                   font=("Helvetica", 16, "bold"))
+    cv.create_text(X(750), Y(533), anchor="w", text="Octatrack", fill="#e4e4e4", font=("Helvetica", 18, "bold"))
+    cv.create_text(X(750) + 108, Y(533), anchor="w", text="MKII", fill="#bdbdbd", font=("Helvetica", 18))
 
     for k in KEYS_MK2:
         key(*k)
     for k in KNOBS_MK2:
         knob(*k)
-    for code, x, y in SPARE_MK2:
-        key(code, f"{code:02x}", "", x, y, 44, 28)
+    for code, px, py in SPARE_MK2:
+        key(code, f"{code:02x}", "", px, py, 50, 30)
 
-    # the MAIN pot, top left: drag up/down or wheel
+    # page keys' "Setup" bracket, the trigs' brackets
+    cv.create_line(X(745), Y(700), X(1080), Y(700), fill="#555")
+    cv.create_rectangle(X(910) - 20, Y(700) - 7, X(910) + 20, Y(700) + 7, fill=BG, outline="")
+    cv.create_text(X(910), Y(700), text="Setup", fill=SUB, font=("Helvetica", 9))
+    for a, b, t in ((120, 905, "Track Trigs"), (915, 1700, "Sample / MIDI Trigs")):
+        cv.create_line(X(a), Y(985), X(a), Y(995), X(b), Y(995), X(b), Y(985), fill="#555")
+        tw = 4 * len(t) + 8
+        cv.create_rectangle(X((a + b) / 2) - tw, Y(995) - 7, X((a + b) / 2) + tw, Y(995) + 7, fill=BG, outline="")
+        cv.create_text(X((a + b) / 2), Y(995), text=t, fill=SUB, font=("Helvetica", 9))
+
+    # LEDs: the inputs, the scale page
+    for text, xs in (("A \u2014 B", (295, 337)), ("C \u2014 D", (380, 421)), ("- Int -", (463, 505))):
+        cv.create_text(X(sum(xs) / 2), Y(296), text=text, fill=SUB, font=("Helvetica", 9))
+        for xx in xs:
+            cv.create_oval(X(xx) - 6, Y(316) - 6, X(xx) + 6, Y(316) + 6, fill="#8a8a8a", outline="")
+    for i, t in enumerate(("1:4", "2:4", "3:4", "4:4")):
+        xx = 1710 + 29 * i
+        cv.create_text(X(xx), Y(828), text=t, fill=SUB, font=("Helvetica", 8))
+        cv.create_oval(X(xx) - 6, Y(848) - 6, X(xx) + 6, Y(848) + 6,
+                       fill="#e0a030" if i == 0 else "#8a8a8a", outline="")
+
+    # the headphones knob is the port's MAIN pot: wheel it
     level = {"v": 200}
-    px, py = 150, 175
-    cv.create_oval(px - 26, py - 26, px + 26, py + 26, fill="#2e2e32", outline="#4a4a50", width=2, tags="pot")
+    px, py, r = X(183), Y(290), 36 * F
+    cv.create_oval(px - r, py - r, px + r, py + r, fill="#2c2c30", outline="#4a4a50", width=2, tags="pot")
     potv = cv.create_text(px, py, text="200", fill=TXT, font=("Helvetica", 10), tags="pot")
-    cv.create_text(px, py + 40, text="Main Vol (pot)", fill=TXT, font=("Helvetica", 10, "bold"))
+    cv.create_text(px, py + r + 12, text="Headphones Vol", fill=TXT, font=("Helvetica", 10, "bold"))
 
     def pot(d):
         level["v"] = max(0, min(255, level["v"] + d))
         cv.itemconfigure(potv, text=str(level["v"]))
         panel.pot(level["v"])
     wheel["pot"] = lambda e, d: pot(8 * d)
+
+    # the crossfader: drawn, not modelled by the port
+    fy = Y(728)
+    for i in range(10):
+        xx = X(1390 + 25 * i)
+        cv.create_line(xx, fy - 42 * F, xx, fy - 20 * F, fill="#555")
+        cv.create_line(xx, fy + 20 * F, xx, fy + 42 * F, fill="#555")
+    cv.create_line(X(1360), fy, X(1645), fy, fill="#46464a", width=8)
+    cv.create_rectangle(X(1490), fy - 32 * F, X(1522), fy + 32 * F, fill="#d8d8d8", outline="#999")
+    cv.create_text(X(1503), fy + 58 * F, text="crossfader: not modelled", fill=SUB, font=("Helvetica", 8))
 
     def on_wheel(e, d):
         for it in cv.find_withtag("current"):
@@ -316,14 +368,9 @@ def build_panel(tk, root, panel):
     cv.bind("<MouseWheel>", lambda e: on_wheel(e, 1 if e.delta > 0 else -1))
     cv.bind("<Button-4>", lambda e: on_wheel(e, 1))
     cv.bind("<Button-5>", lambda e: on_wheel(e, -1))
-
-    # the crossfader: drawn, not modelled by the port
-    cv.create_line(1170, 510, 1360, 510, fill="#444448", width=6)
-    cv.create_rectangle(1255, 485, 1275, 535, fill="#3a3a3e", outline="#555")
-    cv.create_text(1265, 555, text="crossfader (not modelled)", fill=SUB, font=("Helvetica", 9))
-    cv.create_text(760, 822, text="keyboard: arrows, Return = YES, Esc = NO, space = PLAY, F1-F5 = pages, "
+    cv.create_text(X(960), Y(1057), text="keyboard: arrows, Return = YES, Esc = NO, space = PLAY, F1-F5 = pages, "
                    "1-8 q-i = trigs;  wheel over a knob turns it (Shift x4), a click pushes it",
-                   fill=SUB, font=("Helvetica", 9))
+                   fill="#6e6e6e", font=("Helvetica", 9))
 
     # keyboard
     kb = {"Left": 0x34, "Right": 0x21, "Up": 0x33, "Down": 0x20, "Return": 0x31, "Escape": 0x32, "space": 0x28,
@@ -345,10 +392,7 @@ def build_panel(tk, root, panel):
             panel.key(code, False)
     root.bind("<KeyPress>", press)
     root.bind("<KeyRelease>", release)
-    # the layout is drawn on the photo's grid; its top 60 px are empty
-    cv.move("all", 0, -60)
-    cv.coords(bg, 20, 20, 1480, 770)
-    return cv, lx, ly - 60, LCD_SCALE
+    return cv, lx, ly, LCD_SCALE
 
 
 def main():
