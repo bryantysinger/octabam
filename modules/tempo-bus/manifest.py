@@ -2,17 +2,19 @@
 
 The TEMPO key opens the stock TEMPO window at the menu window's size
 (118 x 64) with a stock-style settings screen in place of its big-digit
-draw: the header ("TEMPO 121.2" right-aligned, CONTROL's icon, the rule)
+draw: the header ("TEMPO 121.2" right-aligned, a knob legend "A ROW
+B VALUE" with the letters inverted, the rule)
 and two titled boxes, DELAY and REVERB, listing each engine's named
-parameters with the values its own formatters print. Knob A moves the
-cursor in the focused box, B edits (x7 while pushed, as stock), LEFT /
-RIGHT switch boxes, C-F are held while the window is open. LEVEL (BPM),
-UP/DOWN (PROJ/PTN) and YES/NO/TEMPO (close) keep the stock window's
-handlers (layer 0x400bb4ec).
+parameters with the values its own formatters print. Knob A and UP/DOWN
+move the cursor in the focused box, B edits (x7 while pushed, as stock),
+LEFT / RIGHT switch boxes, C-F are held while the window is open. LEVEL
+steps whole BPM (the stock 0x4004b918) and 0.1 BPM with FUNC held (the
+stock step 0x4004b824(0, +-1) that UP/DOWN made). YES/NO/TEMPO (close) keep the
+stock window's handlers (layer 0x400bb4ec).
 
 Stock routines used, all as the CONTROL INPUT (0x40065674) and MIDI SYNC
 (0x4006730c) screens call them: header text 0x40012bd8 / width
-0x40012f30 in font 0x400ba876, icon 0x400128a8, rule 0x40011910, titled
+0x40012f30 in font 0x400ba876, rule 0x40011910, titled
 box 0x4007efd0, invert bar 0x40012254. Input: an extra layer pushed by
 0x40031494 over TEMPO's and popped by 0x4003146c. Edits: page 1 through
 the page-1 writer 0x40054cd8(track, 24 + slot, value); page 2 with the
@@ -51,7 +53,7 @@ MODULE = Module(
     key="TEMPO BUS",
     kind=Kind.CF_PATCH,
     doc="The TEMPO window lists and edits BusDelay's and BusVerb's knobs "
-        "(A = row, B = value, LEFT/RIGHT = engine).",
+        "(A or UP/DOWN = row, B = value, LEFT/RIGHT = engine, FUNC + LEVEL = 0.1 BPM).",
     # Both pinned in measured free runs (docs/remixer/PLACEMENT.md): the
     # helpers (host lookup, value read/write) at the start of the overflow
     # run 0x400d24d0..0x400d2ce0 (the floating caves that overflow the

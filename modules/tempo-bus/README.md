@@ -7,14 +7,17 @@ each engine's parameters with the values the host page would show.
 | control | does |
 |---|---|
 | A | moves the cursor in the focused box (the box scrolls, four rows visible) |
+| UP / DOWN | move the cursor one row (with key repeat) |
 | B | edits the selected parameter on the host track; ×7 while B is pushed (the stock fast turn) |
 | LEFT / RIGHT | focus DELAY / REVERB |
-| LEVEL | BPM (stock) |
-| UP / DOWN | the tempo step (stock) |
+| LEVEL | BPM in whole steps; ×7 while LEVEL is pushed (stock) |
+| FUNC + LEVEL | BPM in 0.1 steps (the step stock gives UP / DOWN) |
 | C–F | held while the window is open |
 | [TEMPO], [YES], [NO] | close (stock) |
 
-The header prints the tempo as `TEMPO 121.2`. It prints `PTN TEMPO` while
+The header's left end is a legend, `A ROW  B VALUE`, with each knob letter
+inverted; the stock screens have their category icon there. The header
+prints the tempo as `TEMPO 121.2`. It prints `PTN TEMPO` while
 the pattern tempo is on, using the same test the stock TEMPO draw uses
 (`0x80000024`, `0x460d1aec`).
 
@@ -46,7 +49,7 @@ the pattern tempo is on, using the same test the stock TEMPO draw uses
 Every draw call is one the stock CONTROL INPUT (`0x40065674`) and MIDI
 SYNC (`0x4006730c`) screens make:
 - header text `0x40012bd8` and its width `0x40012f30`, in font `0x400ba876`;
-- the CONTROL icon `0x400128a8(0x400cbc5c, …)`;
+- the invert bar `0x40012254` over each knob letter of the legend;
 - the rule `0x40011910`;
 - the titled box `0x4007efd0`, with the focused box's title inverted;
 - rows at a 7-pixel pitch;

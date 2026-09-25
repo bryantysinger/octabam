@@ -219,7 +219,14 @@ underneath. TEMPO's layer (`0x400bb4ec`) has LEVEL only, which is why
 A–F turn the page behind the stock TEMPO window.
 
 **TEMPO's keys:**
-- UP `0x33` / DOWN `0x20`: the tempo step `0x4004b954 → 0x4004b824(0, ±1)`.
+- UP `0x33` / DOWN `0x20`: the tempo step `0x4004b954 → 0x4004b824(0, ±1)`,
+  0.1 BPM. LEVEL (`0x4004b918`) calls it as `(delta, 0)`, whole BPM, ×7
+  while LEVEL is pushed. FUNC holds the sub-map `0x400c52aa` (UP/DOWN the
+  same, YES `0x4004b79c`).
+- `0x4003171c(code)` reads a field of the per-key handler cache
+  (`0x46c7d8ee + code*24`); it is nonzero for FUNC at all times, since FUNC's
+  record carries a sub-map. A key's held state is the panel parser's row
+  byte `0x46100b18[code >> 3]`, bit `code & 7` (`PANEL.md` §4b).
 - YES `0x31`, NO `0x32`, TEMPO `0x18`: close, `0x40056930`.
 
 Arrow codes: LEFT `0x34`, RIGHT `0x21` (`PANEL.md` §4b).
