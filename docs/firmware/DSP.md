@@ -322,7 +322,20 @@ are dispatcher variables). The 336-word block is built by the packer
 `X:0x30000` staging is that record after unpack.
 
 Read-back: the dispatcher (`P:0x54`/`0x64`) loads `r5 = X:0x4600` (A) /
-`X:0x2600` (B), saved at `X:0x206`; after each FX2 call (`P:0x50d`)
+`X:0x2600` (B), saved at `X:0x206`, from core 0's bank word
+(`y:<<$ffffd4`, 0/1), and patches the host handlers' address masks
+(`p:$371`/`p:$380` = `$3fff`/`$5fff`) so the ColdFire's constant command
+word `$6600` lands in the SAME buffer: one buffer per frame, and the
+pull (DMA channel 1, armed at `P:0x37c` in B) must finish before the first
+FX2 copy overwrites it. ✅ Measured on the unit 25 Sep 2026 (images
+32-38, `docs/remixer/FAILURE_MODES.md`): core 1's pull reaches T1's 64
+words about 4.5 samples after T1's proc entry, jittering by half a
+sample or more with the pattern position (the port models +0.26). A
+module whose proc ends inside it tears its block; BusDelay pads its exit
+by 8,192 cycles (image 43). Core 1's frame-loop head (`P:0x51`, 16 words)
+and `P:0x80` (64 words) are word-by-word handshakes with core 0 through
+the inter-core port, the wait `brclr #$1,y:<<$ffffd3` being each loop's
+last instruction: core 1 has no idle of its own between frames; after each FX2 call (`P:0x50d`)
 `P:0x50e`–`0x514` calls the copy at `P:0x55a` with `r0 = X:0x206`, source
 `X:0`: 16 interleaved samples, each 24-bit sample stored as two words (`mpy`
 by `0x8000` and `0x80`), 64 words per track, `add #>$40` at `P:0x52b`. Four
