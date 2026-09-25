@@ -7,6 +7,10 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- The virtual panel's face is the MKII's (25 Sep 2026): Mark Roberts' octemu
+  skin generator (`tools/panel/skin/gen_svg.py`, MIT) in a dark palette,
+  served as `/skin.js`; the page's keys, knobs, fader and LEDs sit over it as
+  hit areas. PROJ/PART/ARR send FUNC chords while the port runs as an MKI.
 - THE VIRTUAL FRONT PANEL (25 Sep 2026), Tim Hastie's, from his fork
   `timhastie/octa-panel` at `be68244`: `make panel REMIX=<name>` runs the
   remix on the port in a browser (LCD, keys, encoders, LEDs, crossfader,

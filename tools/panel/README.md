@@ -12,6 +12,15 @@ for `--dsp-rt` in `tools/patches/dsp56300.patch`) are his. His milestone
 records O14i-O24 are `docs/firmware/COLDFIRE_PORT.md`. Everything below
 "The panel, as he wrote it" is his README, unedited.
 
+**The face** (25 Sep 2026) is Mark Roberts' MKII panel from
+[markandrus/octemu](https://github.com/markandrus/octemu) (`tools/panel/skin/gen_svg.py`,
+MIT), in octabam's dark palette: the server generates it into `out/panel_skin/`
+and serves it as `/skin.js`; the page lays its keys, knobs, fader and LEDs over
+the drawing as transparent hit areas and lights the drawing's own `lit` classes.
+On an MKI port (the default until `--mkii` decodes the MKII panel), PROJ, PART
+and ARR send the MKI's FUNC chords (FUNC+MIXER, FUNC+MIDI, FUNC+PATTERN); AED and
+REC3 have no MKI equivalent.
+
 ## In octabam
 
 ```sh
