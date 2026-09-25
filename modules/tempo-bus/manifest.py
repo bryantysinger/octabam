@@ -2,11 +2,11 @@
 
 The TEMPO key opens the stock TEMPO window at the menu window's size
 (118 x 64) with a stock-style settings screen in place of its big-digit
-draw: the header ("TEMPO 121.2" right-aligned, a knob legend "A ROW
-B VALUE" with the letters inverted, the rule)
-and two titled boxes, DELAY and REVERB, listing each engine's named
-parameters with the values its own formatters print. Knob A and UP/DOWN
-move the cursor in the focused box, B edits (x7 while pushed, as stock),
+draw: the header ("TMP 121.2" at the left, then a key: a page dial,
+"A VALUE", the four arrows; the rule) and two titled boxes, DELAY and
+REVERB, listing each engine's named parameters with the values its own
+formatters print. UP/DOWN move the cursor in the focused box, A (or B)
+edits (x7 while pushed, as stock),
 LEFT / RIGHT switch boxes, C-F are held while the window is open. LEVEL
 steps whole BPM (the stock 0x4004b918) and 0.1 BPM with FUNC held (the
 stock step 0x4004b824(0, +-1) that UP/DOWN made). YES/NO/TEMPO (close) keep the
@@ -53,7 +53,7 @@ MODULE = Module(
     key="TEMPO BUS",
     kind=Kind.CF_PATCH,
     doc="The TEMPO window lists and edits BusDelay's and BusVerb's knobs "
-        "(A or UP/DOWN = row, B = value, LEFT/RIGHT = engine, FUNC + LEVEL = 0.1 BPM).",
+        "(UP/DOWN = row, A or B = value, LEFT/RIGHT = engine, FUNC + LEVEL = 0.1 BPM).",
     # Both pinned in measured free runs (docs/remixer/PLACEMENT.md): the
     # helpers (host lookup, value read/write) at the start of the overflow
     # run 0x400d24d0..0x400d2ce0 (the floating caves that overflow the
