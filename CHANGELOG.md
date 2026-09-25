@@ -7,6 +7,12 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- BusDelay's GRAIN scatter knob (page 2, slot 7) is SCTR, was SCAT (26 Sep
+  2026). Name only: slot, count and default unchanged, no stamp needed.
+- TEMPO BUS (25-26 Sep 2026): the TEMPO window lists and edits BusDelay and
+  BusVerb. UP/DOWN pick the row, A (or B) the value, LEFT/RIGHT the box, LEVEL whole BPM, FUNC + LEVEL 0.1 BPM. A
+  mode's `---` rows are left out. Header: `TMP 121.2`, then the key
+  `NAV ◀▲▼▶ A ●`; five rows per box.
 - USB AUDIO: MAIN and CUE on channels 17-20 (Bryan T, 25 Sep 2026): the
   high-speed stream is 20 channels, the 16 track channels then MAIN L/R and
   CUE L/R, the words core 0 sends to the DACs (the buffer the stock

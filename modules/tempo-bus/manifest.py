@@ -2,12 +2,12 @@
 
 The TEMPO key opens the stock TEMPO window at the menu window's size
 (118 x 64) with a stock-style settings screen in place of its big-digit
-draw: the header ("TMP 121.2" at the left, then a key: a page dial,
-"A VALUE", the four arrows; the rule) and two titled boxes, DELAY and
+draw: the header ("TMP 121.2" at the left, then a key: "NAV", the
+four arrows, "A" and the font's knob glyph; the rule) and two titled boxes, DELAY and
 REVERB, listing each engine's named parameters with the values its own
 formatters print. UP/DOWN move the cursor in the focused box, A (or B)
 edits (x7 while pushed, as stock),
-LEFT / RIGHT switch boxes (the cursor keeps its screen line); a mode's
+LEFT / RIGHT switch boxes (each keeps its own cursor); a mode's
 "---" slots are left out of the list. C-F are held while the window is open. LEVEL
 steps whole BPM (the stock 0x4004b918) and 0.1 BPM with FUNC held (the
 stock step 0x4004b824(0, +-1) that UP/DOWN made). YES/NO/TEMPO (close) keep the

@@ -30,11 +30,9 @@
         .set    BOX,      0x4007efd0   | (surf, x, y, w, h, title, 0, focused)
         .set    INVERT,   0x40012254   | (surf, x1, y1, x2, y2, -1)
         .set    ICON,     0x400128a8   | (icon, surf, x, y)
-        .set    DIALRING, 0x400bd15a   | the page dial's ring, 11 x 13 (0x400479b4)
-        .set    DIALPTR,  0x400bdb6e   | its pointer icons [0..127]
         .set    ARRUP,    0x400b9d8c   | stock icons, 7 x 5: the up triangle
         .set    ARRDN,    0x400b9da0   | and the down one
-        .set    KEYX,     43           | the key's left edge (it ends at x 112)
+        .set    KEYX,     55           | the key's left edge (it ends at x 112)
         .set    SPRINTF,  0x40013a08   | (buf, fmt, ...)
         .set    TEMPOGET, 0x4009c5f4   | (&whole, &tenths)
         .set    LPUSH,    0x40031494   | (layer): register an input layer
@@ -62,9 +60,9 @@
         .set    MINS,     0x6a         | P+: twelve u32 minimums
         .set    COUNTS,   0x9a         | P+: twelve u32 value counts
         .set    FMTS,     0xca         | P+: twelve formatter pointers, 0 = plain
-        .set    ROWS,     4            | rows visible per box
+        .set    ROWS,     5            | rows visible per box
         .set    BOXW,     53
-        .set    BOXH,     34
+        .set    BOXH,     41           | from y 4; 3 px under the rule
 
 
         .text
@@ -151,17 +149,8 @@ edone:  movem.l %sp@,%d2-%d7/%a2-%a6
         lea     %sp@(44),%sp
         bra.w   tb_draw
 
-| ---- LEFT / RIGHT: the focused box; the cursor keeps its line ---------
+| ---- LEFT / RIGHT: the focused box; each box keeps its own cursor ----
 tb_lr:  moveq   #0,%d0
-        moveb   FOCUS,%d0
-        lea     SEL,%a0                | SEL[2], then SCR[2]
-        moveb   %a0@(0,%d0:l),%d1
-        moveb   %d1,%a0@
-        moveb   %d1,%a0@(1)
-        moveb   %a0@(2,%d0:l),%d1
-        moveb   %d1,%a0@(2)
-        moveb   %d1,%a0@(3)
-        moveq   #0,%d0
         moveq   #0x21,%d1              | RIGHT
         cmpl    %sp@(4),%d1
         bne.s   1f
@@ -245,7 +234,7 @@ tb_draw:
         jsr     CLEAR
         addql   #4,%sp
         movel   %a5@(4),%d7
-        subil   #20,%d7                | d7 = h - 20, the header line
+        subil   #14,%d7                | d7 = h - 14: the header text 6 px under the top
 | header: "TMP 121.2" at the left, the key at the right, the rule
         pea     %a6@(20)
         pea     %a6@(16)
@@ -269,27 +258,19 @@ tb_draw:
         addql   #2,%d1
         lea     %a6@,%a0
         bsr.w   text
-| the key, right-aligned: a page dial (ring and pointer, as the parameter
-| pages draw them) for the value knob, then the arrows for the cursor. An
-| icon's y is its bottom row; the header text's is d7+2.
+| the key, right-aligned: "NAV" and the arrows for the cursor, then "A"
+| and the font's knob (0x02), the value knob, at the right edge. An icon's y is its bottom row,
+| as the text's.
         moveq   #KEYX,%d0
-        moveq   #1,%d1
-        lea     DIALRING,%a0
-        bsr.s   icon
-        moveq   #KEYX+2,%d0
-        moveq   #3,%d1
-        moveal  DIALPTR+4*64,%a0       | the pointer at noon
-        bsr.s   icon
-        moveq   #KEYX+13,%d0
         movel   %d7,%d1
         addql   #2,%d1
         lea     T_KEY,%a0
         bsr.w   text
-        moveq   #KEYX+49,%d0
+        moveq   #KEYX+21,%d0
         moveq   #2,%d1
         lea     ARRUP,%a0
         bsr.s   icon
-        moveq   #KEYX+56,%d0
+        moveq   #KEYX+28,%d0
         moveq   #2,%d1
         lea     ARRDN,%a0
         bsr.s   icon
@@ -345,12 +326,7 @@ dbox:   movel   %d7,%sp@-
         moveq   #57,%d7
         mulu.l  %d0,%d7
         addql   #4,%d7                 | d7 = box x
-        moveq   #0,%d1
-        moveb   FOCUS,%d1
-        cmpl    %d0,%d1
-        seq     %d1
-        extb.l  %d1                    | -1 when focused, as the stock screens
-        movel   %d1,%sp@-
+        clrl    %sp@-                  | the title plain: the row bar marks focus
         clrl    %sp@-
         lea     TITLES,%a0
         movel   %a0@(0,%d0:l:4),%sp@-
@@ -393,6 +369,14 @@ dbox:   movel   %d7,%sp@-
         lea     SCR,%a1
         moveq   #0,%d2
         moveb   %a1@(0,%d1:l),%d2
+        movel   %d3,%d0
+        subql   #ROWS,%d0              | the last full view's first row
+        bpl.s   5f
+        moveq   #0,%d0
+5:      cmpl    %d0,%d2
+        ble.s   6f
+        movel   %d0,%d2                | a view past the list's end (a MODE
+6:      movel   %a6@(24),%d0           | turn on the host page) comes back
         cmpl    %d2,%d0
         bge.s   3f
         movel   %d0,%d2                | cursor above the view
@@ -404,7 +388,7 @@ dbox:   movel   %d7,%sp@-
         subql   #ROWS-1,%d2            | cursor below the view
 4:      moveb   %d2,%a1@(0,%d1:l)
         movel   %d2,%d5                | d5 = the row being drawn
-        moveq   #27,%d3                | d3 = its y
+        moveq   #BOXH-7,%d3            | d3 = its y
 | each row: name, value right-aligned, the bar on the focused selection
 rloop:  movel   %a6@(28),%d1
         movel   %d5,%d0
@@ -467,7 +451,7 @@ rloop:  movel   %a6@(28),%d1
         lea     %sp@(24),%sp
 7:      addql   #1,%d5
         subql   #7,%d3
-        moveq   #27-7*ROWS,%d0         | past the last row
+        moveq   #BOXH-7-7*ROWS,%d0     | past the last row
         cmpl    %d0,%d3
         bgt.w   rloop
 bxdone: movel   %sp@+,%d7
@@ -481,9 +465,9 @@ T_MODE: .asciz  "MODE"
 DECFMT: .asciz  "%d"
 T_DLY:  .asciz  "DELAY"
 T_VRB:  .asciz  "REVERB"
-| the key: A turns the value; the font's left and right triangles (0x13,
-| 0x14) with room between them for the up and down icons
-T_KEY:  .asciz  "A VALUE \x13     \x14"
+| the key: the font's left and right triangles (0x13, 0x14) with room
+| between them for the up and down icons; A (the knob) turns the value
+T_KEY:  .asciz  "NAV \x13     \x14 A \x02"
         .even
 TITLES: .long   T_DLY, T_VRB
 FOCUS:  .byte   0

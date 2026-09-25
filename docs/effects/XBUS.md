@@ -99,7 +99,7 @@ touches only the ids a station replaced):
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | SEND | DEL | REV | | | | | | | | | | |
 | BusVerb | SEND | TIME | SIZE | SHMR | SHFT | WET | MODE | TONE | DIFF | GATE | DLY | — |
-| BusDelay | SEND | TIME | FDBK | TONE | PING | WET | MODE | SCAT | DENS | SIZE | PTCH | WOW |
+| BusDelay | SEND | TIME | FDBK | TONE | PING | WET | MODE | SCTR | DENS | SIZE | PTCH | WOW |
 | Character | DRV | FOLD | WDTH | COMP | TONE | MIX | SAT | — | — | — | — | — |
 
 ## What a send is

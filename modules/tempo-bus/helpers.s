@@ -138,33 +138,40 @@ p2:     movel   %d6,%d3
 1:      rts
 
 | ---- rows: d1 = box, a3 = its engine's P, names as the mode cave left
-| them -> VIS[box] = the named slots whose name is not "---", NV[box] =
-| their count, d3 = the count. Clobbers d0/d2/d5/a0/a1.
-rows:   movel   %d1,%d0
+| them -> VIS[box] = the named slots whose name is not "---", MODE first,
+| NV[box] = their count, d3 = the count. Clobbers d0/d2/d5/a0/a1.
+rows:   movel   %d4,%sp@-
+        movel   %d1,%d0
         mulu.w  #12,%d0
         lea     VIS,%a1
         addal   %d0,%a1                | a1 = VIS[box]
         lea     NAMED,%a0
         movew   %a0@(0,%d1:l:2),%d2    | the named slots, bit per slot
-        lea     %a3@(NAMES),%a0
-        moveq   #0,%d3                 | the slot
+        moveq   #0,%d3                 | the index into ORDER
         moveq   #0,%d5                 | the rows listed
-1:      btst    %d3,%d2
+1:      lea     ORDER,%a0
+        moveq   #0,%d0
+        moveb   %a0@(0,%d3:l),%d0      | the slot
+        btst    %d0,%d2
         beq.s   2f
-        moveb   %a0@,%d0
-        cmpib   #0x2d,%d0              | '-'
+        movel   %d0,%d4
+        mulu.w  #6,%d4
+        lea     %a3@(NAMES),%a0
+        moveb   %a0@(0,%d4:l),%d4
+        cmpib   #0x2d,%d4              | '-'
         beq.s   2f
-        moveb   %d3,%a1@+
+        moveb   %d0,%a1@+
         addql   #1,%d5
-2:      addql   #6,%a0
-        addql   #1,%d3
+2:      addql   #1,%d3
         moveq   #12,%d0
         cmpl    %d0,%d3
         blt.s   1b
         lea     NV,%a0
         moveb   %d5,%a0@(0,%d1:l)
         movel   %d5,%d3
+        movel   %sp@+,%d4
         rts
+ORDER:  .byte   6, 0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11   | MODE (slot 6) first
 
         .include "remix.inc"           | ENGIDS, NAMED
 NV:     .byte   0, 0                   | the rows listed per box, by the last draw

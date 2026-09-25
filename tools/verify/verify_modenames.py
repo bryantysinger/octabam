@@ -13,7 +13,7 @@ What it proves, without a flash:
   * every mode's names land in the right slots of the right descriptor;
   * a mode that does NOT rename a slot RESTORES the Param's own name -- the
     trap a sparse table would leave (land on GRAIN, go back to CLEAN, and the
-    knob still reads SCAT);
+    knob still reads SCTR);
   * an out-of-range mode value (a part stores a raw byte) clamps to mode 0
     rather than indexing off the end of the table.
 

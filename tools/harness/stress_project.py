@@ -109,7 +109,7 @@ def part_values(mods, track, part):
     key2 = FX2[track]
     if track == 0:
         extra2 = {"SEND": 35, "MODE": (1, 0, 2, 1)[part % 4], "TIME": 45, "FDBK": 65,
-                  "WET": 70, "DENS": 110, "SCAT": 65, "PTCH": 88}
+                  "WET": 70, "DENS": 110, "SCTR": 65, "PTCH": 88}
     elif track == 4:
         extra2 = {"SEND": 35, "MODE": (2, 1, 0, 2)[part % 4], "TIME": 75, "SIZE": 95,
                   "SHMR": 28, "WET": 65, "DIFF": 95}

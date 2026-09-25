@@ -81,7 +81,7 @@ REV_FLAGS = {"time": "TIME", "mix": "WET", "raux": "SEND",
 DELAY_FLAGS = {"dtime": "TIME", "dfdbk": "FDBK", "dtone": "TONE",
                "dping": "PING", "dmix": "WET", "din": "SEND",
                "dmode": "MODE", "drate": "DENS", "dptch": "SIZE",
-               "dspray": "SCAT", "dpitch": "PTCH", "dwow": "WOW"}
+               "dspray": "SCTR", "dpitch": "PTCH", "dwow": "WOW"}
 
 
 def _slots(key, flags):

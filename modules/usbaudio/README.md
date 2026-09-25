@@ -26,6 +26,10 @@ rests on the recorder's SRC3 byte being raw−1 (8 = MAIN), and hardware
 confirms it: on Bryan's MKII (image 90, 25 Sep 2026) channels 17/18 carried
 MAIN and 19/20 CUE (an uncued track on MAIN, a cued track on CUE).
 `MC_MAIN_OFF` / `MC_CUE_OFF` stay as they are.
+Open: on hardware MAIN lags the track channels (Bryan T, 25 Sep 2026; lag
+not measured). The producer reads MAIN/CUE from the current pull and the
+tracks from the previous bank, so core 0's mixdown path adds more than one
+block. Aligning them means delaying channels 1-16 by the measured lag.
 
 Measured under the port: `verify_usb` (960 B / bInterval 2, AS_GENERAL
 20 channels, 880/960 B packets, low bytes zero, 0 under/overruns); and a
