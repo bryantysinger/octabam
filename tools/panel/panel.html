@@ -790,6 +790,38 @@ document.addEventListener("keydown", e => {
   }
 });
 
+// The computer's arrow keys press the panel's arrows, held while held (the
+// unit does its own auto-repeat). The crossfader keeps LEFT/RIGHT while it
+// has focus (the handler above).
+const ARROWS = {ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right"};
+const arrowKey = e => {
+  const id = ARROWS[e.key];
+  if (!id || (FADER.focus && (id === "left" || id === "right"))) return null;
+  if (e.target.closest && e.target.closest("input, textarea, select")) return null;
+  return id;
+};
+document.addEventListener("keydown", e => {
+  const id = arrowKey(e);
+  if (!id) return;
+  e.preventDefault();
+  if (e.repeat) return;
+  const k = mapKeys[id] || BUILTIN[id];
+  if (!k) return;
+  const el = document.querySelector(`.k[data-id="${id}"]`);
+  if (el) el.classList.add("down");
+  sendKey(k[0], k[1], true);
+});
+document.addEventListener("keyup", e => {
+  const id = arrowKey(e);
+  if (!id) return;
+  e.preventDefault();
+  const k = mapKeys[id] || BUILTIN[id];
+  if (!k) return;
+  const el = document.querySelector(`.k[data-id="${id}"]`);
+  if (el) el.classList.remove("down");
+  sendKey(k[0], k[1], false);
+});
+
 // ---------------- AUDIO POOL drawer (the card) ----------------
 // The unit's samples live in the set's AUDIO folder on the card; here the
 // card is a FAT image built at boot from a staged tree, and the pool is that
