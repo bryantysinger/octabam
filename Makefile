@@ -110,6 +110,10 @@ render-rig: bus ## Render ALL EIGHT TRACKS on both cores (the real image, tracks
 verify-twocore: ## Two-core gate: servers on their REAL cores == the DEV hatch, bit for bit, and under 4 skews (~1 min)
 	python3 tools/verify/verify_twocore.py
 
+.PHONY: emu-live
+emu-live: ## Play the remix on the port: screen (popups included) + panel in a window; OT_PROJECT or ~/.octabam_project
+	python3 tools/emu/live.py $(REMIX)
+
 .PHONY: emu-cf
 emu-cf: ## Build and run the headless ColdFire machine (tools/emu/ot_emu) -- boots to the RTOS handoff
 	@# --fresh: a cache configured from another source path makes cmake

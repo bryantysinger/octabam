@@ -13,12 +13,24 @@ press and "... up" on release (so FUNC + key works), an encoder sends
 "pot <0..255>". Keyboard: arrows, Return = YES, Escape = NO, space =
 PLAY, 1..8 / q..i = trigs 1..16, F1..F5 = the page keys.
 
-The file is the firmware's own 1-bpp plane at 0x46c7e0ea (1,024 bytes):
-64 columns x 128 rows, 8 bytes per row, MSB left. Screen pixel (x, y) is
-column 63-y of row x -- the panel is stored rotated a quarter turn.
-Measured 17 Sep 2026 by rendering a dump under each candidate layout; the
-PLAYBACK page reads upright under this one and under no other.
+The file starts with the firmware's own 1-bpp plane at 0x46c7e0ea (1,024
+bytes): 64 columns x 128 rows, 8 bytes per row, MSB left. Screen pixel
+(x, y) is column 63-y of row x -- the panel is stored rotated a quarter
+turn. Measured 17 Sep 2026 by rendering a dump under each candidate
+layout; the PLAYBACK page reads upright under this one and under no other.
+
+Since 25 Sep 2026 the port appends the popup windows (the menu, TEMPO,
+prompts), which the firmware keeps out of that plane: the window table at
+0x46c7d34c (five 56-byte entries: x and y from the top left at +8/+12,
+bit 0x20 of +32 set while the window shows, w and h at +36/+40) and the
+planes at 0x460d1f7b (slot i's ink at +i*0x400, its opacity mask 0x1400
+above; w columns of ceil(h/32)*4 bytes, row y of the window at bit h-1-y
+from the column's MSB). Every visible window is composited over the page:
+the mask picks the window's ink, the page shows elsewhere. Read from the
+port's RAM against the stock TEMPO, CONTROL INPUT, MIDI SYNC and date
+prompt, 25 Sep 2026.
 """
+import struct as _struct
 import argparse
 import os
 import struct
@@ -59,12 +71,50 @@ def term(rows):
     return "\n".join("".join(glyph[(rows[y][x], rows[y + 1][x])] for x in range(W)) for y in range(0, H, 2))
 
 
+WIN_TABLE, WIN_ENTRY, WIN_SLOTS = 1024, 56, 5
+WIN_PLANES = WIN_TABLE + WIN_SLOTS * WIN_ENTRY
+WIN_MASK = 0x1400
+
+
 def read_plane(path):
+    """The file as the port wrote it: the page plane, and the windows when
+    it carries them."""
     with open(path, "rb") as f:
         data = f.read()
-    if len(data) != 1024:
-        raise ValueError(f"{path}: {len(data)} bytes, want 1024")
+    if len(data) != 1024 and len(data) != WIN_PLANES + 0x2800:
+        raise ValueError(f"{path}: {len(data)} bytes, want 1024 or {WIN_PLANES + 0x2800}")
     return data
+
+
+def composite(rows, data):
+    """Every visible window over the page rows, in table order."""
+    if len(data) == 1024:
+        return rows
+    for i in range(WIN_SLOTS):
+        e = WIN_TABLE + i * WIN_ENTRY
+        x0, y0 = _struct.unpack(">ii", data[e + 8:e + 16])
+        flags, w, h = _struct.unpack(">Iii", data[e + 32:e + 44])
+        if not flags & 0x20 or not (0 < w <= W and 0 < h <= H):
+            continue
+        col = (h + 31) // 32 * 4
+        ink = WIN_PLANES + i * 0x400
+        for x in range(w):
+            sx = x0 + x
+            if not 0 <= sx < W:
+                continue
+            a = int.from_bytes(data[ink + x * col:ink + x * col + col], "big")
+            m = int.from_bytes(data[ink + WIN_MASK + x * col:ink + WIN_MASK + x * col + col], "big")
+            for y in range(h):
+                sy = y0 + y
+                shift = col * 8 - 1 - (h - 1 - y)
+                if 0 <= sy < H and (m >> shift) & 1:
+                    rows[sy][sx] = (a >> shift) & 1
+    return rows
+
+
+def screen(data):
+    """Screen rows (0/1) of a file's contents: page plus windows."""
+    return composite(pixels(data[:1024]), data)
 
 
 def watch(path, on_frame, period=0.05):
@@ -75,7 +125,7 @@ def watch(path, on_frame, period=0.05):
             key = (st.st_mtime_ns, st.st_size)
             if key != last:
                 last = key
-                on_frame(pixels(read_plane(path)))
+                on_frame(screen(read_plane(path)))
         except (FileNotFoundError, ValueError):
             pass
         yield
@@ -222,7 +272,7 @@ def main():
     a = ap.parse_args()
 
     if a.png:
-        png(pixels(read_plane(a.plane)), a.png, a.scale)
+        png(screen(read_plane(a.plane)), a.png, a.scale)
         print(a.png)
         return
 

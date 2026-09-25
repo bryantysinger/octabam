@@ -115,7 +115,7 @@ int main(int _argc, char** _argv)
 	std::string livePath;		// a FIFO (or file) of panel events, read while the RTOS runs: "key <code> down|up", "enc <n> <delta>", "pot <0..255>", "midi <hex>...", "quit" -- tools/emu/lcd_view.py --panel writes it
 	std::string midiFile;		// with --sequencer: MIDI IN bytes onto UART0, one event per line: "<frames after the transport start> <hex byte>..." (e.g. "20 B0 28 7F" = CC 40 to 127 on channel 1) or "pre <hex byte>..." before the transport start ("pre C0 10" = program change 16 while stopped)
 	int mainLevel = -1;			// O9b: post sys command 4 (SET MAIN LEVEL) with this level after the load; -1 = don't (the emulated load never does, and every voice then renders at gain zero)
-	std::string lcd;			// the panel's 1-bpp plane (0x46c7e0ea, 1024 B) to FILE whenever it has changed, at most once per 2M instructions; tools/emu/lcd_view.py draws it
+	std::string lcd;			// the panel's 1-bpp plane (0x46c7e0ea, 1024 B) plus the popup windows (table + planes) to FILE whenever they have changed, at most once per 2M instructions; tools/emu/lcd_view.py composites and draws it
 	std::string memDump;		// O10.21: "addr,len=path[;...]" -- ColdFire memory ranges, raw bytes, to FILE at the very end (peeks only support one word, pre-sequencer; this is a range, post-run)
 	std::string cardOut;		// the card image as the firmware left it, to FILE at the very end (the load's WRITEs: emu_card.extract_image reads it back)
 
@@ -309,6 +309,14 @@ int main(int _argc, char** _argv)
 	// idle is a few thousand instructions and would otherwise wait for the
 	// next busy stretch), and once more at exit.
 	constexpr uint32_t g_lcdPlane = 0x46c7e0ea, g_lcdBytes = 0x400;
+	// The popups (menu, TEMPO, prompts) are not in that plane: each is a
+	// window of its own, composited at the display. The file carries them
+	// after the page plane -- the five-entry window table (56 B each: x, y at
+	// +8/+12, the visible bit 0x20 of +32, w, h at +36/+40) and both planes
+	// of every slot (ink at 0x460d1f7b + i*0x400, the opacity mask 0x1400
+	// above it) -- and tools/emu/lcd_view.py composites the visible ones.
+	constexpr uint32_t g_winTable = 0x46c7d34c, g_winTableBytes = 5 * 56;
+	constexpr uint32_t g_winPlanes = 0x460d1f7b, g_winPlaneBytes = 0x2800;
 	bool lcdDirty = false;
 	uint64_t lcdFlushed = 0, lcdFrames = 0;
 	auto lcdLastWall = std::chrono::steady_clock::now();
@@ -316,9 +324,14 @@ int main(int _argc, char** _argv)
 	{
 		++lcdFrames;
 		lcdLastWall = std::chrono::steady_clock::now();
-		std::vector<uint8_t> buf(g_lcdBytes);
+		std::vector<uint8_t> buf;
+		buf.reserve(g_lcdBytes + g_winTableBytes + g_winPlaneBytes);
 		for(uint32_t k = 0; k < g_lcdBytes; ++k)
-			buf[k] = m.read8(g_lcdPlane + k);
+			buf.push_back(m.read8(g_lcdPlane + k));
+		for(uint32_t k = 0; k < g_winTableBytes; ++k)
+			buf.push_back(m.read8(g_winTable + k));
+		for(uint32_t k = 0; k < g_winPlaneBytes; ++k)
+			buf.push_back(m.read8(g_winPlanes + k));
 		const auto tmp = lcd + ".tmp";
 		{
 			std::ofstream f(tmp, std::ios::binary);
@@ -330,13 +343,15 @@ int main(int _argc, char** _argv)
 	};
 	if(!lcd.empty())
 	{
-		m.addWriteWatch(g_lcdPlane, g_lcdPlane + g_lcdBytes - 1,
-			[&](const uint32_t, const uint8_t, const uint32_t, const uint32_t)
-			{
-				lcdDirty = true;
-				if(m.instructions() - lcdFlushed >= 2000000)
-					lcdFlush();
-			});
+		const auto dirty = [&](const uint32_t, const uint8_t, const uint32_t, const uint32_t)
+		{
+			lcdDirty = true;
+			if(m.instructions() - lcdFlushed >= 2000000)
+				lcdFlush();
+		};
+		m.addWriteWatch(g_lcdPlane, g_lcdPlane + g_lcdBytes - 1, dirty);
+		m.addWriteWatch(g_winTable, g_winTable + g_winTableBytes - 1, dirty);
+		m.addWriteWatch(g_winPlanes, g_winPlanes + g_winPlaneBytes - 1, dirty);
 		std::printf("lcd        : plane %#x -> %s\n", g_lcdPlane, lcd.c_str());
 	}
 	const auto stop = m.run(maxInstructions);
