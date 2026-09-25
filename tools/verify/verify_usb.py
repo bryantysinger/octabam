@@ -99,19 +99,26 @@ def main():
             check("USB AUDIO: a UAC2 AudioStreaming interface 4 with alt 0 and alt 1",
                   sorted((d[2], d[3]) for d in as_) == [(4, 0), (4, 1)], str([(d[2], d[3]) for d in as_]))
             iso = [d for d in eps if d[2] == 0x83]
-            check("USB AUDIO: EP 0x83 isochronous, 736 bytes, bInterval 3",
-                  len(iso) == 1 and (iso[0][3] & 3, iso[0][4] | iso[0][5] << 8, iso[0][6]) == (1, 736, 3),
+            check("USB AUDIO: EP 0x83 isochronous, 768 bytes, bInterval 2",
+                  len(iso) == 1 and (iso[0][3] & 3, iso[0][4] | iso[0][5] << 8, iso[0][6]) == (1, 768, 2),
                   str([(d[3], d[4] | d[5] << 8, d[6]) for d in iso]))
+            fmt24, fmt16 = bytes([6, 0x24, 2, 1, 4, 24]), bytes([6, 0x24, 2, 1, 2, 16])   # FORMAT_TYPE_I: subslot, bits
+            check("USB AUDIO: FORMAT_TYPE_I, 24-bit samples in 4-byte subslots",
+                  cfg.count(fmt24) == 1 and fmt16 not in cfg)
             # the clock source answers its sample rate; SET_INTERFACE alt 1 brings EP3 up
             cur = b.ctrl_in(0xa1, 1, 0x0100, 0x1000 | 3, 4)
             check("USB AUDIO: CS_SAM_FREQ_CONTROL CUR = 44100", cur == (44100).to_bytes(4, "little"), cur.hex())
             b.ctrl_nodata(0x01, 0x0b, 1, 4)
             alt = b.ctrl_in(0x81, 0x0a, 0, 4, 1)
             check("USB AUDIO: GET_INTERFACE reports alt 1", alt == b"\x01", alt.hex())
-            got = [b.ep_in(3, 1024) for _ in range(400)]        # 200 ms of device time at the 500 us poll
+            got = [b.ep_in(3, 1024) for _ in range(800)]        # 200 ms of device time at the 250 us poll
             sizes = sorted({len(g) for g in got[10:]})           # the first polls may land before the first prime
-            check("USB AUDIO: 400 polls on EP3 carry 22/23-frame packets and none empty after the first ten",
-                  bool(sizes) and all(s in (704, 736) for s in sizes), f"sizes {sizes}")
+            check("USB AUDIO: 800 polls on EP3 carry 10-12-frame packets of 64 B and none empty after the first ten",
+                  bool(sizes) and all(s in (640, 704, 768) for s in sizes), f"sizes {sizes}")
+            words = b"".join(got[10:])
+            low = sum(1 for i in range(0, len(words), 4) if words[i])
+            check("USB AUDIO: every 4-byte subslot's low byte is zero (24 bits, left-justified)",
+                  bool(words) and low == 0, f"{low} of {len(words) // 4} subslots")
             c = usb_host.counters(b)
             print("  counters: " + " ".join(f"{k}={v}" for k, v in c.items()))
             check("USB AUDIO: the vendor request reads the counters back: frames produced and consumed, no overrun",

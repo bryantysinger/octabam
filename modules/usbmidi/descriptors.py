@@ -14,7 +14,8 @@ MSC interface byte for byte at the front:
                         input terminal, USB streaming output terminal) +
                         AudioStreaming (alt 0 idle, alt 1 with the iso IN
                         EP3): five interfaces, 250 bytes. Sixteen channels
-                        at high speed, the stereo sum at full speed.
+                        at high speed, the stereo sum at full speed, 24-bit
+                        samples in 4-byte subslots.
 
 `cfg_len` is exported as an absolute symbol: the responder's two clamp
 shims (usbmidi.s) compare wLength against it, since the stock `moveq #32`
@@ -22,8 +23,13 @@ cannot hold either grown length above 127.
 """
 import struct
 
-HS_CHANNELS, HS_MAXPKT, HS_BINTERVAL = 16, 23 * 32, 3     # 23 frames x 32 B every 500 us
-FS_CHANNELS, FS_MAXPKT, FS_BINTERVAL = 2, 45 * 4, 1       # 45 stereo frames every 1 ms
+# 24-bit samples in 4-byte subslots. 16 ch x 4 B x 44.1 kHz is 2,822 B/ms,
+# and one high-speed isochronous transaction carries at most 1,024 B, so the
+# endpoint is polled every 250 us (bInterval 2): 11.025 frames x 64 B, at
+# most 12 frames = 768 B a packet.
+SUBSLOT, BITS = 4, 24
+HS_CHANNELS, HS_MAXPKT, HS_BINTERVAL = 16, 12 * 64, 2     # 11/12 frames x 64 B every 250 us
+FS_CHANNELS, FS_MAXPKT, FS_BINTERVAL = 2, 45 * 8, 1       # 44/45 stereo frames x 8 B every 1 ms
 UAC2_AC_IFACE, UAC2_AS_IFACE = 3, 4                        # usbaudio.s .set: the same numbers
 UAC2_CLOCK_ID, UAC2_IT_ID, UAC2_OT_ID = 0x10, 0x11, 0x12
 
@@ -88,7 +94,7 @@ def audio_config(hs, other_speed=False):
         bytes([9, 4, as_, 1, 1, 1, 2, 0x20, 0]) +
         bytes([16, 0x24, 1, ot, 0, 1]) + struct.pack("<I", 1) +
         bytes([nch]) + struct.pack("<I", 0) + bytes([0]) +
-        bytes([6, 0x24, 2, 1, 2, 16]) +
+        bytes([6, 0x24, 2, 1, SUBSLOT, BITS]) +
         bytes([7, 5, 0x83, 0x05]) + struct.pack("<H", maxpkt) +
         bytes([HS_BINTERVAL if hs else FS_BINTERVAL]) +
         bytes([8, 0x25, 1, 0, 0, 0]) + struct.pack("<H", 0))

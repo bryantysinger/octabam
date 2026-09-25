@@ -2440,13 +2440,14 @@ int main(int _argc, char** _argv)
 		{
 			const auto& s = usb->stats();
 			std::printf("usb        : USBCMD %#x USBINTR %#x EPLISTADDR %#x DEVICEADDR %#x ENDPTCTRL1..3 %#x %#x %#x; "
-				"%llu setup(s), %llu IN (%llu B), %llu OUT (%llu B), %llu stall(s), %llu prime(s), %llu SOF(s)%s\n",
+				"%llu setup(s), %llu IN (%llu B), %llu OUT (%llu B), %llu stall(s), %llu prime(s), %llu SOF(s), %llu iso poll(s) with no IN waiting%s\n",
 				usb->reg(ot::UsbDevice::R_USBCMD), usb->reg(ot::UsbDevice::R_USBINTR), usb->reg(ot::UsbDevice::R_EPLISTADDR),
 				usb->reg(ot::UsbDevice::R_DEVICEADDR), usb->reg(ot::UsbDevice::R_EPCTRL0 + 4), usb->reg(ot::UsbDevice::R_EPCTRL0 + 8),
 				usb->reg(ot::UsbDevice::R_EPCTRL0 + 12),
 				static_cast<unsigned long long>(s.setups), static_cast<unsigned long long>(s.ins), static_cast<unsigned long long>(s.bytesIn),
 				static_cast<unsigned long long>(s.outs), static_cast<unsigned long long>(s.bytesOut), static_cast<unsigned long long>(s.stalls),
 				static_cast<unsigned long long>(s.primes), static_cast<unsigned long long>(s.sofs),
+				static_cast<unsigned long long>(s.isoMissed),
 				s.badQh ? " -- UNINITIALIZED dQH primed (see stderr)" : "");
 		}
 		std::printf("auto-mapped: %llu access(es) outside every declared region and window "

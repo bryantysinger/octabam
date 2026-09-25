@@ -647,6 +647,7 @@ namespace ot
 		uint64_t m_nextUsbPoll = 0;
 		double m_usbNextSof = 0.0;
 		double m_usbNextIso = 0.0;
+		unsigned m_usbMissRun = 0;
 		// ⚠️ INTRQ IS NOT INSTANTANEOUS, and the firmware depends on it. The
 		// driver writes the command and THEN calls the RTOS event wait; a
 		// drive that asserted INTRQ on the same instruction would run the ISR,

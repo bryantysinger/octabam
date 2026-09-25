@@ -5,7 +5,7 @@ Two remixes of [`bamsep26`](bamsep26.md), the rig, with USB functions added on t
 | remix | adds | the unit appears to a host as |
 |---|---|---|
 | `usb` | USB MIDI | card storage + a class-compliant MIDI port that mirrors the DIN ports |
-| `usb-audio` | USB MIDI + USB AUDIO | the above + a 16-channel 44.1 kHz 16-bit audio input |
+| `usb-audio` | USB MIDI + USB AUDIO | the above + a 16-channel 44.1 kHz 24-bit audio input |
 
 ## What is in it
 
@@ -15,8 +15,9 @@ Two remixes of [`bamsep26`](bamsep26.md), the rig, with USB functions added on t
 
 ## Status
 
-- `usb-audio` on Sam's MKII as image 64 (25 Sep 2026): enumerates on macOS as "Elektron Octatrack DPS-1" (16-channel input + MIDI port). Every channel carried its track. 9.6 minutes recorded with no discontinuities after the first 1.6 s of each stream. Device counters 0 underruns, 0 overruns. USB MIDI in took 7,950 messages/s for 185 s without a stall.
+- `usb-audio` at 16 bits on Sam's MKII as image 64 (25 Sep 2026): enumerates on macOS as "Elektron Octatrack DPS-1" (16-channel input + MIDI port). Every channel carried its track. 9.6 minutes recorded with no discontinuities after the first 1.6 s of each stream. Device counters 0 underruns, 0 overruns. USB MIDI in took 7,950 messages/s for 185 s without a stall.
 - Open: a burst of reordered samples 0.75–1.5 s after the host opens a stream, on four of five takes (`docs/remixer/FAILURE_MODES.md`).
+- `usb-audio` at 24 bits on Sam's MKII as image 69 (25 Sep 2026): 16 channels at 24 bits, every channel its track's tone, 3 minutes recorded (USBSIG 60 s, USBLOAD 120 s) with no discontinuities after 0.76 s; counters 0 underruns, 0 overruns. The start burst is on the right channels only. `modules/usbaudio/README.md` has the numbers.
 - `usb` alone has not been flashed. Its module is the one that ran inside image 64.
 - Not measured: USB MIDI timing against DIN, DISK MODE entered with a MIDI or audio session open, Windows, Linux hosts.
 
