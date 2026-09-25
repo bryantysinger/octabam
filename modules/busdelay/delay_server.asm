@@ -1839,6 +1839,22 @@ dlyend:
         move    #>$3fff,x0                                                 ; @DEV
         and     x0,a
         move    a,x:(r7+$28)
+; ---- READ-BACK PAD (25 Sep 2026, image 43) --------------------------------
+; The ColdFire pulls core 1's read-back (DMA channel 1, X:$2600/$4600) about
+; 4.5 samples after T1's proc entry, jittering by half a sample or more,
+; and the dispatcher's copy of this block right after the rts lands inside
+; it: the pull reads the block mid-rewrite (junk on main R, 0.5/min on
+; image 99, docs/remixer/FAILURE_MODES.md). Stock effects copy by +2
+; samples. Measured on the unit with a WOW-selected pad here (image 36):
+; +0 cycles 1266 junk runs/min, +256 16/min, +512 0/min over 60 s and
+; 1.4/min over 10 min, +2048 0/60 s. Running the compute from the
+; dispatcher's idle instead (images 39-42) killed core 1: its idle is a
+; word-by-word handshake with core 0, not free time. So the copy waits
+; here, past the pull: 8,192 NOPs, two samples, 11 % of the frame.
+        move    #>$2000,x0
+        do      x0,pad_end
+        nop
+pad_end:
 dry:
         move    r7,a                    ; the r7 REBASE undone: the raw
         sub     #>$49,a                 ; state block goes back to the
