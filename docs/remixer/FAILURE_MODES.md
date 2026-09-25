@@ -921,12 +921,14 @@ looks for EVO4 and exits at once).
 
 ## USB audio: a burst of reordered samples in the first 1.5 s of every host stream, clean after (image 64, 25 Sep 2026)
 
-**Symptom.** Recording the sixteen USB channels on macOS, every take has
-one cluster of sample-step events between 0.75 and 1.5 s after the host
-opened the stream, on several channels at once, and none afterwards: 60 s,
-60 s, 300 s and a 120 s take under a 7,170-message/s USB-MIDI flood with
-menu, sample-manager and project-save work on the panel all read zero
-events past 2 s. The device's counters (vendor request 0xc0/0x55) show 0
+**Symptom.** Recording the sixteen USB channels on macOS, four of five
+takes have one cluster of sample-step events between 0.75 and 1.5 s after
+the host opened the stream, on several channels at once, and none
+afterwards: 60 s, 60 s, 300 s and a 120 s take under a 7,170-message/s
+USB-MIDI flood with menu, sample-manager and project-save work on the panel
+all read zero events past 2 s; a 180 s take on a locks-every-step project
+at 200 BPM under a 7,950-message/s flood had no start burst and no events
+except on the track whose FX knobs were being turned. The device's counters (vendor request 0xc0/0x55) show 0
 underruns, 0 overruns and no bank-duplicate movement across all four.
 **What it is.** Short runs of samples out of order: after an event the
 next samples sit −11.6, +10.3 or −41 frames off the tone's phase, and the
