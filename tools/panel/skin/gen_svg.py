@@ -236,8 +236,9 @@ SX, SY, SW, SH = 465, 134, 256, 193
 add(f'<g id="display"><rect x="{SX}" y="{SY}" width="{SW}" height="{SH}" rx="4" fill="#0a0a0a"/>')
 add(f'<text x="{SX+13}" y="{SY+27}" fill="#e8e8e8" font-size="9.5" '
     f'style="text-anchor:start;font-weight:400">8 Track Dynamic Performance Sampler</text>')
-# --- screen cutout: 240 x 120 = exactly 128:64 (2:1). Replace/overlay with your own image.
-add(f'<rect id="screen" x="{SX+8}" y="{SY+38}" width="240" height="120" fill="#181c1e"/>')
+# --- screen cutout: 128 x 64 at exactly 2x (256 x 128), the window's full
+# width, so every LCD pixel is a 2x2 block (octemu's 240 x 120 is 1.875x).
+add(f'<rect id="screen" x="{SX}" y="{SY+33}" width="256" height="128" fill="#181c1e"/>')
 add(f'<text x="{SX+13}" y="{SY+180}" fill="#e8e8e8" font-size="17" '
     f'style="text-anchor:start">octabam <tspan style="font-weight:400">MKII</tspan></text>')
 add('</g>')
@@ -347,8 +348,8 @@ REG['viewBox'] = [0, 0, W, H]
 REG['plate'] = {'x': PLATE_RECT[0], 'y': PLATE_RECT[1],
                 'w': PLATE_RECT[2], 'h': PLATE_RECT[3],
                 'note': 'the face plate inside the chassis surround; a panel GIF is cropped to it'}
-REG['screen'] = {'x': SX+8, 'y': SY+38, 'w': 240, 'h': 120,
-                 'native': [128, 64], 'px_per_native_px': 240/128}
+REG['screen'] = {'x': SX, 'y': SY+33, 'w': 256, 'h': 128,
+                 'native': [128, 64], 'px_per_native_px': 2}
 REG['fader'] = {'handle_id': 'fader-handle',
                 'travel': {'axis': 'x', 'min': 0, 'max': 166},
                 'slot': {'x': 887, 'y': 430, 'w': 194, 'h': 15.5},
