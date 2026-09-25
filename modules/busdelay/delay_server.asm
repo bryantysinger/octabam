@@ -96,7 +96,7 @@
 ;                       3's window multiplier) every block, in every mode
 ;   r7+$58/$59          this sample's scatter / window-multiplier candidates
 ;   r7+$5a/$5b          free
-;   r7+$5c              SCAT, knob<<16 (per block)
+;   r7+$5c              SCTR, knob<<16 (per block)
 ;   r7+$5d              free (the GRAIN phase cursor is r6 in the loop)
 ;   r7+$5e              REVERSE segment phase, 23-bit (persistent, masked on
 ;                       load and save); one phase for both heads
@@ -165,7 +165,7 @@
 ;               carries wet*DLY, glided
 ;   p6 MODE  -> page-2 slot 6 KNOB field (r6+$c bits 16-23): 0 CLEAN,
 ;               1 GRAIN, 2 REVERSE, anything else CLEAN
-;   p7 SCAT  -> slot 7 companion (r6+$c bits 8-15): GRAIN scatter depth
+;   p7 SCTR  -> slot 7 companion (r6+$c bits 8-15): GRAIN scatter depth
 ;   p8 DENS  -> slot 8 KNOB field (r6+$d bits 16-23): GRAIN density
 ;   p9 SIZE  -> slot 9 companion (r6+$d low bits): GRAIN grain length and
 ;               REVERSE segment, one select for both
@@ -919,7 +919,7 @@ slewdn:
 ; (the tape wow -- WOW depth, flutter, the RATE increments at 0901h/0902h --
 ; went 15 Sep 2026, Sam: the modulation is the LFOs' and the Modulation
 ; station's, and the crackle gathered around these knobs. Slots 7 and 8
-; are GRAIN's SCAT and DENS now, inert in CLEAN and REVERSE.)
+; are GRAIN's SCTR and DENS now, inert in CLEAN and REVERSE.)
 
 ; ---- WOW: tape wobble depth, page-2 slot 11 (r6+$e bits 8-15) -----------
 ; knob<<13 is the depth in Q11.12: two samples per knob step, +-254 at 127.
@@ -942,13 +942,13 @@ slewdn:
         move    x0,a
         move    a,x:(r7-$1b)            ; FLTD = WOWD/8
 
-; ---- SCAT: GRAIN scatter depth ----------------------------------------------
+; ---- SCTR: GRAIN scatter depth ----------------------------------------------
 ; Page-2 slot 7's COMPANION field (r6+$c bits 8-15, the word MODE's knob
 ; field shares), shifted up to knob<<16 = value/128 in Q1.23, used directly
-; as a multiplier. SCAT 0 puts every grain on the same read position; 127
+; as a multiplier. SCTR 0 puts every grain on the same read position; 127
 ; gives the full 0..4095-sample scatter. Decoded every block regardless of
 ; MODE, like PTCH.
-        move    x:(r6+$c),a             ; SCAT, slot 7's companion field
+        move    x:(r6+$c),a             ; SCTR, slot 7's companion field
         and     #>$7f00,a
         move    a1,x0
         move    x0,a                    ; A2-clean (AND cleans A1 only)

@@ -128,7 +128,7 @@ CASES = [
     # mode with SHMR and GATE at 0, so the GRAIN and REVERSE arms, PLATE, BIG,
     # the shimmer and the gate had no bit-identity gate; a pointer rewrite of
     # those arms needs one. Knobs held off their defaults so each arm's own
-    # decode carries signal (SCAT/DENS/SIZE/PTCH/WOW for GRAIN, SIZE for
+    # decode carries signal (SCTR/DENS/SIZE/PTCH/WOW for GRAIN, SIZE for
     # REVERSE, TONE/PING for the loop filters).
     ("DS GRAIN  the delay's GRAIN arm, scatter and wow driven",
      dict(layout="DS", pick="D", dmode=1, dspray=127, drate=100, dptch=1,

@@ -96,9 +96,9 @@ MODULE = Module(
         # MDEP on slot 7: delivered in $c's companion field (bits 8-15), as
         # stock FILTER's DIST knob is on slot 11. Default 0: an aux delay
         # sits still.
-        # SCAT / DENS are GRAIN's (inert in CLEAN and REVERSE); the tape wow
+        # SCTR / DENS are GRAIN's (inert in CLEAN and REVERSE); the tape wow
         # that used these slots went 15 Sep 2026.
-        Param(b"SCAT", 40, 128, active=True, formatter=_PLAIN,
+        Param(b"SCTR", 40, 128, active=True, formatter=_PLAIN,
               doc="GRAIN: scatter, how far apart the grains read; inert in CLEAN and REVERSE"),
         Param(b"DENS", 127, 128, active=True, formatter=_PLAIN, link=True,
               doc="GRAIN: density, full dial, level-flat (R61); inert in CLEAN and REVERSE"),
@@ -117,7 +117,7 @@ MODULE = Module(
     ),
     # ---- what each MODE re-defaults, and which knobs it names `---` ------
     # A knob a mode never reads is named `---` there, the unused-knob
-    # convention (Sam, 20 Sep 2026: every effect, every mode). SCAT, DENS and
+    # convention (Sam, 20 Sep 2026: every effect, every mode). SCTR, DENS and
     # PTCH are GRAIN's; SIZE is GRAIN's and REVERSE's; REVERSE pins PING to 0.
     mode_slot=6,
     mode_views=(
@@ -126,7 +126,7 @@ MODULE = Module(
         # the 32K lines (15 Sep 2026): 20 = 5,184 samples, 18 = 4,672 -- the
         # same times the views held at 40 / 36 under the old *128 law.
         ModeView(mode=0,                        # CLEAN: centred
-                 names={7: b"---", 8: b"---", 9: b"---", 10: b"---"},   # SCAT DENS SIZE PTCH: not read
+                 names={7: b"---", 8: b"---", 9: b"---", 10: b"---"},   # SCTR DENS SIZE PTCH: not read
                  defaults={1: 20, 2: 60, 3: 100, 4: 0, 5: 127, 10: 64}),
         ModeView(mode=1,                        # GRAIN: Sam's recipe on the unit
                  # (15 Sep 2026): octave up, ping-pong
@@ -134,7 +134,7 @@ MODULE = Module(
                  defaults={1: 18, 2: 40, 3: 100, 4: 127, 5: 127,
                            7: 40, 8: 127, 9: 1, 10: 96}),
         ModeView(mode=2,                        # REVERSE: centred, 371 ms
-                 names={4: b"---", 7: b"---", 8: b"---", 9: b"SLEN", 10: b"---"},   # PING pinned 0; the segment length; SCAT DENS PTCH: not read
+                 names={4: b"---", 7: b"---", 8: b"---", 9: b"SLEN", 10: b"---"},   # PING pinned 0; the segment length; SCTR DENS PTCH: not read
                  defaults={1: 20, 2: 60, 3: 100, 4: 0, 5: 127,   # segments (SIZE 3 = XTRM)
                            9: 3, 10: 64}),
     ),

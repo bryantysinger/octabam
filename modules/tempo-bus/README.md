@@ -6,7 +6,7 @@ each engine's parameters with the values the host page would show.
 
 | control | does |
 |---|---|
-| UP / DOWN | move the cursor one row in the focused box, with key repeat; the box scrolls, four rows visible |
+| UP / DOWN | move the cursor one row in the focused box, with key repeat; the box scrolls, six rows visible |
 | A | edits the selected parameter on the host track; ×7 while A is pushed (the stock fast turn) |
 | B | the same as A |
 | LEFT / RIGHT | focus DELAY / REVERB; the cursor stays on the same screen line |
@@ -17,12 +17,10 @@ each engine's parameters with the values the host page would show.
 
 The header prints the tempo at its left as `TMP 121.2`, or `PTN 121.2`
 while the pattern tempo is on (the stock TEMPO draw's test, `0x80000024`,
-`0x460d1aec`). To its right is the key:
-- a page dial (the parameter pages' ring `0x400bd15a` and pointer
-  `0x400bdb6e[64]`, as `0x400479b4` draws them);
-- `A VALUE`;
-- the arrows: the font's ◀ and ▶ (`0x13`, `0x14`) around the stock ▲ and
-  ▼ icons (`0x400b9d8c`, `0x400b9da0`).
+`0x460d1aec`). To its right is the key: `VALUE`; the arrows, the font's ◀ and ▶ (`0x13`,
+`0x14`) around the stock ▲ and ▼ icons (`0x400b9d8c`, `0x400b9da0`); then
+`A` and the font's knob glyph (`0x02`) at the right edge. The header line sits 1 px under
+the window's top edge; the boxes take the rest (48 px, six rows).
 
 - **Rows and labels.** The rows are each engine's named slots (a mask per
   engine, taken from its manifest when the remix is built), minus the ones
@@ -56,7 +54,7 @@ while the pattern tempo is on (the stock TEMPO draw's test, `0x80000024`,
 Every draw call is one the stock CONTROL INPUT (`0x40065674`) and MIDI
 SYNC (`0x4006730c`) screens make:
 - header text `0x40012bd8` and its width `0x40012f30`, in font `0x400ba876`;
-- the key's dial, ring and pointer icons, and the arrow icons, through `0x400128a8`;
+- the key's arrow icons through `0x400128a8`;
 - the rule `0x40011910`;
 - the titled box `0x4007efd0`, with the focused box's title inverted;
 - rows at a 7-pixel pitch;

@@ -853,7 +853,7 @@ class Module:
 
     def knob_map_all(self) -> dict[str, int]:
         """Every name a slot answers to: its own, plus each MODE view's alias.
-        The test harness resolves `--set SCAT=40` through this, so a name the
+        The test harness resolves `--set SCTR=40` through this, so a name the
         panel prints is a name the bench accepts."""
         out = dict(self.knob_map())
         for v in self.mode_views:

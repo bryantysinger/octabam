@@ -7,6 +7,14 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- BusDelay's GRAIN scatter knob (page 2, slot 7) is SCTR, was SCAT (26 Sep
+  2026). Name only: slot, count and default unchanged, no stamp needed.
+- TEMPO BUS (25-26 Sep 2026): the TEMPO window lists and edits BusDelay and
+  BusVerb. UP/DOWN pick the row, A (or B) the value, LEFT/RIGHT the box
+  (the cursor keeps its line), LEVEL whole BPM, FUNC + LEVEL 0.1 BPM. A
+  mode's `---` rows are left out. Header: `TMP 121.2`, then the key
+  `VALUE ◀▲▼▶ A●`; six rows per box.
+
 - The virtual panel's face is the MKII's (25 Sep 2026): Mark Roberts' octemu
   skin generator (`tools/panel/skin/gen_svg.py`, MIT) in a dark palette,
   served as `/skin.js`; the page's keys, knobs, fader and LEDs sit over it as
