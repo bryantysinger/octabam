@@ -270,7 +270,7 @@ def install_rtc(clock=None):
     er.Dspi.write = write
 
 
-LCD_ON, LCD_OFF = bytes((0xe8, 0xf0, 0x60)), bytes((0x18, 0x20, 0x10))   # lit / unlit LCD pixel, RGB
+LCD_ON, LCD_OFF = bytes((0xf2, 0xf2, 0xf2)), bytes((0x06, 0x06, 0x07))   # lit / unlit pixel, RGB: the MKII display, white on black
 
 
 def _png_rgb(w, h, rows):
@@ -1921,7 +1921,7 @@ class Panel:
         # has no such flag and renders every call, as before.
         if self._feed_link() and self.frame and not self.link.dirty:
             return
-        # the MKII's display: lit pixels bright on a dark screen (the MKI's
+        # the MKII display: white pixels on black (the MKI's
         # LCD, dark on pale, was 0x1a on 0xc9 in grey)
         on, off = LCD_ON, LCD_OFF
         lcd = self._lcd_rows(uc)

@@ -238,7 +238,7 @@ add(f'<text x="{SX+13}" y="{SY+27}" fill="#e8e8e8" font-size="9.5" '
     f'style="text-anchor:start;font-weight:400">8 Track Dynamic Performance Sampler</text>')
 # --- screen cutout: 128 x 64 at exactly 2x (256 x 128), the window's full
 # width, so every LCD pixel is a 2x2 block (octemu's 240 x 120 is 1.875x).
-add(f'<rect id="screen" x="{SX}" y="{SY+33}" width="256" height="128" fill="#181c1e"/>')
+add(f'<rect id="screen" x="{SX}" y="{SY+33}" width="256" height="128" fill="#060607"/>')
 add(f'<text x="{SX+13}" y="{SY+180}" fill="#e8e8e8" font-size="17" '
     f'style="text-anchor:start">octabam <tspan style="font-weight:400">MKII</tspan></text>')
 add('</g>')
