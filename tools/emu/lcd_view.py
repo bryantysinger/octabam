@@ -185,109 +185,145 @@ class Panel:
         self.send(f"pot {int(v)}")
 
 
-def build_panel(tk, root, panel, canvas):
-    """The screen in the middle of an Octatrack-shaped panel: LEVEL and the
-    track keys to its left, the six knobs, the page keys and the arrows to
-    its right, the mode keys under it, trigs and transport along the
-    bottom. Every key sends press and release; a knob is `<< < NAME > >>`
-    (the wheel over its name turns it, a click on the name pushes it)."""
-    BG, GROUP = "#2b2b2b", "#bbbbbb"
-    root.configure(bg=BG)
+# The MKII's front, from Elektron's own layout (the product photo): every
+# key where it sits on the unit, its name on the key and its FUNC name under
+# it. (x, y) are the key's centre on a 1500 x 840 canvas; w, h its size.
+LCD_SCALE = 3
+LCD_AT = (558, 238)                                 # the screen's top left
+KEYS_MK2 = [
+    # code, label, under, x, y, w, h
+    (0x35, "MIDI", "MIDI Sync", 110, 300, 62, 50),
+    (0x2B, "REC1", "Setup 1", 235, 280, 62, 50),
+    (0x2C, "REC2", "Setup 2", 315, 280, 62, 50),
+    (0x36, "REC3", "Rec Edit", 395, 280, 62, 50),
+    (0x1C, "PROJ", "Save Proj", 110, 410, 62, 50),
+    (0x1D, "PART", "Part Edit", 190, 410, 62, 50),
+    (0x1E, "AED", "Slice Grid", 270, 410, 62, 50),
+    (0x30, "MIX", "Click", 350, 410, 62, 50),
+    (0x1F, "ARR", "Arr Mode", 430, 410, 62, 50),
+    (0x2D, "FUNC", "", 120, 530, 80, 50),
+    (0x27, "CUE", "Reload Part", 250, 530, 80, 50),
+    (0x2E, "PTN", "Pattern Settings", 120, 640, 80, 50),
+    (0x2F, "BANK", "Track Trig Edit", 250, 640, 80, 50),
+    (0x31, "YES", "Arm", 360, 565, 54, 50),
+    (0x32, "NO", "Disarm", 360, 640, 54, 50),
+    (0x33, "\u2227", "Trig Mode", 500, 565, 54, 50),
+    (0x34, "<", "\u00b5Time -", 430, 640, 54, 50),
+    (0x20, "\u2228", "Trig Mode", 500, 640, 54, 50),
+    (0x21, ">", "\u00b5Time +", 570, 640, 54, 50),
+    (0x22, "SRC", "Note", 610, 510, 58, 50),
+    (0x23, "AMP", "Arp", 690, 510, 58, 50),
+    (0x24, "LFO", "LFO Setup", 770, 510, 58, 50),
+    (0x25, "FX1", "Ctrl 1", 850, 510, 58, 50),
+    (0x26, "FX2", "Ctrl 2", 930, 510, 58, 50),
+    (0x29, "\u25cb", "Copy (REC)", 690, 640, 74, 50),
+    (0x28, "\u25b7", "Clear (PLAY)", 770, 640, 74, 50),
+    (0x2A, "\u25a1", "Paste (STOP)", 850, 640, 74, 50),
+    (0x18, "TEMPO", "Tap Tempo", 1110, 360, 62, 50),
+    (0x19, "A", "Scene A / Mute", 1110, 510, 70, 60),
+    (0x1A, "B", "Scene B / Mute", 1420, 510, 70, 60),
+    (0x1B, "PAGE", "Scale", 1420, 650, 70, 50),
+] + [(0x10 + i, f"T{i + 1}", "Cue/Mute", 500 if i < 4 else 1020, 170 + 75 * (i % 4), 54, 48) for i in range(8)] \
+  + [(i, str(i + 1), f"T{i % 8 + 1}", 100 + 80 * i, 760, 68, 58) for i in range(16)]
+KNOBS_MK2 = [   # encoder index, label, under, x, y
+    (6, "LEVEL", "Cursor Pos", 1120, 230),
+    (0, "A", "Start Pos", 1220, 230), (1, "B", "Loop Pos", 1320, 230), (2, "C", "End Pos", 1420, 230),
+    (3, "D", "Zoom", 1220, 360), (4, "E", "Scroll", 1320, 360), (5, "F", "Zoom", 1420, 360),
+]
+# Codes the survey has not placed: small keys by number, bottom right.
+SPARE_MK2 = [(0x37, 1380, 800), (0x3F, 1440, 800)]
 
-    def box(parent, title):
-        return tk.LabelFrame(parent, text=title, fg=GROUP, bg=BG, padx=4, pady=3, bd=1, relief="groove")
 
-    def keybtn(parent, code, width=6):
-        b = tk.Button(parent, text=KEYS.get(code, f"{code:02x}"), width=width, highlightbackground=BG)
-        b.bind("<ButtonPress-1>", lambda e, c=code: panel.key(c, True))
-        b.bind("<ButtonRelease-1>", lambda e, c=code: panel.key(c, False))
-        return b
+def build_panel(tk, root, panel):
+    """The MKII's front as one canvas: every key sends press and release,
+    a knob turns with the mouse wheel (Shift: x4) and pushes on a click,
+    the top-left knob is the MAIN pot. Returns the canvas and where the
+    screen goes on it."""
+    BG, KEY, TXT, SUB, EDGE = "#1c1c1e", "#2a2a2d", "#d8d8d8", "#8a8a8a", "#3a3a3e"
+    cv = tk.Canvas(root, width=1500, height=790, bg="#101012", highlightthickness=0)
+    cv.pack()
+    bg = cv.create_rectangle(20, 20, 1480, 820, fill=BG, outline="#2c2c30", width=2)
 
-    def knob(parent, n):
-        f = tk.Frame(parent, bg=BG)
-        for d, t in ((-4, "«"), (-1, "‹")):
-            tk.Button(f, text=t, width=1, highlightbackground=BG,
-                      command=lambda dd=d: panel.enc(n, dd)).pack(side="left")
-        lab = tk.Label(f, text=ENCODERS[n], width=6, relief="raised", bg="#444444", fg="white")
-        lab.pack(side="left", padx=2)
+    def rrect(x0, y0, x1, y1, r, **kw):
+        pts = [x0 + r, y0, x1 - r, y0, x1, y0, x1, y0 + r, x1, y1 - r, x1, y1, x1 - r, y1,
+               x0 + r, y1, x0, y1, x0, y1 - r, x0, y0 + r, x0, y0]
+        return cv.create_polygon(pts, smooth=True, **kw)
+
+    def key(code, label, under, x, y, w, h):
+        tag = f"key{code}"
+        rrect(x - w / 2, y - h / 2, x + w / 2, y + h / 2, 8, fill=KEY, outline=EDGE, width=2, tags=(tag, tag + "b"))
+        cv.create_text(x, y, text=label, fill=TXT, font=("Helvetica", 12, "bold"), tags=tag)
+        if under:
+            cv.create_text(x, y + h / 2 + 11, text=under, fill=SUB, font=("Helvetica", 9))
+
+        def down(e):
+            cv.itemconfigure(tag + "b", fill="#55555a")
+            panel.key(code, True)
+
+        def up(e):
+            cv.itemconfigure(tag + "b", fill=KEY)
+            panel.key(code, False)
+        cv.tag_bind(tag, "<ButtonPress-1>", down)
+        cv.tag_bind(tag, "<ButtonRelease-1>", up)
+
+    wheel = {}                      # canvas tag -> (event, +-1): the wheel is the canvas's
+
+    def knob(n, label, under, x, y, r=28):
+        tag = f"knob{n}"
+        cv.create_oval(x - r, y - r, x + r, y + r, fill="#2e2e32", outline="#4a4a50", width=2, tags=tag)
+        cv.create_oval(x - r + 6, y - r + 6, x + r - 6, y + r - 6, fill="#252528", outline="", tags=tag)
+        cv.create_text(x, y + r + 12, text=label, fill=TXT, font=("Helvetica", 11, "bold"))
+        cv.create_text(x, y + r + 26, text=under, fill=SUB, font=("Helvetica", 9))
         push = 0x38 + n if n < 6 else 0x3E
-        lab.bind("<ButtonPress-1>", lambda e: panel.key(push, True))
-        lab.bind("<ButtonRelease-1>", lambda e: panel.key(push, False))
-        lab.bind("<MouseWheel>", lambda e: panel.enc(n, 1 if e.delta > 0 else -1))
-        lab.bind("<Button-4>", lambda e: panel.enc(n, 1))
-        lab.bind("<Button-5>", lambda e: panel.enc(n, -1))
-        for d, t in ((1, "›"), (4, "»")):
-            tk.Button(f, text=t, width=1, highlightbackground=BG,
-                      command=lambda dd=d: panel.enc(n, dd)).pack(side="left")
-        return f
+        cv.tag_bind(tag, "<ButtonPress-1>", lambda e: panel.key(push, True))
+        cv.tag_bind(tag, "<ButtonRelease-1>", lambda e: panel.key(push, False))
+        wheel[tag] = lambda e, d: panel.enc(n, d * (4 if e.state & 1 else 1))
 
-    top = tk.Frame(root, bg=BG)
-    top.pack(padx=6, pady=6)
+    # the screen's bezel
+    lx, ly = LCD_AT
+    cv.create_rectangle(lx - 34, ly - 50, lx + W * LCD_SCALE + 34, ly + H * LCD_SCALE + 62, fill="#0b0b0c", outline="")
+    cv.create_text(lx, ly - 30, anchor="w", text="8 Track Dynamic Performance Sampler", fill="#cfcfcf",
+                   font=("Helvetica", 10, "bold"))
+    cv.create_text(lx, ly + H * LCD_SCALE + 34, anchor="w", text="Octatrack MKII  (octabam port)", fill="#dddddd",
+                   font=("Helvetica", 16, "bold"))
 
-    # left of the screen: LEVEL, the main volume, the track keys
-    left = tk.Frame(top, bg=BG)
-    left.grid(row=0, column=0, sticky="n", padx=(0, 8))
-    lev = box(left, "LEVEL")
-    lev.pack(fill="x")
-    knob(lev, 6).pack()
-    pot = tk.Scale(lev, from_=0, to=255, orient="horizontal", label="MAIN volume", length=150,
-                   command=panel.pot, bg=BG, fg=GROUP, highlightthickness=0)
-    pot.set(200)
-    pot.pack()
-    trk = box(left, "TRACKS")
-    trk.pack(fill="x", pady=(6, 0))
-    for i in range(8):
-        keybtn(trk, 0x10 + i, width=4).grid(row=i // 4, column=i % 4, padx=1, pady=1)
-    cue = box(left, "")
-    cue.pack(fill="x", pady=(6, 0))
-    keybtn(cue, 0x27, width=6).pack(side="left", padx=1)
-    keybtn(cue, 0x2D, width=6).pack(side="left", padx=1)
+    for k in KEYS_MK2:
+        key(*k)
+    for k in KNOBS_MK2:
+        knob(*k)
+    for code, x, y in SPARE_MK2:
+        key(code, f"{code:02x}", "", x, y, 44, 28)
 
-    canvas.grid(in_=top, row=0, column=1, sticky="n")
-    root.tk.call("raise", canvas._w, top._w)   # created before `top`: raise it above the frame it sits in (Canvas.lift raises items)
+    # the MAIN pot, top left: drag up/down or wheel
+    level = {"v": 200}
+    px, py = 150, 175
+    cv.create_oval(px - 26, py - 26, px + 26, py + 26, fill="#2e2e32", outline="#4a4a50", width=2, tags="pot")
+    potv = cv.create_text(px, py, text="200", fill=TXT, font=("Helvetica", 10), tags="pot")
+    cv.create_text(px, py + 40, text="Main Vol (pot)", fill=TXT, font=("Helvetica", 10, "bold"))
 
-    # right of the screen: data entry, pages, navigation
-    right = tk.Frame(top, bg=BG)
-    right.grid(row=0, column=2, sticky="n", padx=(8, 0))
-    data = box(right, "DATA ENTRY")
-    data.pack(fill="x")
-    for n in range(6):
-        knob(data, n).grid(row=n // 3, column=n % 3, padx=3, pady=2)
-    pages = box(right, "PAGES")
-    pages.pack(fill="x", pady=(6, 0))
-    for code in (0x22, 0x23, 0x24, 0x25, 0x26):
-        keybtn(pages, code, width=5).pack(side="left", padx=1)
-    nav = box(right, "NAVIGATE")
-    nav.pack(fill="x", pady=(6, 0))
-    keybtn(nav, 0x33, width=6).grid(row=0, column=1)
-    keybtn(nav, 0x34, width=6).grid(row=1, column=0)
-    keybtn(nav, 0x20, width=6).grid(row=1, column=1)
-    keybtn(nav, 0x21, width=6).grid(row=1, column=2)
-    tk.Frame(nav, width=16, bg=BG).grid(row=0, column=3)
-    keybtn(nav, 0x32, width=6).grid(row=1, column=4)
-    keybtn(nav, 0x31, width=6).grid(row=1, column=5)
+    def pot(d):
+        level["v"] = max(0, min(255, level["v"] + d))
+        cv.itemconfigure(potv, text=str(level["v"]))
+        panel.pot(level["v"])
+    wheel["pot"] = lambda e, d: pot(8 * d)
 
-    # under the screen: the mode keys
-    modes = box(top, "MODES")
-    modes.grid(row=1, column=0, columnspan=3, sticky="we", pady=(6, 0))
-    for code in (0x1C, 0x18, 0x30, 0x1D, 0x1F, 0x35, 0x1B, 0x2E, 0x2F, 0x19, 0x1A):
-        keybtn(modes, code, width=7).pack(side="left", padx=1)
+    def on_wheel(e, d):
+        for it in cv.find_withtag("current"):
+            for t in cv.gettags(it):
+                if t in wheel:
+                    wheel[t](e, d)
+                    return
+    cv.bind("<MouseWheel>", lambda e: on_wheel(e, 1 if e.delta > 0 else -1))
+    cv.bind("<Button-4>", lambda e: on_wheel(e, 1))
+    cv.bind("<Button-5>", lambda e: on_wheel(e, -1))
 
-    # the bottom: trigs, recorders, transport
-    bottom = tk.Frame(top, bg=BG)
-    bottom.grid(row=2, column=0, columnspan=3, sticky="we", pady=(6, 0))
-    trigs = box(bottom, "TRIGS")
-    trigs.pack(side="left")
-    for i in range(16):
-        keybtn(trigs, i, width=2).pack(side="left", padx=(6 if i and i % 4 == 0 else 1, 1))
-    other = box(bottom, "UNNAMED")
-    other.pack(side="left", padx=(8, 0))
-    for code in UNNAMED:
-        keybtn(other, code, width=3).pack(side="left", padx=1)
-    tr = box(bottom, "RECORD / TRANSPORT")
-    tr.pack(side="right")
-    for code in (0x2B, 0x2C, 0x36, 0x29, 0x28, 0x2A):
-        keybtn(tr, code, width=5).pack(side="left", padx=1)
+    # the crossfader: drawn, not modelled by the port
+    cv.create_line(1170, 510, 1360, 510, fill="#444448", width=6)
+    cv.create_rectangle(1255, 485, 1275, 535, fill="#3a3a3e", outline="#555")
+    cv.create_text(1265, 555, text="crossfader (not modelled)", fill=SUB, font=("Helvetica", 9))
+    cv.create_text(760, 822, text="keyboard: arrows, Return = YES, Esc = NO, space = PLAY, F1-F5 = pages, "
+                   "1-8 q-i = trigs;  wheel over a knob turns it (Shift x4), a click pushes it",
+                   fill=SUB, font=("Helvetica", 9))
 
     # keyboard
     kb = {"Left": 0x34, "Right": 0x21, "Up": 0x33, "Down": 0x20, "Return": 0x31, "Escape": 0x32, "space": 0x28,
@@ -309,6 +345,10 @@ def build_panel(tk, root, panel, canvas):
             panel.key(code, False)
     root.bind("<KeyPress>", press)
     root.bind("<KeyRelease>", release)
+    # the layout is drawn on the photo's grid; its top 60 px are empty
+    cv.move("all", 0, -60)
+    cv.coords(bg, 20, 20, 1480, 770)
+    return cv, lx, ly - 60, LCD_SCALE
 
 
 def main():
@@ -341,11 +381,13 @@ def main():
     root.title(os.path.basename(a.plane))
     root.resizable(False, False)
     root.title(os.path.basename(a.plane) + (" + panel" if a.panel else ""))
-    canvas = tk.Canvas(root, width=W * a.scale, height=H * a.scale, bg="#%02x%02x%02x" % OFF, highlightthickness=0)
     if a.panel:
-        build_panel(tk, root, Panel(a.panel), canvas)
+        canvas, ox, oy, scale = build_panel(tk, root, Panel(a.panel))
     else:
+        canvas = tk.Canvas(root, width=W * a.scale, height=H * a.scale, bg="#%02x%02x%02x" % OFF,
+                           highlightthickness=0)
         canvas.pack()
+        ox, oy, scale = 0, 0, a.scale
     on = "#%02x%02x%02x" % ON
     state = {"img": None}
 
@@ -353,9 +395,9 @@ def main():
         img = tk.PhotoImage(width=W, height=H)
         data = " ".join("{" + " ".join(on if v else "#%02x%02x%02x" % OFF for v in row) + "}" for row in rows)
         img.put(data, to=(0, 0))
-        img = img.zoom(a.scale, a.scale)
-        canvas.delete("all")
-        canvas.create_image(0, 0, anchor="nw", image=img)
+        img = img.zoom(scale, scale)
+        canvas.delete("lcd")
+        canvas.create_image(ox, oy, anchor="nw", image=img, tags="lcd")
         state["img"] = img
 
     gen = watch(a.plane, draw, period=0)
