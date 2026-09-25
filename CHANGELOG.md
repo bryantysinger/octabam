@@ -7,6 +7,21 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- THE HOST PAGES LOOK LIKE THE SEND TRACKS (26 Sep 2026, Sam: "want all
+  the tracks to look the same"): BusDelay (T1) and BusVerb (T5) carry
+  DEL / REV on page-1 slots 0 / 1 and their pages draw those two only
+  (remix `host_slots`); every other engine knob is on the TEMPO window,
+  whose labels and the MODE renames live in its own name tables.
+  T1's REV (into the reverb) and T5's DEL (into the delay) are new sends,
+  SEND's recipe, tapped from the host's dry before its engine; each lands
+  bit-identically to a SEND track's on the same core (`verify_onebus`).
+  TIME moved to page-2 slot 11 on both engines; BusDelay's WOW is gone
+  (at WOW 0 every render is unchanged). Pricer: reverb 1,125 -> 1,145,
+  delay 1,041 -> 977 cycles/sample; worst core 2,792 of 3,120.
+  STAMP EVERY PROJECT BEFORE PLAY: a part saved before reads its old TIME
+  byte as REV and its slot-11 byte as TIME (`stamp-defaults <project>
+  bamsep26 --all --keep-mode`, or `ot_project.py host <project>`).
+
 - BusDelay's GRAIN scatter knob (page 2, slot 7) is SCTR, was SCAT (26 Sep
   2026). Name only: slot, count and default unchanged, no stamp needed.
 - TEMPO BUS (25-26 Sep 2026): the TEMPO window lists and edits BusDelay and

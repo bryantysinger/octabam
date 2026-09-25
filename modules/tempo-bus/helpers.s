@@ -137,8 +137,8 @@ p2:     movel   %d6,%d3
         jsr     %a0@
 1:      rts
 
-| ---- rows: d1 = box, a3 = its engine's P, names as the mode cave left
-| them -> VIS[box] = the named slots whose name is not "---", MODE first,
+| ---- rows: d1 = box, a2 = its names table (NTABS[box], as the mode cave
+| left it) -> VIS[box] = the named slots whose name is not "---", MODE first,
 | NV[box] = their count, d3 = the count. Clobbers d0/d2/d5/a0/a1.
 rows:   movel   %d4,%sp@-
         movel   %d1,%d0
@@ -156,8 +156,7 @@ rows:   movel   %d4,%sp@-
         beq.s   2f
         movel   %d0,%d4
         mulu.w  #6,%d4
-        lea     %a3@(NAMES),%a0
-        moveb   %a0@(0,%d4:l),%d4
+        moveb   %a2@(0,%d4:l),%d4      | the screen's name for the slot
         cmpib   #0x2d,%d4              | '-'
         beq.s   2f
         moveb   %d0,%a1@+
@@ -171,8 +170,9 @@ rows:   movel   %d4,%sp@-
         movel   %d5,%d3
         movel   %sp@+,%d4
         rts
-ORDER:  .byte   6, 0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11   | MODE (slot 6) first
+ORDER:  .byte   6, 11, 0, 1, 2, 3, 4, 5, 7, 8, 9, 10   | MODE (slot 6), TIME (slot 11) first
 
-        .include "remix.inc"           | ENGIDS, NAMED
+        .include "remix.inc"           | ENGIDS, NAMED, the name tables
+        NAMETAB_0                      | the delay's: NAMES_<its id>
 NV:     .byte   0, 0                   | the rows listed per box, by the last draw
 VIS:    .space  24                     | their slots, 12 per box

@@ -236,6 +236,19 @@ def main():
         if "CC MAP" in mods else None
     if dly_host is not None:
         lines.append(f"40 B{chans[dly_host] & 0xf:X} 42 37")
+    # The hosts' own sends (26 Sep 2026: DEL / REV on page-1 slots 0 / 1, as
+    # SEND's) and the delay's TIME on page-2 slot 11 (CC 67 under CC MAP):
+    # each must reach its engine's own word, read back from the DSP --
+    # a slot can draw a knob and publish nothing.
+    verb_host = next((t for key, t in hosts if key == "REVERB SERVER"), None)
+    del_host = next((t for key, t in hosts if key == "DELAY SERVER"), None)
+    if del_host is not None:
+        lines.append(f"40 B{chans[del_host] & 0xf:X} 29 32")      # CC 41: T1's REV = 50
+        if "CC MAP" in mods:
+            lines.append(f"40 B{chans[del_host] & 0xf:X} 43 28")  # CC 67: T1's TIME = 40
+    if verb_host is not None:
+        lines.append(f"40 B{chans[verb_host] & 0xf:X} 28 46")     # CC 40: T5's DEL = 70
+        lines.append(f"40 B{chans[verb_host] & 0xf:X} 29 1E")     # CC 41: T5's REV = 30
     if a.midi_file:
         for ln in pathlib.Path(a.midi_file).read_text().splitlines():
             ln = ln.split("#")[0].strip()
@@ -258,7 +271,8 @@ def main():
                "--dsp", "--main-level", "64", "--audio-in", "tones", "--poke-trig", "2", "--midi", str(midi),
                "--block-dump", str(blocks), "--cmd-log", str(cmds), "--card-out", str(card_after),
                "--mem-dump", f"{LIVE_IDS:#x},16={dumps['ids']};{RECORDS:#x},512={dumps['records']};{LANES:#x},576={dumps['lanes']}",
-               "--dsp-peek", "0:Y:36082,1;1:Y:36082,1"] + a.extra.split()
+               "--dsp-peek", "0:Y:36082,1;1:Y:36082,1;1:X:6229,1;1:X:6275,1;0:Y:36081,1;0:Y:9f4,1"] \
+            + a.extra.split()
         with open(log, "w") as f:
             f.write(" ".join(cmd) + "\n"); f.flush()
             r = subprocess.run(cmd, cwd=ROOT, stdout=f, stderr=subprocess.STDOUT)
@@ -322,6 +336,27 @@ def main():
         check(f"midi: CC 66 = 55 on T{dly_host + 1}'s channel reached BusVerb's DLY, published to "
               f"Y:0x36082 on both cores", pk.get("0") == pk.get("1") == "370000",
               f"core 0 {pk.get('0', '?')}, core 1 {pk.get('1', '?')}")
+    # the hosts' sends and the delay's TIME, as their engines read them
+    peek = {(c, sp, int(ad, 16)): v for c, sp, ad, v in
+            re.findall(r"core (\d) ([XY]):0x([0-9a-f]+): ([0-9a-f]{6})", text)}
+    if del_host is not None:
+        v = peek.get(("1", "X", 0x6229))
+        check(f"midi: CC 41 = 50 on T{del_host + 1}'s channel reached BusDelay's REV "
+              f"(raw $29 of its block, X:0x6229 on core 1)", v == "320000", f"{v}")
+        if "CC MAP" in mods:
+            v = peek.get(("1", "X", 0x6275))
+            n = int(v, 16) if v else -1
+            want = 64 + 40 * 256                      # 10,304 samples; the sticky
+            check(f"midi: CC 67 = 40 on T{del_host + 1}'s channel reached BusDelay's TIME "  # snap may pull
+                  f"(page-2 slot 11; X:0x6275 on core 1, samples)",                           # it within free/16
+                  abs(n - want) <= want // 16, f"{n} (want {want} +-{want // 16})")
+    if verb_host is not None:
+        v = peek.get(("0", "Y", 0x36081))
+        check(f"midi: CC 41 = 30 on T{verb_host + 1}'s channel reached BusVerb's REV flag "
+              f"(Y:0x36081 on core 0)", v == "1e0000", f"{v}")
+        v = peek.get(("0", "Y", 0x9f4))
+        check(f"midi: CC 40 = 70 on T{verb_host + 1}'s channel reached BusVerb's DEL ramp "
+              f"(Y:0x09f4 on core 0)", v == "460000", f"{v}")
     m = re.search(r"midi in    : (\d+) byte\(s\) still queued", text)
     check("midi: the firmware took every byte", m is not None and m.group(1) == "0",
           f"{m.group(1) if m else '?'} queued at the end")

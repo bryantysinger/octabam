@@ -239,12 +239,44 @@ def main():
     check("a REV-only send leaves T1 bit-identical (it does not count on the delay's bus)",
           ph_d[2] == ref_d[1])
 
-    print("\n== the reverb host's SEND goes into the reverb only ==")
-    rh = [R(SEND=100, DLY=0), S6(DEL=0, REV=0), D(), S2(DEL=0, REV=0)]
+    print("\n== the reverb host's REV goes into the reverb only ==")
+    rh = [R(REV=100, DLY=0), S6(DEL=0, REV=0), D(), S2(DEL=0, REV=0)]
     rh[0].fed = True
     st_rh = run(mems, rh, tag="revhost")
-    check("T5's own SEND: T1 prints nothing", peak(st_rh[2][0] + st_rh[2][1]) == 0,
+    check("T5's own REV: T1 prints nothing", peak(st_rh[2][0] + st_rh[2][1]) == 0,
           f"peak {peak(st_rh[2][0] + st_rh[2][1])}")
+
+    # 26 Sep 2026: the hosts carry SEND's two knobs. T5's DEL is a core-0
+    # write into the delay's aux, T1's REV a core-1 write into the reverb's
+    # REV accumulator; each must land exactly as a SEND track's on the same
+    # core does (same tone, same level, same ramp, same count).
+    print("\n== T5's DEL lands in the delay exactly as T6's SEND DEL does ==")
+    t5d = [R(DEL=100, DLY=0), S6(DEL=0, REV=0), D(), S2(DEL=0, REV=0)]
+    t5d[0].fed = True
+    st_t5d = run(mems, t5d, tag="t5del")
+    ref_t5d = run(mems, [R(DLY=0), S6(DEL=100, REV=0), D(), S2(DEL=0, REV=0)], tag="t5del_ref")
+    check("T5's DEL: T1 prints the delay", rms_db(st_t5d[2][0]) > -40,
+          f"rms {rms_db(st_t5d[2][0]):.1f} dB")
+    check("T5's DEL 100 == T6's SEND DEL 100 on T1's print, bit for bit",
+          st_t5d[2] == ref_t5d[2],
+          f"T5 {rms_db(st_t5d[2][0]):.2f} dB vs T6 {rms_db(ref_t5d[2][0]):.2f} dB")
+    for sk in SKEWS:
+        s5 = run(mems, t5d, skew=sk, tag="t5delsk")
+        check(f"under skew {sk:5d}: T5's DEL, T1 identical", s5[2] == st_t5d[2])
+
+    print("\n== T1's REV lands in the reverb exactly as T2's SEND REV does ==")
+    t1r = [R(DLY=0), S6(DEL=0, REV=0), D(REV=100), S2(DEL=0, REV=0)]
+    t1r[2].fed = True
+    st_t1r = run(mems, t1r, tag="t1rev")
+    ref_t1r = run(mems, [R(DLY=0), S6(DEL=0, REV=0), D(), S2(DEL=0, REV=100)], tag="t1rev_ref")
+    check("T1's REV: T5 prints the reverb", rms_db(st_t1r[0][0]) > -45,
+          f"rms {rms_db(st_t1r[0][0]):.1f} dB")
+    check("T1's REV 100 == T2's SEND REV 100 on T5's print, bit for bit",
+          st_t1r[0] == ref_t1r[0],
+          f"T1 {rms_db(st_t1r[0][0]):.2f} dB vs T2 {rms_db(ref_t1r[0][0]):.2f} dB")
+    for sk in SKEWS:
+        s1 = run(mems, t1r, skew=sk, tag="t1revsk")
+        check(f"under skew {sk:5d}: T1's REV, T5 identical", s1[0] == st_t1r[0])
 
     print("\n== delay only, and WET 0 ==")
     donly = [S6(), D(), S2()]

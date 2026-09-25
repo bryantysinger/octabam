@@ -93,7 +93,13 @@ def main():
         # descriptor serves both menus, so blanking it would empty its FX1
         # page too -- the stations are hidden from the FX2 chooser and still
         # have to draw when they are selected on FX1.
-        if key not in remix.blanked:
+        nhost = dict(remix.host_slots).get(key)
+        if nhost is not None:
+            want = [(p.name or b"") if i < nhost else b"" for i, p in enumerate(mods[key].params)]
+            check(f"{key}: host_slots, so slots 0-{nhost - 1} keep their names and the rest are blank",
+                  names == want,
+                  " ".join(n.decode("latin1") or "-" for n in names))
+        elif key not in remix.blanked:
             want = [(p.name or b"") for p in mods[key].params]
             why = "on FX1" if key in remix.fx1 else "NAMED"
             check(f"{key}: {why}, so its names are KEPT, not blanked",
@@ -183,6 +189,14 @@ def main():
         got = drawn_names(key)
         check(f"{key}'s page draws none of its knob names",
               not got, " ".join(sorted(got)) or "none drawn")
+    for key, nhost in remix.host_slots:
+        drew = set(texts(emu.render_fx2(boot, track=4,
+                                        effect_id=mods[key].menu.fx2_id)))
+        shown = {p.name.decode("latin1") for p in mods[key].params[:nhost] if p.name}
+        others = {p.name.decode("latin1") for p in mods[key].params[nhost:] if p.name} - base_texts - shown
+        check(f"{key}: host_slots, so its page draws {' '.join(sorted(shown))} and none of its other names",
+              shown <= drew and not (others & drew),
+              f"drew {' '.join(sorted(drew - base_texts)) or 'nothing'}")
     for key in [k for k in hidden if k in remix.named]:
         got = drawn_names(key)
         # a name the PLAYBACK page also draws (PTCH, RATE ...) is in the

@@ -928,11 +928,11 @@ def make_test_project(src, dest, remix_name):
 # gets the same layout, so any pattern is the rig. Knob bytes are the
 # manifest defaults with the few deliberate exceptions listed per track.
 RIG = (
-    (1, ("CHARACTER", {}),                  ("DELAY SERVER", {"SEND": 30})),
+    (1, ("CHARACTER", {}),                  ("DELAY SERVER", {"DEL": 30})),
     (2, ("SPECTRUM", {}),                   ("SEND", {"SEND": 40})),
     (3, ("SPECTRUM", {}),                   ("SEND", {"SEND": 30})),
     (4, ("SPECTRUM", {}),                   ("SEND", {"SEND": 40})),
-    (5, ("MODULATION", {}),                 ("REVERB SERVER", {"SEND": 40})),
+    (5, ("MODULATION", {}),                 ("REVERB SERVER", {"REV": 40})),
     (6, ("SPECTRUM", {}),                   ("SEND", {"SEND": 50})),
     (7, ("SPECTRUM", {}),                   ("SEND", {"SEND": 40})),    # SPECTRUM, not
     (8, ("CHARACTER", {"COMP": 40}),        (None, {})),   # GLUE by position (14 Sep 2026); no FX2: the SEND is refused on T8 (the master's input is the mix)

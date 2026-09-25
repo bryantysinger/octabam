@@ -183,7 +183,12 @@ FULLNAME = {m.key: m.menu.fullname + (BUILD_TAG if m.menu.build_tag else b"")
 # FX1 page too. A hidden module on FX1 loses its FX2 row and keeps its names;
 # only a hidden module that is nowhere on FX1 is drawn empty.
 BLANKED = [k for k in HIDDEN if k in REMIX.blanked]   # schema.Remix.blanked
+# A host_slots module's page draws its first n slots, under their names.
+HOST_SLOTS = {k: n for k, n in REMIX.host_slots if k in HIDDEN}
 RENAMES = {m.key: ([(i, b"") for i in range(12)] if m.key in BLANKED else
+                   [(i, m.params[i].name if i < HOST_SLOTS[m.key] else b"")
+                    for i in range(12)]
+                   if m.key in HOST_SLOTS else
                    [(i, p.name) for i, p in enumerate(m.params)
                     if p.name is not None]) for m in _CLONED}
 # Explicit per-knob defaults -- NOT the donor's, which are sized for a
@@ -1413,6 +1418,15 @@ def main():
                 _ren = mode_names.with_selfname(_ren, _i, _p.labels)
             if _ren:
                 _desc = clone_addr[name] + mode_names.NAMES_AT
+                if name in HOST_SLOTS:
+                    # the renames go to the screen's own table: the shared
+                    # descriptor keeps the host page's one name
+                    _nsym = f"NAMES_{NEW_IDS[name]:02x}"
+                    if _nsym not in _exports:
+                        sys.exit(f"{name} is a host_slots module, but no linked "
+                                 f"unit exports {_nsym} for its MODE renames")
+                    _desc = _exports[_nsym]
+                    print(f"  {name} MODE renames -> {_nsym} 0x{_desc:08x}")
                 _bytes = mode_names.emit(_p.labels, _desc, _ren)
                 mode_names.verify(_p.labels, _desc, _ren)
             else:

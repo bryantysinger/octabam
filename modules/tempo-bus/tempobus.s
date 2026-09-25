@@ -353,6 +353,8 @@ dbox:   movel   %d7,%sp@-
         addql   #8,%sp
 | the rows: each named slot whose current name is not the mode's "---"
 1:      movel   %a6@(28),%d1
+        lea     NTABS,%a2
+        moveal  %a2@(0,%d1:l:4),%a2    | the box's names table
         jsr     rows                   | d3 = rows
 | keep the selection inside the rows and the view around it
         lea     SEL,%a0
@@ -397,7 +399,9 @@ rloop:  movel   %a6@(28),%d1
         bmi.w   bxdone
         movel   %d6,%d0
         mulu.w  #6,%d0
-        lea     %a3@(NAMES,%d0:l),%a0
+        lea     NTABS,%a0              | d1 = the box
+        moveal  %a0@(0,%d1:l:4),%a0
+        addal   %d0,%a0
         cmpil   #6,%d6                 | the MODE slot names itself after the
         bne.s   8f                     | mode (mode cave); the list says MODE
         lea     T_MODE,%a0
@@ -474,6 +478,11 @@ FOCUS:  .byte   0
 SEL:    .byte   0, 0
 SCR:    .byte   0, 0
         .include "remix.inc"           | ENGIDS, NAMED (rows reads NAMED)
+        NAMETAB_1                      | the reverb's: NAMES_<its id>
+| The screen's labels, per box: its own tables, never the shared
+| descriptor's (a host_slots remix leaves DEL and REV alone on the host page).
+        .even
+NTABS:  NTABS_LONGS
         .even
 | An input layer as the stock ones: {0, keys, encoders, 0, 0, -1, -1}.
 TB_LAYER:

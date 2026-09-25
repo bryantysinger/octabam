@@ -55,10 +55,14 @@ import send_probe
 SCRATCH = ROOT / "out" / "delayverify"
 SR = 44100
 
-BASE = [0, 40, 60, 100, 64, 127, 0, 0, 0, 0, 64, 0]
+# Slots from the manifest (the harness-knob-drift rule): DEL / REV on 0 / 1
+# and TIME on 11 since 26 Sep 2026 (TIME was 1; WOW, on 11, went).
+from remix import registry  # noqa: E402
+SLOT = registry.by_key("DELAY SERVER").knob_map()
 
-SLOT = {"SEND": 0, "TIME": 1, "FDBK": 2, "TONE": 3, "PING": 4, "WET": 5,
-        "SCTR": 7, "DENS": 8, "PTCH": 10, "WOW": 11}
+BASE = [0] * 12
+for _k, _v in dict(TIME=40, FDBK=60, TONE=100, PING=64, WET=127, PTCH=64).items():
+    BASE[SLOT[_k]] = _v
 
 
 def dp(**kw):
@@ -201,12 +205,6 @@ def main():
     n_hi = render(nop_mem, dp(TONE=100), source=source)
     check("nop control: relocated code still renders identically", n_hi == c_hi)
     cand_mem, cand_words, cand_free = build(args.candidate, "cand")
-    # WOW (slot 11 since 20 Sep 2026) must move the CANDIDATE: a candidate
-    # whose wobble never reaches the tap would pass every WOW case below
-    # against a reference that has no wow at all.
-    c_wow = render(cand_mem, dp(WOW=64), source=source)
-    check("candidate WOW=64 differs from WOW=0", c_wow != c_hi
-          and c_wow != render(cand_mem, dp(), source=source))
 
     # ---- then the equality cases ------------------------------------------
     CASES = [

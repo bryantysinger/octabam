@@ -33,14 +33,15 @@ REMIX = Remix(
              "SPECTRUM", "CHARACTER", "MODULATION",
              "TEMPO SYNC", "CC MAP", "MODE DEFAULTS", "RIG HOSTS", "TEMPO BUS"),
     fallback="SEND",
-    # 22 Sep 2026: the engines have NO chooser row (hidden), keep their
-    # twelve names on the host page (named), and run on their host slots
-    # only (BusDelay on T1, BusVerb on T5; the HOSTGUARD body: a dry pass
-    # anywhere else). The FX2 chooser is SEND alone; `ot_project.py host
-    # <project>` puts the engines on T1/T5 and SEND everywhere else. Sam:
-    # nothing else selectable.
+    # 22 Sep 2026: the engines have NO chooser row (hidden) and run on their
+    # host slots only (BusDelay on T1, BusVerb on T5; the HOSTGUARD body: a
+    # dry pass anywhere else). The FX2 chooser is SEND alone; `ot_project.py
+    # host <project>` puts the engines on T1/T5 and SEND everywhere else.
+    # Sam: nothing else selectable. 26 Sep 2026: the host pages draw DEL and
+    # REV (slots 0/1, the host's own sends), as the SEND tracks do; every
+    # other engine knob is on the TEMPO window (TEMPO BUS).
     hidden=("REVERB SERVER", "DELAY SERVER"),
-    named=("REVERB SERVER", "DELAY SERVER"),
+    host_slots=(("DELAY SERVER", 2), ("REVERB SERVER", 2)),
     locked=("REVERB SERVER", "DELAY SERVER"),
     fx1=("SPECTRUM", "CHARACTER", "MODULATION"),
 )

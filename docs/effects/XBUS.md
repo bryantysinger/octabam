@@ -98,8 +98,20 @@ touches only the ids a station replaced):
 | | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | SEND | DEL | REV | | | | | | | | | | |
-| BusVerb | SEND | TIME | SIZE | SHMR | SHFT | WET | MODE | TONE | DIFF | GATE | DLY | — |
-| BusDelay | SEND | TIME | FDBK | TONE | PING | WET | MODE | SCTR | DENS | SIZE | PTCH | WOW |
+| BusVerb | DEL | REV | SIZE | SHMR | SHFT | WET | MODE | TONE | DIFF | GATE | DLY | TIME |
+| BusDelay | DEL | REV | FDBK | TONE | PING | WET | MODE | SCTR | DENS | SIZE | PTCH | TIME |
+
+Since 26 Sep 2026 the hosts carry SEND's two knobs on slots 0/1 and draw
+nothing else on their pages (the remix's `host_slots`); every other engine
+knob is on the TEMPO window. T1's DEL feeds the delay (its old SEND) and its
+REV the reverb's REV accumulator; T5's DEL feeds the delay's aux and its
+REV the reverb (its old SEND, slot 0 until then). TIME moved to page-2
+slot 11 (`$e` bits 8-15) on both; WOW left BusDelay. A part saved before
+reads its old TIME byte as REV and its old slot-11 byte (WOW, or 0) as
+TIME: stamp before play (`stamp-defaults <project> bamsep26 --all
+--keep-mode`). Each host's send is tapped from its dry before the engine,
+so neither reaches its own wet (`verify_onebus`: T5's DEL and T1's REV
+land bit-identically to a SEND track's on the same core).
 | Character | DRV | FOLD | WDTH | COMP | TONE | MIX | SAT | — | — | — | — | — |
 
 ## What a send is

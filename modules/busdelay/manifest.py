@@ -65,13 +65,17 @@ MODULE = Module(
     ),
     params=(
         # ---- page 1 -------------------------------------------------------
-        # SEND at slot 0: this host's own dry send into the aux, the delay's
-        # input (headroomed, summed, counted only while nonzero).
-        Param(b"SEND", 0, active=True, formatter=_PLAIN,
+        # DEL / REV on slots 0 / 1, SEND's layout (26 Sep 2026, Sam: "want
+        # all the tracks to look the same"): the host page draws these two
+        # and nothing else; the rest is the TEMPO window's. DEL is this
+        # host's own dry send into the aux, the delay's input; REV its dry
+        # send into the reverb's REV accumulator. Both count as clients only
+        # while nonzero, so both default to 0.
+        Param(b"DEL", 0, active=True, formatter=_PLAIN,
               doc="this host's own send into the delay"),
-        Param(b"TIME", 20, active=True, formatter=_PLAIN,
-              doc="delay time, 1.5 .. 739 ms -- a free dial that sticky-snaps to tempo divisions"),
-        Param(b"FDBK", 60, active=True, formatter=_PLAIN, link=True,
+        Param(b"REV", 0, active=True, formatter=_PLAIN,
+              doc="this host's own send into the reverb"),
+        Param(b"FDBK", 60, active=True, formatter=_PLAIN,
               doc="feedback -- how much each repeat regenerates"),
         Param(b"TONE", 100, active=True, formatter=_PLAIN,
               doc="tone of the repeats -- lower = darker every pass"),
@@ -111,9 +115,11 @@ MODULE = Module(
         # pitch; idle in other modes.
         Param(b"PTCH", 64, 128, active=True, formatter=_PLAIN, link=True,
               doc="GRAIN pitch, +-2 oct, 64 = unison (a held MIDI note overrides); idle in other modes"),
-        # WOW in freeze's slot (20 Sep 2026, Sam: "wow back freeze gone").
-        Param(b"WOW", 0, active=True, formatter=_PLAIN,
-              doc="tape wobble on the loop tap, every mode; 127 = +-254 samples, 0.8 Hz + flutter"),
+        # TIME on page-2 slot 11, $e's companion field (page-1 slot 1 until
+        # 26 Sep 2026, when WOW left to make room for REV). Tempo-sync's
+        # division formatter follows it here.
+        Param(b"TIME", 20, 128, active=True, formatter=_PLAIN,
+              doc="delay time, 1.5 .. 739 ms -- a free dial that sticky-snaps to tempo divisions"),
     ),
     # ---- what each MODE re-defaults, and which knobs it names `---` ------
     # A knob a mode never reads is named `---` there, the unused-knob
@@ -121,21 +127,21 @@ MODULE = Module(
     # PTCH are GRAIN's; SIZE is GRAIN's and REVERSE's; REVERSE pins PING to 0.
     mode_slot=6,
     mode_views=(
-        # slots: 1 TIME, 2 FDBK, 3 TONE, 4 PING, 5 MIX, 10 PTCH; SEND at 0 is
-        # never re-defaulted by a mode. TIME is 64 + knob*256 samples since
+        # slots: 11 TIME, 2 FDBK, 3 TONE, 4 PING, 5 MIX, 10 PTCH; DEL and REV
+        # at 0 / 1 are never re-defaulted by a mode. TIME is 64 + knob*256 samples since
         # the 32K lines (15 Sep 2026): 20 = 5,184 samples, 18 = 4,672 -- the
         # same times the views held at 40 / 36 under the old *128 law.
         ModeView(mode=0,                        # CLEAN: centred
                  names={7: b"---", 8: b"---", 9: b"---", 10: b"---"},   # SCTR DENS SIZE PTCH: not read
-                 defaults={1: 20, 2: 60, 3: 100, 4: 0, 5: 127, 10: 64}),
+                 defaults={11: 20, 2: 60, 3: 100, 4: 0, 5: 127, 10: 64}),
         ModeView(mode=1,                        # GRAIN: Sam's recipe on the unit
                  # (15 Sep 2026): octave up, ping-pong
                  names={9: b"GLEN"},            # the grain length (Sam, 20 Sep 2026: "size is confusing")
-                 defaults={1: 18, 2: 40, 3: 100, 4: 127, 5: 127,
+                 defaults={11: 18, 2: 40, 3: 100, 4: 127, 5: 127,
                            7: 40, 8: 127, 9: 1, 10: 96}),
         ModeView(mode=2,                        # REVERSE: centred, 371 ms
                  names={4: b"---", 7: b"---", 8: b"---", 9: b"SLEN", 10: b"---"},   # PING pinned 0; the segment length; SCTR DENS PTCH: not read
-                 defaults={1: 20, 2: 60, 3: 100, 4: 0, 5: 127,   # segments (SIZE 3 = XTRM)
+                 defaults={11: 20, 2: 60, 3: 100, 4: 0, 5: 127,   # segments (SIZE 3 = XTRM)
                            9: 3, 10: 64}),
     ),
     dsp=DspSection(

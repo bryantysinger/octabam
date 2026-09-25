@@ -25,9 +25,9 @@
 ;                       rotation is `+16 & $70`, the read offset `+80 & $70`
 ;                       (three back == five on), no compare and no clamp.
 ;   Y:0x901..0x980      THE AUX accumulator, the delay's input, eight
-;                       buffers of 16 words: SEND's DEL and the delay host's
-;                       own SEND
-;   Y:0x981             BusVerb host's SEND knob field: the reverb writes it
+;                       buffers of 16 words: SEND's DEL and both hosts' DEL
+;                       (T1's since the one-aux rig, T5's since 26 Sep 2026)
+;   Y:0x981             BusVerb host's REV knob field: the reverb writes it
 ;                        every block and counts it as one more REV client
 ;                        while nonzero. A single-writer word in place of a
 ;                        cross-core count RMW.
@@ -47,10 +47,13 @@
 ;   Y:0x9c7..0x9ce      AUX send COUNT, one per accumulator buffer: how many
 ;                        clients wrote that buffer this block, indexed by the
 ;                        same rotation (a server reads the buffer three back
-;                        and needs that buffer's count). SEND and BusDelay's
-;                        AUX register here, gated on their knobs (an idle
-;                        client that registers dilutes the real ones);
-;                        BusVerb's AUX is counted through Y:0x981. One word
+;                        and needs that buffer's count). SEND's DEL and
+;                        BusVerb's DEL register here, gated on their knobs
+;                        (an idle client that registers dilutes the real
+;                        ones); BusDelay counts its own DEL into the buffer
+;                        it reads. The REV counts at 0x983 take SEND's REV
+;                        and BusDelay's REV; BusVerb's REV is counted through
+;                        Y:0x981. One word
 ;                        per buffer, so these are the only sites that scale
 ;                        the offset back to a bare index (`asr #$4`).
 ;   Y:0x9cf..0x9d2      free
@@ -66,8 +69,8 @@
 ;                       carried the T8 return's stage buffers until 20 Sep
 ;                       2026.
 ;   Y:0xa58..0xad7      THE REV accumulator, the reverb's input, eight
-;                       buffers of 16 words: SEND's REV and the reverb host's
-;                       own SEND. Spelled `$9d8` + `$80` (the chain's base
+;                       buffers of 16 words: SEND's REV and both hosts' REV
+;                       (T5's own, T1's since 26 Sep 2026). Spelled `$9d8` + `$80` (the chain's base
 ;                       plus its length), for the same reason. Cleared with
 ;                       the aux by the housekeeper; the T8 return's stage
 ;                       buffers until 20 Sep 2026.

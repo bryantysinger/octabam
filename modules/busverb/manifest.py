@@ -90,16 +90,19 @@ MODULE = Module(
     ),
     params=(
         # ---- page 1 -------------------------------------------------------
-        # SEND at slot 0: the host's own dry send into the REV accumulator. Default 0 is load-bearing: a non-zero default
-        # registers every idle host as a client and dilutes the real senders
-        # (-3.0 dB with one sender under the 1/sqrt(N) law, XBUS.md).
-        Param(b"SEND", 0, active=True, formatter=_PLAIN,
+        # DEL / REV on slots 0 / 1, SEND's layout (26 Sep 2026): the host
+        # page draws these two and nothing else; the rest is the TEMPO
+        # window's. DEL is this host's own dry send into the delay's aux; REV
+        # its dry send into the REV accumulator (slot 0 until 26 Sep 2026).
+        # Default 0 is load-bearing: a non-zero default registers every idle
+        # host as a client and dilutes the real senders (-3.0 dB with one
+        # sender under the 1/sqrt(N) law, XBUS.md).
+        Param(b"DEL", 0, active=True, formatter=_PLAIN,
+              doc="this host's own send into the delay"),
+        Param(b"REV", 0, active=True, formatter=_PLAIN,
               doc="this host's own send into the reverb (the REV bus)"),
-        # ---- page 1 (16 Sep 2026): TIME-SIZE and SHMR-SHFT are drawn as
-        # linked pairs; TONE moved to page 2.
-        Param(b"TIME", 64, active=True, formatter=_PLAIN,
-              doc="decay time -- how long the tail rings"),
-        Param(b"SIZE", 100, active=True, formatter=_PLAIN, link=True,
+        # SHMR-SHFT are drawn as a linked pair; TIME moved to page-2 slot 11.
+        Param(b"SIZE", 100, active=True, formatter=_PLAIN,
               doc="room size -- scales the eight tank lines (taps up to ~89 ms)"),
         # SHMR 0 is bit-identical to the engine without shimmer (the tank
         # modulation is pinned at MOD 30 / RATE 1x inside the engine).
@@ -137,7 +140,10 @@ MODULE = Module(
         # delay, which writes wet*DLY into the chain.
         Param(b"DLY", 127, 128, active=True, formatter=_PLAIN,
               doc="how much of the delay's repeats go into the reverb; 0 = the two in parallel"),
-        _BLANK,
+        # TIME on slot 11, $e's companion field (page-1 slot 1 until 26 Sep
+        # 2026).
+        Param(b"TIME", 64, 128, active=True, formatter=_PLAIN,
+              doc="decay time -- how long the tail rings"),
     ),
     mode_slot=6,                      # MODE names itself (ROOM / PLATE / BIG)
     dsp=DspSection(

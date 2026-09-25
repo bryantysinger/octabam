@@ -457,7 +457,7 @@ Slot 6 is on `$c`; `$b` is not a page-2 parameter word.
 | 8 | `$d` | knob, bits 16–23 | DIFF / MRAT |
 | 9 | `$d` | bits 8–15 | SHFT / SIZE |
 | 10 | `$e` | knob, bits 16–23 | GATE / PTCH |
-| 11 | `$e` | bits 8–15 | (blank) / WOW |
+| 11 | `$e` | bits 8–15 | TIME / TIME (26 Sep 2026; blank / WOW before) |
 
 Evidence: MODE on slot 7 read bits 8–15 across five positions on hardware;
 SHMR needed `$c`'s knob field, not `$b`'s; slot 11 was dead for both

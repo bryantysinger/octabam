@@ -23,9 +23,9 @@ while the pattern tempo is on (the stock TEMPO draw's test, `0x80000024`,
 the window's top edge; the boxes are 41 px, five rows, 3 px under the rule.
 
 - **Rows and labels.** The rows are each engine's named slots (a mask per
-  engine, taken from its manifest when the remix is built), MODE first,
-  minus the ones the current mode names `---`: CLEAN lists 8 delay rows, GRAIN 12,
-  REVERSE 8. The list is rebuilt on every draw from the descriptor's names
+  engine, taken from its manifest when the remix is built), MODE and TIME
+  first, then DEL, REV and the rest in slot order, minus the ones the
+  current mode names `---`: CLEAN lists 8 delay rows, GRAIN 12, REVERSE 8. The list is rebuilt on every draw from the descriptor's names
   after the MODE formatter has renamed them (`rows` in `helpers.s`), so a
   MODE change adds or drops rows at once. Labels are the descriptor's names
   (GLEN/SLEN as on the host page); the MODE row is labelled MODE, and its
