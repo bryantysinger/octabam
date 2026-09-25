@@ -81,19 +81,25 @@ def main():
         if port.poll() is not None:
             sys.exit(f"emu-live: the port stopped during boot -- {log}")
         viewer = [str(PY if PY.exists() else sys.executable), str(ROOT / "tools/emu/lcd_view.py"), str(lcd)]
-        if a.shot:
-            time.sleep(a.shot)
-            view = subprocess.run(viewer + ["--png", str(OUT / "screen.png"), "--scale", str(a.scale)], cwd=ROOT)
-        else:
-            view = subprocess.run(viewer + ["--panel", str(fifo), "--scale", str(a.scale)], cwd=ROOT)
+        rc = 0
         try:
-            os.write(keep, b"quit\n")
-            port.wait(timeout=20)
-        except subprocess.TimeoutExpired:
-            port.send_signal(signal.SIGTERM)
-        os.close(keep)
+            if a.shot:
+                time.sleep(a.shot)
+                rc = subprocess.run(viewer + ["--png", str(OUT / "screen.png"), "--scale", str(a.scale)],
+                                    cwd=ROOT).returncode
+            else:
+                rc = subprocess.run(viewer + ["--panel", str(fifo), "--scale", str(a.scale)], cwd=ROOT).returncode
+        except KeyboardInterrupt:          # Ctrl-C in the terminal: stop both, quietly
+            print("\nemu-live: stopped")
+        finally:
+            try:
+                os.write(keep, b"quit\n")
+                port.wait(timeout=20)
+            except (subprocess.TimeoutExpired, KeyboardInterrupt, OSError):
+                port.send_signal(signal.SIGTERM)
+            os.close(keep)
     print(f"emu-live: port log {log}")
-    return view.returncode
+    return rc
 
 
 if __name__ == "__main__":
