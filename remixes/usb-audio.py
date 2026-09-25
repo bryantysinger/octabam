@@ -4,7 +4,7 @@
 DRAM platform: at USB high speed the unit is also a 16-channel 44.1 kHz
 24-bit audio input, track N's post-FX pre-fader L/R on channels 2N-1/2N;
 at full speed the stereo sum of the tracks. The 16-bit stream was on
-hardware as image 64 (25 Sep 2026); the 24-bit one is port-measured only.
+hardware as image 64 and the 24-bit one as image 69 (25 Sep 2026).
 docs/remixes/usb.md has the build and use steps.
 """
 

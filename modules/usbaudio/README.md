@@ -59,7 +59,28 @@ enumerate, which is also why his "re-plug the cable" caveat does not
 apply. The ISR site is USB MIDI's; this module's shim retires EP3
 completions and chains to USB MIDI's by symbol (`Override`).
 
-## Measured: the 24-bit stream (25 Sep 2026, under the ColdFire port; not flashed)
+## Measured on hardware: the 24-bit stream (image 69, Sam's MKII, 25 Sep 2026)
+
+macOS lists the unit as a 16-channel 44.1 kHz input. Two takes with
+`tools/rec` (HAL IOProc, Float32 → int32 WAV), the counters read over the
+vendor request before and after each:
+
+| take | project | length | tones | samples with non-zero low 8 of 24 bits | underruns / overruns / reprimes | events after 0.76 s |
+|---|---|---|---|---|---|---|
+| 1 | USBSIG | 60 s | all 16 at their frequency, −27.0 dBFS | 97.1–100% per channel | 0 / 0 / 0 | 0 |
+| 2 | USBLOAD (locks every step, 200 BPM) | 120 s | all 16, −19.3 dBFS | 97.1–100% | 0 / 0 / 0 | 0 |
+
+- `lastn` 11 and `lastfill` 512–576 after each take: the 250 µs poll and
+  the servo at its target on silicon.
+- Both takes have the start-of-stream burst (0.51–0.76 s after the
+  recording opened) on the RIGHT channel of every pair (channels 2, 4 …
+  16: 23–38 events each) and on no left channel. In the burst the right
+  channels hold the tone in runs whose phase is 124–380 frames off:
+  reordered samples, not corrupted ones. `docs/remixer/FAILURE_MODES.md`.
+- Both projects were stamped with `ot_project.py stamp-defaults
+  usb-audio --all` first (SEND's DEL/REV split since image 64).
+
+## Measured: the 24-bit stream (25 Sep 2026, under the ColdFire port)
 
 `verify_usb` (in `make check REMIX=usb-audio`), no card, silent tracks:
 EP 0x83 iso 768 bytes bInterval 2; FORMAT_TYPE_I subslot 4, 24 bits;
@@ -91,11 +112,9 @@ card under the port, `--sequencer --poke-trig 2`, streamed by
   −4 on four idle channels where the 24-bit build carries −936
   (−936 / 256 = −3.66: the same level, 8 more bits).
 
-Not measured: anything on hardware; macOS enumerating 4-byte subslots at
-bInterval 2 (the descriptor is standard UAC2 Type I PCM); the cost of four
-times the packet completions per second on the unit's USB controller (no
-completion interrupt is requested); the frame interrupt's latency against
-the 1 ms of queued packets.
+Not measured: the cost of four times the packet completions per second
+on the unit's USB controller beyond the two takes above (no completion
+interrupt is requested); Windows and Linux hosts.
 
 ## Measured: the 16-bit stream (25 Sep 2026, under the ColdFire port)
 

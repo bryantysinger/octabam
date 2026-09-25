@@ -1000,6 +1000,11 @@ counter in the packets, decides it. Likely what octemu's "some crackles"
 was, since sox opens a fresh stream per run.
 **Fix.** None yet. Workaround for recording: discard the first two seconds
 of every take, or hold the stream open in a DAW.
-**Since.** The 24-bit stream (25 Sep 2026, unflashed) queues four packets
-at a 250 µs poll where image 64 queued two at 500 µs; whether the burst
-survives that change is unmeasured.
+**Since.** The 24-bit stream (image 69, 25 Sep 2026: four packets queued
+at a 250 µs poll where image 64 queued two at 500 µs) still has it, in
+both takes, 0.51–0.76 s after the recording opened, and ONLY on the right
+channel of each pair (channels 2, 4 … 16); every left channel is clean.
+The right channels hold the tone in runs 124–380 frames off phase. Each
+USB frame carries a track's L and R in adjacent subslots of one packet, so
+a device-side packet swap would move both; a right-only reorder points at
+the host's assembly of the stream (inferred, not measured).
