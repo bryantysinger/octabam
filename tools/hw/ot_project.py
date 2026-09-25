@@ -73,6 +73,113 @@ def cmd_report(pdir):
             fx2 = "/".join(FX_NAMES.get(v, hex(v)) for v in part["fx2"])
             print(f"  part {i+1}: LEVELs {part['levels']}  FX2 {fx2}")
 
+SLOT_OFF = 0x2d3                    # part-relative: track t's 5 slot bytes at +t*5 (SLOT_KIND)
+MACHINES = {0: "STATIC", 1: "FLEX", 2: "THRU", 3: "NEIGHBOR", 4: "PICKUP"}
+
+
+def track_map(pdir):
+    """-> {(bank, part): [(track, mtype, slot_1based, path)]} for every bank
+    file, parts 1-4 (the live copies). The slot is the machine's own kind
+    (STATIC or FLEX); a THRU/NEIGHBOR/PICKUP track has none."""
+    pdir = pathlib.Path(pdir)
+    _, slots = read_project(pdir)
+    by = {(sl["type"], sl["slot"]): sl["path"] for sl in slots}
+    out = {}
+    for bank in sorted(pdir.glob("bank*.work")):
+        b = int(bank.name[4:6]); data = bank.read_bytes()
+        for p in range(1, NPARTS + 1):
+            base = PART_BASE + (p - 1) * PART_STRIDE
+            rows = []
+            for t in range(8):
+                mt = data[base + MTYPE_OFF + t]
+                kind = {0: "static", 1: "flex"}.get(mt)
+                slot = data[base + SLOT_OFF + t * 5 + SLOT_KIND[kind]] + 1 if kind else None
+                path = by.get((kind.upper(), slot), "") if kind else ""
+                rows.append((t + 1, MACHINES.get(mt, str(mt)), slot, path))
+            out[(b, p)] = rows
+    return out
+
+
+def cmd_tracks(pdir, grep=None):
+    """Per bank and part, each track's machine, slot and sample file."""
+    for (b, p), rows in track_map(pdir).items():
+        for t, mt, slot, path in rows:
+            name = path.split("/")[-1]
+            if grep and grep.lower() not in name.lower():
+                continue
+            if mt in ("STATIC", "FLEX") and name:
+                print(f"  {chr(64 + b)} part{p} T{t} {mt:6} slot {slot:3d}  {name}")
+            elif not grep and mt not in ("STATIC", "FLEX"):
+                print(f"  {chr(64 + b)} part{p} T{t} {mt}")
+
+
+def clone_samples(src, dest, template, length=64, scale="1/4X"):
+    """A fresh project (a copy of `template`, one the unit created on the
+    running image, so its parts and pages are that image's defaults) that
+    carries `src`'s sample slots and, in every bank and part (live and saved
+    copies), each track's machine type and slot bytes; every pattern's
+    length/scale pair set. Nothing else of `src` comes across: no trigs,
+    locks, knobs, levels, names or tempo -- those are the TEMPLATE's, so it
+    must be an untouched fresh project (Bottleservice 26, 25 Sep 2026: the
+    template had been a test project; its T1 trigs, hard-left BAL and WOW
+    came across and were cleared by hand afterwards)."""
+    import shutil
+    src, dest, template = (pathlib.Path(x) for x in (src, dest, template))
+    if dest.exists():
+        sys.exit(f"{dest} exists -- refusing to overwrite")
+    for d in (src, template):
+        if not (d / "project.work").is_file():
+            sys.exit(f"{d} is not an Octatrack project directory")
+    shutil.copytree(template, dest)
+    # the sample slots: src's [SAMPLE] blocks in place of the template's
+    src_raw, src_slots = read_project(src)
+    blocks = re.findall(r"\[SAMPLE\].*?\[/SAMPLE\]\r?\n", src_raw, re.S)
+    for suffix in ("work", "strd"):
+        f = dest / f"project.{suffix}"
+        if not f.is_file():
+            continue
+        raw = f.read_bytes().decode("latin1")
+        first = re.search(r"\[SAMPLE\]", raw)
+        stripped = re.sub(r"\[SAMPLE\].*?\[/SAMPLE\]\r?\n", "", raw, flags=re.S)
+        at = first.start() if first else len(stripped)
+        # the strip moved everything after the first block up; recompute
+        at = min(at, len(stripped))
+        f.write_bytes((stripped[:at] + "".join(blocks) + stripped[at:]).encode("latin1"))
+    print(f"{len(blocks)} sample slot(s) from {src.name} ({sum(1 for b in src_slots if b['path'])} with files)")
+    # machines and slots, every bank the template has
+    if isinstance(scale, str):
+        scale = SCALE_NAMES.index(scale.upper())
+    for bank in sorted(dest.glob("bank*.work")):
+        b = int(bank.name[4:6])
+        sb = src / bank.name
+        if not sb.is_file():
+            print(f"  {bank.name}: not in {src.name}, left as the template's")
+            continue
+        sdata = sb.read_bytes()
+        def mut(data, sdata=sdata):
+            for p in range(NPARTS_ALL):
+                base = PART_BASE + p * PART_STRIDE
+                data[base + MTYPE_OFF:base + MTYPE_OFF + 8] = sdata[base + MTYPE_OFF:base + MTYPE_OFF + 8]
+                data[base + SLOT_OFF:base + SLOT_OFF + 40] = sdata[base + SLOT_OFF:base + SLOT_OFF + 40]
+            for pat in range(16):
+                tail = PTRN0 + pat * PTRN_FSTRIDE + PTRN_FSTRIDE - 11
+                data[tail + 2] = length; data[tail + 3] = scale
+        _bank_write(dest, b, mut, guard=False)
+    write_stored(dest)
+    # the per-track pair too (ot_spec's "length"/"scale": what the unit shows
+    # as 64/64 in per-track scale mode); the pattern pair above is the master
+    import subprocess, tempfile
+    spec = {"banks": "all", "patterns": {"all": {"tracks": {"all": {"length": length, "scale": SCALE_NAMES[scale]}}}}}
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+        json.dump(spec, f); specf = f.name
+    r = subprocess.run([sys.executable, str(pathlib.Path(__file__).with_name("ot_spec.py")), "apply", str(dest), specf],
+                       capture_output=True, text=True)
+    if r.returncode:
+        sys.exit(f"ot_spec apply failed:\n{r.stdout[-800:]}{r.stderr[-800:]}")
+    print(r.stdout.strip().splitlines()[-1])
+    print(f"{dest}: machines + slots from {src.name}, every pattern and track LEN {length} SCALE {SCALE_NAMES[scale]}")
+
+
 def guard_backup():
     if not glob.glob("/Users/sambanks/octa/backups/*pregain*"):
         sys.exit("no pregain backup found -- refusing to write")
@@ -1027,6 +1134,12 @@ def make_rig_project(src, dest, remix_name):
 if __name__ == "__main__":
     cmd = sys.argv[1]; pdir = pathlib.Path(sys.argv[2])
     if cmd == "report": cmd_report(pdir)
+    elif cmd == "tracks": cmd_tracks(pdir, sys.argv[3] if len(sys.argv) > 3 else None)
+    elif cmd == "clone-samples":
+        # clone-samples SRC DEST TEMPLATE [LEN [SCALE]]
+        clone_samples(sys.argv[2], sys.argv[3], sys.argv[4],
+                      int(sys.argv[5]) if len(sys.argv) > 5 else 64,
+                      sys.argv[6] if len(sys.argv) > 6 else "1/4X")
     elif cmd == "set-gain": apply_gains(pdir, {sys.argv[3]: sys.argv[4]})
     elif cmd == "apply": apply_gains(pdir, json.loads(pathlib.Path(sys.argv[3]).read_text()))
     elif cmd == "part-name": set_part_name(pdir, int(sys.argv[3]), int(sys.argv[4]), sys.argv[5])
