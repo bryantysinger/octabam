@@ -174,6 +174,57 @@ map. The current track's key pressed again in grid recording opens the
 slot list over any popup, closing it; a page that forwards the track keys
 has to swallow that one.
 
+### 6c. Input layers ✅ (read from the image, driven under the port, 25 Sep 2026)
+
+A layer is `{next, keys*, encoders*, +12, +16, -1, -1}`:
+- `0x40031494(layer)` appends it to the list at `0x460d165c` and sets
+  `+16` to −1.
+- `0x4003146c(layer)` removes it.
+- Both re-run `0x4003125c`, which walks the list head to tail and rebuilds
+  a per-key cache at `0x46c7d8de + code*24` and a per-encoder cache at
+  `0x46c7dede + index*20`. A later layer overrides an earlier one, so the
+  last layer pushed is on top. A key held during the rebuild keeps its
+  cached handlers, which is why a press handler may push a layer.
+
+**Key record, 26 bytes**, ended by a record whose code byte is `0xff`:
+
+| offset | field |
+|---|---|
+| +0 | code |
+| +2 | press |
+| +6 | release |
+| +10 | repeat |
+| +14 | a sub-map, chained through the target's `+12` |
+| +18 | a flag word |
+| +22 | u16 repeat delay |
+| +24 | u16 repeat rate |
+
+For press, release and repeat, −1 inherits the layer below; any other
+value, 0 included, replaces it.
+
+**Encoder record, 22 bytes**, ended by `0xff`:
+
+| offset | field |
+|---|---|
+| +0 | index: A..F = 0..5, LEVEL = 6 |
+| +2 | handler `(index, delta)` |
+| +6 | a second handler |
+| +10 | a third handler |
+| +18 | a fourth handler |
+
+These are copied without inheritance.
+
+**Fall-through:** an encoder with no record in any layer reaches the page
+underneath. TEMPO's layer (`0x400bb4ec`) has LEVEL only, which is why
+A–F turn the page behind the stock TEMPO window.
+
+**TEMPO's keys:**
+- UP `0x33` / DOWN `0x20`: the tempo step `0x4004b954 → 0x4004b824(0, ±1)`.
+- YES `0x31`, NO `0x32`, TEMPO `0x18`: close, `0x40056930`.
+
+Arrow codes: LEFT `0x34`, RIGHT `0x21` (`PANEL.md` §4b).
+`modules/tempo-bus` pushes a layer of its own over TEMPO's.
+
 ## 7. Editing parameters from a screen ✅
 
 Call the firmware's writers; do not reproduce them. Traced with a write

@@ -1,0 +1,181 @@
+#!/usr/bin/env python3
+"""TEMPO BUS under the port: the TEMPO key opens the bus screen, the knobs
+edit the hosts, the window closes clean.
+
+    python3 tools/verify/verify_tempobus.py bamsep26     # after verify_set
+    OT_PROJECT=<dir> make check REMIX=bamsep26            # the same, from make verify
+
+Boots the image and card verify_set staged (out/setverify/image.bin,
+card.img), drives the panel through `ot_emu --live` (key and encoder events
+on the panel link), dumps RAM at the end and checks:
+
+  window   TEMPO opens a 118 x 64 window (the menu window's size)
+  delay    on the delay host: A to row 6 (MODE), B to 0 then +1 -> page-2
+           lane slot 0 = 1 (GRAIN), and with MODE DEFAULTS in the image the
+           GRAIN view's PTCH (page-2 slot 4) = 96; then A to row 2 (FDBK), B
+           to 0 then +5 -> page-1 lane flat 26 = 5 (after the view's 40)
+  reverb   RIGHT, B to 0 then +3 on row 0 (SEND) -> page-1 lane flat 24 = 3
+  close    after TEMPO again the window handle is 0 and no input layer in
+           the list lies inside the module's code
+  run      the port ends on `quit`, not on a fault
+
+Writes out/tempobus/screen.png (the window before it closes is not kept;
+the last frame drawn is rendered from the second, reopened window).
+SKIPs without the port, without verify_set's staged card, or when the
+remix does not carry TEMPO BUS. What it cannot see: the LCD composition
+(the window planes are rendered from RAM), the MKII keymap (the port
+boots the MKI one; TEMPO, LEFT and RIGHT are the same codes in both).
+"""
+import os, pathlib, re, struct, subprocess, sys, tempfile, time, zlib
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
+from remix import registry  # noqa: E402
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+EMU = ROOT / "out/emu/ot_emu"
+SET = ROOT / "out/setverify"
+OUT = ROOT / "out/tempobus"
+WINH, LAYERS = 0x460d16a0, 0x460d165c
+TABLE, STRIDE, PLANES = 0x46c7d34c, 56, 0x460d1f7b
+LIVEB = 0x80000810
+DUMP_BASE, DUMP_LEN = 0x460d0000, 0xbb0000
+ROM_BASE, ROM_LEN = 0x400b0000, 0x28000        # the stock layers and ours live here
+KEY_TEMPO, KEY_NO, KEY_RIGHT = 0x18, 0x32, 0x21
+
+
+def png(path, w, h, px, scale=4):
+    rows = []
+    for y in range(h * scale):
+        row = bytearray([0])
+        for x in range(w * scale):
+            row += b"\xe8\xf0\x60" if px[y // scale][x // scale] else b"\x1c\x24\x10"
+        rows.append(bytes(row))
+    def chunk(t, d):
+        return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
+    path.write_bytes(b"\x89PNG\r\n\x1a\n"
+                     + chunk(b"IHDR", struct.pack(">IIBBBBB", w * scale, h * scale, 8, 2, 0, 0, 0))
+                     + chunk(b"IDAT", zlib.compress(b"".join(rows))) + chunk(b"IEND", b""))
+
+
+def main():
+    remix = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("REMIX", "bamsep26")
+    mods = registry.remix(remix).modules
+    if "TEMPO BUS" not in mods:
+        print(f"  [SKIP] verify_tempobus: {remix} does not carry TEMPO BUS")
+        return 0
+    if not EMU.exists():
+        print("  [SKIP] verify_tempobus: the ColdFire port is not built (make emu-cf)")
+        return 0
+    image, card = SET / "image.bin", SET / "card.img"
+    if not (image.is_file() and card.is_file()):
+        print("  [SKIP] verify_tempobus: no staged card (run verify_set with OT_PROJECT first)")
+        return 0
+    first = (SET / "port.txt").read_text().split("\n", 1)[0]
+    setname = re.search(r"--set (\S+)", first).group(1)
+    name = re.search(r"--project (\S+)", first).group(1)
+    OUT.mkdir(parents=True, exist_ok=True)
+    work = pathlib.Path(tempfile.mkdtemp(prefix="tempobus."))
+    run_card = work / "card.img"
+    run_card.write_bytes(card.read_bytes())
+    fifo = work / "live"
+    os.mkfifo(fifo)
+    dump, lanes, rom, log = work / "ram.bin", work / "lanes.bin", work / "rom.bin", OUT / "port.txt"
+    cmd = [str(EMU), "--image", str(image), "--card", str(run_card), "--set", setname,
+           "--project", name, "--load-ms", "20000", "--live", str(fifo),
+           "--mem-dump", f"{DUMP_BASE:#x},{DUMP_LEN:#x}={dump};{LIVEB:#x},0x240={lanes};"
+                         f"{ROM_BASE:#x},{ROM_LEN:#x}={rom}"]
+    with open(log, "w") as lf:
+        proc = subprocess.Popen(cmd, cwd=ROOT, stdout=lf, stderr=subprocess.STDOUT)
+        fd = os.open(fifo, os.O_WRONLY)
+        for _ in range(3000):
+            if "live       : reading panel" in log.read_text():
+                break
+            if proc.poll() is not None:
+                break
+            time.sleep(0.1)
+        time.sleep(2)
+
+        def send(line, pause=0.2):
+            os.write(fd, (line + "\n").encode())
+            time.sleep(pause)
+
+        def key(code, pause=0.6):
+            send(f"key {code:#x} down", 0.1)
+            send(f"key {code:#x} up", pause)
+
+        key(KEY_NO, 1.0)                                  # the boot's date prompt
+        key(KEY_TEMPO, 1.0)
+        send("enc 0 -50"); send("enc 0 6")                # A: row 6 (MODE)
+        send("enc 1 -5"); send("enc 1 1", 0.6)            # GRAIN (its view re-defaults FDBK)
+        send("enc 0 -4")                                  # A: row 2 (FDBK)
+        send("enc 1 -64"); send("enc 1 -64"); send("enc 1 5")
+        key(KEY_RIGHT)
+        send("enc 0 -50")                                 # A: row 0 (SEND)
+        send("enc 1 -64"); send("enc 1 -64"); send("enc 1 3", 0.6)
+        key(KEY_TEMPO, 1.0)                               # close
+        send("quit", 1.0)
+        os.close(fd)
+        proc.wait(timeout=600)
+    text = log.read_text()
+
+    fails = 0
+    def check(label, ok, detail=""):
+        nonlocal fails
+        fails += 0 if ok else 1
+        print(f"  [{'ok' if ok else 'FAIL'}] {label}{'  ' + detail if detail else ''}")
+
+    check("run: the port ended on quit", "ended on quit" in text,
+          re.search(r"live       : .*ended .*", text).group(0) if "ended" in text else "no end line")
+    ram, lane, romb = dump.read_bytes(), lanes.read_bytes(), rom.read_bytes()
+
+    def rd(a, n):
+        if ROM_BASE <= a < ROM_BASE + ROM_LEN:
+            return romb[a - ROM_BASE:a - ROM_BASE + n]
+        return ram[a - DUMP_BASE:a - DUMP_BASE + n]
+    u32 = lambda a: struct.unpack(">I", rd(a, 4))[0]
+
+    # the host tracks: the part's live FX2 ids as verify_set dumped them
+    idb = (SET / "ids.bin").read_bytes()
+    fx2 = list(idb[8:16])
+    dly = next((t for t, v in enumerate(fx2) if v == registry.by_key("DELAY SERVER").menu.fx2_id), None)
+    vrb = next((t for t, v in enumerate(fx2) if v == registry.by_key("REVERB SERVER").menu.fx2_id), None)
+    L = lambda t, o: lane[t * 72 + o]
+
+    # the screen as it stood at the last draw: the plane is kept after the close
+    for i in range(5):
+        e = TABLE + i * STRIDE
+        w, h = struct.unpack(">ii", rd(e + 36, 8))
+        if (w, h) == (118, 64):
+            col = 8
+            px = [[0] * w for _ in range(h)]
+            for x in range(w):
+                bits = int.from_bytes(rd(PLANES + i * 0x400 + x * col, col), "big")
+                for y in range(h):
+                    px[h - 1 - y][x] = (bits >> (63 - y)) & 1
+            png(OUT / "screen.png", w, h, px)
+    check("window: TEMPO opened a 118 x 64 window", (OUT / "screen.png").is_file(),
+          str(OUT / "screen.png"))
+    if dly is None or vrb is None:
+        check("hosts: the staged part hosts BusDelay and BusVerb", False, f"FX2 ids {fx2}")
+    else:
+        check(f"delay: FDBK (T{dly + 1} page-1 flat 26) = 5", L(dly, 26) == 5, f"{L(dly, 26)}")
+        check(f"delay: MODE (T{dly + 1} page-2 slot 0) = 1, GRAIN", L(dly, 0x38) == 1, f"{L(dly, 0x38)}")
+        if "MODE DEFAULTS" in mods:
+            check(f"delay: GRAIN's view landed (PTCH, page-2 slot 4 = 96)", L(dly, 0x3c) == 96, f"{L(dly, 0x3c)}")
+        check(f"reverb: SEND (T{vrb + 1} page-1 flat 24) = 3", L(vrb, 24) == 3, f"{L(vrb, 24)}")
+    check("close: the TEMPO window handle is 0", u32(WINH) == 0, f"{u32(WINH):#x}")
+    node, inside, walked = u32(LAYERS), [], 0
+    while node and walked < 32:
+        if 0x400d64e0 <= node < 0x400d6b00:          # the tempobus unit
+            inside.append(node)
+        node = u32(node) if (DUMP_BASE <= node < DUMP_BASE + DUMP_LEN
+                             or ROM_BASE <= node < ROM_BASE + ROM_LEN) else 0
+        walked += 1
+    check("close: no input layer from the module is left registered", not inside,
+          ", ".join(f"{n:#x}" for n in inside))
+    print(f"verify_tempobus: {fails} failure(s)")
+    return 1 if fails else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
