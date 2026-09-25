@@ -117,8 +117,9 @@ def clone_samples(src, dest, template, length=64, scale="1/4X"):
     """A fresh project (a copy of `template`, one the unit created on the
     running image, so its parts and pages are that image's defaults) that
     carries `src`'s sample slots and, in every bank and part (live and saved
-    copies), each track's machine type and slot bytes; every pattern's
-    length/scale pair set. Nothing else of `src` comes across: no trigs,
+    copies), each track's machine type and slot bytes, its project-local
+    sample files and MASTER_TRACK; every pattern's length/scale pair set.
+    Nothing else of `src` comes across: no trigs,
     locks, knobs, levels, names or tempo -- those are the TEMPLATE's, so it
     must be an untouched fresh project (Bottleservice 26, 25 Sep 2026: the
     template had been a test project; its T1 trigs, hard-left BAL and WOW
@@ -146,6 +147,23 @@ def clone_samples(src, dest, template, length=64, scale="1/4X"):
         at = min(at, len(stripped))
         f.write_bytes((stripped[:at] + "".join(blocks) + stripped[at:]).encode("latin1"))
     print(f"{len(blocks)} sample slot(s) from {src.name} ({sum(1 for b in src_slots if b['path'])} with files)")
+    # project-local samples (a bare file name, no directory) live in the
+    # project's own folder: the unit reported 528 FILE NOT FOUND on the first
+    # Bottleservice 26 (25 Sep 2026) for exactly these; pool paths
+    # (../AUDIO/...) resolve from any project in the set. 8.3 aliases in a
+    # path (RU4REA~7/RU4REA~2.WAV) are the unit's and the Mac cannot see them.
+    local = sorted({b["path"] for b in src_slots if b["path"] and "/" not in b["path"]})
+    for name in local:
+        if (src / name).is_file() and not (dest / name).is_file():
+            shutil.copyfile(src / name, dest / name)
+    print(f"{len(local)} project-local sample file(s) copied")
+    # project-level settings that belong with the samples' layout
+    for suffix in ("work", "strd"):
+        f = dest / f"project.{suffix}"
+        if f.is_file():
+            raw = f.read_bytes(); m = re.search(rb"MASTER_TRACK=(\d)", src_raw.encode("latin1"))
+            if m:
+                f.write_bytes(re.sub(rb"MASTER_TRACK=\d", b"MASTER_TRACK=" + m.group(1), raw))
     # machines and slots, every bank the template has
     if isinstance(scale, str):
         scale = SCALE_NAMES.index(scale.upper())
