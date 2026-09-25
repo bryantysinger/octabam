@@ -1,5 +1,6 @@
-| usbaudio.s -- sixteen channels of the tracks over USB (UAC2), post-FX
-| pre-fader, from the read-back arena the eDMA fills every block.
+| usbaudio.s -- twenty channels over USB (UAC2): the eight tracks, post-FX
+| pre-fader, from the read-back arena the eDMA fills every block (1-16),
+| then MAIN L/R (17-18) and CUE L/R (19-20), the DAC feed (MC_BASE below).
 | markandrus/octemu custom/coldfire/usb-audio.s at 6a9ff68 (MIT), carried
 | as a DRAM unit of octabam's platform: the loader places and installs it,
 | so his self-relocating entry, stage-2 hook installer, runtime patch table,
@@ -133,11 +134,34 @@
 .set RB_BASE,      0x80003190
 .set RB_PREV,      0x800000e4      | pingpong_prev: reads use prev
 .set RB_TRACKS,    8
+| MAIN and CUE: the DAC feed itself. Core 0's mixdown packs ESAI TX slots
+| 2/3 and 0/1 (P:0x2df, P:0x2e2) into the host read-back after the track
+| blocks; the frame ISR's chain ch1 -> ch6 -> ch7 lands them here, ch6
+| writing 0x80005e60..0x80005f60 each frame: 16 x (L,R) at +0x00, then
+| 16 x (L,R) at +0x80, 32-bit words in the read-back's format (24 bits,
+| left-justified). The stock recorder reads the same buffer for SRC3 =
+| MAIN (+0x00) / CUE (+0x80) from inside frame_isr (0x4000d2a0), before
+| this hook; the next frame's ch6 cannot overwrite it until the next
+| frame_isr. Single buffer, no ping-pong. Which half is MAIN rests on the
+| recorder's SRC3 byte being raw-1 (8 = MAIN): MC_MAIN_OFF / MC_CUE_OFF
+| are the one place to swap if hardware says otherwise.
+.set MC_BASE,      0x80005e60
+.set MC_MAIN_OFF,  0x00
+.set MC_CUE_OFF,   0x80
+
+| x -> x * SLOT_BYTES (80) in place; \t is scratch.
+.macro MUL_SLOT r, t
+    movel   \r,\t
+    lsll    #4,\t                  | x * 16
+    lsll    #6,\r                  | x * 64
+    addl    \t,\r                 | x * 80
+.endm
 
 | ---- frame geometry --------------------------------------------------------
-| The producer fills TWO rings per frame: a 64-byte slot (16 channels, each a
-| 4-byte little-endian subslot carrying 24 bits, track 1 L/R first, track 8
-| L/R last) for the HIGH SPEED stream, and an 8-byte stereo sum of the eight
+| The producer fills TWO rings per frame: an 80-byte slot (20 channels, each a
+| 4-byte little-endian subslot carrying 24 bits: track 1 L/R first, track 8
+| L/R on 15/16, then MAIN L/R on 17/18 and CUE L/R on 19/20) for the HIGH
+| SPEED stream, and an 8-byte stereo sum of the eight
 | tracks for FULL SPEED. Both are indexed by the same frame count, so the
 | wrap arithmetic has one form.
 |
@@ -145,17 +169,18 @@
 | arena's full scale is 2^31 (his 16-bit calibration kept the top 16 bits),
 | so the subslot's 24 valid bits are the arena's top 24 at the same scale.
 |
-| ☠ Why the poll is 250 us: 16 ch x 4 B at 44.1 kHz is 2,822 B per
+| ☠ Why the poll is 250 us: 20 ch x 4 B at 44.1 kHz is 3,528 B per
 | millisecond, and one high-speed isochronous transaction carries at most
-| 1,024 B. At bInterval 2 a packet is 11.025 frames x 64 B = 706 B, at most
-| 12 frames = 768 B with the servo. Full speed carries the stereo sum only:
+| 1,024 B. At bInterval 2 a packet is 11.025 frames x 80 B = 882 B, at most
+| 12 frames = 960 B with the servo (20 ch x 4 B; 16 ch was 64 B / 768 B).
+| Full speed carries the stereo sum only:
 | 44.1 frames x 8 B = 353 B per 1 ms frame, under the 1,023 B cap. UAC1
 | cannot poll faster than 1 ms even at high speed (Apple TN3190: bInterval
 | must be 4); this is why the descriptors are UAC2.
-.set SLOT_BYTES,   64           | ring slot: 8 tracks * (L,R) * 4 B
-.set SLOT_SHIFT,   6            | log2(SLOT_BYTES), for the index math
+.set SLOT_BYTES,   80           | ring slot: 8 tracks * (L,R) + MAIN (L,R) + CUE (L,R), 4 B each
+                                | ☠ not a power of two: index math is MUL_SLOT (x*64 + x*16)
 .set SUM_BYTES,    8            | sum slot: (L,R) * 4 B
-.set PKT_MAX_HS,   12*SLOT_BYTES | 768: the largest 250 us packet
+.set PKT_MAX_HS,   12*SLOT_BYTES | 960: the largest 250 us packet (<= 1,024 B, one transaction)
 .set PKT_MAX_FS,   45*SUM_BYTES | 360: the largest 1 ms stereo packet
 .set STEP_HS,      11025        | 11.025 frames per 250 us packet, x1000
 .set STEP_FS,      44100        | 44.1 frames per 1 ms packet, x1000
@@ -447,14 +472,15 @@ audio_pkt_build:
     movel   %d4,usbaudio_lastn
     movel   %d2,usbaudio_lastfill
     | ---- copy n frames into this slot's buffer -----------------------------
-    | a3 = the buffer (aud_bufs + slot * 768, through the uncached alias),
+    | a3 = the buffer (aud_bufs + slot * 960, through the uncached alias),
     | a1 = write cursor. The ring is copied in at most two straight runs (up
     | to its end, then from its start), with no per-frame index masking.
     movel   %a6,%d0
-    lsll    #8,%d0                  | slot * 256
-    movel   %d0,%d1
-    addl    %d0,%d0                 | slot * 512
-    addl    %d1,%d0                 | slot * 768 = slot * PKT_MAX_HS
+    lsll    #8,%d0
+    lsll    #2,%d0                  | slot * 1024
+    movel   %a6,%d1
+    lsll    #6,%d1                  | slot * 64
+    subl    %d1,%d0                 | slot * 960 = slot * PKT_MAX_HS
     moveal  #(aud_bufs+UNCACHED),%a3
     addal   %d0,%a3
     moveal  %a3,%a1
@@ -466,20 +492,20 @@ audio_pkt_build:
     tstb    aud_hs
     beqs    .Lcopy_fs
     lea     aud_ring,%a2
-    lsll    #SLOT_SHIFT,%d1
+    MUL_SLOT %d1, %d2               | d2 is dead here (lastfill is stored)
     addal   %d1,%a2                 | a2 = the first frame's slot
     cmpl    %d0,%d3
     bhis    .Lhs_wrap               | n > frames to the end: two runs
     movel   %d3,%d0
-    bsr     audio_copy64
+    bsr     audio_copy80
     bras    .Lcopied
 .Lhs_wrap:
     subl    %d0,%d3
     moveal  %d3,%a5                 | a5 = frames in the second run (the copy
-    bsr     audio_copy64            |      clobbers every data register)
+    bsr     audio_copy80            |      clobbers every data register)
     lea     aud_ring,%a2
     movel   %a5,%d0
-    bsr     audio_copy64
+    bsr     audio_copy80
     bras    .Lcopied
 .Lcopy_fs:
     lea     aud_sum,%a2
@@ -503,7 +529,7 @@ audio_pkt_build:
     movel   %d4,%d6
     tstb    aud_hs
     beqs    5f
-    lsll    #SLOT_SHIFT,%d6         | nbytes = n * 64
+    MUL_SLOT %d6, %d1               | nbytes = n * 80 (d1 is reloaded below)
     bras    6f
 5:  lsll    #3,%d6                  | nbytes = n * 8
 6:  | ---- the dTD: buffer pointers first, the ACTIVE token LAST -------------
@@ -516,7 +542,7 @@ audio_pkt_build:
     movel   %a3,%d1
     andil   #0xfffff000,%d1
     addil   #0x1000,%d1
-    movel   %d1,%a0@(12)            | page 1: a 768-byte buffer can straddle a 4 KB page
+    movel   %d1,%a0@(12)            | page 1: a 960-byte buffer can straddle a 4 KB page
     movel   %d6,%d1
     swap    %d1                     | nbytes << 16
     oril    #0x80,%d1               | ACTIVE (no IOC: completions buy nothing)
@@ -582,13 +608,15 @@ audio_pkt_build:
 
 | Copy d0 (>= 1) 64-byte frames from %a2 to %a1, both advanced: two moveml
 | pairs per frame. Clobbers d1-d7/a4.
-audio_copy64:
+audio_copy80:
 1:  moveml  %a2@,%d1-%d7/%a4
     moveml  %d1-%d7/%a4,%a1@
     moveml  %a2@(32),%d1-%d7/%a4
     moveml  %d1-%d7/%a4,%a1@(32)
-    lea     %a2@(64),%a2
-    lea     %a1@(64),%a1
+    moveml  %a2@(64),%d1-%d4
+    moveml  %d1-%d4,%a1@(64)
+    lea     %a2@(80),%a2
+    lea     %a1@(80),%a1
     subql   #1,%d0
     bnes    1b
     rts
@@ -666,7 +694,7 @@ audio_ep3_up:
     subql   #1,%d1
     bpls    1b
     moveal  qh_ep3,%a0              | resolved just above
-    | ☠ The SPEED decides the stream: 16 channels in <= 768 B packets every
+    | ☠ The SPEED decides the stream: 20 channels in <= 960 B packets every
     | 250 us at high speed, the stereo sum in <= 360 B packets every 1 ms at
     | full speed. PORTSC1 bits 27:26 are the negotiated speed (2 = high); the
     | responder picks the config descriptor by the same bits, so the format
@@ -683,7 +711,7 @@ audio_ep3_up:
     moveb   %d0,aud_hs
     movel   #STEP_HS,%d0
     movel   %d0,aud_step
-    movel   #(0x60000000+(PKT_MAX_HS<<16)),%d0  | dQH cap: Mult 1, ZLT off, maxpkt 768
+    movel   #(0x60000000+(PKT_MAX_HS<<16)),%d0  | dQH cap: Mult 1, ZLT off, maxpkt 960
     bras    .Lspeed_set
 .Lspeed_fs:
     clrb    aud_hs
@@ -891,7 +919,7 @@ audio_frame_shim_body:
     movel   %d4,%d5
     andil   #AUD_FRAMES-1,%d5
     movel   %d5,%d0
-    lsll    #SLOT_SHIFT,%d0
+    MUL_SLOT %d0, %d2               | d2 is dead here (lastbank is stored)
     lea     aud_ring,%a3
     addal   %d0,%a3                 | a3 = 16-channel slot cursor (a block never
                                     | wraps: 16 divides the ring size)
@@ -932,6 +960,30 @@ audio_frame_shim_body:
     lea     %a0@(128),%a0           | next track, same frame
     subql   #1,%d7
     bpl     2b
+    | ---- MAIN and CUE, channels 17-20: the same word format, top 24 bits --
+    | Frame f's pair sits at MC_BASE + f*8 (+MC_CUE_OFF for CUE); f = 15 - d6.
+    | a0 and d7 are free until the next frame reloads them.
+    moveq   #15,%d7
+    subl    %d6,%d7
+    lsll    #3,%d7                  | f * 8
+    lea     MC_BASE,%a0
+    addal   %d7,%a0
+    movel   %a0@(MC_MAIN_OFF),%d2   | MAIN L
+    clrb    %d2
+    byterev %d2
+    movel   %d2,%a3@+
+    movel   %a0@(MC_MAIN_OFF+4),%d2 | MAIN R
+    clrb    %d2
+    byterev %d2
+    movel   %d2,%a3@+
+    movel   %a0@(MC_CUE_OFF),%d2    | CUE L
+    clrb    %d2
+    byterev %d2
+    movel   %d2,%a3@+
+    movel   %a0@(MC_CUE_OFF+4),%d2  | CUE R
+    clrb    %d2
+    byterev %d2
+    movel   %d2,%a3@+
     movel   %d5,%d2                 | the stereo sum, L
     .else
     | ---- diagnostic source: synthetic 441 Hz triangle, +-8000/32768 -------
@@ -972,7 +1024,7 @@ audio_frame_shim_body:
     movel   %d2,%d0
     lsll    #8,%d0                  | left-justified in the subslot
     byterev %d0
-    moveq   #15,%d7                 | all 16 channels of the slot
+    moveq   #19,%d7                 | all 20 channels of the slot
 .Lsyn_fill:
     movel   %d0,%a3@+
     subql   #1,%d7
@@ -1159,11 +1211,11 @@ aud_produced:      .long 0          | producer frame count (relocates with us)
 aud_phase:         .long 0          | synthetic-source phase, 0..99
 qh_ep3:            .long 0          | EP3 IN dQH, read from ENDPTLISTADDR
 aud_step:          .long STEP_HS    | frames per packet x1000, set by the speed
-aud_ring:          .space AUD_FRAMES*SLOT_BYTES  | 1024 x 16 ch, 24 in 4 B LE
+aud_ring:          .space AUD_FRAMES*SLOT_BYTES  | 1024 x 20 ch, 24 in 4 B LE
 aud_sum:           .space AUD_FRAMES*SUM_BYTES   | 1024 x stereo sum, 24 in 4 B LE
 usbaudio_alt:      .byte 0          | alt setting the host asked for
 aud_running:       .byte 0          | EP3 is up (frame-ISR owned)
-aud_hs:            .byte 0          | 1 = high speed (16 ch), 0 = full (sum)
+aud_hs:            .byte 0          | 1 = high speed (20 ch), 0 = full (sum)
 aud_tail:          .byte 0          | next dTD slot to fill (0..NSLOT-1)
 
 | ☠ Everything the USB controller reads by DMA is read and written by the
@@ -1182,6 +1234,6 @@ aud_tail:          .byte 0          | next dTD slot to fill (0..NSLOT-1)
 | 32-byte aligned (the dQH and dTD next pointers keep bits 31:5 only).
     .balign 32
 aud_dtds:          .space NSLOT*32               | EP3 IN dTDs, one per queue slot
-aud_bufs:          .space NSLOT*PKT_MAX_HS       | their packets (<= 768 B each)
+aud_bufs:          .space NSLOT*PKT_MAX_HS       | their packets (<= 960 B each)
 
     .balign 4

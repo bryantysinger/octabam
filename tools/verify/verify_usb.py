@@ -99,9 +99,12 @@ def main():
             check("USB AUDIO: a UAC2 AudioStreaming interface 4 with alt 0 and alt 1",
                   sorted((d[2], d[3]) for d in as_) == [(4, 0), (4, 1)], str([(d[2], d[3]) for d in as_]))
             iso = [d for d in eps if d[2] == 0x83]
-            check("USB AUDIO: EP 0x83 isochronous, 768 bytes, bInterval 2",
-                  len(iso) == 1 and (iso[0][3] & 3, iso[0][4] | iso[0][5] << 8, iso[0][6]) == (1, 768, 2),
+            check("USB AUDIO: EP 0x83 isochronous, 960 bytes, bInterval 2",
+                  len(iso) == 1 and (iso[0][3] & 3, iso[0][4] | iso[0][5] << 8, iso[0][6]) == (1, 960, 2),
                   str([(d[3], d[4] | d[5] << 8, d[6]) for d in iso]))
+            asg = cfg.find(bytes([16, 0x24, 1]))                 # CS AS_GENERAL: bNrChannels at +10
+            check("USB AUDIO: AS_GENERAL declares 20 channels (tracks 1-16, MAIN 17-18, CUE 19-20)",
+                  asg >= 0 and cfg[asg + 10] == 20, f"bNrChannels {cfg[asg + 10] if asg >= 0 else None}")
             fmt24, fmt16 = bytes([6, 0x24, 2, 1, 4, 24]), bytes([6, 0x24, 2, 1, 2, 16])   # FORMAT_TYPE_I: subslot, bits
             check("USB AUDIO: FORMAT_TYPE_I, 24-bit samples in 4-byte subslots",
                   cfg.count(fmt24) == 1 and fmt16 not in cfg)
@@ -113,8 +116,8 @@ def main():
             check("USB AUDIO: GET_INTERFACE reports alt 1", alt == b"\x01", alt.hex())
             got = [b.ep_in(3, 1024) for _ in range(800)]        # 200 ms of device time at the 250 us poll
             sizes = sorted({len(g) for g in got[10:]})           # the first polls may land before the first prime
-            check("USB AUDIO: 800 polls on EP3 carry 10-12-frame packets of 64 B and none empty after the first ten",
-                  bool(sizes) and all(s in (640, 704, 768) for s in sizes), f"sizes {sizes}")
+            check("USB AUDIO: 800 polls on EP3 carry 10-12-frame packets of 80 B and none empty after the first ten",
+                  bool(sizes) and all(s in (800, 880, 960) for s in sizes), f"sizes {sizes}")
             words = b"".join(got[10:])
             low = sum(1 for i in range(0, len(words), 4) if words[i])
             check("USB AUDIO: every 4-byte subslot's low byte is zero (24 bits, left-justified)",
