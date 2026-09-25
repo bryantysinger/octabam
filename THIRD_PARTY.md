@@ -44,6 +44,12 @@ transcribed).
 `modules/recorder-spacing` and `modules/lofi-amf-fix` are written here
 (sambanks; the LO-FI fix from Bryan T's finding) and carry `LICENSE`.
 
+## Emulator and panel from a fork of this repository
+
+| source | licence | copyright | used in |
+|---|---|---|---|
+| Tim Hastie, [timhastie/octa-panel](https://github.com/timhastie/octa-panel) at `be68244` (a fork of octabam, 10-25 Sep 2026) | MIT (the fork's `LICENSE` is octabam's, copyright line unchanged) | Tim Hastie (his changes) | `tools/panel/` (the virtual front panel, the macOS app, the key/LED map and its evidence); `tools/emu/ot_emu` (`--interactive`, pacing, the DSPI RTC, DMA timers DTIM0-3, event-horizon bursts, the page-table memory path, lazy DSP batching, `--dsp-rt`, bounded records, card write-back, memory-to-memory eDMA copies, per-track taps; `oracle/`, `pgo.sh`); the `--dsp-rt` hunks of `tools/patches/dsp56300.patch`; `docs/firmware/COLDFIRE_PORT.md` (his milestones O14i-O24) |
+
 ## Analysis tooling
 
 Portions of the firmware analysis tooling originate from

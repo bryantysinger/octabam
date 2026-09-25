@@ -60,6 +60,7 @@ apply_patch() {
   else
     echo "   [!] $(basename "$2") does NOT apply to $1 at $(git -C "$1" rev-parse --short HEAD)"
     echo "       and is not already applied either. Fix: rm -rf $1; make setup"
+    echo "       (vendor/dsp56300 with an older version of the patch: make dsp-repatch)"
     exit 1
   fi
 }
@@ -157,7 +158,17 @@ if [ ! -x "$DIS" ] || [ ! -x "$ASM" ] || [ ! -x "$HOST" ]; then
     # as the chip has it); and the host-stepped mode the port drives the
     # cores in (DO loops stepped, interrupts interpreted, peripherals
     # serviced under a masked interrupt, an idle step) plus hooks for
-    # Y-side registers it does not map.
+    # Y-side registers it does not map. From Tim Hastie's octa-panel
+    # (be68244, the port's --dsp-rt mode, O17-O22), rebased onto this pin
+    # 25 Sep 2026: the JIT cores on worker threads -- a transmit FIFO and
+    # lock-free rings on the HDI08, burst DMA to and from the host port,
+    # the writing instruction's PC on a JIT peripheral write, volatile P
+    # addresses declared up front, the masked-interrupt peripheral service
+    # for a threaded core, a DMA request-source bounds check -- and the
+    # JIT's M-register bit op (`bset #$f,m4` kept stale modulo words). His
+    # hunks upstream now carries (MPYI sign, the dynamic fast-interrupt
+    # return PC, a request pending at arm) are not in it. A tree with an
+    # older version of this patch applied: `make dsp-repatch`.
     EMUPATCH=$(pwd)/tools/patches/dsp56300.patch
     apply_patch vendor/dsp56300 "$EMUPATCH"
     stage_dsp_host
