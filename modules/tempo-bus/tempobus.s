@@ -60,9 +60,9 @@
         .set    MINS,     0x6a         | P+: twelve u32 minimums
         .set    COUNTS,   0x9a         | P+: twelve u32 value counts
         .set    FMTS,     0xca         | P+: twelve formatter pointers, 0 = plain
-        .set    ROWS,     6            | rows visible per box
+        .set    ROWS,     5            | rows visible per box
         .set    BOXW,     53
-        .set    BOXH,     48           | from y 4 to the rule's gap
+        .set    BOXH,     41           | from y 4; 3 px under the rule
 
 
         .text
@@ -243,7 +243,7 @@ tb_draw:
         jsr     CLEAR
         addql   #4,%sp
         movel   %a5@(4),%d7
-        subil   #9,%d7                 | d7 = h - 9: the header text 1 px under the top
+        subil   #14,%d7                | d7 = h - 14: the header text 6 px under the top
 | header: "TMP 121.2" at the left, the key at the right, the rule
         pea     %a6@(20)
         pea     %a6@(16)
