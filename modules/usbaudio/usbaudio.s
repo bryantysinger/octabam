@@ -142,9 +142,8 @@
 | left-justified). The stock recorder reads the same buffer for SRC3 =
 | MAIN (+0x00) / CUE (+0x80) from inside frame_isr (0x4000d2a0), before
 | this hook; the next frame's ch6 cannot overwrite it until the next
-| frame_isr. Single buffer, no ping-pong. Which half is MAIN rests on the
-| recorder's SRC3 byte being raw-1 (8 = MAIN): MC_MAIN_OFF / MC_CUE_OFF
-| are the one place to swap if hardware says otherwise.
+| frame_isr. Single buffer, no ping-pong. MAIN = +0x00, CUE = +0x80:
+| confirmed on hardware (Bryan's MKII, image 90, 25 Sep 2026).
 .set MC_BASE,      0x80005e60
 .set MC_MAIN_OFF,  0x00
 .set MC_CUE_OFF,   0x80
