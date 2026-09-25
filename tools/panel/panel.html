@@ -87,8 +87,25 @@
                border-radius:3px; padding:0 4px; }
 
   /* ---- stage ---- */
+  /* ---- the MKII skin: #face is the drawing (the SVG fills the stage); keys
+     and knobs are transparent hit areas over it (build, below) ---- */
+  #face { left:0; top:0; width:1250px; height:682px; pointer-events:none; }
+  #face svg { width:100%; height:100%; display:block; }
+  #strip, #bezel, #fhandle, #fbed .slit, #fbed .tick { display:none; }
+  .k.skin { background:transparent !important; box-shadow:none !important; border:0 !important;
+            border-radius:7px; cursor:pointer; color:transparent; }
+  .k.skin::before { content:none; }
+  .k.skin.down { transform:none; filter:none; background:rgba(255,255,255,.14) !important; }
+  .k.skin.held { transform:none; filter:none; }
+  .k.skin.unmapped { cursor:not-allowed; }
+  .k.skin:hover { background:rgba(255,255,255,.05) !important; }
+  .knob.skin { background:transparent; box-shadow:none; }
+  .knob.skin::before { content:none; }
+  .knob.skin .cap { display:none; }
+  .knob.skin.live:hover, .knob.skin.pot:hover { box-shadow:0 0 0 2px rgba(232,178,58,.35); }
+  #fbed.skin-bed { background:transparent; box-shadow:none; }
   #view { flex:1; position:relative; overflow:hidden; }
-  #stage { position:absolute; left:50%; top:8px; width:1420px; height:760px; overflow:hidden; transform-origin:50% 0;
+  #stage { position:absolute; left:50%; top:8px; width:1250px; height:682px; overflow:hidden; transform-origin:50% 0;
            transform-origin:50% 50%; transform:translate(-50%,-50%) scale(1);
            border-radius:18px; user-select:none; -webkit-user-select:none;
            background:linear-gradient(#1c1c1e, #101011);
@@ -109,6 +126,8 @@
      slot and label -- click opens the AUDIO POOL drawer, files dropped on it
      go to the pool. .ejected pulls the card out while the unit reboots. */
   #card { cursor:pointer; border-radius:4px; }
+  #card.skin-card .slot, #card.skin-card .cf { display:none; }
+  #card.skin-card:hover, #card.skin-card.open { background:rgba(232,178,58,.12); }
   #card .slot { position:absolute; left:27px; top:5px; width:46px; height:7px; border-radius:2px;
                 background:linear-gradient(#3a3a3d, #202022); border:1px solid #4a4a4d; box-sizing:border-box; }
   #card .cf { position:absolute; left:31px; top:1px; width:38px; height:5px; border-radius:1px 1px 0 0;
@@ -305,100 +324,20 @@
   <div id="fhandle"></div>
 </div></div>
 
+<script src="/skin.js"></script>
 <script>
 "use strict";
 const $ = s => document.querySelector(s);
 const S = $("#stage");
-const STAGE_W = 1420, STAGE_H = 760;
+const STAGE_W = 1250, STAGE_H = 682;   // the skin's viewBox (tools/panel/skin/gen_svg.py)
 
-// ---------------- geometry (stage px, element centres) ----------------
-// keys: id, x, y, w, h, shape, colour, glyph
-const KEYS = [
-  ["recab", 253, 232, 40, 40, "round", "red"], ["reccd", 318, 232, 40, 40, "round", "red"],
-  ["mixer", 213, 337, 34, 34, "round", "gray"], ["midi", 315, 337, 34, 34, "round", "gray"],
-  ["func", 130, 432, 62, 22, "pill", "cream"], ["cue", 211, 432, 62, 22, "pill", "gray"],
-  ["yes", 314, 466, 36, 36, "round", "white"],
-  ["pattern", 130, 523, 62, 22, "pill", "gray"], ["bank", 211, 523, 62, 22, "pill", "gray"],
-  ["no", 314, 523, 36, 36, "round", "white"],
-  ["up", 465, 466, 32, 32, "round", "gray", "▲"], ["left", 403, 523, 32, 32, "round", "gray", "◀"],
-  ["down", 465, 523, 32, 32, "round", "gray", "▼"], ["right", 527, 523, 32, 32, "round", "gray", "▶"],
-  ...[166, 232, 296, 356].map((y, i) => ["t" + (i + 1), 467, y, 36, 36, "round", "gray"]),
-  ...[166, 232, 296, 356].map((y, i) => ["t" + (i + 5), 895, y, 36, 36, "round", "gray"]),
-  ["pg_playback", 571, 433, 32, 32, "round", "white"], ["pg_amp", 626, 433, 32, 32, "round", "white"],
-  ["pg_lfo", 681, 433, 32, 32, "round", "white"], ["pg_fx1", 736, 433, 32, 32, "round", "white"],
-  ["pg_fx2", 791, 433, 32, 32, "round", "white"],
-  ["rec", 651, 527, 60, 24, "pill", "red", "●"], ["play", 725, 527, 60, 24, "pill", "gray", "▶"],
-  ["stop", 798, 527, 60, 24, "pill", "white", "■"],
-  ["tempo", 1013, 322, 34, 34, "round", "gray"],
-  ["scene_a", 943, 502, 52, 52, "round", "gray"], ["scene_b", 1318, 502, 52, 52, "round", "gray"],
-  ...[...Array(16)].map((_, i) => ["trig" + (i + 1), 133 + i * 74.1, 648, 54, 54, "round", "gray"]),
-  ["scale", 1315, 648, 62, 22, "pill", "gray"],
-];
-// LEDs: id, x, y, colour
-const LEDS = [
-  ["card", 900, 88, "green"],
-  ["in_a", 238, 183, "green"], ["in_b", 262, 183, "green"], ["in_c", 305, 183, "green"], ["in_d", 330, 183, "green"],
-  ["midi", 358, 337, "red"], ["func", 130, 486, "red"],
-  ...[166, 232, 296, 356].map((y, i) => ["t" + (i + 1), 425, y, "red"]),
-  ...[166, 232, 296, 356].map((y, i) => ["t" + (i + 5), 937, y, "red"]),
-  ...[571, 626, 681, 736, 791].map((x, i) => [["pg_playback", "pg_amp", "pg_lfo", "pg_fx1", "pg_fx2"][i], x, 474, "red"]),
-  ["rec", 589, 527, "red"], ["tempo", 975, 292, "red"],
-  ["scene_a", 943, 440, "red"], ["scene_b", 1318, 440, "red"],
-  ...[...Array(16)].map((_, i) => ["trig" + (i + 1), 133 + i * 74.1, 590, "red"]),
-  ["scale1", 1290, 601, "red"], ["scale2", 1310, 601, "red"], ["scale3", 1330, 601, "red"], ["scale4", 1348, 601, "red"],
-];
-// knobs: id, x, y, r, live (encoders are live; VOLUME is a pot on the unit)
-const KNOBS = [
-  ["volume", 143, 178, 28, false], ["level", 1013, 218, 26, true],
-  ["a", 1109, 218, 26, true], ["b", 1207, 218, 26, true], ["c", 1305, 218, 26, true],
-  ["d", 1109, 322, 26, true], ["e", 1207, 322, 26, true], ["f", 1305, 322, 26, true],
-];
-// labels: text, x, y, class ("" white 10px, r red 9px, s 8px, t 7px, j jack, title)
-// Label spacing (13 Sep 2026): a label's line box starts 14 px below the
-// control's OUTER edge (a knob's ring, a key's rim) -- centre = edge + 19 for
-// the 10 px caps, +18.5 red 9 px, +18 small 8 px; a red second line sits 12 px
-// under the first. The soft keys (FUNCTION/CUE, PATTERN/BANK) get 16 px. The
-// two exceptions: ENTER/YES and EXIT/NO are 8 px at 8 px from their key
-// (there are 21 px between the YES and NO keys, the hardware's pitch), and
-// the page-key names stay ABOVE their keys as on the unit.
-const LABELS = [
-  ...[["Head-phones", 120], ["Main Out", 190], ["Cue Out", 262], ["Input A B", 335], ["Input C D", 405],
-      ["Compact Flash", 840]].map(([t, x]) => [t, x, 55, "j"]),
-  ["Card Status", 900, 110, "s"], ["Volume", 143, 226],
-  ["A --- B", 250, 166, "s"], ["C --- D", 318, 166, "s"],
-  ["Record", 253, 271], ["Setup", 253, 283, "r"], ["Record", 318, 271], ["Setup", 318, 283, "r"],
-  ["Mixer", 213, 373], ["Project", 213, 385, "r"], ["MIDI", 315, 373], ["Part", 315, 385, "r"],
-  ["Cue", 211, 464], ["Reload", 211, 476, "r"],          // FUNCTION is the group built below (the red square + the word)
-  ["Enter/Yes", 314, 496, "s"],
-  ["Pattern", 130, 555], ["Arranger", 130, 567, "r"], ["Bank", 211, 555], ["Edit", 211, 567, "r"],
-  ["Exit/No", 314, 553, "s"],
-  ...[166, 232, 296, 356].flatMap((y, i) => [["T" + (i + 1), 500, y - 6], ["Mute", 500, y + 7, "r"]]),
-  ...[166, 232, 296, 356].flatMap((y, i) => [["T" + (i + 5), 858, y - 6], ["Mute", 858, y + 7, "r"]]),
-  ["Virtual Panel", 681, 150, "title"],
-  ["Playback", 571, 388], ["Note", 571, 402, "r"], ["Amp", 626, 388], ["Arp", 626, 402, "r"],
-  ["LFO", 681, 388], ["LFO", 681, 402, "r"], ["Effect 1", 736, 388], ["Ctrl 1", 736, 402, "r"],
-  ["Effect 2", 791, 388], ["Ctrl 2", 791, 402, "r"],
-  ["Copy", 651, 558, "r"], ["Clear", 725, 558, "r"], ["Paste", 798, 558, "r"],
-  ["Level", 1013, 264], ["A", 1109, 264], ["B", 1207, 264], ["C", 1305, 264],
-  ["Tempo", 1013, 358], ["Tap Tempo", 1013, 370, "r"], ["D", 1109, 368], ["E", 1207, 368], ["F", 1305, 368],
-  ["Scene A", 943, 547], ["Mute", 943, 559, "r"], ["Scene B", 1318, 547], ["Mute", 1318, 559, "r"],
-  ...[...Array(16)].map((_, i) => [String(i + 1), 133 + i * 74.1, 604, "s"]),
-  ["Scale Setup", 1315, 678, "r"],
-  ["1:4", 1290, 585, "t"], ["2:4", 1310, 585, "t"], ["3:4", 1330, 585, "t"], ["4:4", 1348, 585, "t"],
-];
-// red rules with a caption break: x1, x2, y, text, text x
-const RULES = [
-  [552, 810, 462, "Setup", 681],
-  [106, 678, 712, "Track Trigs", 390],
-  [772, 1272, 712, "Sample/MIDI Trigs", 1000],
-];
-// rear-edge jacks, centred on the rear-edge bar (the 20 px above the strip, y 10): x, kind, id.
-// HEAD-PHONES is the monitor and COMPACT FLASH the pool; the audio pairs are decorative. MIDI
-// IN/OUT/THRU, USB, DC IN and POWER (no path into the emulator) were removed 13 Sep 2026.
-const JACK_Y = 10;
-const JACKS = [[120, 1, "hp"], [190, 2], [262, 2], [335, 2], [405, 2], [840, "cf"]];
-
-// ---------------- build ----------------
+// ---------------- build: the MKII skin ----------------
+// The face is octemu's generated MKII panel (tools/panel/skin/gen_svg.py,
+// Mark Roberts, MIT) in octabam's dark palette, drawn as one inline SVG
+// (/skin.js). Every control the page drives is a transparent hit area laid
+// over its drawing (window.SKIN = the drawing's geometry), so the key, knob,
+// fader and LED code below works on data-ids exactly as before; the LEDs
+// light the drawing's own keys and LEDs through its `lit` classes.
 function el(cls, x, y, w, h) {
   const d = document.createElement("div");
   d.className = cls;
@@ -406,71 +345,80 @@ function el(cls, x, y, w, h) {
                          d.style.width = w + "px"; d.style.height = h + "px"; }
   S.append(d); return d;
 }
-function label(text, x, y, cls = "") {
-  const d = document.createElement("div");
-  d.className = "lb " + cls; d.textContent = text;
-  d.style.left = x + "px"; d.style.top = y + "px";
-  S.append(d); return d;
+// the page's key ids (key_map.json) -> the skin's element ids
+const SKIN_KEYS = {
+  t1: "btn-t1", t2: "btn-t2", t3: "btn-t3", t4: "btn-t4", t5: "btn-t5", t6: "btn-t6", t7: "btn-t7", t8: "btn-t8",
+  ...Object.fromEntries([...Array(16)].map((_, i) => ["trig" + (i + 1), "trig-" + (i + 1)])),
+  mixer: "btn-mix", midi: "btn-midi", func: "btn-func", cue: "btn-cue", yes: "btn-yes", no: "btn-no",
+  pattern: "btn-ptn", bank: "btn-bank", up: "btn-up", down: "btn-down", left: "btn-left", right: "btn-right",
+  pg_playback: "btn-src", pg_amp: "btn-amp", pg_lfo: "btn-lfo", pg_fx1: "btn-fx1", pg_fx2: "btn-fx2",
+  rec: "btn-rec", play: "btn-play", stop: "btn-stop", tempo: "btn-tempo", scene_a: "btn-a", scene_b: "btn-b",
+  recab: "btn-rec1", reccd: "btn-rec2", scale: "btn-page",
+  // MKII-only keys (the port boots as an MKI unless --mkii): see CHORDS
+  proj: "btn-proj", part: "btn-part", aed: "btn-aed", arr: "btn-arr", rec3: "btn-rec3",
+};
+// An MKII key the MKI keymap lacks, sent as the MKI's FUNC chord for the same
+// function (the MKI print: FUNC+MIXER = PROJECT, FUNC+MIDI = PART, FUNC+PATTERN
+// = ARRANGER). Used only while key_map.json has no row/bit for the key (an MKI
+// port); AED and REC3 have no MKI equivalent.
+const CHORDS = { proj: ["func", "mixer"], part: ["func", "midi"], arr: ["func", "pattern"] };
+const SKIN_KNOBS = { volume: "knob-phones", level: "knob-level", a: "knob-a", b: "knob-b", c: "knob-c",
+                     d: "knob-d", e: "knob-e", f: "knob-f" };
+// LED ids (key_map.json, "led_" dropped) -> the skin element they light
+const SKIN_LEDS = {
+  ...Object.fromEntries([...Array(16)].map((_, i) => ["trig" + (i + 1), "trig-" + (i + 1)])),
+  ...Object.fromEntries([...Array(8)].map((_, i) => ["t" + (i + 1), "btn-t" + (i + 1)])),
+  play: "btn-play", rec: "btn-rec", stop: "btn-stop", scene_a: "btn-a", scene_b: "btn-b", tempo: "btn-tempo",
+  pg_playback: "btn-src", pg_amp: "btn-amp", pg_lfo: "btn-lfo", pg_fx1: "btn-fx1", pg_fx2: "btn-fx2",
+  midi: "btn-midi", mixer: "btn-mix", arranger: "btn-arr", project_menu: "btn-proj", part_menu: "btn-part",
+  func: "btn-func", card: "led-card-status",
+};
+{
+  const face = document.createElement("div"); face.id = "face";
+  face.innerHTML = window.SKIN_SVG || "";
+  S.prepend(face);
 }
-for (const [x, kind, id] of JACKS) {
-  if (kind === 1) { const j = el("jack", x, JACK_Y, 12, 12); if (id) j.id = "jack-" + id; }
-  else if (kind === 2) { el("jack", x - 9, JACK_Y, 12, 12); el("jack", x + 9, JACK_Y, 12, 12); }
-  // "cf" is drawn as #card below the labels (it is a control)
-}
-for (const [x, y] of [[32, 55], [1385, 55], [32, 700], [1385, 700]]) el("screw", x, y, 14, 14);
-for (const [id, x, y, w, h, shape, col, glyph] of KEYS) {
-  const k = el(`k ${shape} ${col}`, x, y, w, h);
+const B = (window.SKIN || {}).buttons || {}, KN = (window.SKIN || {}).knobs || {};
+for (const [id, sid] of Object.entries(SKIN_KEYS)) {
+  const b = B[sid]; if (!b) continue;
+  const k = el("k skin", b.x + b.w / 2, b.y + b.h / 2, b.w, b.h);
   k.dataset.id = id;
-  if (glyph) { const g = document.createElement("span"); g.className = "g" + (w > 40 ? " big" : ""); g.textContent = glyph; k.append(g); }
 }
-for (const [id, x, y, col] of LEDS) { const d = el(`led ${col}`, x, y, 7, 7); d.id = "led-" + id; }
-for (const [id, x, y, r, live] of KNOBS) {
-  const k = el("knob" + (live ? " live" : " pot"), x, y, 2 * r - 8, 2 * r - 8);   // pot = VOLUME, the monitor's gain (see MONITOR)
-  k.dataset.id = id; k.dataset.pos = 0;    // live knobs: net detents sent since the page loaded (the indicator's angle; endless, not persisted)
+for (const [id, sid] of Object.entries(SKIN_KNOBS)) {
+  const n = KN[sid]; if (!n) continue;
+  const k = el("knob skin" + (id === "volume" ? " pot" : " live"), n.cx, n.cy, 2 * n.r, 2 * n.r);
+  k.dataset.id = id; k.dataset.pos = 0;
   const cap = document.createElement("div"); cap.className = "cap"; k.append(cap);
 }
-for (const [t, x, y, cls] of LABELS) label(t, x, y, cls);
-{ // the COMPACT FLASH slot (JACKS "cf" at 840,15): a 100x64 hit area over slot + label, after the labels so it is on top
-  const c = el("", 840, 34, 100, 64); c.id = "card";
+// the LED elements applyLeds() drives, kept (hidden) for their state; the skin mirrors them
+for (const id of Object.keys(SKIN_LEDS)) { const d = el("led", -20, -20, 7, 7); d.id = "led-" + id; }
+{ // the screen, the phase overlay, the crossfader bed, from the skin's geometry
+  const sc = (window.SKIN || {}).screen || {x: 473, y: 172, w: 240, h: 120};
+  for (const id of ["#screen", "#note"]) {
+    const e = $(id); e.style.left = sc.x + "px"; e.style.top = sc.y + "px"; e.style.width = sc.w + "px"; e.style.height = sc.h + "px";
+  }
+  const sl = ((window.SKIN || {}).fader || {}).slot || {x: 887, y: 430, w: 194, h: 15.5};
+  const fb = $("#fbed"); fb.classList.add("skin-bed");
+  fb.style.left = (sl.x - 6) + "px"; fb.style.top = (sl.y - 30) + "px";
+  fb.style.width = (sl.w + 12) + "px"; fb.style.height = (sl.h + 60) + "px";
+}
+{ // COMPACT FLASH: a hit area over the rear-edge label -- click opens the AUDIO POOL drawer
+  const c = el("skin-card", 729, 50, 110, 24); c.id = "card";
   c.title = "COMPACT FLASH — click: the card's AUDIO pool (add samples; RE-INSERT CARD reboots the unit); drop audio files here to add them";
   for (const cls of ["cf", "slot"]) { const d = document.createElement("div"); d.className = cls; c.append(d); }
   c.addEventListener("click", () => togglePool());
 }
-{ // the HEAD-PHONES jack (JACKS "hp" at 120,15): a 60x62 hit area over jack + label = the monitor's plug,
-  // and the L/R level meter beside it (built here, after the labels, so they are on top)
-  const h = el("", 120, 34, 60, 62); h.id = "hp";
+{ // HEAD-PHONES: a hit area over the headphones print = the monitor's plug, and the L/R meter beside it
+  const j = el("jack", 95.5, 53, 1, 1); j.id = "jack-hp";
+  const h = el("", 95.5, 52, 30, 24); h.id = "hp";
   const plug = document.createElement("div"); plug.className = "plug"; h.append(plug);
   h.addEventListener("click", () => monToggle());
-  h.after($("#jack-hp"));                                   // the jack right after #hp: the CSS sibling rule lights it
-                                                            // (it paints over #hp, so CSS gives it pointer-events:none)
-  const vu = el("", 161, 12, 15, 22); vu.id = "vu";
+  h.after(j);
+  const vu = el("", 124, 52, 15, 22); vu.id = "vu";
   for (const ch of ["L", "R"]) {
     const bar = document.createElement("div"); bar.className = "bar"; bar.title = ch;
     for (const cls of ["fill", "pk"]) { const d = document.createElement("div"); d.className = cls; bar.append(d); }
     vu.append(bar);
-  }
-}
-{ // the FUNCTION legend as one group (the red square = "red labels are FUNC + key", then the word), centred under the key
-  const g = label("", 130, 464, "grp");
-  const sq = document.createElement("span"); sq.className = "sw";
-  const t = document.createElement("span"); t.textContent = "Function";
-  g.append(sq, t);
-}
-for (const [x1, x2, y, text, tx] of RULES) {
-  const l = label(text, tx, y, "r");
-  const half = l.offsetWidth / 2 + 5;
-  const a = el("rule"); a.style.left = x1 + "px"; a.style.top = y + "px"; a.style.width = (tx - half - x1) + "px";
-  const b = el("rule"); b.style.left = (tx + half) + "px"; b.style.top = y + "px"; b.style.width = (x2 - tx - half) + "px";
-}
-for (let i = 0; i < 16; i++) { // bank / track pills under the trig keys
-  const p = el("pillb", 133 + i * 74.1, 693, 36, 13);
-  p.innerHTML = `<b>${"ABCDEFGHIJKLMNOP"[i]}</b>T${(i % 8) + 1}`;
-}
-{ // crossfader tick marks (the position is in the fader's tooltip; the readout under the bed went 13 Sep 2026)
-  const bed = $("#fbed");
-  for (let i = 0; i <= 10; i++) for (const top of [3, 32]) {
-    const t = document.createElement("div"); t.className = "tick";
-    t.style.left = (8 + i * 19.1) + "px"; t.style.top = top + "px"; bed.append(t);
   }
 }
 
@@ -532,7 +480,7 @@ function rowOfKnob(el) { const id = el.dataset.id; const r = mapKnobs[id]; retur
 function refreshMapped() {
   document.querySelectorAll(".k[data-id]").forEach(el => {
     const k = keyOf(el);
-    el.classList.toggle("unmapped", !k);
+    el.classList.toggle("unmapped", !k && !CHORDS[el.dataset.id]);
     el.title = k ? `${el.dataset.id}: row ${hex(k[0])} bit ${k[1]}` : `${el.dataset.id}: not in key_map.json`;
   });
   document.querySelectorAll(".knob").forEach(el => {
@@ -587,6 +535,12 @@ document.addEventListener("mousedown", e => {
   if (!el) return;
   e.preventDefault();
   const k = keyOf(el);
+  const ch = !k && CHORDS[el.dataset.id] && CHORDS[el.dataset.id].map(id => mapKeys[id] || BUILTIN[id]);
+  if (ch && ch.every(Boolean)) {                 // an MKII key on an MKI port: its FUNC chord
+    el.classList.add("down"); el.dataset.chord = "1";
+    (async () => { await sendKey(ch[0][0], ch[0][1], true); await sendKey(ch[1][0], ch[1][1], true); })();
+    return;
+  }
   if (!k) {
     // transport has a proven fallback: the firmware's own key handlers
     const t = {play: "play", rec: "rec", stop: "stop"}[el.dataset.id];
@@ -613,6 +567,12 @@ document.addEventListener("mousedown", e => {
 document.addEventListener("mouseup", () => {
   document.querySelectorAll(".k.down").forEach(el => {
     el.classList.remove("down");
+    if (el.dataset.chord) {                      // release the chord, key before FUNC
+      delete el.dataset.chord;
+      const ch = CHORDS[el.dataset.id].map(id => mapKeys[id] || BUILTIN[id]);
+      (async () => { await sendKey(ch[1][0], ch[1][1], false); await sendKey(ch[0][0], ch[0][1], false); })();
+      return;
+    }
     const k = keyOf(el);
     if (k) sendKey(k[0], k[1], false);
   });
@@ -766,10 +726,11 @@ document.addEventListener("mouseup", () => { drag = null; });
 // bed went 13 Sep 2026).
 const FADER = {pos: null, want: null, timer: 0, drag: false, focus: false, scenes: ""};
 const FBED = $("#fbed"), FHANDLE = $("#fhandle");
-const F_LEFT = 1040, F_TRAVEL = 170;      // handle left edge: pos 0 at the slit's left end .. pos 127 at its right end
 function drawFader() {
   if (FADER.pos == null) { FHANDLE.title = FBED.title = "CROSSFADER"; return; }
-  FHANDLE.style.left = (F_LEFT + FADER.pos / 127 * F_TRAVEL) + "px";
+  const travel = (((window.SKIN || {}).fader || {}).travel || {}).max || 166;
+  const hd = document.getElementById("fader-handle");   // the skin's handle: translate in x, 0 = far left
+  if (hd) hd.setAttribute("transform", `translate(${FADER.pos / 127 * travel} 0)`);
   FHANDLE.title = FBED.title = `CROSSFADER at ${FADER.pos} (0 = scene A, 127 = scene B; = MIDI CC 48)${FADER.scenes} — drag, wheel (Shift ×8) or ←/→ after a click; the firmware morphs the scene locks`;
 }
 async function faderRefresh() {
@@ -798,8 +759,11 @@ function setFader(pos) {
   if (!FADER.timer) FADER.timer = setTimeout(() => { FADER.timer = 0; sendFader(FADER.want); }, 60);
 }
 function faderPosFromX(clientX) {
-  const rect = FBED.getBoundingClientRect(), s = rect.width / 208;   // the stage is scaled to fit
-  return (clientX - rect.left - (F_LEFT - 1032 + 11) * s) / (F_TRAVEL * s) * 127;
+  // the bed spans the skin's slot plus 6 px each side; the cap's centre runs
+  // slot.x + 15 .. slot.x + 15 + travel (the stage is scaled to fit)
+  const rect = FBED.getBoundingClientRect(), s = rect.width / (FBED.offsetWidth || 206);
+  const travel = (((window.SKIN || {}).fader || {}).travel || {}).max || 166;
+  return (clientX - rect.left - (6 + 15) * s) / (travel * s) * 127;
 }
 for (const el of [FBED, FHANDLE]) el.addEventListener("mousedown", e => {
   e.preventDefault();
@@ -1353,6 +1317,14 @@ function applyLeds(l) {
       el.classList.remove("red", "green", "yellow");
       el.classList.add(st.colour);
       el.style.opacity = st.on ? String(0.45 + 0.55 * Math.max(0, Math.min(1, st.level / 15))) : "";   // half-bright (5) reads ~0.63
+    }
+    // the skin: the key or LED this lights (its `lit` class, lit-red/-green/-yellow)
+    const sk = document.getElementById(SKIN_LEDS[id.replace(/^led_/, "")] || "");
+    if (sk) {
+      sk.classList.toggle("lit", st.on);
+      sk.classList.remove("lit-red", "lit-green", "lit-yellow");
+      if (st.on && st.colour) sk.classList.add("lit-" + st.colour);
+      sk.style.opacity = st.on ? String(0.55 + 0.45 * Math.max(0, Math.min(1, st.level / 15))) : "";
     }
   }
 }

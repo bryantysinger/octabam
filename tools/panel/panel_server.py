@@ -180,6 +180,25 @@ XFADER_ROW = 0x40           # the panel's fader report: `0x40 <adc 0..255>` on t
 SCENE_A_OFF, SCENE_B_OFF = 0x8ed90, 0x8ed91   # the Part's assigned scenes (0-based), base-relative
 PARAM_MAP_FILE = pathlib.Path(__file__).parent / "param_map.json"
 
+_SKIN_JS = None
+
+
+def skin_js():
+    """window.SKIN / window.SKIN_SVG from tools/panel/skin/gen_svg.py, built
+    into out/panel_skin/ on first use (per server)."""
+    global _SKIN_JS
+    if _SKIN_JS is None:
+        out = ROOT / "out/panel_skin"
+        out.mkdir(parents=True, exist_ok=True)
+        subprocess.run([sys.executable, str(pathlib.Path(__file__).parent / "skin/gen_svg.py"), str(out)],
+                       check=True, capture_output=True)
+        # the drawing's own screen rect is id="screen", which is the page's LCD
+        # image's id: the page would move the rect instead of the image
+        svg = (out / "octatrack.svg").read_text().replace('id="screen"', 'id="skin-screen"')
+        geo = (out / "octatrack-elements.json").read_text()
+        _SKIN_JS = (f"window.SKIN = {geo};\nwindow.SKIN_SVG = {json.dumps(svg)};\n").encode()
+    return _SKIN_JS
+
 
 def load_param_map(path=PARAM_MAP_FILE):
     """tools/panel/param_map.json with its hex strings turned into ints
@@ -3818,6 +3837,13 @@ class Handler(BaseHTTPRequestHandler):
             # read per request: a page fix must not need a server (or app) restart
             page = pathlib.Path(__file__).parent / "panel.html"
             self._send(200, page.read_bytes() if page.exists() else self.html, "text/html; charset=utf-8")
+        elif path == "/skin.js":
+            # The panel's face: octemu's generated MKII skin (tools/panel/skin/
+            # gen_svg.py, Mark Roberts, MIT) in octabam's dark palette, as one
+            # script the page loads before it builds (window.SKIN = the element
+            # geometry, window.SKIN_SVG = the drawing). Generated once per
+            # server into out/panel_skin/.
+            self._send(200, skin_js(), "application/javascript; charset=utf-8")
         elif path == "/screen.png":
             with p.lock:
                 self._send(200, p.frame or _png_gray(128, 64, [b"\x40" * 128] * 64), "image/png")

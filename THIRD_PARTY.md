@@ -49,6 +49,7 @@ transcribed).
 | source | licence | copyright | used in |
 |---|---|---|---|
 | Tim Hastie, [timhastie/octa-panel](https://github.com/timhastie/octa-panel) at `be68244` (a fork of octabam, 10-25 Sep 2026) | MIT (the fork's `LICENSE` is octabam's, copyright line unchanged) | Tim Hastie (his changes) | `tools/panel/` (the virtual front panel, the macOS app, the key/LED map and its evidence); `tools/emu/ot_emu` (`--interactive`, pacing, the DSPI RTC, DMA timers DTIM0-3, event-horizon bursts, the page-table memory path, lazy DSP batching, `--dsp-rt`, bounded records, card write-back, memory-to-memory eDMA copies, per-track taps; `oracle/`, `pgo.sh`); the `--dsp-rt` hunks of `tools/patches/dsp56300.patch`; `docs/firmware/COLDFIRE_PORT.md` (his milestones O14i-O24) |
+| Mark Roberts, [markandrus/octemu](https://github.com/markandrus/octemu) `assets/panel/gen_svg.py` | MIT (Copyright (c) 2026 Mark Roberts) | Mark Roberts | `tools/panel/skin/gen_svg.py`: the MKII front panel drawn as SVG (geometry measured from photographs of a unit, keys, knobs, fader, LEDs, the lighting classes); octabam added the `dark` palette and an output directory |
 
 ## Analysis tooling
 
