@@ -10,8 +10,7 @@ flashed image was built from.
 - BusDelay's GRAIN scatter knob (page 2, slot 7) is SCTR, was SCAT (26 Sep
   2026). Name only: slot, count and default unchanged, no stamp needed.
 - TEMPO BUS (25-26 Sep 2026): the TEMPO window lists and edits BusDelay and
-  BusVerb. UP/DOWN pick the row, A (or B) the value, LEFT/RIGHT the box
-  (the cursor keeps its line), LEVEL whole BPM, FUNC + LEVEL 0.1 BPM. A
+  BusVerb. UP/DOWN pick the row, A (or B) the value, LEFT/RIGHT the box, LEVEL whole BPM, FUNC + LEVEL 0.1 BPM. A
   mode's `---` rows are left out. Header: `TMP 121.2`, then the key
   `NAV ◀▲▼▶ A ●`; five rows per box.
 
