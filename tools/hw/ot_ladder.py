@@ -90,7 +90,7 @@ def _sends(aux, verb=False, delay=False):
         elif t == 5 and verb:
             out[t] = ("REVERB SERVER", {"REV": aux.get(t, 0)})
         else:
-            out[t] = ("SEND", {"SEND": aux.get(t, 0)})
+            out[t] = ("SEND", {"DEL": aux.get(t, 0), "REV": aux.get(t, 0)})
     return out
 
 
@@ -147,9 +147,11 @@ def _slot_bytes(spec, remix, mods):
     if spec is None:
         return 0x00, bytes(12)
     key, knobs = spec
-    if key not in remix.modules:
+    m = mods.get(key)
+    # a stock effect the remix does not list keeps its stock code and id in
+    # the image (tools/remix/stock.py): a part that names it still runs it
+    if key not in remix.modules and not (m is not None and m.is_stock):
         sys.exit(f"the ladder names {key!r}, which remix {remix.name!r} does not place")
-    m = mods[key]
     return m.menu.fx2_id, P.module_defaults(m, knobs)
 
 
@@ -654,8 +656,10 @@ def _cc_for(mods, layout, t, fx, name):
         return None
     m = mods[spec[0]]
     slot = m.knob_map_all().get(name)
-    if slot is None or slot >= 6:
+    if slot is None:
         return None
+    if slot >= 6:                          # page 2: CC MAP's CC 62-67 (FX2), 68-73 (FX1)
+        return (68 if fx == "fx1" else 62) + slot - 6
     return (34 if fx == "fx1" else 40) + slot
 
 
@@ -677,7 +681,7 @@ def stress_script(mods, layout):
         t += dt
         ev.append((t, phase, [m for m in moves if m[1] is not None]))
 
-    aux = [(tr, _cc_for(mods, layout, tr, "fx2", "SEND"), 127) for tr in range(1, 8)]
+    aux = [(tr, _cc_for(mods, layout, tr, "fx2", n), 127) for tr in range(1, 8) for n in ("DEL", "REV")]
     at(30, "sends 127", aux)
     # the delay host (T1): FDBK 127 / TONE 0, then TIME sweep
     d = lambda n, v: (1, _cc_for(mods, layout, 1, "fx2", n), v)

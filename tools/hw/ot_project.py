@@ -924,17 +924,20 @@ def make_test_project(src, dest, remix_name):
 # ---- the RIG project: the set's layout --------------------------------------
 # One part = the whole rig on its eight tracks: stations on FX1 everywhere,
 # the two engines in T1's and T5's FX2 (each prints its wet on its own track
-# since 20 Sep 2026), a SEND on T2-T7, none on T8. Every part of every bank
+# since 20 Sep 2026), a SEND on T2-T7, none on T8. A SEND's DEL and REV
+# carry the same level: the old single send fed the delay, which passed the
+# dry on to the reverb; the chain carries repeats only since 25 Sep 2026, so
+# the dry reaches the reverb by REV. Every part of every bank
 # gets the same layout, so any pattern is the rig. Knob bytes are the
 # manifest defaults with the few deliberate exceptions listed per track.
 RIG = (
     (1, ("CHARACTER", {}),                  ("DELAY SERVER", {"DEL": 30})),
-    (2, ("SPECTRUM", {}),                   ("SEND", {"SEND": 40})),
-    (3, ("SPECTRUM", {}),                   ("SEND", {"SEND": 30})),
-    (4, ("SPECTRUM", {}),                   ("SEND", {"SEND": 40})),
+    (2, ("SPECTRUM", {}),                   ("SEND", {"DEL": 40, "REV": 40})),
+    (3, ("SPECTRUM", {}),                   ("SEND", {"DEL": 30, "REV": 30})),
+    (4, ("SPECTRUM", {}),                   ("SEND", {"DEL": 40, "REV": 40})),
     (5, ("MODULATION", {}),                 ("REVERB SERVER", {"REV": 40})),
-    (6, ("SPECTRUM", {}),                   ("SEND", {"SEND": 50})),
-    (7, ("SPECTRUM", {}),                   ("SEND", {"SEND": 40})),    # SPECTRUM, not
+    (6, ("SPECTRUM", {}),                   ("SEND", {"DEL": 50, "REV": 50})),
+    (7, ("SPECTRUM", {}),                   ("SEND", {"DEL": 40, "REV": 40})),    # SPECTRUM, not
     (8, ("CHARACTER", {"COMP": 40}),        (None, {})),   # GLUE by position (14 Sep 2026); no FX2: the SEND is refused on T8 (the master's input is the mix)
 )
 
@@ -1081,7 +1084,8 @@ def make_delay_test_project(src, dest, remix_name="bamsep26", sender=3):
         f.unlink()
     zeros = [0] * 6
     set_fx(dest, "fx1", 1, 0, page=zeros, page2=zeros, guard=False)
-    set_fx(dest, "fx2", 1, "DELAY SERVER", page=[0, 40, 60, 100, 0, 127], page2=[0, 0, 64, 1, 64, 0], guard=False)
+    # page 1: DEL REV FDBK TONE PING WET; page 2: MODE SCTR DENS SIZE PTCH TIME
+    set_fx(dest, "fx2", 1, "DELAY SERVER", page=[0, 0, 60, 100, 0, 127], page2=[0, 0, 64, 1, 64, 40], guard=False)
     for t in range(2, 9):
         set_fx(dest, "fx1", t, 0, page=zeros, page2=zeros, guard=False)
         set_fx(dest, "fx2", t, "SEND", page=[100 if t == sender else 0, 0, 0, 0, 0, 0], page2=zeros, guard=False)
