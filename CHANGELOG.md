@@ -7,6 +7,15 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- Image 64 (`usb-audio`) ran on Sam's MKII (25 Sep 2026): enumerates as a
+  16-channel 44.1 kHz input and a MIDI port at high speed; every channel
+  carries its track's tone; 9.6 minutes of takes with zero discontinuities
+  after the first 1.6 s of each host stream, with and without a 7,170
+  msg/s USB-MIDI flood and panel load; counters 0 underruns, 0 overruns,
+  bankdup unmoved. One open item: a burst of reordered samples in the
+  first 1.5 s of every host stream (`FAILURE_MODES.md`). `usb_counters.py`
+  flushes its watch lines. Not tagged: a diagnostic image, the rig modules
+  as in image 43.
 - USB AUDIO's counters over a vendor control request (25 Sep 2026,
   `tools/hw/usb_counters.py`, the bench's `counters`, checked by
   `verify_usb`), `tools/harness/click_scan.py`, and image 64 packed from

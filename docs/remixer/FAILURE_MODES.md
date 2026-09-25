@@ -918,3 +918,27 @@ discriminate T1's block from T5's (both put the burst opposite T1); T5
 LEVEL 0 does. The CUE outs carry nothing until the track is cued.
 `tools/rec` needs the device name as its third argument (without it it
 looks for EVO4 and exits at once).
+
+## USB audio: a burst of reordered samples in the first 1.5 s of every host stream, clean after (image 64, 25 Sep 2026)
+
+**Symptom.** Recording the sixteen USB channels on macOS, every take has
+one cluster of sample-step events between 0.75 and 1.5 s after the host
+opened the stream, on several channels at once, and none afterwards: 60 s,
+60 s, 300 s and a 120 s take under a 7,170-message/s USB-MIDI flood with
+menu, sample-manager and project-save work on the panel all read zero
+events past 2 s. The device's counters (vendor request 0xc0/0x55) show 0
+underruns, 0 overruns and no bank-duplicate movement across all four.
+**What it is.** Short runs of samples out of order: after an event the
+next samples sit −11.6, +10.3 or −41 frames off the tone's phase, and the
+long-window phase before and after agrees to 0.1 frame, so nothing is lost
+and nothing is repeated for long; one or two packets swapped. Not the
+producer (bankdup still), not the ring (no under/overrun).
+**Cause.** Open. Candidates: the device's two-slot packet queue on the
+first primes after alt 1 (packet order under the controller's add-dTD
+tripwire, which the port's bench does not model: it serves queue heads in
+list order and streams cleanly from the first packet), or the host's
+stream start. A stream held open across two recordings, or a sequence
+counter in the packets, decides it. Likely what octemu's "some crackles"
+was, since sox opens a fresh stream per run.
+**Fix.** None yet. Workaround for recording: discard the first two seconds
+of every take, or hold the stream open in a DAW.

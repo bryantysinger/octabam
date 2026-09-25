@@ -61,11 +61,11 @@ def main():
         last = read(dev)
     except Exception as e:  # noqa: BLE001
         sys.exit(f"the request failed: {e} (a STALL means the image carries no USB AUDIO)")
-    print(" ".join(f"{k}={v}" for k, v in last.items()))
+    print(" ".join(f"{k}={v}" for k, v in last.items()), flush=True)
     while a.watch > 0:
         time.sleep(a.watch)
         now = read(dev)
-        print(" ".join(f"{k}={now[k]}{'(+%d)' % (now[k] - last[k]) if now[k] != last[k] else ''}" for k in NAMES))
+        print(" ".join(f"{k}={now[k]}{'(+%d)' % (now[k] - last[k]) if now[k] != last[k] else ''}" for k in NAMES), flush=True)
         last = now
 
 
