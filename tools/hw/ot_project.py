@@ -118,7 +118,8 @@ def clone_samples(src, dest, template, length=64, scale="1/4X"):
     running image, so its parts and pages are that image's defaults) that
     carries `src`'s sample slots and, in every bank and part (live and saved
     copies), each track's machine type and slot bytes, its project-local
-    sample files and MASTER_TRACK; every pattern's length/scale pair set.
+    sample files with their .ot attribute files, MASTER_TRACK and TEMPOx24;
+    every pattern's length/scale pair set.
     Nothing else of `src` comes across: no trigs,
     locks, knobs, levels, names or tempo -- those are the TEMPLATE's, so it
     must be an untouched fresh project (Bottleservice 26, 25 Sep 2026: the
@@ -153,17 +154,25 @@ def clone_samples(src, dest, template, length=64, scale="1/4X"):
     # (../AUDIO/...) resolve from any project in the set. 8.3 aliases in a
     # path (RU4REA~7/RU4REA~2.WAV) are the unit's and the Mac cannot see them.
     local = sorted({b["path"] for b in src_slots if b["path"] and "/" not in b["path"]})
+    nf = 0
     for name in local:
-        if (src / name).is_file() and not (dest / name).is_file():
-            shutil.copyfile(src / name, dest / name)
-    print(f"{len(local)} project-local sample file(s) copied")
+        for f in (name, pathlib.Path(name).with_suffix(".ot").name):
+            # the .ot beside a sample holds its trim, loop, BPM and slices;
+            # without it the unit plays default trims at a guessed BPM
+            # (Bottleservice 26, 25 Sep 2026: "trimmed short, squealing")
+            if (src / f).is_file() and not (dest / f).is_file():
+                shutil.copyfile(src / f, dest / f); nf += 1
+    print(f"{len(local)} project-local sample(s): {nf} file(s) copied (.wav and .ot)")
     # project-level settings that belong with the samples' layout
     for suffix in ("work", "strd"):
         f = dest / f"project.{suffix}"
         if f.is_file():
-            raw = f.read_bytes(); m = re.search(rb"MASTER_TRACK=(\d)", src_raw.encode("latin1"))
-            if m:
-                f.write_bytes(re.sub(rb"MASTER_TRACK=\d", b"MASTER_TRACK=" + m.group(1), raw))
+            raw = f.read_bytes()
+            for key in ("MASTER_TRACK", "TEMPOx24"):        # the tempo the trims-in-bars were made at
+                m = re.search(rb"%s=(\d+)" % key.encode(), src_raw.encode("latin1"))
+                if m:
+                    raw = re.sub(rb"%s=\d+" % key.encode(), key.encode() + b"=" + m.group(1), raw)
+            f.write_bytes(raw)
     # machines and slots, every bank the template has
     if isinstance(scale, str):
         scale = SCALE_NAMES.index(scale.upper())
