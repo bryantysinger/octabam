@@ -48,7 +48,7 @@
 ;                 sample, for the wet sums)
 ;   r7+$09/$0a    (4096 - tap), lines 5/6                          per block
 ;   r7+$0b/$0d    table A / table B base                           per block
-;   r7+$0c        bus auto-gain 1/sqrt(N), or 1/8 on the chain     per block
+;   r7+$0c        REV bus auto-gain 1/sqrt(N)                      per block
 ;   r7+$0e        SHMR, glided                                     per block
 ;   r7+$0f        shimmer write phase (persistent, masked)
 ;   r7+$14        the dispatcher's call flag; a shimmer park (head 0's t0)
@@ -81,8 +81,10 @@
 ;   r7+$5a/$5b    LFO triangle stash, lines 0/1                    per block
 ;   r7+$5c/$5d    in-loop AP d1 carry, A / B (per sample)
 ;   r7+$5e/$5f    in-loop AP bases; $60/$61 their (512 - tap)
-;   r7+$63/$6a    this call's AUX ACC read / write address (the loop walks
+;   r7+$63/$6a    this call's REV ACC read / write address (the loop walks
 ;                 them in n3 / n2)
+;   r7+$64/$65    this call's chain read address (walked in the slot) / the
+;                 chain gain, 1/8 while the delay is live, else 0
 ;   r7+$67        this call's frame offset; $6b last-seen rotation
 ;   r7+$6c        lines 4-7 tap scale; $6f SIZE's mode scale
 ;   r7+$70        WET, glided; $72/$73 damping / modulation scale per mode
@@ -92,12 +94,12 @@
 ;   r7+$82        warm-up counter, $2c0000 | blocks, capped at 0x100
 ;   r7+$83        write phase (persistent, masked on load as well as save)
 ;   $71 WET ramped per sample, $7c its per-sample step (per block)
-;   free: $10..$13, $25..$27, $39, $64..$66, $68, $69, $6e, $7d
-;   (sixteen; $25/$26 and $39 went to registers 23 Sep 2026)
+;   free: $10..$13, $25..$27, $39, $66, $68, $69, $6e, $7d
+;   (fourteen; $25/$26 and $39 went to registers 23 Sep 2026)
 ;
 ; Parameters (page 1 slots 0-5, page 2 slots 6-11):
-;   p0 SEND -> this host's own dry send into the one aux bus (written to the
-;              AUX accumulator, flagged at y:$981)
+;   p0 SEND -> this host's own dry send into the reverb (written to the
+;              REV accumulator, flagged at y:$981)
 ;   p1 TIME -> the decay law (README.md)
 ;   p2 SIZE, p3 SHMR (linked), p4 SHFT
 ;   p5 WET  -> the reverb's level: the host prints wet*WET under its dry
@@ -237,6 +239,13 @@ bus_dohk:                               ; nobody did -- take over this block
         do      #16,>bus_zclr
         move    a,y:(r2)+
 bus_zclr:
+        move    #>$9d8,b                ; the REV accumulator: the chain's
+        add     #>$80,b                 ; base plus its length
+        add     x0,b
+        move    b,r2                    ; r2 = REV ACC[new] base
+        do      #16,>bus_racclr
+        move    a,y:(r2)+
+bus_racclr:
         nop
 ; ---- release both server-role locks for this block (BUS.md hardware test 3)
 ; a is still 0 from the clear loop above. Whichever of the three effects is
@@ -258,6 +267,12 @@ bus_zclr:
         move    a,r1
         clr     a
         move    a,y:(r1)                ; AUX count = 0
+        move    r1,b                    ; the REV count, same index: 0x983
+        move    #>$44,x0                ; sits 0x44 below the AUX count
+        sub     x0,b                    ; 0x9c7 (both relocate together)
+        move    b,r1
+        nop
+        move    a,y:(r1)                ; REV count = 0
 bus_seen:
         move    y:>$900,a               ; remember this block's offset so next
         and     #>$70,a                 ; block we can tell whether anybody
@@ -309,42 +324,42 @@ bus_mine:
 ; The delay stamps y:$9c3 nonzero every block it processes (after its
 ; warm-up); this reads it, clears it (clear-on-read, single writer, single
 ; reader -- the station has its own word, $9c5) and keeps 3 blocks of grace
-; in CORE-PRIVATE y:$09f1 (r7 is full). While live, this
-; block's input is the delay's output buffer at $901 instead of the aux
-; accumulator -- see the two Tccs below and the gain override in the
-; resolve block. So delay-only, reverb-only, both, or neither all work and
-; no project setting can silence the aux (the one-aux rig, 7 Sep 2026).
+; in CORE-PRIVATE y:$09f1 (r7 is full). The tank hears the REV accumulator
+; (every REV send and this host's own SEND) plus, while the delay is live,
+; the chain buffer (the repeats x DLY); a chain gain of 0 keeps a stale
+; chain out when it is not (25 Sep 2026: the sends split into DEL and REV;
+; the aux was the reverb's input until then).
         move    y:>$09f1,b              ; blocks of grace left
         move    #>$9c3,r5               ; the delay's stamp word
         bsr     stampgr                 ; b = grace after this block's stamp
         move    b,y:>$09f1
         clr     a                       ; (BEFORE the tst: clr sets the CCR)
-        move    #>$d7,x0                ; the distance from the AUX accumulator
-        tst     b                       ; ($901) up to the CHAIN buffer ($9d8)
-        tne     x0,a                    ; while the delay is live,
-        move    a,y1                    ; else 0; the read address adds it
+        move    #$10,x0                 ; 1/8: the loop's asl #3 lands the
+        tst     b                       ; chain word untouched (mpy by
+        tne     x0,a                    ; $100000 then <<3 is the identity)
+        move    a,x:(r7+$65)            ; this block's chain gain, else 0
 
         move    y:>$900,a
         move    a,x1                    ; x1 = write offset (0..112)
         add     #>$50,a                    ; five buffers on == three buffers back
         and     #>$70,a                    ; mod 8
         move    a,x0                    ; x0 = the read offset
-        move    #>$901,a                ; the AUX accumulator (one bus, 6 Sep
-        add     x0,a                    ; 2026)
         move    x:(r7+$67),b            ; this call's split-aware frame offset
-        add     b,a                     ; a = AUX ACC read address
-        add     y1,a                    ; ... or the CHAIN buffer's, same
-                                        ; rotation and frame offset, while
-                                        ; the delay is live (y1 from above)
-        move    a,x:(r7+$63)            ; this call's read address
-; ---- this call's AUX ACC write address: the host's own SEND ---------------
-; SEND's recipe: base $901 + write offset (x1, 0/16/../112) + the split-aware
-; frame offset (b). The loop walks it in n2; the level is the knob's copy at
-; y:$09f0.
-        move    #>$901,a
+        move    #>$9d8,a                ; the CHAIN buffer
+        add     x0,a
+        add     b,a
+        move    a,x:(r7+$64)            ; this call's chain read address
+        add     #>$80,a                 ; the REV accumulator sits $80 above
+        move    a,x:(r7+$63)            ; this call's REV read address
+; ---- this call's REV ACC write address: the host's own SEND ---------------
+; SEND's recipe: the REV base + write offset (x1, 0/16/../112) + the
+; split-aware frame offset (b). The loop walks it in n2; the level is the
+; knob's copy at y:$09f0.
+        move    #>$9d8,a                ; the REV accumulator: the chain's
+        add     #>$80,a                 ; base plus its length
         add     x1,a
         add     b,a
-        move    a,x:(r7+$6a)            ; this call's AUX ACC write address
+        move    a,x:(r7+$6a)            ; this call's REV ACC write address
 
 ; ---- bus auto-gain: resolve 1/sqrt(N) for this block's READ buffer ------
 ; ---- the module's P table: n4 holds its base for the block --
@@ -357,15 +372,15 @@ bus_mine:
         add     #>$50,a                    ; read offset = write + 5 buffers = 3 back
         and     #>$70,a                    ; mod 8
         asr     #$4,a,a                 ; -> bare index (0..7)
-        add     #>$9c7,a                  ; the AUX count (one bus)
+        add     #>$983,a                ; the REV count
         move    a,r5
         move    #>$1,x0                 ; the "one more client" increment
         clr     b                       ; b = 0 -- BEFORE the tst below
-        move    y:>$981,a               ; our own AUX flag (last block's: the
+        move    y:>$981,a               ; our own SEND flag (last block's: the
                                         ; write below runs after this) -- the
-                                        ; host's dry is IN THE ACCUMULATOR now,
-                                        ; as a SEND's is, so it counts the same
-                                        ; way (ONE AUX; IN retired)
+                                        ; host's dry is in the REV accumulator,
+                                        ; as a REV send's is, so it counts the
+                                        ; same way
         tst     a
         tne     x0,b                    ; sending -> b = 1
         move    y:(r5),a                ; clients that wrote the buffer we read
@@ -376,16 +391,7 @@ bus_mine:
         move    a,n5                    ; the count, 0..7
         move    n4,r5                   ; the table (m5 linear, set above)
         move    p:(r5+n5),a             ; 1/sqrt(N): the reciprocals lead the table
-; CHAIN INPUT (the one aux bus): while the delay -- chain stage 1
-; -- is LIVE, this block's input is its OUTPUT BUFFER at unity, not the aux
-; accumulator; the gain becomes exactly 1/8 so the loop's `asl #3` lands the
-; chain sample untouched (bit-exact: mpy by $100000 then <<3 is the identity
-; on a1). y:$09f1 is the delay-liveness grace counter (chain_live below).
-        move    y:>$09f1,b
-        tst     b                       ; delay live? (grace > 0)
-        move    #$10,x0
-        tne     x0,a                    ; live -> gain 1/8
-        move    a,x:(r7+$0c)            ; this block's bus gain, used per sample.
+        move    a,x:(r7+$0c)            ; this block's REV bus gain, used per sample.
                                         ; $0c, NOT $6d: $6d is the DIFFUSION
                                         ; allpass coefficient g. And $0c is
                                         ; the bus gain's ALONE: the md_* tap
@@ -395,9 +401,9 @@ bus_mine:
 
 ; ---- the SEND knob is the host's client flag ------------------------------
 ; The knob field goes to y:$981 every block (one writer, one word, idempotent
-; across a split block); the delay's auto-gain resolve and ours above count
-; it as one client while it is nonzero, so an idle host takes no share
-; (the phantom-client rule). The delay's warm-up zeroes the word. Sticky
+; across a split block); the REV auto-gain above counts it as one client
+; while it is nonzero, so an idle host takes no share (the phantom-client
+; rule). Sticky
 ; rather than clear-on-read: a stamp lost to the other core's timing would
 ; step the delay's gain for a block. Not $9d3..$9d7: per-block state there
 ; was dead on hardware, mechanism unknown. What would falsify this: a delay
@@ -1428,21 +1434,26 @@ lfrol:
         move    y:>$09f0,y1             ; SEND level (core-private copy)
         mpy     x1,y1,a
         asr     #$3,a,a                 ; 3 bits of bus headroom
-        move    n2,r5                   ; this call's AUX write address
+        move    n2,r5                   ; this call's REV write address
         move    y:(r5),b
         add     b,a
-        move    a,y:(r5)+               ; AUX ACC[write][i] += contribution
+        move    a,y:(r5)+               ; REV ACC[write][i] += contribution
         move    r5,n2                   ; advanced one sample
-        move    n3,r5                   ; this sample's read address: the aux
-                                        ; accumulator, or the delay's chain
-                                        ; buffer while the delay is live
-        move    x:(r7+$0c),y1           ; auto-gain 1/sqrt(N) -- or exactly 1/8
-                                        ; on the chain (spaces the r5 write)
-        move    y:(r5)+,x1              ; the fully-summed sends three blocks
-        move    r5,n3                   ; back, and the pointer advanced
-                                        ; (m5 = $7ff: both buffers sit inside
-                                        ; one 2048-aligned block, no wrap)
-        mpy     x1,y1,a                 ; (unity after the asl)
+        move    n3,r5                   ; this sample's REV read address
+        move    x:(r7+$0c),y1           ; auto-gain 1/sqrt(N) (spaces the r5
+                                        ; write)
+        move    y:(r5)+,x1              ; the fully-summed REV sends three
+        move    r5,n3                   ; blocks back, the pointer advanced
+                                        ; (m5 = $7ff: the accumulators and the
+                                        ; chain sit inside one 2048-aligned
+                                        ; block, no wrap)
+        mpy     x1,y1,a
+        move    x:(r7+$64),r5           ; this sample's chain read address
+        move    x:(r7+$65),y1           ; 1/8 while the delay is live, else 0
+                                        ; (spaces the r5 write)
+        move    y:(r5)+,x0              ; the repeats x DLY, three blocks back
+        move    r5,x:(r7+$64)
+        mac     x0,y1,a                 ; the signed order (x1,y1 encodes macsu)
         asl     #$3,a,a                 ; undo the writers' 3-bit headroom
         move    a,y1                    ; the averaged input, feeding the tank:
                                         ; the chain word, held in y1 through

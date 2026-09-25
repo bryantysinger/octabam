@@ -40,33 +40,35 @@ CORE 1 (payload B)  tracks 1–4   BusDelay  Y:0x4000–0xBFFF (private) + Y:0x3
   45 in the harness's 15-frame blocks (2 blocks from 17 Aug to 21 Sep;
   `docs/history/TESTPASS.md`).
 
-## The one aux bus (7 Sep 2026; ✅ flash 7, 9 Sep 2026)
+## The two sends (25 Sep 2026; one aux bus 7–25 Sep, ✅ flash 7)
 
-- One send: `SEND` has one knob, `SEND` (slot 0). Both engines carry `SEND`
-  at slot 0 as well (the host's own dry into the same accumulator, same
-  headroom, count and auto-gain). Stations carry no sends; a part that
-  stored 127 in a former send slot sends nothing.
+- `SEND` has two knobs: `DEL` (slot 0) into the aux accumulator
+  `Y:0x901..0x980`, the delay's only input, and `REV` (slot 1) into the REV
+  accumulator `Y:0xa58..0xad7` (spelled `$9d8 + $80`), the reverb's. Each
+  registers in its own per-buffer count (`0x9c7..0x9ce` aux,
+  `0x983..0x98a` REV) only while its knob is nonzero; same 3-bit headroom
+  and 1/√N auto-gain on both. The housekeeper clears both accumulators and
+  both counts together. Each engine carries `SEND` at slot 0: T1's goes
+  into the delay, T5's into the reverb (flagged at `0x981`, counted on the
+  REV bus). Stations carry no sends.
 - The chain: the delay stamps `Y:0x9c3` every block it runs (after its
   warm-up); the reverb reads it, clear-on-read, one writer one reader,
-  three blocks of grace. The delay's stage output goes mono at
-  unity into the chain buffer `Y:0x9d8..0xa57` (eight rotations × 16 words,
-  stored, never cleared). While the delay is live the reverb reads the
-  chain buffer with bus gain 1/8 (the loop's `asl #3` lands the sample
-  untouched); otherwise the aux accumulator with the 1/√N auto-gain.
-  Delay only, reverb only, both, or neither all work.
-- WET on each engine (slot 5), DLY on the reverb (page-2 slot 10, 25 Sep
-  2026). The delay's stage output into the chain is `in + wet × DLY`, `in`
-  the aux passing at unity, so the reverb hears the sends and the repeats
-  × DLY. The reverb publishes DLY's knob field to `Y:0x982` every block
-  (one writer, like `0x981`); the delay reads it per block and glides it as
-  it glides WET. DLY 0 = a clean reverb send with the delay in the chain
-  (sample-exact against a reverb-only run three blocks later,
-  `verify_onebus`); DLY 127 = the chain as it was, when the delay's WET was
-  the chain's coefficient (15–25 Sep 2026). Each host prints `wet × WET`
-  under its own dry: T1 (the delay host) the
-  repeats, T5 (the reverb host) the tail. Until 15 Sep 2026 each stage
-  crossfaded (`in × (1 − MIX) + wet × MIX`), so the reverb's MIX faded the
-  delay out.
+  three blocks of grace. The delay writes `wet × DLY`, mono, into the chain
+  buffer `Y:0x9d8..0xa57` (eight rotations × 16 words, stored, never
+  cleared). The reverb's input is the REV accumulator × 1/√N plus the chain
+  × 1/8 (the loop's `asl #3` lands the chain word untouched) while the
+  delay is live, × 0 otherwise. DLY is the reverb's page-2 slot 10; the
+  reverb publishes its knob field to `Y:0x982` every block (one writer,
+  like `0x981`) and the delay glides it as it glides WET.
+- So: a DEL-only send reaches the reverb only as repeats × DLY; a REV-only
+  send never reaches the delay; DLY 0 = the two engines in parallel
+  (`verify_onebus` measures each, bit for bit where it can). Until 25 Sep
+  2026 the chain carried `in + wet × DLY` (the send passing through the
+  delay at unity) and the reverb read the chain or, with no delay, the aux.
+- WET on each engine (slot 5): each host prints `wet × WET` under its own
+  dry: T1 (the delay host) the repeats, T5 (the reverb host) the tail.
+  Until 15 Sep 2026 each stage crossfaded (`in × (1 − MIX) + wet × MIX`),
+  so the reverb's MIX faded the delay out.
 - Where the wet comes out, 20 Sep 2026: on the hosts, and nowhere else.
   From 7 to 20 Sep 2026 each stage also published its output stereo, four
   deep (`0x9da` reverb, `0xa5a` delay), Character's `RET` on track 8 (by
@@ -95,7 +97,7 @@ touches only the ids a station replaced):
 
 | | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| SEND | SEND | | | | | | | | | | | |
+| SEND | DEL | REV | | | | | | | | | | |
 | BusVerb | SEND | TIME | SIZE | SHMR | SHFT | WET | MODE | TONE | DIFF | GATE | DLY | — |
 | BusDelay | SEND | TIME | FDBK | TONE | PING | WET | MODE | SCAT | DENS | SIZE | PTCH | WOW |
 | Character | DRV | FOLD | WDTH | COMP | TONE | MIX | SAT | — | — | — | — | — |

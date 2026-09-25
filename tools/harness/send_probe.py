@@ -437,6 +437,8 @@ def main():
     ap.add_argument("--amp", type=float, default=0.5, help="tone amplitude FS")
     ap.add_argument("--level", type=int, default=127,
                     help="SEND AUX level 0..127 -- the ONE send (7 Sep 2026)")
+    ap.add_argument("--rlevel", type=int, default=None,
+                    help="SEND's REV 0..127 (slot 1); default --level. --dlevel sets DEL.")
     ap.add_argument("--dlevel", type=int, default=None,
                     help="alias of --level (there is one bus now; kept so old\n"
                          "command lines parse). If both are given --dlevel wins.")
@@ -604,7 +606,8 @@ def main():
         print("note: --dvrbw is retired -- the delay feeds the reverb unconditionally (one aux)")
     # ONE bus: the SEND's one knob, whichever server is measured.
     snd = list(SEND_PARAMS)
-    snd[0] = a.dlevel if a.dlevel is not None else a.level     # AUX, x:(r6+0)
+    snd[0] = a.dlevel if a.dlevel is not None else a.level     # DEL, x:(r6+0)
+    snd[1] = a.rlevel if a.rlevel is not None else a.level     # REV, x:(r6+1)
     wsrc = None
     if a.infile:
         sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
@@ -716,7 +719,7 @@ def main():
     path = (f"{_srv} on its own track (--direct)" if a.direct
             else f"SEND -> bus -> {_srv}")
     print(f"{a.label}:  tone {TONE_HZ:.2f} Hz through {path} "
-          f"(amp {a.amp}, AUX {snd[0]})")
+          f"(amp {a.amp}, DEL {snd[0]}, REV {snd[1]})")
     if thd is None:
         print(f"  !! SILENT (peak {pk:.2e}, rms {rms:.2e}) -- the bus carried nothing.")
         print("     A silent render is a FAILED measurement, not a clean one.")

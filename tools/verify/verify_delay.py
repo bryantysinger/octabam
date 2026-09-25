@@ -157,7 +157,7 @@ def nop_variant(ref):
 def render(mem, params, split=0, source=[]):
     """One DS-layout render -> (L, R) sample lists of the DELAY's output."""
     snd = list(send_probe.SEND_PARAMS)
-    snd[0] = 127                        # ->DELAY, x:(r6+0) -- NOT ->REVERB
+    snd[0] = 127                        # DEL, x:(r6+0)
     L, R = send_probe.run(mem, 0, 0.3, send_probe.REV_PARAMS, snd,
                           amp=0.5, wave_src=source, split=split,
                           layout="DS", delay_params=params, pick="D")

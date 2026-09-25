@@ -90,12 +90,11 @@ MODULE = Module(
     ),
     params=(
         # ---- page 1 -------------------------------------------------------
-        # SEND at slot 0 on every track, hosts included: the host's own dry
-        # send into the aux. Default 0 is load-bearing: a non-zero default
+        # SEND at slot 0: the host's own dry send into the REV accumulator. Default 0 is load-bearing: a non-zero default
         # registers every idle host as a client and dilutes the real senders
         # (-3.0 dB with one sender under the 1/sqrt(N) law, XBUS.md).
         Param(b"SEND", 0, active=True, formatter=_PLAIN,
-              doc="this track's send into the one aux bus (delay, then reverb; the wet on each host)"),
+              doc="this host's own send into the reverb (the REV bus)"),
         # ---- page 1 (16 Sep 2026): TIME-SIZE and SHMR-SHFT are drawn as
         # linked pairs; TONE moved to page 2.
         Param(b"TIME", 64, active=True, formatter=_PLAIN,
@@ -110,9 +109,8 @@ MODULE = Module(
         Param(b"SHFT", 0, 4, active=True, formatter=_STEP, link=True,
               labels=("+12", "+19", "+7", "-12"),
               doc="shimmer interval in semitones -- heard once SHMR is up"),
-        # WET: the reverb's level. The tank hears the chain input (the send
-        # plus the delay's repeats x DLY while the delay is live, else the
-        # aux); the host prints wet*WET under its own dry.
+        # WET: the reverb's level. The tank hears the REV sends plus the
+        # delay's repeats x DLY; the host prints wet*WET under its own dry.
         Param(b"WET", 127, active=True, formatter=_PLAIN,
               doc="the reverb's level on this host (127 = the wet at +6 dB)"),
         # ---- page 2 ---------------------------------------------------------
@@ -136,10 +134,9 @@ MODULE = Module(
         Param(b"GATE", 0, 128, active=True, formatter=_PLAIN,
               doc="gated-reverb hold -- higher holds longer; the useful range is low (8-20)"),
         # DLY on slot 10 ($e's KNOB field): published to y:$982, read by the
-        # delay. 127 = the chain as it was before the knob (the delay's WET
-        # default is 127 too).
+        # delay, which writes wet*DLY into the chain.
         Param(b"DLY", 127, 128, active=True, formatter=_PLAIN,
-              doc="how much of the delay's repeats go into the reverb; 0 = the send alone"),
+              doc="how much of the delay's repeats go into the reverb; 0 = the two in parallel"),
         _BLANK,
     ),
     mode_slot=6,                      # MODE names itself (ROOM / PLATE / BIG)

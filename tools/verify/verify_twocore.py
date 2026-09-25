@@ -60,7 +60,7 @@ def knobs(key, **kw):
 
 R = knobs("REVERB SERVER")
 D = knobs("DELAY SERVER", TIME=20)    # 5,184 samples: the echo lands inside BLOCKS (TIME is 64 + knob*256 since the 32K lines)
-S_DEL = knobs("SEND", SEND=127)          # one aux (7 Sep 2026): the one send
+S_DEL = knobs("SEND", DEL=127, REV=127)  # both sends (25 Sep 2026): the delay and the reverb
 S_VRB = S_DEL
 
 # layout: list of (letter, core, params); instance order is dispatch order
