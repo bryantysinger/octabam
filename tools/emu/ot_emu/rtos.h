@@ -103,6 +103,7 @@ namespace ot
 
 	inline constexpr uint32_t g_intc0 = 0xfc048000, g_intc1 = 0xfc04c000;
 	inline constexpr uint32_t g_pit0  = 0xfc080000, g_pit1  = 0xfc084000;
+	inline constexpr uint32_t g_dtim1 = 0xfc074000;		// DMA timer 1: the UI tick (periph.h)
 	inline constexpr uint32_t g_dspi  = 0xfc05c000;
 	inline constexpr uint32_t g_uart0 = 0xfc060000;		// MIDI IN (KERNEL.md: vector 0x5a, INTC0 source 26, RX ISR 0x400106ec)
 	inline constexpr uint32_t g_uartA = 0xfc064000, g_uartB = 0xfc068000;
@@ -374,6 +375,7 @@ namespace ot
 		double sample() const { return m_sample; }
 		double ms() const { return m_sample / g_sampleHz * 1000.0; }
 		uint64_t pit0Fired() const { return m_pit0.fired(); }
+		uint64_t dtim1Fired() const { return m_dtim1.fired(); }
 		uint64_t frameCount() const { return m_frameCount; }
 		bool framePending() const { return m_framePending; }
 		const Intc& intc0() const { return m_intc0; }
@@ -467,6 +469,7 @@ namespace ot
 		double m_sample = 0.0;
 
 		Pit m_pit0, m_pit1;
+		DmaTimer m_dtim1;
 		Edma m_edma;
 		Intc m_intc0, m_intc1;
 		Uart m_uart60{"UART@fc060000", g_uart0}, m_uart64{"UART@fc064000", g_uartA}, m_uart68{"UART@fc068000", g_uartB};

@@ -66,6 +66,46 @@ namespace ot
 		uint64_t m_fired = 0;
 	};
 
+	// ---- DMA timer ---------------------------------------------------------
+	// MCF5445x DMA timer: DTMR +0 (u16), DTXMR +2, DTER +3, DTRR +4, DTCR +8,
+	// DTCN +0xc. Modelled for DTIM1 (0xfc074000), the UI's tick: the firmware
+	// programs DTMR = 0x1d (RST, CLK = bus/16, FRR, ORRI), DTRR = 68,750 at
+	// 0x40040488 and installs 0x40055cb8 on vector 0x61 (INTC0 source 33),
+	// which acknowledges with DTER = 2 (REF, write-1-to-clear) and every
+	// second interrupt posts the UI task's tick (type 1: the popup countdown
+	// 0x460d1e6c, 0x40056c28) and the key-scan message (type 5). Without it
+	// a timed message (ARM ALL, 48 ticks) never closes. Measured under the
+	// port, 25 Sep 2026.
+	// ⚠️ The clock is the PIT's knob (route A's 264 MHz): 240 Hz here, a UI
+	// tick at 120 Hz; off a 132 MHz bus clock both halve. Not measured on the
+	// unit.
+	class DmaTimer
+	{
+	public:
+		enum : uint32_t { RST = 1, FRR = 8, ORRI = 16, DTER_REF = 2 };
+
+		DmaTimer(const char* _name, double _clockHz) : m_name(_name), m_clockHz(_clockHz) {}
+
+		bool irq() const { return (m_dter & DTER_REF) && (m_dtmr & ORRI); }
+		uint64_t fired() const { return m_fired; }
+		uint32_t read(uint32_t _off, uint32_t _size, double _now) const;
+		void write(uint32_t _off, uint32_t _size, uint32_t _val, double _now);
+		uint32_t advance(double _now);
+		bool nextExpiry(double& _out) const { _out = m_expiry; return m_armed; }
+
+	private:
+		double periodSamples() const;
+		void arm(double _now);
+
+		const char* m_name;
+		double m_clockHz;
+		uint32_t m_dtmr = 0, m_dter = 0, m_dtrr = 0xffffffff;
+		double m_start = 0;
+		bool m_armed = false;
+		double m_expiry = 0;
+		uint64_t m_fired = 0;
+	};
+
 	// ---- UART --------------------------------------------------------------
 	// One of the serial blocks at 0xfc064000 / 0xfc068000, modelled from the
 	// firmware's own use of it (route A: handler 0x400109bc, ring writer

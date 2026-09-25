@@ -46,6 +46,7 @@ namespace ot
 		, m_ips(_ips)
 		, m_pit0("PIT0", _pitClockHz)
 		, m_pit1("PIT1", _pitClockHz)
+		, m_dtim1("DTIM1", _pitClockHz)
 		, m_intc0("INTC0", 64)
 		, m_intc1("INTC1", 128)
 	{
@@ -68,6 +69,7 @@ namespace ot
 			if(m_uart60.irq()) a |= 1ull << 26;
 			if(m_uart64.irq()) a |= 1ull << 27;
 			if(m_uart68.irq()) a |= 1ull << 28;
+			if(m_dtim1.irq()) a |= 1ull << 33;		// DMA timer 1, the UI tick (vector 0x61)
 			return a;
 		});
 		m_intc1.setWires([this]
@@ -91,6 +93,7 @@ namespace ot
 		if(_addr >= g_intc1 && _addr < g_intc1 + 0x100) { _out = m_intc1.read(_addr - g_intc1, _size); return true; }
 		if(_addr >= g_pit0 && _addr < g_pit0 + 0x10)    { _out = m_pit0.read(_addr - g_pit0, _size, m_sample); return true; }
 		if(_addr >= g_pit1 && _addr < g_pit1 + 0x10)    { _out = m_pit1.read(_addr - g_pit1, _size, m_sample); return true; }
+		if(_addr >= g_dtim1 && _addr < g_dtim1 + 0x10)  { _out = m_dtim1.read(_addr - g_dtim1, _size, m_sample); return true; }
 		if(_addr >= g_dspi && _addr < g_dspi + 0x100)   { _out = m_dspi.read(_addr - g_dspi, _size); return true; }
 		if(_addr >= Edma::g_base && _addr < Edma::g_tcd + 16 * 32) { _out = m_edma.read(_addr, _size); return true; }
 		if(m_usb && _addr >= UsbDevice::g_base && _addr < UsbDevice::g_base + UsbDevice::g_size) { _out = m_usb->read(_addr - UsbDevice::g_base, _size); return true; }
@@ -129,6 +132,7 @@ namespace ot
 		else if(_addr >= g_intc1 && _addr < g_intc1 + 0x100) m_intc1.write(_addr - g_intc1, _size, _val);
 		else if(_addr >= g_pit0 && _addr < g_pit0 + 0x10) m_pit0.write(_addr - g_pit0, _size, _val, m_sample);
 		else if(_addr >= g_pit1 && _addr < g_pit1 + 0x10) m_pit1.write(_addr - g_pit1, _size, _val, m_sample);
+		else if(_addr >= g_dtim1 && _addr < g_dtim1 + 0x10) m_dtim1.write(_addr - g_dtim1, _size, _val, m_sample);
 		else if(_addr >= g_dspi && _addr < g_dspi + 0x100) m_dspi.write(_addr - g_dspi, _size, _val, _replay);
 		else if(_addr >= Edma::g_base && _addr < Edma::g_tcd + 16 * 32) m_edma.write(_addr, _size, _val, _replay);
 		else if(m_usb && _addr >= UsbDevice::g_base && _addr < UsbDevice::g_base + UsbDevice::g_size) m_usb->write(_addr - UsbDevice::g_base, _size, _val, _replay);
@@ -395,6 +399,7 @@ namespace ot
 	{
 		m_pit0.advance(m_sample);
 		m_pit1.advance(m_sample);
+		m_dtim1.advance(m_sample);
 		if(m_frame && !m_frameFromDsp)
 			while(m_sample >= m_nextFrame)
 			{
@@ -472,6 +477,14 @@ namespace ot
 		{
 			double e;
 			if(p->nextExpiry(e) && (!any || e < best))
+			{
+				best = e;
+				any = true;
+			}
+		}
+		{
+			double e;
+			if(m_dtim1.nextExpiry(e) && (!any || e < best))
 			{
 				best = e;
 				any = true;
