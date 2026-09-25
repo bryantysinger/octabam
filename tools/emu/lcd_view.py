@@ -237,7 +237,8 @@ SPARE_MK2 = [(0x37, 1680, 1015), (0x3F, 1740, 1015)]    # codes not yet placed
 
 def build_panel(tk, root, panel):
     """The MKII's front as one canvas: every key sends press and release,
-    a knob turns with the mouse wheel (Shift: x4) and pushes on a click,
+    a knob turns when dragged up or down, with the wheel or with a
+    trackpad's two-finger scroll (Shift: x4), and pushes on a click,
     the headphones knob drives the port's MAIN pot. Returns the canvas and where the
     screen goes on it."""
     BG, KEY, TXT, SUB, EDGE = "#1d1d1f", "#2b2b2e", "#d4d4d4", "#8e8e8e", "#38383c"
@@ -285,6 +286,27 @@ def build_panel(tk, root, panel):
         cv.tag_bind(tag, "<ButtonRelease-1>", up)
 
     wheel = {}                      # canvas tag -> (event, +-1): the wheel is the canvas's
+    drag = {"tag": None}            # a knob being dragged: its tag, the y it started at, whether it moved
+
+    def grab(e, tag, push):
+        drag.update(tag=tag, y=e.y, moved=False, push=push)
+
+    def motion(e):
+        if drag["tag"] is None:
+            return
+        steps = int((drag["y"] - e.y) / 6)          # up turns up, one step per 6 px
+        if steps:
+            drag["moved"] = True
+            drag["y"] -= steps * 6
+            wheel[drag["tag"]](e, steps)
+
+    def letgo(e):
+        if drag["tag"] is not None and not drag["moved"] and drag["push"] is not None:
+            panel.key(drag["push"], True)            # a click without a drag pushes
+            panel.key(drag["push"], False)
+        drag["tag"] = None
+    cv.bind("<B1-Motion>", motion, add="+")
+    cv.bind("<ButtonRelease-1>", letgo, add="+")
 
     def knob(n, label, under, px, py, r=38):
         tag = f"knob{n}"
@@ -295,9 +317,8 @@ def build_panel(tk, root, panel):
         cv.create_text(x, y + r + 12, text=label, fill=TXT, font=("Helvetica", 11, "bold"))
         cv.create_text(x, y + r + 26, text=under, fill=SUB, font=("Helvetica", 9))
         push = 0x38 + n if n < 6 else 0x3E
-        cv.tag_bind(tag, "<ButtonPress-1>", lambda e: panel.key(push, True))
-        cv.tag_bind(tag, "<ButtonRelease-1>", lambda e: panel.key(push, False))
         wheel[tag] = lambda e, d: panel.enc(n, d * (4 if e.state & 1 else 1))
+        cv.tag_bind(tag, "<ButtonPress-1>", lambda e: grab(e, tag, push))
 
     # the screen's bezel and legends
     lw, lh = W * LCD_SCALE, H * LCD_SCALE
@@ -348,6 +369,7 @@ def build_panel(tk, root, panel):
         cv.itemconfigure(potv, text=str(level["v"]))
         panel.pot(level["v"])
     wheel["pot"] = lambda e, d: pot(8 * d)
+    cv.tag_bind("pot", "<ButtonPress-1>", lambda e: grab(e, "pot", None))
 
     # the crossfader: drawn, not modelled by the port
     fy = Y(728)
@@ -368,8 +390,24 @@ def build_panel(tk, root, panel):
     cv.bind("<MouseWheel>", lambda e: on_wheel(e, 1 if e.delta > 0 else -1))
     cv.bind("<Button-4>", lambda e: on_wheel(e, 1))
     cv.bind("<Button-5>", lambda e: on_wheel(e, -1))
-    cv.create_text(X(960), Y(1057), text="keyboard: arrows, Return = YES, Esc = NO, space = PLAY, F1-F5 = pages, "
-                   "1-8 q-i = trigs;  wheel over a knob turns it (Shift x4), a click pushes it",
+    # Tk 9 delivers a trackpad's two-finger scroll as <TouchpadScroll>, not
+    # <MouseWheel>: %D packs deltaX in the high 16 bits and deltaY in the low.
+    pad = {"acc": 0}
+
+    def on_pad(e):
+        dy = e.delta & 0xFFFF
+        dy = dy - 0x10000 if dy & 0x8000 else dy
+        pad["acc"] -= dy
+        steps = int(pad["acc"] / 8)
+        if steps:
+            pad["acc"] -= steps * 8
+            on_wheel(e, steps)
+    try:
+        cv.bind("<TouchpadScroll>", on_pad)
+    except tk.TclError:              # Tk 8.6 has no such event; its trackpad sends <MouseWheel>
+        pass
+    cv.create_text(X(960), Y(1057), text="knobs: drag up/down, or scroll over one (Shift x4); a click pushes it.   "
+                   "keyboard: arrows, Return = YES, Esc = NO, space = PLAY, F1-F5 = pages, 1-8 q-i = trigs",
                    fill="#6e6e6e", font=("Helvetica", 9))
 
     # keyboard
