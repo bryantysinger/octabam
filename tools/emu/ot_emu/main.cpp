@@ -1126,7 +1126,9 @@ int main(int _argc, char** _argv)
 	std::string memDump;		// O10.21: "addr,len=path[;...]" -- ColdFire memory ranges, raw bytes, to FILE at the very end (peeks only support one word, pre-sequencer; this is a range, post-run)
 	std::string cardOut;		// the card image as the firmware left it, to FILE at the very end (the load's WRITEs: emu_card.extract_image reads it back)
 	bool mainLevelGiven = false;	// 12 Sep 2026: --interactive defaults it to 64 (the panel wants sound); `--main-level off` keeps the -1. The batch default stays -1.
-	bool interactive = false;	// 11 Sep 2026: after the boot (and load), serve the line protocol on stdin/stdout (serveInteractive above)
+	bool interactive = false;
+	bool mkii = false;			// boot as an MKII (the GPIO loopback the boot probe tests)
+	// 11 Sep 2026: after the boot (and load), serve the line protocol on stdin/stdout (serveInteractive above)
 	std::string rtc;			// 11 Sep 2026: the DSPI chip-select-2 clock -- "host", "off", or <epoch seconds> (UTC, frozen); default off, host under --interactive (Dspi::RtcClock)
 
 	for(int i = 1; i < _argc; ++i)
@@ -1208,6 +1210,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--usb-fs")					usbFs = true;
 		else if(a == "--usb-hold-ms" && i + 1 < _argc)	usbHoldMs = std::atof(_argv[++i]);
 		else if(a == "--interactive")				interactive = true;
+		else if(a == "--mkii")					mkii = true;
 		else if(a == "--rtc" && i + 1 < _argc)		rtc = _argv[++i];
 		else
 		{
@@ -1264,6 +1267,27 @@ int main(int _argc, char** _argv)
 	std::printf("image      : %s (%zu bytes) at %#x\n", image.c_str(), img.size(), ot::Machine::g_imageBase);
 
 	ot::Machine m(img);
+	// --mkii: boot as an MKII. The boot probe at 0x4001f8a0 sets the MKII flag
+	// 0x46c8d18c, then ten times drives GPIO 0xfc0a403a bit 5 high and low
+	// and reads bit 6: on the MKII the two pins are tied, bit 6 follows bit 5
+	// and the flag stays; anything else clears it (MKI). An unmodelled port
+	// reads bit 6 as 0, so the port booted as an MKI, whose keymap (0x400c090a)
+	// has no PROJ/PART/AED/ARR/REC3 (codes 0x1c-0x1f, 0x36; MKII keymap
+	// 0x400c091e). Read 25 Sep 2026 from the image.
+	auto gpio403a = std::make_shared<uint8_t>(0);
+	if(mkii)
+	{
+		// 0xfc0a403a sets the port's pins (a 1 drives high), its clear register
+		// 0xfc0a4052 clears them (a 0 drives low): the probe raises bit 5 with
+		// 0x20 at 403a and drops it with 0xdf at 4052.
+		m.addWriteWatch(0xfc0a403a, 0xfc0a403a,
+			[gpio403a](uint32_t, uint8_t, uint32_t _val, uint32_t) { *gpio403a |= static_cast<uint8_t>(_val); });
+		m.addWriteWatch(0xfc0a4052, 0xfc0a4052,
+			[gpio403a](uint32_t, uint8_t, uint32_t _val, uint32_t) { *gpio403a &= static_cast<uint8_t>(_val); });
+		m.setOverrideFn(0xfc0a403a, [gpio403a]() -> uint32_t
+			{ return (*gpio403a & 0x20) ? (*gpio403a | 0x40) : (*gpio403a & ~0x40); });
+		std::printf("mkii       : GPIO 0xfc0a403a bit 6 follows bit 5 (the MKII's loopback)\n");
+	}
 	if(profile)
 		m.setProfile(64);
 	// ⚠️ BEFORE THE BOOT RUNS. Installed after it (where it used to be, behind
@@ -1450,6 +1474,30 @@ int main(int _argc, char** _argv)
 	{
 		std::printf("vbr        : %#x (the firmware's own `movec %%a0,%%vbr` at 0x40000db6)\n", m.vbr());
 		ot::Rtos rtos(m, ips, 264e6, frame);
+		// --mkii: the MKII panel answers the firmware's handshake with a 0x7r
+		// report of 9 bytes (copied to 0x46100b48, pointer 0x46100b52 by the
+		// panel ISR at 0x40092608). At boot an MKII reads it (0x40061c94):
+		// byte 3 == 0 puts up "UI NOT TESTED!" (the factory UI test flag),
+		// byte 4 == 22 sets 0x46c8d188 (meaning not established). The port's
+		// panel never answers, and bytes queued before the boot are lost to
+		// the UART's init, so the record of a tested panel (byte 3 = 1, the
+		// rest 0) is placed where the ISR would put it at the first write of
+		// the input-layer list head 0x460d165c -- main's keymap push at
+		// 0x40061bda, after RAM is cleared and before the check.
+		if(mkii)
+		{
+			auto placed = std::make_shared<bool>(false);
+			m.addWriteWatch(0x460d165c, 0x460d165f, [&m, placed](uint32_t, uint8_t, uint32_t, uint32_t)
+			{
+				if(*placed)
+					return;
+				*placed = true;
+				for(uint32_t i = 0; i < 9; ++i)
+					m.write8(0x46100b48 + i, i == 3 ? 1 : 0);
+				m.poke32(0x46100b52, 0x46100b48);
+				m.write8(0x400d16b8, 1);	// what the ISR also sets on the report (0x40092644)
+			});
+		}
 		if(bootLogo)
 		{
 			ot::Rtos::Quirks q;
