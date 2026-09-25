@@ -84,7 +84,7 @@ port's bench reads them with `usb_host.py … counters`, and `verify_usb`
 checks them after its stream (under the port: 0 underruns, 0 overruns,
 bankdup 2 at the frame engine's start).
 
-## Hardware test (image 64, the first flash)
+## Hardware test protocol (image 64, the first flash)
 
 The question is his mid-stream clicks: not packet loss on his unit
 (0 overruns, 0 steady-state underruns), so either the producer reads a
@@ -117,6 +117,43 @@ second host and USB port before touching the unit. Clicks absent → his
 caveat does not reproduce here. A freeze, a hang or a wedge on plugging
 in: power off, recover per `docs/remixer/FLASHING.md`, and the FAILURE_MODES
 entry gets the symptom.
+
+## Measured on hardware (image 64, Sam's MKII, 25 Sep 2026)
+
+Four takes with `tools/rec` (a raw HAL IOProc, all sixteen input
+channels) on the USBSIG project (`tools/harness/usb_sig_project.py`), the
+counters read over the vendor request before and after each:
+
+| take | length | load | events in the first 1.6 s | events after 2 s | underruns / overruns / bankdup |
+|---|---|---|---|---|---|
+| 1 | 60 s | none | 9 (all at 0.743 s) | 0 | 0 / 0 / unchanged |
+| 2 | 60 s | none | 76 (0.998–1.254 s) | 0 | 0 / 0 / unchanged |
+| 3 | 300 s | none | 110 (1.091–1.509 s) | 0 | 0 / 0 / unchanged |
+| 4 | 120 s | 896,760 USB-MIDI messages in (7,170/s, notes + CCs on channel 16), menus, sample manager, project save, LEVEL and main turned | 85 (0.871–1.231 s) | 0 | 0 / 0 / unchanged |
+
+- The unit enumerates on macOS at high speed as a 16-channel 44.1 kHz
+  input "Elektron Octatrack DPS-1" and a MIDI port of the same name.
+- Every channel carries its track's tone (FFT peak at 100 s and at 60 s of
+  the loaded take), −27 dBFS.
+- After the first 1.6 s of a host stream, zero discontinuities in 9.6
+  minutes of audio, with and without load. The device's counters never
+  moved: bankdup stayed at 1 (its boot-time value) across all four takes,
+  so the producer did not read a bank twice or skip one; underruns and
+  overruns stayed at 0.
+- Every take has one burst of reordered samples between 0.75 and 1.5 s
+  after the host opened the stream: the following samples sit a few frames
+  to two packets off their phase (−11.6, +10.3, −41 frames measured), then
+  the stream is in order for good. No frames are lost (the long-window
+  phase before and after agrees to 0.1 frame). A host that opens a fresh
+  stream per run (sox, `tools/rec`) hears this at every start, which is the
+  candidate for octemu's "some crackles". Open: whether the reorder is the
+  device's two-slot packet queue at stream start (the packet order the
+  controller follows on the first primes, which the port's bench cannot
+  model: it serves queue heads in list order) or the host's stream start.
+  A take with the stream held open across two recordings, or a packet
+  sequence counter in the stream, decides it.
+- The USB-MIDI receive path took 7,170 messages a second for 125 s without
+  a stall or a change in the audio stream.
 
 ## Ground
 
