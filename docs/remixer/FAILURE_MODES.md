@@ -1000,3 +1000,6 @@ counter in the packets, decides it. Likely what octemu's "some crackles"
 was, since sox opens a fresh stream per run.
 **Fix.** None yet. Workaround for recording: discard the first two seconds
 of every take, or hold the stream open in a DAW.
+**Since.** The 24-bit stream (25 Sep 2026, unflashed) queues four packets
+at a 250 µs poll where image 64 queued two at 500 µs; whether the burst
+survives that change is unmeasured.

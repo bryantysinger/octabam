@@ -215,9 +215,10 @@ the card by posting the mount message directly, so that routine never runs
 (0 hits on a PC watch across a 800-frame run). The modules `usbmidi` and
 `usbaudio` carry the same code on octabam's loader instead, and
 `verify_usb` streams from them: the bench polls an isochronous endpoint
-once per 500 us of DEVICE time (`isoPoll`), which is what a real host's
-bInterval-3 schedule does; a script draining as fast as the socket allows
-starved the ring and pulled the rate servo down to 21/22 frames.
+on the endpoint's own schedule in DEVICE time (`isoPoll`, `isoPollHz`:
+250 us at high speed for bInterval 2, 1 ms at full speed), which is what a
+real host does; a script draining as fast as the socket allows starved the
+ring and pulled the rate servo below its nominal frame count.
 
 ## The card (route A)
 

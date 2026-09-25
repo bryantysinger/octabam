@@ -116,14 +116,16 @@ namespace ot
 		bool takeRequest(Request& _out);
 		void answerRequest(const std::string& _reply) { reply(_reply); }
 
-		// The host's isochronous poll, once per 500 us of DEVICE time (the
-		// bInterval-3 high-speed schedule): a pending IN on an isochronous
+		// The host's isochronous poll, once per isoPollHz() of DEVICE time
+		// (the audio endpoint's schedule: bInterval 2 at high speed, 250 us;
+		// bInterval 1 at full speed, 1 ms): a pending IN on an isochronous
 		// endpoint is served now if a packet is primed, else answered empty
 		// -- the zero-length packet a real host gets, an underrun the guest
 		// can count. A bulk IN is served the moment it can be (tryAll);
 		// an isochronous one only here, so a host script that polls as fast
 		// as the socket allows still drains at the device's own rate.
-		void isoPoll();
+		bool isoPoll();		// true when an enabled isochronous IN found no request waiting
+		double isoPollHz() const { return m_speedHs ? 4000.0 : 1000.0; }
 		bool isIso(int _ep, bool _in) const;
 
 		// The host's start-of-frame, raised by the run loop per audio block
@@ -132,7 +134,10 @@ namespace ot
 		void sof();
 
 		// -- diagnostics -------------------------------------------------------
-		struct Stats { uint64_t setups = 0, ins = 0, outs = 0, bytesIn = 0, bytesOut = 0, sofs = 0, primes = 0, stalls = 0, badQh = 0; };
+		// isoMissed: polls of an enabled isochronous IN endpoint that found no
+		// IN request from the bench host waiting -- device time the host did
+		// not keep up with, which a real host's schedule never loses.
+		struct Stats { uint64_t setups = 0, ins = 0, outs = 0, bytesIn = 0, bytesOut = 0, sofs = 0, primes = 0, stalls = 0, badQh = 0, isoMissed = 0; };
 		const Stats& stats() const { return m_stats; }
 		bool running() const { return (m_regs[R_USBCMD / 4] & 1) != 0; }
 		uint32_t reg(uint32_t _off) const { return m_regs[_off / 4]; }

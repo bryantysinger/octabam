@@ -6,10 +6,17 @@
 | card trampoline, page allocator, on-screen reporter and hook guard are
 | not here -- every hook is a build-time detour of this module's manifest,
 | the rings live in this unit's data, and the loader zeroes them. The
-| shims, the packet builder, the rate servo, the per-block producer, the
-| EP3 bring-up and the UAC2 class-request replies are his text, unchanged;
+| shims, the EP3 bring-up and the UAC2 class-request replies are his text;
 | the assembler constants his build passed as defsyms are the .set block
 | below. modules/usbaudio/README.md has what was measured.
+|
+| octabam's changes to his stream (25 Sep 2026): 24-bit samples in 4-byte
+| subslots where his carried 16-bit, polled every 250 us (bInterval 2) where
+| his was every 500 us, four queue slots where his had two, and the dTDs and
+| packet buffers in this unit's data, written through the uncached SDRAM
+| alias, where his sat in a fixed 1,536-byte window at 0x4ec94a00. The
+| producer, the packet builder's slot handling and the rate servo's units
+| changed with them; his 16-bit text is in git history (6a9ff68).
 | SPDX-License-Identifier: MIT
 | usb-audio.s — the USB-audio payload, loaded from the CF card into flex-heap
 | pages the firmware no longer believes exist (custom/usb-audio.py).
@@ -32,7 +39,7 @@
 | UAC2_AC_IFACE / UAC2_AS_IFACE / UAC2_CLOCK_ID (the audio function's
 | interface numbers and clock entity, shared with the descriptor generator).
 | ---- the constants his build passed as --defsym / asmsyms ------------------
-.set AUDIO_SHIFT,    16             | 32-bit read-back -> s16 (his calibration)
+.set SUM_SHIFT,      8              | 32-bit read-back -> 24-bit units for the sum
 .set UAC2_AC_IFACE,  3              | the audio function's AudioControl
 .set UAC2_AS_IFACE,  4              | ... and its AudioStreaming
 .set UAC2_CLOCK_ID,  0x10
@@ -43,7 +50,6 @@
 .set EXPECT_STAGE2,  0
 .set GUARD_FRAME,    0
 .set HEAP_RESERVE,   0
-.set DMA_FIXED,      0x4ec94a00     | the cache-inhibited DMA window (below)
 | The clamps are USB MIDI's (they read cfg_len, the descriptor unit's
 | absolute symbol), and the ISR shim chains to USB MIDI's by symbol: the
 | units link together, and this module's detour at 0x4001e606 stands in
@@ -127,40 +133,47 @@
 .set RB_BASE,      0x80003190
 .set RB_PREV,      0x800000e4      | pingpong_prev: reads use prev
 .set RB_TRACKS,    8
-.set RB_SHIFT,     AUDIO_SHIFT     | 32-bit readback -> s16 (calibrated)
 
 | ---- frame geometry --------------------------------------------------------
-| The producer fills TWO rings per frame: a 32-byte slot (16 channels of s16
-| LE, track 1 L/R first, track 8 L/R last) for the HIGH SPEED stream, and a
-| 4-byte stereo sum of the eight tracks for FULL SPEED. Both are indexed by
-| the same frame count, so the wrap arithmetic has one form.
+| The producer fills TWO rings per frame: a 64-byte slot (16 channels, each a
+| 4-byte little-endian subslot carrying 24 bits, track 1 L/R first, track 8
+| L/R last) for the HIGH SPEED stream, and an 8-byte stereo sum of the eight
+| tracks for FULL SPEED. Both are indexed by the same frame count, so the
+| wrap arithmetic has one form.
 |
-| ☠ Why the speed decides the channel count: 16 ch at 44.1 kHz / 16 bit is
-| 1411 B per millisecond, and a full-speed iso endpoint may move at most 1023 B
-| per 1 ms frame, with no faster poll to escape into. Sixteen channels cannot
-| be described at full speed at all. High speed polls every 500 us
-| (bInterval 3), where 22.05 frames * 32 B = 706 B fits a single transaction
-| under the 1024 B cap with room for the servo. ☠ UAC1 cannot poll faster
-| than 1 ms even at high speed (Apple TN3190: bInterval must be 4), which
-| caps a UAC1 stream at 11 channels; this is why the descriptors are UAC2.
-.set SLOT_BYTES,   32           | ring slot: 8 tracks * (L,R) * s16
-.set SLOT_SHIFT,   5            | log2(SLOT_BYTES), for the index math
-.set PKT_MAX_HS,   23*SLOT_BYTES | 736: the largest 500 us packet
-.set PKT_MAX_FS,   45*4         | 180: the largest 1 ms stereo packet
-.set STEP_HS,      2205         | 22.05 frames per 500 us packet, x100
-.set STEP_FS,      4410         | 44.1 frames per 1 ms packet, x100
+| A track's sample is the read-back word with its low byte cleared: the
+| arena's full scale is 2^31 (his 16-bit calibration kept the top 16 bits),
+| so the subslot's 24 valid bits are the arena's top 24 at the same scale.
+|
+| ☠ Why the poll is 250 us: 16 ch x 4 B at 44.1 kHz is 2,822 B per
+| millisecond, and one high-speed isochronous transaction carries at most
+| 1,024 B. At bInterval 2 a packet is 11.025 frames x 64 B = 706 B, at most
+| 12 frames = 768 B with the servo. Full speed carries the stereo sum only:
+| 44.1 frames x 8 B = 353 B per 1 ms frame, under the 1,023 B cap. UAC1
+| cannot poll faster than 1 ms even at high speed (Apple TN3190: bInterval
+| must be 4); this is why the descriptors are UAC2.
+.set SLOT_BYTES,   64           | ring slot: 8 tracks * (L,R) * 4 B
+.set SLOT_SHIFT,   6            | log2(SLOT_BYTES), for the index math
+.set SUM_BYTES,    8            | sum slot: (L,R) * 4 B
+.set PKT_MAX_HS,   12*SLOT_BYTES | 768: the largest 250 us packet
+.set PKT_MAX_FS,   45*SUM_BYTES | 360: the largest 1 ms stereo packet
+.set STEP_HS,      11025        | 11.025 frames per 250 us packet, x1000
+.set STEP_FS,      44100        | 44.1 frames per 1 ms packet, x1000
+.set SERVO_STEP,   100          | +-0.1 frame per packet, x1000
 
-| The payload's own audio rings. ☠ They live INSIDE the blob, as reserved
-| space, so they move with the code when the loader relocates: there is no
-| second address to verify, and they cannot collide with the sample heap
-| because the heap itself handed us the memory. 1024 frames — 23 ms of
-| buffer, ample between a ~2756/s producer and a 2 kHz consumer. ☠ A slot is
-| eight times the size it was when the stream was stereo, so the frame COUNT
-| came down to keep the blob inside the trampoline's 64 KB limit: 1024 * 32 B
-| is 32 KB of ring (+4 KB for the stereo sum), and the whole payload lands
-| around 50 KB. ☠ Only the CPU ever reads these rings — the USB controller
-| reads the packet buffers in the cache-inhibited DMA window — so the rings
-| need no cache maintenance at all.
+| ☠ FOUR queue slots, so the host always finds a packet waiting: four
+| packets cover 1 ms of polls, the same cover his two covered at 500 us.
+| The frame ISR (every 363 us) is the only context that queues, so the
+| queue must outlast one block plus that interrupt's latency.
+.set NSLOT,        4            | power of two: slot arithmetic is a mask
+.set UNCACHED,     0x08000000   | + an SDRAM address = the same memory,
+                                | cache-inhibited (PLACEMENT.md)
+
+| The payload's own audio rings. They live in the unit's data and are zeroed
+| by the loader. 1024 frames — 23 ms of buffer, ample between a ~2756/s
+| producer and a 4 kHz consumer. ☠ Only the CPU ever reads the rings, through
+| their cached addresses — the USB controller reads the packet buffers — so
+| the rings need no cache maintenance at all.
 .set AUD_FRAMES,   1024
 .set AUD_TARGET,   512          | ring fill the stream starts at and the servo
                                     | steers towards: ~12 ms, enough that a
@@ -287,66 +300,82 @@ audio_isr_shim:
     jmp     usbmidi_isr_shim         | USB MIDI's shim, whose detour this one stands in for
 
 | ---- the iso packet builder -------------------------------------------------
-| Each packet holds the next n frames from the ring: n = 22/23 at high speed
-| (2205/100 per packet) or 44/45 at full speed (4410/100), so the emitted
+| Each packet holds the next n frames from the ring: n = 11/12 at high speed
+| (11025/1000 per packet) or 44/45 at full speed (44100/1000), so the emitted
 | stream is an exact, gap-free substring of what the producer wrote. Underrun
 | queues nothing (the host's IN gets an empty packet); a producer that laps
 | the ring (host stopped draining) resyncs and counts an overrun.
 | Runs from the frame shim only; may clobber every register but %sp.
 |
-| ☠ TWO dTDs, so the host always finds a packet waiting. An isochronous IN
-| cannot NAK: an IN token that arrives with nothing primed is answered with a
-| zero-length packet, and a 22-frame hole in the stream is a click. With one
-| dTD the packet for each 500 us poll had to be primed by the frame ISR after
-| the previous poll completed — usually fine (blocks are 363 us apart), but
-| any block-interrupt latency became a hole, and the ring's fill is the wrong
-| cushion for that: it protects the producer, not the prime. With two, the
-| ISR keeps one packet queued BEHIND the one in flight and the controller
-| chains into it on its own. (An earlier two-deep attempt wedged against the
-| bench, which walked linked iso dTDs as one bulk transfer; the bench now
-| serves one dTD per poll, as silicon does.)
+| ☠ An isochronous IN cannot NAK: an IN token that arrives with nothing
+| primed is answered with a zero-length packet, and a hole in the stream is a
+| click. The frame ISR keeps up to NSLOT packets queued and the controller
+| chains from one to the next on its own. (An earlier two-deep attempt of his
+| wedged against the bench, which walked linked iso dTDs as one bulk
+| transfer; the bench serves one dTD per poll, as silicon does.)
 |
-| The two slots alternate: aud_tail is the next to fill. A slot whose dTD is
-| still ACTIVE is in flight or queued and is left alone.
+| The slots are used in turn: aud_tail is the next to fill, so fill order is
+| tail-3, tail-2, tail-1 (oldest to newest) and the controller retires them
+| in that order. A slot whose dTD is still ACTIVE is in flight or queued and
+| is left alone.
 usbaudio_kick:
     tstb    usbaudio_alt            | alt 0 requested since this block began:
     beqs    9f                      | queue nothing more (teardown follows)
-    bsr     audio_pkt_build         | fill the tail slot, if free
+    moveq   #NSLOT,%d0
+    movel   %d0,%sp@-               | builds left this block
+1:  bsr     audio_pkt_build         | fill the tail slot, if free
     tstl    %d0
-    beqs    .Lkick_heal
-    bsr     audio_pkt_build         | and the other, if that one is free too
-.Lkick_heal:
+    beqs    2f
+    subql   #1,%sp@
+    bnes    1b
+2:  addql   #4,%sp
     | ☠ Self-heal. The add-dTD tripwire (audio_pkt_build) is the documented
     | way to append to a running queue, and its hazard window is reported by
     | the hardware clearing ATDTW. Should anything ever leave an ACTIVE dTD
     | behind with the endpoint idle — a missed hazard, a flush that raced a
     | prime — the stream would otherwise stall until the next alt 0/1. So
-    | every block ends with: idle endpoint + queued dTD = prime it, and count
-    | it, so a silent recovery is still measurable.
+    | every block ends with: idle endpoint + queued dTD = prime the oldest,
+    | and count it, so a silent recovery is still measurable.
     movel   ENDPTSTAT,%d0
     movel   EPPRIME,%d1
     orl     %d1,%d0
     andil   #EP3IN_BIT,%d0
     bnes    9f                      | primed or priming: running
-    mvzb    aud_tail,%d0            | the oldest queued dTD is the tail slot
-    lsll    #5,%d0                  | (filled first) if it is ACTIVE, else
-    lea     usbaudio_dtd0,%a4       | the other one
-    addal   %d0,%a4
-    movel   %a4@(4),%d1
-    btst    #7,%d1
-    bnes    .Lheal_prime
-    mvzb    aud_tail,%d0
-    eoril   #1,%d0
-    lsll    #5,%d0
-    lea     usbaudio_dtd0,%a4
-    addal   %d0,%a4
-    movel   %a4@(4),%d1
-    btst    #7,%d1
+    mvzb    aud_tail,%d2            | oldest first: fill order from the tail
+    bsr     audio_oldest
+    tstl    %d0
     beqs    9f                      | nothing queued: idle is correct
-.Lheal_prime:
     bsr     audio_prime             | %a4 = head dTD
     addql   #1,usbaudio_reprimes
 9:  rts
+
+| %d0 = slot index (taken mod NSLOT) -> %a0 = its dTD, through the uncached
+| alias. Clobbers d0.
+audio_dtd_of:
+    andil   #NSLOT-1,%d0
+    lsll    #5,%d0
+    moveal  #(aud_dtds+UNCACHED),%a0
+    addal   %d0,%a0
+    rts
+
+| The oldest queued dTD: the first ACTIVE one from slot %d2 onward, in fill
+| order. Returns d0 = 1 and %a4 = it, or d0 = 0 when none is ACTIVE.
+| Clobbers d0-d3/a0.
+audio_oldest:
+    moveq   #NSLOT-1,%d3
+1:  movel   %d2,%d0
+    bsr     audio_dtd_of
+    movel   %a0@(4),%d1
+    btst    #7,%d1
+    bnes    2f
+    addql   #1,%d2
+    subql   #1,%d3
+    bpls    1b
+    moveq   #0,%d0
+    rts
+2:  moveal  %a0,%a4
+    moveq   #1,%d0
+    rts
 
 | Point the queue head at %a4 and prime EP3 IN — the "list empty" case of the
 | Chipidea add-dTD procedure. Clobbers d0/a1.
@@ -362,10 +391,8 @@ audio_prime:
 | was queued, 0 if the slot was busy or the ring could not fill one.
 audio_pkt_build:
     mvzb    aud_tail,%d0
-    moveal  %d0,%a6                 | a6 = slot index (0/1), kept across the copy
-    lsll    #5,%d0
-    lea     usbaudio_dtd0,%a0
-    addal   %d0,%a0                 | a0 = this slot's dTD
+    moveal  %d0,%a6                 | a6 = slot index, kept across the copy
+    bsr     audio_dtd_of            | a0 = this slot's dTD
     movel   %a0@(4),%d1
     btst    #7,%d1                  | ACTIVE: in flight or queued
     bne     .Lpb_none
@@ -385,28 +412,28 @@ audio_pkt_build:
 3:  movel   usbaudio_acc,%d3
     | ☠ RATE SERVO. The endpoint is ASYNCHRONOUS: the device sends at its own
     | clock and the host adapts. The host's polls run on ITS clock, so a fixed
-    | 22.05 frames per poll would drain the ring faster or slower than the
+    | 11.025 frames per poll would drain the ring faster or slower than the
     | producer fills it, by the two clocks' drift, and the ring would under-
     | or overrun within minutes. The servo nudges the drain by +-0.1 frame per
     | packet against a target fill, which is exactly "send what is produced".
-    | --plain disables it, for A/B measurement only.
-    movel   aud_step,%d5            | nominal frames per packet, x100
+    | AUD_SERVO 0 disables it, for A/B measurement only.
+    movel   aud_step,%d5            | nominal frames per packet, x1000
     .if AUD_SERVO == 0
     bras    .Lsrv_done
     .endif
     cmpil   #(AUD_TARGET+AUD_BAND),%d2
     bcss    .Lsrv_low
-    addil   #10,%d5
+    addil   #SERVO_STEP,%d5
     bras    .Lsrv_done
 .Lsrv_low:
     cmpil   #(AUD_TARGET-AUD_BAND),%d2
     bccs    .Lsrv_done
-    subil   #10,%d5
+    subil   #SERVO_STEP,%d5
 .Lsrv_done:
     addl    %d5,%d3
-    moveq   #100,%d7
+    movel   #1000,%d7
     movel   %d3,%d4
-    divu.l  %d7,%d4                 | d4 = n = (acc+step)/100
+    divu.l  %d7,%d4                 | d4 = n = (acc+step)/1000
     movel   %d4,%d5
     mulu.l  %d7,%d5
     movel   %d3,%d6
@@ -420,14 +447,17 @@ audio_pkt_build:
     movel   %d4,usbaudio_lastn
     movel   %d2,usbaudio_lastfill
     | ---- copy n frames into this slot's buffer -----------------------------
-    | a3 = the buffer, a1 = write cursor. The ring is copied in at most two
-    | straight runs (up to its end, then from its start), with no per-frame
-    | index masking; at high speed each 32-byte frame moves as one moveml pair.
-    lea     usbaudio_buf0,%a3
+    | a3 = the buffer (aud_bufs + slot * 768, through the uncached alias),
+    | a1 = write cursor. The ring is copied in at most two straight runs (up
+    | to its end, then from its start), with no per-frame index masking.
     movel   %a6,%d0
-    beqs    4f
-    lea     %a3@(PKT_MAX_HS),%a3    | slot 1's buffer
-4:  moveal  %a3,%a1
+    lsll    #8,%d0                  | slot * 256
+    movel   %d0,%d1
+    addl    %d0,%d0                 | slot * 512
+    addl    %d1,%d0                 | slot * 768 = slot * PKT_MAX_HS
+    moveal  #(aud_bufs+UNCACHED),%a3
+    addal   %d0,%a3
+    moveal  %a3,%a1
     movel   %d4,%d3                 | d3 = n
     movel   usbaudio_consumed,%d1
     andil   #AUD_FRAMES-1,%d1       | ring index of the first frame
@@ -441,77 +471,77 @@ audio_pkt_build:
     cmpl    %d0,%d3
     bhis    .Lhs_wrap               | n > frames to the end: two runs
     movel   %d3,%d0
-    bsr     audio_copy32
+    bsr     audio_copy64
     bras    .Lcopied
 .Lhs_wrap:
     subl    %d0,%d3
     moveal  %d3,%a5                 | a5 = frames in the second run (the copy
-    bsr     audio_copy32            |      clobbers every data register)
+    bsr     audio_copy64            |      clobbers every data register)
     lea     aud_ring,%a2
     movel   %a5,%d0
-    bsr     audio_copy32
+    bsr     audio_copy64
     bras    .Lcopied
 .Lcopy_fs:
     lea     aud_sum,%a2
-    lsll    #2,%d1
+    lsll    #3,%d1
     addal   %d1,%a2
     cmpl    %d0,%d3
     bhis    .Lfs_wrap
     movel   %d3,%d0
-    bsr     audio_copy4
+    bsr     audio_copy8
     bras    .Lcopied
 .Lfs_wrap:
     subl    %d0,%d3
     moveal  %d3,%a5
-    bsr     audio_copy4
+    bsr     audio_copy8
     lea     aud_sum,%a2
     movel   %a5,%d0
-    bsr     audio_copy4
+    bsr     audio_copy8
 .Lcopied:
     movel   usbaudio_lastn,%d4      | n again (the copy clobbered it)
     addl    %d4,usbaudio_consumed
     movel   %d4,%d6
     tstb    aud_hs
     beqs    5f
-    lsll    #SLOT_SHIFT,%d6         | nbytes = n * 32
+    lsll    #SLOT_SHIFT,%d6         | nbytes = n * 64
     bras    6f
-5:  lsll    #2,%d6                  | nbytes = n * 4
+5:  lsll    #3,%d6                  | nbytes = n * 8
 6:  | ---- the dTD: buffer pointers first, the ACTIVE token LAST -------------
-    | The DMA window is cache-inhibited precise, so these stores reach memory
-    | in program order: the controller cannot see an ACTIVE token over a
-    | half-built descriptor or a half-copied buffer.
+    | The dTD and the buffer are written through the uncached alias, so these
+    | stores reach memory in program order: the controller cannot see an
+    | ACTIVE token over a half-built descriptor or a half-copied buffer.
     moveq   #1,%d1
     movel   %d1,%a0@                | next = terminate
     movel   %a3,%a0@(8)             | buffer page 0
     movel   %a3,%d1
     andil   #0xfffff000,%d1
     addil   #0x1000,%d1
-    movel   %d1,%a0@(12)            | page 1 (a straddle guard; the packet fits one page)
+    movel   %d1,%a0@(12)            | page 1: a 768-byte buffer can straddle a 4 KB page
     movel   %d6,%d1
     swap    %d1                     | nbytes << 16
-    oril    #0x80,%d1               | ACTIVE (no IOC: 2000 completions/s buy nothing)
+    oril    #0x80,%d1               | ACTIVE (no IOC: completions buy nothing)
     movel   %d1,%a0@(4)
     | ---- queue it: the Chipidea "add dTD" procedure -------------------------
-    | Case 1, list empty (the other slot's dTD is not ACTIVE): point the queue
-    | head at this dTD and prime. Case 2, list running: link this dTD after
-    | the other, then the tripwire — set ATDTW, sample ENDPTSTAT, trust the
-    | sample only if ATDTW is still set (hardware clears it when the sample
-    | fell in its hazard window). Still primed: the controller follows the
-    | link by itself. Not primed: it retired the other dTD before it saw the
-    | link, so the list is empty after all and the HEAD to prime is the other
-    | dTD if it is somehow still ACTIVE (never skip a queued packet), else
-    | this one.
+    | Case 1, list empty (the previous slot in fill order is not ACTIVE, so
+    | nothing older is either): point the queue head at this dTD and prime.
+    | Case 2, list running: link this dTD after the previous one, then the
+    | tripwire — set ATDTW, sample ENDPTSTAT, trust the sample only if ATDTW
+    | is still set (hardware clears it when the sample fell in its hazard
+    | window). Still primed: the controller follows the link by itself. Not
+    | primed: it retired the previous dTD before it saw the link, so the HEAD
+    | to prime is the oldest dTD still ACTIVE (never skip a queued packet),
+    | which is this one if every other has retired.
     moveal  %a0,%a4                 | a4 = the head to prime, if it comes to that
+    moveal  %a0,%a5                 | a5 = this dTD (audio_dtd_of returns in a0)
     movel   %a6,%d0
-    eoril   #1,%d0
-    lsll    #5,%d0
-    lea     usbaudio_dtd0,%a2
-    addal   %d0,%a2                 | a2 = the other slot's dTD
+    subql   #1,%d0
+    bsr     audio_dtd_of
+    moveal  %a0,%a2                 | a2 = the previous slot's dTD
+    moveal  %a5,%a0
     movel   %a2@(4),%d0
     btst    #7,%d0
     beqs    .Lenq_prime             | case 1
-    movel   %a0,%a2@                | case 2: other.next = this
-    moveal  %a2,%a4
+    movel   %a0,%a2@                | case 2: previous.next = this
     movel   EPPRIME,%d0
     andil   #EP3IN_BIT,%d0
     bnes    .Lenq_done              | a prime is pending: it will read the list
@@ -534,53 +564,59 @@ audio_pkt_build:
     movel   %d0,USBCMD
     tstl    %d1
     bnes    .Lenq_done              | still running: it will follow the link
-    movel   %a2@(4),%d0
-    btst    #7,%d0
-    bnes    .Lenq_prime             | the other is still queued: head is it
-    moveal  %a0,%a4                 | it retired meanwhile: head is this one
+    movel   %a6,%d2
+    addql   #1,%d2                  | oldest first: tail+1 .. tail in fill order
+    bsr     audio_oldest            | a4 = the oldest ACTIVE (this one at worst)
 .Lenq_prime:
     bsr     audio_prime
 .Lenq_done:
     movel   %a6,%d0
-    eoril   #1,%d0
-    moveb   %d0,aud_tail            | the other slot is next
+    addql   #1,%d0
+    andil   #NSLOT-1,%d0
+    moveb   %d0,aud_tail            | the next slot fills next
     moveq   #1,%d0
     rts
 .Lpb_none:
     moveq   #0,%d0
     rts
 
-| Copy d0 (>= 1) 32-byte frames from %a2 to %a1, both advanced: one moveml
-| pair per frame where the indexed version took 22 instructions. Clobbers
-| d1-d7/a4.
-audio_copy32:
+| Copy d0 (>= 1) 64-byte frames from %a2 to %a1, both advanced: two moveml
+| pairs per frame. Clobbers d1-d7/a4.
+audio_copy64:
 1:  moveml  %a2@,%d1-%d7/%a4
     moveml  %d1-%d7/%a4,%a1@
-    lea     %a2@(32),%a2
-    lea     %a1@(32),%a1
+    moveml  %a2@(32),%d1-%d7/%a4
+    moveml  %d1-%d7/%a4,%a1@(32)
+    lea     %a2@(64),%a2
+    lea     %a1@(64),%a1
     subql   #1,%d0
     bnes    1b
     rts
 
-| Copy d0 (>= 1) 4-byte stereo-sum frames from %a2 to %a1, both advanced.
-audio_copy4:
+| Copy d0 (>= 1) 8-byte stereo-sum frames from %a2 to %a1, both advanced.
+audio_copy8:
 1:  movel   %a2@+,%a1@+
+    movel   %a2@+,%a1@+
     subql   #1,%d0
     bnes    1b
     rts
 
-| Mark the queue idle: zero both dTDs (ACTIVE clear, next = terminate) and
-| start filling at slot 0. The DMA window is cache-inhibited, so no cpushl.
-| Clobbers d1/a1.
+| Mark the queue idle: zero every dTD (ACTIVE clear, next = terminate) and
+| start filling at slot 0. Written through the uncached alias, so no cpushl.
+| Clobbers d0/d1/a1.
 audio_dtds_clear:
-    lea     usbaudio_dtd0,%a1
-    moveq   #15,%d1
+    moveal  #(aud_dtds+UNCACHED),%a1
+    moveq   #NSLOT*8-1,%d1
 1:  clrl    %a1@+
     subql   #1,%d1
     bpls    1b
-    moveq   #1,%d1
-    movel   %d1,usbaudio_dtd0       | next = terminate
-    movel   %d1,usbaudio_dtd1
+    moveal  #(aud_dtds+UNCACHED),%a1
+    moveq   #1,%d0
+    moveq   #NSLOT-1,%d1
+2:  movel   %d0,%a1@                | next = terminate
+    lea     %a1@(32),%a1
+    subql   #1,%d1
+    bpls    2b
     clrb    aud_tail
     rts
 
@@ -630,8 +666,8 @@ audio_ep3_up:
     subql   #1,%d1
     bpls    1b
     moveal  qh_ep3,%a0              | resolved just above
-    | ☠ The SPEED decides the stream: 16 channels in 736 B packets every
-    | 500 us at high speed, the stereo sum in 180 B packets every 1 ms at
+    | ☠ The SPEED decides the stream: 16 channels in <= 768 B packets every
+    | 250 us at high speed, the stereo sum in <= 360 B packets every 1 ms at
     | full speed. PORTSC1 bits 27:26 are the negotiated speed (2 = high); the
     | responder picks the config descriptor by the same bits, so the format
     | the host was told and the packets it gets cannot disagree.
@@ -647,13 +683,13 @@ audio_ep3_up:
     moveb   %d0,aud_hs
     movel   #STEP_HS,%d0
     movel   %d0,aud_step
-    movel   #(0x60000000+(PKT_MAX_HS<<16)),%d0  | dQH cap: Mult 1, ZLT off, maxpkt 736
+    movel   #(0x60000000+(PKT_MAX_HS<<16)),%d0  | dQH cap: Mult 1, ZLT off, maxpkt 768
     bras    .Lspeed_set
 .Lspeed_fs:
     clrb    aud_hs
     movel   #STEP_FS,%d0
     movel   %d0,aud_step
-    movel   #(0x60000000+(PKT_MAX_FS<<16)),%d0  | Mult 1, ZLT off, maxpkt 180
+    movel   #(0x60000000+(PKT_MAX_FS<<16)),%d0  | Mult 1, ZLT off, maxpkt 360
 .Lspeed_set:
     movel   %d0,%a0@
     clrl    %a0@(4)                 | current dTD
@@ -794,11 +830,10 @@ aud_hexmsg:
 |
 | Displaced: clrl 0x46104d4e (6 bytes), rejoin 0x4000d9a6.
 
-| d -> saturated int16 in the low word of d. Inline, because the producer
-| does it 256 times per block (eight tracks, two channels, sixteen frames):
-| as a subroutine that was 512 bsr/rts per block. The bounds live in %a5
-| (32767) and %a6 (-32768), loaded once per block.
-.macro SAT16 d
+| d -> saturated to 24 bits (-2^23 .. 2^23-1). Inline, used only for the
+| stereo sum (two per frame). The bounds live in %a5 (0x7fffff) and %a6
+| (-0x800000), loaded once per block.
+.macro SAT24 d
     cmpl    %a5,\d
     jble    .Lsat_lo\@              | jbcc: gas picks the shortest branch
     movel   %a5,\d
@@ -816,17 +851,16 @@ audio_frame_shim:
     | was empty at alt 1 and the first ~127 packets could not be filled --
     | measured on hardware as exactly 127 underruns, all at startup, and heard
     | as a burst of clicks in the first 1.5 s. Keeping it running costs one
-    | block of summing per interrupt whether or not anyone is listening, and
+    | block of copying per interrupt whether or not anyone is listening, and
     | buys a stream that starts instantly with a full buffer behind it.
     | aud_running gates the SENDING, just not the producing.
 audio_frame_shim_body:
     .if AUD_SOURCE != 6
     | ☠ The stereo sum is only ever SENT at full speed. At high speed (PORTSC1
-    | bits 27:26 = 2) it is skipped — sixteen adds and a clamp-and-store per
-    | frame, ~15% of the producer, for a ring nobody reads. Decided per block
-    | from the PORT, not from aud_hs, so a re-enumeration at full speed refills
-    | the sum ring long before the host can select alt 1 (enumeration alone
-    | takes >100 ms; the ring holds 23 ms). A telemetry build keeps it: the
+    | bits 27:26 = 2) its store is skipped. Decided per block from the PORT,
+    | not from aud_hs, so a re-enumeration at full speed refills the sum ring
+    | long before the host can select alt 1 (enumeration alone takes
+    | >100 ms; the ring holds 23 ms). A telemetry build keeps it: the
     | telemetry rides on the sum's left channel.
     moveq   #0,%d1
     movel   PORTSC1,%d0
@@ -861,46 +895,46 @@ audio_frame_shim_body:
     lea     aud_ring,%a3
     addal   %d0,%a3                 | a3 = 16-channel slot cursor (a block never
                                     | wraps: 16 divides the ring size)
-    lsll    #2,%d5
+    lsll    #3,%d5
     lea     aud_sum,%a4
     addal   %d5,%a4                 | a4 = stereo-sum cursor
-    moveq   #RB_SHIFT,%d1           | asr.l immediate is 1-8 only: shift via d1
-    moveal  #32767,%a5              | SAT16 bounds
-    moveal  #-32768,%a6
+    moveq   #SUM_SHIFT,%d1          | asr.l immediate is 1-8 only: shift via d1
+    moveal  #0x7fffff,%a5           | SAT24 bounds
+    moveal  #-0x800000,%a6
     moveq   #15,%d6                 | 16 frames
 1:
     .if SRC_IS_TRACKS
     | ---- the eight tracks, one stereo pair each, plus their sum -----------
-    | Per frame: track t's L,R (32-bit, post-FX, pre-fader) >> RB_SHIFT,
-    | saturated to s16, stored little-endian at slot + t*4; the unsaturated
-    | shifted values accumulate into the stereo sum (d5 = L, d3 = R), which
-    | is what the full-speed stream carries.
-    | The pair is packed as one longword: R16 in the high half, L16 in the
-    | low half, then BYTEREV (ISA_C, and QEMU's cfv4e has it) turns big-endian
-    | R:L into little-endian L,R in memory — one store where the byte-by-byte
-    | version took four stores and two shifts.
+    | Per frame: track t's L,R (32-bit, post-FX, pre-fader) with the low byte
+    | cleared -- 24 bits, left-justified in the subslot, no saturation needed
+    | -- then BYTEREV (ISA_C, and QEMU's cfv4e has it) to little-endian, one
+    | longword store each, at slot + t*8. The same words >> 8 accumulate into
+    | the stereo sum in 24-bit units (d5 = L, d3 = R; eight tracks fit in 27
+    | bits), which is what the full-speed stream carries.
     moveal  %a2,%a0                 | track 0, this frame
     moveq   #0,%d5                  | L sum
     moveq   #0,%d3                  | R sum
     moveq   #RB_TRACKS-1,%d7
 2:  movel   %a0@,%d2                | track L
-    asrl    %d1,%d2
-    addl    %d2,%d5
-    SAT16   %d2
-    movel   %a0@(4),%d0             | track R
+    movel   %d2,%d0
+    asrl    %d1,%d0
+    addl    %d0,%d5
+    clrb    %d2                     | the top 24 bits
+    byterev %d2
+    movel   %d2,%a3@+
+    movel   %a0@(4),%d2             | track R
+    movel   %d2,%d0
     asrl    %d1,%d0
     addl    %d0,%d3
-    SAT16   %d0
-    swap    %d0                     | R16 to the high half
-    movew   %d2,%d0                 | L16 to the low half
-    byterev %d0                     | -> L lo, L hi, R lo, R hi
-    movel   %d0,%a3@+               | the channel pair
+    clrb    %d2
+    byterev %d2
+    movel   %d2,%a3@+
     lea     %a0@(128),%a0           | next track, same frame
     subql   #1,%d7
     bpl     2b
     movel   %d5,%d2                 | the stereo sum, L
     .else
-    | ---- diagnostic source: synthetic 441 Hz triangle, +-8000 -------------
+    | ---- diagnostic source: synthetic 441 Hz triangle, +-8000/32768 -------
     | Ignores readback_buf entirely, on ALL sixteen channels and the sum.
     | Separates "can the device produce samples over USB at all" from "is the
     | tap point carrying audio". 100 frames per cycle at 44100 = 441 Hz, which
@@ -933,28 +967,30 @@ audio_frame_shim_body:
     moveq   #0,%d0
 .Lsyn_wrap:
     movel   %d0,aud_phase
+    lsll    #8,%d2                  | 16-bit units -> 24-bit units
     movel   %d2,%d3                 | R sum = the tone too
     movel   %d2,%d0
-    lsrl    #8,%d0
+    lsll    #8,%d0                  | left-justified in the subslot
+    byterev %d0
     moveq   #15,%d7                 | all 16 channels of the slot
 .Lsyn_fill:
-    moveb   %d2,%a3@+
-    moveb   %d0,%a3@+
+    movel   %d0,%a3@+
     subql   #1,%d7
     bpls    .Lsyn_fill
     .endif
     movel   %a1,%d0
     bne     .Lsum_skip              | high speed: the sum ring is not sent
-    | ---- the stereo sum: saturate and store little-endian -----------------
-    SAT16   %d2
+    | ---- the stereo sum: saturate, left-justify, store little-endian --------
+    SAT24   %d2
     | ☠ producer-side discontinuity detector (telemetry only; the compare is a
-    | few cycles and the counter is never read on a normal build)
+    | few cycles and the counter is never read on a normal build). The
+    | threshold is his 800 in 16-bit units.
     movel   usbaudio_lastsamp,%d0
     subl    %d2,%d0
     bpls    .Lsj_abs
     negl    %d0
 .Lsj_abs:
-    cmpil   #800,%d0
+    cmpil   #(800<<8),%d0
     bcss    .Lsj_done
     addql   #1,usbaudio_srcjump
 .Lsj_done:
@@ -968,18 +1004,23 @@ audio_frame_shim_body:
     movel   #15,%d1
     subl    %d0,%d1                 | d1 = frame index within the block
     bsr     audio_telem_value       | d1 -> d2 = the field for this frame
-    moveq   #RB_SHIFT,%d1           | restore the shift
-    moveb   %d2,%a3@(-32)
+    moveq   #SUM_SHIFT,%d1          | restore the shift
     movel   %d2,%d0
-    lsrl    #8,%d0
-    moveb   %d0,%a3@(-31)
+    lsll    #8,%d0
+    lsll    #8,%d0                  | the 16-bit field, left-justified
+    byterev %d0
+    movel   %d0,%a3@(-SLOT_BYTES)
+    lsll    #8,%d2                  | and in 24-bit units for the sum
     .endif
-    movel   %d3,%d0                 | sum R
-    SAT16   %d0
-    swap    %d0
-    movew   %d2,%d0                 | R16:L16
-    byterev %d0                     | -> L LE, R LE
-    movel   %d0,%a4@+
+    movel   %d2,%d0
+    lsll    #8,%d0
+    byterev %d0
+    movel   %d0,%a4@+               | sum L
+    movel   %d3,%d0
+    SAT24   %d0
+    lsll    #8,%d0
+    byterev %d0
+    movel   %d0,%a4@+               | sum R
 .Lsum_skip:
     lea     %a2@(8),%a2             | next frame
     subql   #1,%d6
@@ -1104,7 +1145,7 @@ uac2_clock_valid: .byte 0x01
 | The twelve longs from usbaudio_consumed to aud_produced are what the
 | vendor request 0xc0/0x55 returns, in this order.
 usbaudio_consumed: .long 0          | frames pulled from the ring
-usbaudio_acc:      .long 0          | frames-per-packet accumulator (x100)
+usbaudio_acc:      .long 0          | frames-per-packet accumulator (x1000)
 usbaudio_overruns: .long 0
 usbaudio_underruns: .long 0    | packets we could not fill
 usbaudio_lastn:    .long 0    | frames in the most recent packet
@@ -1117,31 +1158,30 @@ usbaudio_reprimes: .long 0    | idle endpoint found holding a queued dTD
 aud_produced:      .long 0          | producer frame count (relocates with us)
 aud_phase:         .long 0          | synthetic-source phase, 0..99
 qh_ep3:            .long 0          | EP3 IN dQH, read from ENDPTLISTADDR
-aud_step:          .long STEP_HS    | frames per packet x100, set by the speed
-aud_ring:          .space AUD_FRAMES*SLOT_BYTES  | 1024 x 16 ch s16 LE
-aud_sum:           .space AUD_FRAMES*4           | 1024 x stereo sum s16 LE
+aud_step:          .long STEP_HS    | frames per packet x1000, set by the speed
+aud_ring:          .space AUD_FRAMES*SLOT_BYTES  | 1024 x 16 ch, 24 in 4 B LE
+aud_sum:           .space AUD_FRAMES*SUM_BYTES   | 1024 x stereo sum, 24 in 4 B LE
 usbaudio_alt:      .byte 0          | alt setting the host asked for
 aud_running:       .byte 0          | EP3 is up (frame-ISR owned)
 aud_hs:            .byte 0          | 1 = high speed (16 ch), 0 = full (sum)
-aud_tail:          .byte 0          | next dTD slot to fill (0/1)
-    .balign 4| ☠ Everything the USB controller reads by DMA lives OUTSIDE the payload blob,
-| in cache-inhibited memory. The blob runs from flex heap pages, which ACR0
-| maps cacheable copyback, and the controller is a bus master that does not
-| snoop the CPU's data cache -- so a dTD written by the CPU can still be dirty
-| in cache when the controller fetches it, and the controller then reads
-| whatever RAM held before. That presented exactly as measured on hardware:
-| ENDPTPRIME clears (the prime was consumed) while ENDPTSTAT never arms (the
-| descriptor it found was not ACTIVE). Per-line cpushl did NOT fix it, in
-| either form; moving the structures out did, first try.
-|
-| The window is 0x4ec94a00..0x4ec95000 (--dma-at): past the controller's own
-| 8-entry endpoint list (0x4ec94800 + 8*64) and below the firmware's dTD pool
-| at 0x4ec95000, referenced by nothing in the image (scan 2026-09-22), and
-| EXACTLY 1536 B: two 32-byte dTDs and two 736-byte packet buffers, one pair
-| per queue slot.
-.set usbaudio_dtd0, DMA_FIXED                   | EP3 IN dTD, slot 0
-.set usbaudio_dtd1, DMA_FIXED + 32              | slot 1
-.set usbaudio_buf0, DMA_FIXED + 64              | slot 0's packet (<= 736 B)
-.set usbaudio_buf1, DMA_FIXED + 64 + PKT_MAX_HS | slot 1's
+aud_tail:          .byte 0          | next dTD slot to fill (0..NSLOT-1)
+
+| ☠ Everything the USB controller reads by DMA is read and written by the
+| CPU ONLY through the uncached alias (address + UNCACHED). The unit runs
+| from SDRAM that ACR0 maps cacheable copyback, and the controller is a bus
+| master that does not snoop the CPU's data cache -- so a dTD written through
+| its cached address can still be dirty in cache when the controller fetches
+| it, and the controller then reads whatever RAM held before. That presented
+| on hardware as ENDPTPRIME clearing (the prime was consumed) while ENDPTSTAT
+| never armed (the descriptor it found was not ACTIVE); per-line cpushl did
+| NOT fix it, in either form; uncached structures did, first try (his
+| window at 0x4ec94a00 is itself an alias address). The loader writes this
+| unit through the same alias and no code names these two arrays by their
+| cached addresses, so nothing allocates a cache line for them (inferred
+| from the access paths, not measured). dTDs are
+| 32-byte aligned (the dQH and dTD next pointers keep bits 31:5 only).
+    .balign 32
+aud_dtds:          .space NSLOT*32               | EP3 IN dTDs, one per queue slot
+aud_bufs:          .space NSLOT*PKT_MAX_HS       | their packets (<= 768 B each)
 
     .balign 4

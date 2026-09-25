@@ -102,13 +102,19 @@ def set_markers(dest):
 LOAD = False                        # --load: trigless locks on every step (ot_spec, by name), 200 BPM
 
 
+def sends_off(m):
+    """Every send knob the FX2 module has, at 0: the servers' SEND, SEND's
+    DEL and REV."""
+    return {k: 0 for k in ("SEND", "DEL", "REV") if k in m.knob_map_all()}
+
+
 def mutate_bank(data, bank_number, mods):
     bank.check_tags(data)
     for part in range(otp.NPARTS_ALL):
         base = otp.PART_BASE + part * otp.PART_STRIDE
         for track in range(8):
             fx1 = otp.module_defaults(mods[FX1[track]])
-            fx2 = otp.module_defaults(mods[FX2[track]], {"SEND": 0})
+            fx2 = otp.module_defaults(mods[FX2[track]], sends_off(mods[FX2[track]]))
             data[base + otp.FX1_OFF + track] = mods[FX1[track]].menu.fx2_id
             data[base + otp.FX2_OFF + track] = mods[FX2[track]].menu.fx2_id
             p1 = base + otp.P1_OFF + track * otp.TRACK_STRIDE
@@ -190,7 +196,7 @@ def main():
     if LOAD:
         # Trigless locks on steps 2..64 of A01, every track, by knob name
         # through tools/hw/ot_spec.py: the playback page (PTCH 64, RATE 127),
-        # AMP VOL 100, every FX1 knob at the module's default and FX2 SEND 0
+        # AMP VOL 100, every FX1 knob at the module's default and every FX2 send at 0
         # -- the values the part already holds, so the sequencer applies
         # fourteen locks per step and the tone does not change.
         import json
@@ -207,7 +213,7 @@ def main():
                 "playback": {s: {"PTCH": 64, "RATE": 127} for s in steps},
                 "amp": {s: {"VOL": 100} for s in steps},
                 "fx1": {s: dict(fx1) for s in steps},
-                "fx2": {s: {"SEND": 0} for s in steps}}}
+                "fx2": {s: sends_off(mods[FX2[track]]) for s in steps}}}
         spec = {"banks": [1], "patterns": {"1": {"tracks": tracks}}}
         spec_path = dest / "USBLOAD_spec.json"
         spec_path.write_text(json.dumps(spec))

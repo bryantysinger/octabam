@@ -442,13 +442,24 @@ namespace ot
 				m_usb->sof();
 				m_usbNextSof += g_framePeriod;
 			}
-			// The host's isochronous poll: every 500 us of device time
-			// (22.05 samples), the bInterval-3 schedule the audio
-			// endpoint is described with.
+			// The host's isochronous poll, on the schedule the audio
+			// endpoint is described with: every 250 us of device time at
+			// high speed (11.025 samples), every 1 ms at full speed.
 			while(m_sample >= m_usbNextIso)
 			{
-				m_usb->isoPoll();
-				m_usbNextIso += 44100.0 / 2000.0;
+				// A run of polls the bench host did not answer is device
+				// time with nothing drained: logged, so a ring overrun it
+				// causes is told apart from the guest's own.
+				if(m_usb->isoPoll())
+					++m_usbMissRun;
+				else
+				{
+					if(m_usbMissRun >= 16)
+						std::printf("usb        : %u isochronous poll(s) in a row with no IN from the bench host, ending at %.4f s\n",
+							m_usbMissRun, m_sample / 44100.0);
+					m_usbMissRun = 0;
+				}
+				m_usbNextIso += 44100.0 / m_usb->isoPollHz();
 			}
 		}
 	}

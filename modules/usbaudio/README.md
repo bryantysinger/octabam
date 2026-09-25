@@ -1,12 +1,13 @@
 # USB AUDIO
 
 The eight tracks over USB as a UAC2 audio input: at high speed sixteen
-channels of 44.1 kHz 16-bit PCM, track N's L/R on channels 2N-1/2N, post-FX
-and pre-fader; at full speed the stereo sum of the tracks. markandrus's
-proof of concept ([octemu](https://github.com/markandrus/octemu),
-`custom/usb-audio.py` + `custom/coldfire/usb-audio.s` at `6a9ff68`, MIT),
-carried onto octabam's DRAM platform. Needs USB MIDI: the audio function is
-added to its composite.
+channels of 44.1 kHz 24-bit PCM (in 4-byte subslots), track N's L/R on
+channels 2N-1/2N, post-FX and pre-fader; at full speed the stereo sum of
+the tracks, 24-bit as well. markandrus's proof of concept
+([octemu](https://github.com/markandrus/octemu), `custom/usb-audio.py` +
+`custom/coldfire/usb-audio.s` at `6a9ff68`, MIT, 16-bit), carried onto
+octabam's DRAM platform and widened to 24 bits here (25 Sep 2026). Needs
+USB MIDI: the audio function is added to its composite.
 
 ## What it is
 
@@ -14,13 +15,21 @@ added to its composite.
   every track's post-FX pre-fader block there each frame (the same memory
   the stock delay and Tape Echo read). The producer runs from the frame
   interrupt's last instruction (`0x4000d9a0`), reads the previous
-  ping-pong bank, shifts 32-bit samples to s16 with saturation and writes
-  one 32-byte slot per frame into a 1,024-frame ring (plus a stereo-sum
-  ring for full speed). Track LEVEL, the crossfader, MAIN volume and the
+  ping-pong bank, keeps the top 24 bits of each 32-bit sample (the low
+  byte cleared, left-justified in a 4-byte subslot) and writes one 64-byte
+  slot per frame into a 1,024-frame ring (plus a stereo-sum ring, 8 bytes
+  a frame, for full speed). The arena's full scale is 2^31, the scale his
+  16-bit build calibrated (a right shift of 16), so a 24-bit sample is the
+  same level with 8 more bits below it. Track LEVEL, the crossfader, MAIN volume and the
   master effects are downstream of the tap and not in the stream.
-- **Endpoint.** EP3 IN, isochronous, asynchronous, bInterval 3 (a 500 µs
-  poll), 22 or 23 frames per packet. Two transfer descriptors so a packet
-  is always queued behind the one in flight. A rate servo nudges the
+- **Endpoint.** EP3 IN, isochronous, asynchronous, bInterval 2 (a 250 µs
+  poll), 11 or 12 frames per packet, at most 768 bytes: sixteen 4-byte
+  channels at 44.1 kHz are 2,822 bytes a millisecond, and one high-speed
+  isochronous transaction carries at most 1,024 bytes, so his 500 µs poll
+  (1,104 bytes a packet at 24 bits) does not fit. Four transfer
+  descriptors, so 1 ms of packets is queued ahead of the host, the cover
+  his two gave at 500 µs; the frame interrupt (every 363 µs) is the only
+  context that queues. A rate servo nudges the
   packet size ±0.1 frame against a 512-frame target fill, which is "send
   what is produced": the stream is a gap-free copy of the ring. Underruns
   (nothing to send) and overruns (the host stopped draining) are counted
@@ -32,11 +41,15 @@ added to its composite.
   source's CUR/RANGE/validity class requests are answered by a shim on
   the stock "unknown request" STALL tail.
 - **DMA memory.** The USB controller is a bus master that does not snoop
-  the data cache, so the two dTDs and two 736-byte packet buffers live in
-  cache-inhibited memory at `0x4ec94a00..0x4ec95000`, between the
-  firmware's endpoint list and its own dTD pool (his scan: referenced by
-  nothing in the image; his measurement: per-line cache pushes did not
-  work, moving the structures did).
+  the data cache, so the four dTDs and four 768-byte packet buffers are
+  read and written only through the uncached SDRAM alias (address +
+  `0x08000000`, `docs/remixer/PLACEMENT.md`): they are this unit's data
+  (`aud_dtds`, `aud_bufs`, 3,200 bytes, dTDs 32-byte aligned), and the
+  loader depacks the unit through the same alias. His build placed two
+  dTDs and two 736-byte buffers in a 1,536-byte window at `0x4ec94a00`,
+  itself an alias address (his measurement: per-line cache pushes did not
+  work, cache-inhibited structures did); four 768-byte buffers do not fit
+  it, and the window is no longer used.
 
 His card-loaded payload, page allocator, self-relocating entry, stage-2
 hook installer, trampoline, on-screen reporter and hook guard are not
@@ -46,7 +59,45 @@ enumerate, which is also why his "re-plug the cable" caveat does not
 apply. The ISR site is USB MIDI's; this module's shim retires EP3
 completions and chains to USB MIDI's by symbol (`Override`).
 
-## Measured (25 Sep 2026, under the ColdFire port; nothing on hardware)
+## Measured: the 24-bit stream (25 Sep 2026, under the ColdFire port; not flashed)
+
+`verify_usb` (in `make check REMIX=usb-audio`), no card, silent tracks:
+EP 0x83 iso 768 bytes bInterval 2; FORMAT_TYPE_I subslot 4, 24 bits;
+800 polls at the device's 250 µs cadence carry 704/768-byte packets
+(11/12 frames), none empty after the first ten; every subslot's low byte
+zero; 0 underruns, 0 overruns; alt 0 → every poll empty.
+
+The USBSIG tone project (`tools/harness/usb_sig_project.py`) staged on a
+card under the port, `--sequencer --poke-trig 2`, streamed by
+`usb_host.py`'s paced drain:
+
+- High speed, 3 s: all sixteen channels carry their track's tone at the
+  expected frequency (T1 L 300 Hz … T8 R 1050 Hz), −25 to −29 dBFS.
+  95.2–99.8% of each channel's 24-bit samples have non-zero low 8 bits:
+  the 8 bits below a 16-bit stream's LSB carry signal.
+- Full speed, 3 s: 360-byte packets at bInterval 1, 44/45 frames; the
+  left sum carries every left tone and the right sum every right tone;
+  0 overruns.
+- Overruns under the port follow the bench host, not the device. Five
+  high-speed runs of the same project: 0 or 3 polls with no IN from the
+  bench host waiting → 0 overruns and no discontinuity (runs of 3 and
+  5 s); 79–91 such polls → 17–47 overruns and one cluster of
+  discontinuities 50–80 ms long. The port counts them (`iso poll(s) with
+  no IN waiting` in its USB summary; a run of 16 or more is logged). The
+  Python host answers each poll with one socket round trip, at 4,000 a
+  second of device time; a host's own schedule on hardware does not skip
+  polls.
+- Main's 16-bit build on the same fixture without the poked trig carries
+  −4 on four idle channels where the 24-bit build carries −936
+  (−936 / 256 = −3.66: the same level, 8 more bits).
+
+Not measured: anything on hardware; macOS enumerating 4-byte subslots at
+bInterval 2 (the descriptor is standard UAC2 Type I PCM); the cost of four
+times the packet completions per second on the unit's USB controller (no
+completion interrupt is requested); the frame interrupt's latency against
+the 1 ms of queued packets.
+
+## Measured: the 16-bit stream (25 Sep 2026, under the ColdFire port)
 
 `make check REMIX=usb-audio`, `verify_usb` with the frame engine on and no
 card (silent tracks, a live stream):
@@ -101,7 +152,7 @@ host side (`bankdup` stays). One flash, one recording.
    producer runs from the frame interrupt whether or not anyone listens);
    underruns, overruns and bankdup should sit at 0 while nothing streams.
 4. Record while the project plays, 60 s, all sixteen channels:
-   `sox -t coreaudio "Elektron Octatrack" -c 16 -r 44100 -b 16 out/usb_take1.wav trim 0 60`
+   `sox -t coreaudio "Elektron Octatrack" -c 16 -r 44100 -b 24 out/usb_take1.wav trim 0 60`
    (the exact device name is in `sox -V6 -n -t coreaudio /dev/null 2>&1 | grep -i octa`
    or Audio MIDI Setup), with `tools/hw/usb_counters.py --watch 5` in a
    second terminal from before the recording starts to after it stops.
@@ -118,7 +169,7 @@ caveat does not reproduce here. A freeze, a hang or a wedge on plugging
 in: power off, recover per `docs/remixer/FLASHING.md`, and the FAILURE_MODES
 entry gets the symptom.
 
-## Measured on hardware (image 64, Sam's MKII, 25 Sep 2026)
+## Measured on hardware: the 16-bit stream (image 64, Sam's MKII, 25 Sep 2026)
 
 Four takes with `tools/rec` (a raw HAL IOProc, all sixteen input
 channels) on the USBSIG project (`tools/harness/usb_sig_project.py`), the
@@ -171,9 +222,9 @@ counters read over the vendor request before and after each:
 
 | what | where |
 |---|---|
-| code | DRAM unit `usbaudio`, 1,792 B text |
-| rings + state | 36,948 B of the unit's data (1,024 × 32 B + 1,024 × 4 B + counters) |
-| DMA window | `0x4ec94a00..0x4ec95000` (1,536 B, cache-inhibited; no ledger claim type for it yet) |
+| code | DRAM unit `usbaudio`, 1,774 B text |
+| rings + state | 76,000 B of the unit's data (1,024 × 64 B + 1,024 × 8 B + 4 dTDs + 4 × 768 B packets + counters) |
+| DMA memory | `aud_dtds` + `aud_bufs` in the unit's data, 3,200 B, through the uncached alias (+`0x08000000`) |
 | hooks | `0x4001dd04` `0x4001d824` `0x4001de64` `0x4001d4b2` `0x4000d9a0` `0x4001e606` (USB MIDI's, overridden) |
 | poke | `0x400e2004` device class → `ef 02 01` |
 | descriptors | USB MIDI's `usbmidi_cfg` unit, generated with the audio function when this module is in the remix |
