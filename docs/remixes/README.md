@@ -16,7 +16,7 @@ A remix is a named selection of modules; `make image REMIX=<name>` builds it int
 | [`recfix`](recfix.md) | the recorder loop click fix, stock effects | ✅ 12 Sep 2026 with the bus (OCTABAM83) |
 | [`repitch`](repitch.md) | REPITCH in the TSTR selector, stock effects | ✅ 16 Sep 2026 (OCTABAM81, repeat98's MKII) |
 | [`bamsep26`](bamsep26.md) | the rig: BusVerb + BusDelay + three stations + stock delay | ✅ Sam's unit |
-| [`usb`](usb.md) / [`usb-audio`](usb.md) | the rig + USB MIDI / + 16-channel USB audio | `usb-audio` ✅ 25 Sep 2026 (image 64); `usb` no |
+| [`usb`](usb.md) / [`usb-audio`](usb.md) | the rig + USB MIDI / + 20-channel USB audio (tracks, MAIN, CUE) | `usb-audio` ✅ 25 Sep 2026 (image 64); `usb` no |
 | [`bus`](bus.md) | BusVerb + BusDelay + Send + tempo sync | ✅ (earlier names) |
 | [`mutables`](mutables.md) | WarpFold, Ripple, Rungs, Streamz, BodeShift | no |
 | [`nimbus`](nimbus.md) | Nimbus alone | no |

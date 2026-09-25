@@ -7,6 +7,13 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- USB AUDIO: MAIN and CUE on channels 17-20 (Bryan T, 25 Sep 2026): the
+  high-speed stream is 20 channels, the 16 track channels then MAIN L/R and
+  CUE L/R, the words core 0 sends to the DACs (the buffer the stock
+  recorder reads for SRC3 = MAIN/CUE, 0x80005e60). 80-byte ring slot,
+  <= 960-byte packets. New `usb-lean` remix: stock effects + USB MIDI + USB
+  AUDIO, for testing the stream without the rig. On Bryan's MKII as
+  `usb-lean` image 90: MAIN on 17/18, CUE on 19/20, levels follow.
 - The virtual panel's face is the MKII's (25 Sep 2026): Mark Roberts' octemu
   skin generator (`tools/panel/skin/gen_svg.py`, MIT) in a dark palette,
   served as `/skin.js`; the page's keys, knobs, fader and LEDs sit over it as
