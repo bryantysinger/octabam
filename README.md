@@ -98,12 +98,19 @@ recipe pins, and refuses on any drift. `CONTRIBUTING.md` is the contract;
 ## Checking without a flash
 
 The DSP side renders locally on the assembled instruction stream (`make
-render`, `make render-rig`; `docs/remixer/HARNESS.md`); the ColdFire side
-boots the built image under a headless port of the machine (`make emu-cf`;
-`docs/remixer/EMU.md`) and, for the firmware's own screens, under
-Unicorn (`docs/remixer/EMU.md`). What the emulators cannot see — caches, the
-recorder, cross-core timing — is listed beside every gate that is blind to
-it.
+render`, `make render-rig`; `docs/remixer/HARNESS.md`). The whole machine
+— ColdFire, both DSP cores, the card, the panel, MIDI, USB — runs under a
+port of it (`tools/emu/ot_emu`, `make emu-cf`):
+
+```bash
+make check REMIX=<name>             # boots the image under the port; OT_PROJECT=<dir> adds a real project
+make panel REMIX=<name>             # the virtual front panel with sound at localhost:8563 (tools/panel/README.md)
+make emu-live REMIX=<name>          # the screen and keys in a window, no sound
+```
+
+`docs/remixer/EMU.md` covers all of them and the Unicorn routes the
+label gates use. What the emulators cannot see — caches, the recorder,
+cross-core timing — is listed beside every gate that is blind to it.
 
 ## Before you flash anything
 
