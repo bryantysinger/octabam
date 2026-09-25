@@ -12,8 +12,12 @@ flashed image was built from.
   carries its track's tone; 9.6 minutes of takes with zero discontinuities
   after the first 1.6 s of each host stream, with and without a 7,170
   msg/s USB-MIDI flood and panel load; counters 0 underruns, 0 overruns,
-  bankdup unmoved. One open item: a burst of reordered samples in the
-  first 1.5 s of every host stream (`FAILURE_MODES.md`). `usb_counters.py`
+  bankdup unmoved; a fifth take of 180 s on the USBLOAD project (locks on
+  every step at 200 BPM, 7,950 USB-MIDI msg/s in, FX knobs turned) clean
+  on every channel but the one being turned. One open item: a burst of
+  reordered samples in the first 1.5 s of most host streams
+  (`FAILURE_MODES.md`). His own image (65, card payload) never installed
+  its audio function on this MKII, so no A/B against his build. `usb_counters.py`
   flushes its watch lines. Not tagged: a diagnostic image, the rig modules
   as in image 43.
 - MIDI SCENES re-pinned to bkkbrls-del's 1.40MIDISC8.2 (25 Sep 2026):

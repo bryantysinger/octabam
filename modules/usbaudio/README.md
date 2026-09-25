@@ -130,6 +130,7 @@ counters read over the vendor request before and after each:
 | 2 | 60 s | none | 76 (0.998–1.254 s) | 0 | 0 / 0 / unchanged |
 | 3 | 300 s | none | 110 (1.091–1.509 s) | 0 | 0 / 0 / unchanged |
 | 4 | 120 s | 896,760 USB-MIDI messages in (7,170/s, notes + CCs on channel 16), menus, sample manager, project save, LEVEL and main turned | 85 (0.871–1.231 s) | 0 | 0 / 0 / unchanged |
+| 5 | 180 s | USBLOAD (`--load`: 200 BPM, trigless locks on 63 steps × 10 slots per track), 1,471,080 USB-MIDI messages in, FX knobs turned on T1 | 0 | 24, all on T1's channels while its knobs were turned (35.7–51.3 s); 0 on the other fourteen | 0 / 0 / unchanged |
 
 - The unit enumerates on macOS at high speed as a 16-channel 44.1 kHz
   input "Elektron Octatrack DPS-1" and a MIDI port of the same name.
@@ -152,8 +153,19 @@ counters read over the vendor request before and after each:
   model: it serves queue heads in list order) or the host's stream start.
   A take with the stream held open across two recordings, or a packet
   sequence counter in the stream, decides it.
-- The USB-MIDI receive path took 7,170 messages a second for 125 s without
-  a stall or a change in the audio stream.
+- The USB-MIDI receive path took 7,170 messages a second for 125 s, then
+  7,950 a second for 185 s, without a stall or a change in the audio stream.
+- Take 5 had no start burst at all, so the burst is not on every stream
+  open. The pop Sam heard once per pattern is the trig on step 1 restarting
+  the looping sample (a phase reset the device counts in `srcjump`: 12 in
+  180 s at 200 BPM), not USB; the tone loops themselves are seamless (an
+  integer number of cycles per 2 s).
+- His own image, built from Sam's stock bytes and packed as image 65 with
+  `USBAUDIO.BIN` on the card root, enumerated on this MKII as the MIDI
+  composite only: his card-loaded payload never installed (no `USBAUD E<n>`
+  popup after a boot with the card in, after a DISK MODE enter/exit, or
+  after pulling and re-seating the card). So no A/B against his build was
+  possible here, and nothing about his crackles is attributed.
 
 ## Ground
 
