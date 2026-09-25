@@ -63,6 +63,7 @@ FX1_ROWCOUNT_AT = 0x40059be6            # FX1's viewport literal
 
 REMIX = _reg.remix(os.environ.get("REMIX") or _reg.DEFAULT_REMIX)
 _MODS = _reg.modules()
+NO_WIDGET = 0x4005692e          # build_bus.NO_WIDGET: a stock rts, past a host page's slots
 # A HIDDEN module (schema.Remix.hidden) is carried but takes no chooser row,
 # so it is not in the order the list, the positions or the row count are
 # checked against. Its own gate is tools/verify/verify_hidden.py, which checks the
@@ -94,6 +95,10 @@ ACTIVE_PARAMS = {k: _MODS[k].active_params for k in _ORDER
                  if k not in STOCK_KEYS}
 LINKED_PARAMS = {k: _MODS[k].linked_params for k in _ORDER
                  if k not in STOCK_KEYS}
+# a host page's link elements stop at its last drawn slot (build_bus.py)
+for _k, _n in REMIX.host_slots:
+    if _k in LINKED_PARAMS:
+        LINKED_PARAMS[_k] = tuple(i for i in LINKED_PARAMS[_k] if i < _n)
 
 
 # P-relative: the per-parameter value-COUNT array and the defaults array.
@@ -306,11 +311,20 @@ def main():
                   f"{name}: p{i} default {dflt} is inside its value count "
                   f"{cnt}")
 
+        _host_n = dict(REMIX.host_slots).get(name)
         for i in sorted(got):
             cnt = rd32(img, P + P_COUNTS + i * 4)
             f1 = rd32(img, P + P_FMT1 + i * 4)
             f2 = rd32(img, P + P_FMT2 + i * 4)
             f3 = rd32(img, P + P_FMT3 + i * 4)
+            if _host_n is not None and i >= _host_n:
+                # past a host page's slots: no widget (a bare rts), 0x12a 0;
+                # A stays whatever the slot's own rules made it
+                check(f2 == NO_WIDGET and f3 == 0,
+                      f"{name}: p{i} is past the host page's {_host_n} slots, so its "
+                      f"widget is the rts 0x{NO_WIDGET:08x} and 0x12a is 0 "
+                      f"(got 0x{f2:08x}/0x{f3:08x})")
+                continue
             if cnt < 128:
                 # SINCE PLAN §6 the "A" callback may be one of our label
                 # caves instead of stock's 0x4003c718 -- that is the whole

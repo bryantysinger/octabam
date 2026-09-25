@@ -185,6 +185,9 @@ FULLNAME = {m.key: m.menu.fullname + (BUILD_TAG if m.menu.build_tag else b"")
 BLANKED = [k for k in HIDDEN if k in REMIX.blanked]   # schema.Remix.blanked
 # A host_slots module's page draws its first n slots, under their names.
 HOST_SLOTS = {k: n for k, n in REMIX.host_slots if k in HIDDEN}
+# a stock `rts` (the tail of the TEMPO window's FUNC-release handler,
+# 0x400568e4): a widget that draws nothing
+NO_WIDGET = 0x4005692e
 RENAMES = {m.key: ([(i, b"") for i in range(12)] if m.key in BLANKED else
                    [(i, m.params[i].name if i < HOST_SLOTS[m.key] else b"")
                     for i in range(12)]
@@ -203,6 +206,10 @@ DEFAULTS = {m.key: [(i, p.default) for i, p in enumerate(m.params)
 # have shipped.
 ACTIVE_PARAMS = {m.key: m.active_params for m in _CLONED}
 LINKED_PARAMS = {m.key: m.linked_params for m in _CLONED}
+# a host page draws its first n slots only, so a link element on a later slot
+# would be drawn alone between two blank spots
+for _k, _n in HOST_SLOTS.items():
+    LINKED_PARAMS[_k] = tuple(i for i in LINKED_PARAMS[_k] if i < _n)
 # Value counts. Page 2 pairs a knob field and a companion field per word (any
 # count on either -- stock puts selects on even slots and knobs on odd; see
 # docs/firmware/MAINMENU.md 9e). Historically "three knobs and three selects": the knob fields take
@@ -1467,6 +1474,16 @@ def main():
               + (f"; {sum(1 for x in _lbl if x[3] >= OVERFLOW_RUN and x[3] < OVERFLOW_RUN_END)} "
                  f"overflowed into 0x{OVERFLOW_RUN:08x}.. (next free 0x{_ovf_top:08x})"
                   if _ovf_top > OVERFLOW_RUN else ""))
+    # A host_slots module's page draws its first n slots only: every later
+    # slot's widget (B, P+0x0fa) is a bare `rts`, so the page draws no dial
+    # there, and 0x12a is 0. A (P+0x0ca), the value text the TEMPO window
+    # prints, stays. The slots stay enabled, so they still reach the DSP.
+    for name, _n in HOST_SLOTS.items():
+        for _i in range(_n, 12):
+            wr32(clone_addr[name] + 0x0fa + _i * 4, NO_WIDGET)
+            wr32(clone_addr[name] + 0x12a + _i * 4, 0)
+        print(f"  {name}: page draws slots 0-{_n - 1}; slots {_n}-11 widget -> "
+              f"0x{NO_WIDGET:08x} (rts)")
     # A labelled select wider than CHORUS.TAPS' five-position widget falls
     # back to the plain dial, whose raw 0..127 indexing otherwise uses only
     # part of the arc. Install ONE schema-driven hook for every such slot in
