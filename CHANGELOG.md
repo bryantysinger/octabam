@@ -7,6 +7,19 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- THE VIRTUAL FRONT PANEL (25 Sep 2026), Tim Hastie's, from his fork
+  `timhastie/octa-panel` at `be68244`: `make panel REMIX=<name>` runs the
+  remix on the port in a browser (LCD, keys, encoders, LEDs, crossfader,
+  scenes, sound, takes, the audio pool) on a persistent card
+  `out/cards/<project>.img`; `make panel-app` builds his macOS app. His
+  port changes are merged into `tools/emu/ot_emu` (`--interactive`,
+  pacing, RTC, DMA timers DTIM0-3, bursts, page table, `--dsp-rt`, card
+  write-back, memory-to-memory eDMA) and his `--dsp-rt` dsp56300 hunks
+  rebased onto our pin (`make dsp-repatch` for an existing tree). Three
+  lockstep behaviour changes, each measured by reverting it: the UI tick
+  is 120 Hz (132 MHz bus), the firmware mounts the last set at boot, the
+  stock delay's eDMA ring copies move data. `--fast` removed (the bursts
+  are exact). Nothing on hardware.
 - TEMPO BUS (25 Sep 2026):
   - The TEMPO window lists and edits BusDelay's and BusVerb's parameters
     in two boxes, drawn with the stock settings-screen routines: A = row,

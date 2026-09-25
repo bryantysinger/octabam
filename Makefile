@@ -114,6 +114,26 @@ verify-twocore: ## Two-core gate: servers on their REAL cores == the DEV hatch, 
 emu-live: ## Play the remix on the port: screen (popups included) + panel in a window; OT_PROJECT or ~/.octabam_project
 	python3 tools/emu/live.py $(REMIX)
 
+# The virtual front panel (Tim Hastie's octa-panel, tools/panel/README.md):
+# the remix on the port with sound, in a browser. The card is a file that
+# persists (out/cards/<project>.img, created once from the project, then
+# booted as it is): what the unit SAVEs stays. The SET DATE/TIME dialog is
+# closed with YES by the server.
+PANEL_PORT ?= 8563
+PANEL_CARD ?= out/cards/$(notdir $(patsubst %/,%,$(OT_PROJECT))).img
+.PHONY: panel
+panel: ## The virtual front panel: REMIX on the port with sound at localhost:8563 (PANEL_PORT), a persistent card under out/cards; OT_PROJECT or ~/.octabam_project
+	@test -n "$(OT_PROJECT)" || { echo "make panel needs a project: OT_PROJECT=<dir> or a path in ~/.octabam_project"; exit 1; }
+	REMIX=$(REMIX) XBUS=1 SPEC=1 BUILD=$(BUILD) python3 tools/build/build_bus.py
+	@mkdir -p out/cards
+	cp out/mainos_bus.bin out/panel_$(REMIX).bin
+	$(PY) tools/panel/panel_server.py --image out/panel_$(REMIX).bin --project "$(OT_PROJECT)" \
+	  --card "$(PANEL_CARD)" --port $(PANEL_PORT) $(PANELARGS)
+
+.PHONY: panel-app
+panel-app: ## Build the panel's macOS app (out/Virtual Panel.app; File > Open Firmware Image for a remix)
+	bash tools/panel/app/build.sh
+
 .PHONY: emu-cf
 emu-cf: ## Build and run the headless ColdFire machine (tools/emu/ot_emu) -- boots to the RTOS handoff
 	@# --fresh: a cache configured from another source path makes cmake
@@ -305,6 +325,20 @@ modules: ## List the module index and the available remixes
 .PHONY: remix
 remix: ## The remixer: swap effects in and out, dial + hear them, build the image
 	$(PY) tools/remix/app.py
+
+# After tools/patches/dsp56300.patch changes: put the vendored tree back to
+# its pin and apply the current patch (setup.sh only applies it to a fresh
+# clone). Reverts every tracked edit under vendor/dsp56300/source -- any
+# local instrumentation there goes with it.
+.PHONY: dsp-repatch
+dsp-repatch: ## Re-apply tools/patches/dsp56300.patch to vendor/dsp56300 (reverts its tracked edits), rebuild dsp_asm/dsp_host, check the one-word move
+	git -C vendor/dsp56300 checkout -- source
+	git -C vendor/dsp56300 apply "$(CURDIR)/tools/patches/dsp56300.patch"
+	cmake --build vendor/dsp56300/build --target dsp56kDisassemble dsp_asm dsp_host -j8
+	@t=$$(mktemp -d); printf '\tmove x:(r7+$$15),a\n' > $$t/m.asm; \
+	  if $(DSP_ASM) -in $$t/m.asm -org 0 -list | grep -q 0257de; then echo "dsp_asm: the one-word displaced move (0257de)"; \
+	  else echo "dsp_asm does not emit the one-word displaced move (0257de)"; rm -rf $$t; exit 1; fi; rm -rf $$t
+	@echo "now rebuild the port against it: make emu-cf"
 
 .PHONY: emu-setup
 emu-setup: ## Provision the remixer deps (unicorn + textual) into .venv via uv
