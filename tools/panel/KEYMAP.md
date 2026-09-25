@@ -906,3 +906,23 @@ down / up pair through the same per-row state as `/key`, so a trig held by
 `/key` or by the page's Shift-latched chord stays held around it; the page
 sends it for a double-click on an encoder while a TRIG key is held (alone,
 a double-click is still `/knob/reset`).
+
+## MKII keys (25 Sep 2026, `ot_emu --mkii`)
+
+Measured under the port booted as an MKII (`docs/firmware/PANEL.md` §4c)
+on bamsep26 + OCTABAM89_setgate; the same cells tapped under MKI reach
+the dispatcher `0x40031904` and draw nothing (the MKI key table has no
+record for them).
+
+| cell | code | id | evidence |
+|---|---|---|---|
+| 0x23.4 | 0x1c | **proj** | PROJECT menu (PROJECT / SYSTEM / CONTROL / MIDI) |
+| 0x23.5 | 0x1d | **part** | part chooser ONE / TWO / THREE / FOUR |
+| 0x23.6 | 0x1e | **aed** | audio editor `STATIC 001` TRIM SLICE EDIT ATTR FILE |
+| 0x23.7 | 0x1f | **arr** | arranger menu `ARR 1:` |
+| 0x26.6 | 0x36 | **rec3** (inferred) | MKII key table record beside REC AB / REC CD with their sub-map; nothing drawn on a STATIC track |
+| 0x23.3 | 0x1b | **page** = scale | same handler in both tables; FUNC + it draws `SCALE, TRACK 3` under `--mkii` |
+
+0x24.7 = STOP re-measured under `--mkii` (LED row 11 back to `0x01`);
+0x25.2 does not stop the transport.
+

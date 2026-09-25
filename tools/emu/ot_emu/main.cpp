@@ -344,7 +344,9 @@ namespace
 		static void serveInteractiveMarker() {}
 	};
 
-	int serveInteractive(ot::Machine& _m, ot::Rtos& _rtos, ot::DspPair* _dsp, ot::AtaCard* _card)
+	// _afterRun: called after every `run` (main passes the --lcd flush, so the
+	// plane file holds the screen as the run left it)
+	int serveInteractive(ot::Machine& _m, ot::Rtos& _rtos, ot::DspPair* _dsp, ot::AtaCard* _card, const std::function<void()>& _afterRun = {})
 	{
 		SelfProfiler prof;
 		if(const char* e = std::getenv("OT_SELFPROF"); e && std::atof(e) > 0.0)
@@ -681,6 +683,8 @@ namespace
 					st = _rtos.runUntil(ms, stop, ot::Rtos::Changes::OnEvent);
 				}
 				wallInRun += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+				if(_afterRun)
+					_afterRun();
 				std::snprintf(buf, sizeof buf, "ok sample=%.3f frames=%llu stop=%s", _rtos.sample(),
 					static_cast<unsigned long long>(_rtos.frameCount()), wallHit ? "wall" : stopWord(st));
 				reply(buf);
@@ -1127,6 +1131,7 @@ int main(int _argc, char** _argv)
 	std::string cardOut;		// the card image as the firmware left it, to FILE at the very end (the load's WRITEs: emu_card.extract_image reads it back)
 	bool mainLevelGiven = false;	// 12 Sep 2026: --interactive defaults it to 64 (the panel wants sound); `--main-level off` keeps the -1. The batch default stays -1.
 	bool interactive = false;	// 11 Sep 2026: after the boot (and load), serve the line protocol on stdin/stdout (serveInteractive above)
+	bool mkii = false;			// boot as an MKII: the GPIO loopback the boot probe tests, the MKII panel's replies (docs/firmware/PANEL.md)
 	std::string rtc;			// 11 Sep 2026: the DSPI chip-select-2 clock -- "host", "off", or <epoch seconds> (UTC, frozen); default off, host under --interactive (Dspi::RtcClock)
 
 	for(int i = 1; i < _argc; ++i)
@@ -1208,6 +1213,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--usb-fs")					usbFs = true;
 		else if(a == "--usb-hold-ms" && i + 1 < _argc)	usbHoldMs = std::atof(_argv[++i]);
 		else if(a == "--interactive")				interactive = true;
+		else if(a == "--mkii")					mkii = true;
 		else if(a == "--rtc" && i + 1 < _argc)		rtc = _argv[++i];
 		else
 		{
@@ -1264,6 +1270,27 @@ int main(int _argc, char** _argv)
 	std::printf("image      : %s (%zu bytes) at %#x\n", image.c_str(), img.size(), ot::Machine::g_imageBase);
 
 	ot::Machine m(img);
+	// --mkii: boot as an MKII. The boot probe at 0x4001f8a0 sets the MKII flag
+	// 0x46c8d18c, then ten times drives GPIO 0xfc0a403a bit 5 high and low
+	// and reads bit 6: on the MKII the two pins are tied, bit 6 follows bit 5
+	// and the flag stays; anything else clears it (MKI). An unmodelled port
+	// reads bit 6 as 0, so the port booted as an MKI, whose keymap (0x400c090a)
+	// has no PROJ/PART/AED/ARR/REC3 (codes 0x1c-0x1f, 0x36; MKII keymap
+	// 0x400c091e). Read 25 Sep 2026 from the image.
+	auto gpio403a = std::make_shared<uint8_t>(0);
+	if(mkii)
+	{
+		// 0xfc0a403a sets the port's pins (a 1 drives high), its clear register
+		// 0xfc0a4052 clears them (a 0 drives low): the probe raises bit 5 with
+		// 0x20 at 403a and drops it with 0xdf at 4052.
+		m.addWriteWatch(0xfc0a403a, 0xfc0a403a,
+			[gpio403a](uint32_t, uint8_t, uint32_t _val, uint32_t) { *gpio403a |= static_cast<uint8_t>(_val); });
+		m.addWriteWatch(0xfc0a4052, 0xfc0a4052,
+			[gpio403a](uint32_t, uint8_t, uint32_t _val, uint32_t) { *gpio403a &= static_cast<uint8_t>(_val); });
+		m.setOverrideFn(0xfc0a403a, [gpio403a]() -> uint32_t
+			{ return (*gpio403a & 0x20) ? (*gpio403a | 0x40) : (*gpio403a & ~0x40); });
+		std::printf("mkii       : GPIO 0xfc0a403a bit 6 follows bit 5 (the MKII's loopback)\n");
+	}
 	if(profile)
 		m.setProfile(64);
 	// ⚠️ BEFORE THE BOOT RUNS. Installed after it (where it used to be, behind
@@ -1450,6 +1477,20 @@ int main(int _argc, char** _argv)
 	{
 		std::printf("vbr        : %#x (the firmware's own `movec %%a0,%%vbr` at 0x40000db6)\n", m.vbr());
 		ot::Rtos rtos(m, ips, 264e6, frame);
+		// --mkii: the far end of the panel UART answers as an MKII panel
+		// (ot::MkiiPanel, periph.h): the loader handshake 0x4001f4dc and the
+		// 0x7r report asked for by `74 00`. The loader version it reports is
+		// the one the image carries (the long at 0x400d81a4), so the firmware
+		// never starts a panel reflash.
+		std::unique_ptr<ot::MkiiPanel> mkiiPanel;
+		if(mkii)
+		{
+			const uint32_t off = 0x400d81a4 - ot::Machine::g_imageBase;
+			const uint8_t ver = off + 4 <= img.size() ? img[off + 3] : 0;
+			mkiiPanel = std::make_unique<ot::MkiiPanel>(rtos.uartA(), ver);
+			rtos.uartA().setFarEnd([p = mkiiPanel.get()](uint8_t _b) { (*p)(_b); });
+			std::printf("mkii       : the panel UART answers as an MKII panel (loader version %u)\n", ver);
+		}
 		if(bootLogo)
 		{
 			ot::Rtos::Quirks q;
@@ -2173,7 +2214,7 @@ int main(int _argc, char** _argv)
 				std::printf("main level : sys command %u posted with %d -> gain table[0] = %#x%s (bit 0 of 0x8000004a = %u)\n",
 					ot::g_setMainLevelCase, mainLevel, g, g ? "" : " -- NOT FILLED", m.read8(0x8000004a) & 1);
 			}
-			return serveInteractive(m, rtos, dspPair.get(), card.get());
+			return serveInteractive(m, rtos, dspPair.get(), card.get(), [&] { if(!lcd.empty() && lcdDirty) lcdFlush(); });
 		}
 
 		// The bench: hold the machine here, every other phase done, until

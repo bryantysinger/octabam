@@ -31,7 +31,10 @@
     "scene_b": [35, 2],
     "recab": [37, 3],
     "reccd": [37, 4],
-    "scale": [35, 3]
+    "scale": [35, 3],
+    "page": [35, 3],
+    "proj": [35, 4], "part": [35, 5], "aed": [35, 6], "arr": [35, 7],
+    "rec3": [38, 6]
   },
   "knobs": {
     "level": 54,
@@ -80,6 +83,8 @@
     "rec": "measured", "play": "measured", "stop": "measured", "tempo": "measured",
     "scene_a": "measured", "scene_b": "measured",
     "recab": "inferred", "reccd": "inferred", "scale": "inferred",
+    "page": "inferred", "proj": "measured", "part": "measured", "aed": "measured", "arr": "measured",
+    "rec3": "inferred",
     "level": "measured", "a": "measured", "b": "measured", "c": "measured",
     "d": "measured", "e": "measured", "f": "measured",
     "push_a": "measured", "push_b": "measured", "push_c": "inferred", "push_d": "inferred",
@@ -97,5 +102,7 @@
     "led_mixer": "measured", "led_arranger": "measured",
     "led_project_menu": "measured", "led_part_menu": "measured"
   },
+  "mkii_only": ["proj", "part", "aed", "arr", "rec3"],
+  "mkii_notes": "25 Sep 2026, docs/firmware/PANEL.md: an MKII panel reports its keys in the same `<row> <mask>` matrix format as an MKI (the RX parser 0x4009228c has no model branch); the MKII keymap's key table 0x400c01f4 adds codes 0x1c-0x1f (0x23.4-7) and 0x36 (0x26.6) to the MKI's 0x400bfc10. Measured under ot_emu --mkii on bamsep26 + OCTABAM89_setgate: 0x23.4 opens the PROJECT menu, 0x23.5 the PART chooser, 0x23.6 the audio editor, 0x23.7 the arranger menu; on an MKI the same taps reach the dispatcher 0x40031904 and draw nothing. rec3 = code 0x36, handler 0x40030a6c beside REC AB 0x40030e6c / REC CD 0x40030c60 with the same sub-table 0x400b9e02 (inferred from the table; on a STATIC track it draws nothing). page = code 0x1b, the MKI scale key (same handler 0x4004ffc4 in both keymaps; the MKII's PAGE key by position, inferred): FUNC+it draws SCALE, TRACK n under --mkii.",
   "notes": "Measured 11 Sep 2026 against out/raw/section_3_MAIN_OS.bin under route A (tools/emu/emu_rtos.py), evidence in tools/panel/KEYMAP.md. keys: [row, bit] of the panel-UART matrix report `<row> <column-bitmask>` (rows are decimal here: 32=0x20 trig 1-8, 33=0x21 trig 9-16, 34=0x22 T1-T8, 35=0x23, 36=0x24, 37=0x25, 38=0x26); set bit = held. knobs: the row byte of an encoder report `<row> <signed detent delta>` (48=0x30 .. 54=0x36); A-F are the six under the screen in the OT order (MIXER: A MAIN, B DIR AB, C GAIN AB, D CUE, E DIR CD, F GAIN CD; PLAYBACK page: A..F = the six parameter slots in order), LEVEL is the track level / MIX in the MIXER. leds: [row, bit] of the LED bitmap message (`0x20+row <mask>` for rows 0-15, `0xa0+(row-16)` beyond) -- i.e. panel_link.PanelLink.led_rows[row] bit `bit`, flattened by led_bits() to row*8+bit; the LED id for the `0x3n <id>` brightness messages is row*8+bit. NOT the `bits` string of panel_server's /leds: _parse_leds fills that from 0x10 <off> <8 bytes> frames, which are LCD page-0 blocks (measured 11 Sep 2026 on an own server: at boot bits[5] bit 0 and bits[8] bit 2 are 0 while LED rows 5=a9 / 8=04 have t1 and PLAYBACK lit; after REC bits[10] bit 4 stays 0 and bytes 4-63 change with the redraw; only ids 0x48 goes 6->15). Until /leds carries link.led_rows and panel.html's ledOn indexes it, these entries light nothing on the page. Trig and track LEDs are two-colour pairs: the listed even bit is the primary colour (MIXER unmuted audio trig, current bank/pattern, grid-rec trig, the SELECTED track); bit+1 is the second colour (MIDI trigs in the MIXER, the UNSELECTED tracks). Page LEDs likewise: bit+1 lights in MIDI mode. led_stop is lit while stopped, led_play while playing, both when paused (PLAY while playing). led_rec toggles with grid recording (REC key) and the brightness of id 72 (row 9 bit 0, dim 6 at boot) goes to 15 with it. led_tempo (row 4 bit 6) is INFERRED: it turns on with the first PLAY and stays on; no blinking was seen on the wire. Not found: led_func (holding FUNC changes no LED), led_card (a card mount sends no LED traffic), a REC SRC3 key, and the row 7 (0xff, brightness 0) and row 16 (0x0f) LEDs lit at boot. recab/reccd/scale are INFERRED from their FUNC layer (RECORDING 1 SETUP 1 / SETUP 2 / PATTERN SCALE window) and, for recab/reccd, from swallowing a TRACK press while held; alone they show nothing here. knob_push: the encoders' PUSH switches are key-matrix row 0x27 (39), bit = the encoder (A-F 0-5, LEVEL 6): with a TRIG key held in GRID RECORDING a push toggles that step's lock on the parameter the encoder edits (removes it; sets one at the current value if none), with a SCENE key held it removes the scene lock -- measured 13 Sep 2026 on the port (KEYMAP.md, the last section; c/d by the order), GET /knob/press?row=0x30..0x36 sends it. Rows 0x28-0x2f are not keys (an 0x27.x tap alone only nudges a 4-block redraw of the tempo readout). yes/no: YES stores the clock on the SET DATE/TIME dialog, enters the highlighted PROJECT-menu entry (MENU_FOCUS 0x400cbda8 moves, no redraw here) and closes the TEMPO window; NO closes one window level. On the BARE main screen YES draws the ARM ALL popup and NO the DISARM ALL popup (28 / 35 LCD blocks, 0x46c803d4 / 0x46c7fe22 := ffff); FUNC held does not change that (FUNC+YES / FUNC+NO are not a layer). Under the emulator those popups never time out (10 s idle) and only a full redraw (MIXER open+close) clears them, so one NO too many leaves DISARM ALL on the panel."
 }

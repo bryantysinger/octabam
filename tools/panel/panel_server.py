@@ -3646,6 +3646,7 @@ def _pace_json(st):
 class Handler(BaseHTTPRequestHandler):
     panel: Panel = None
     html: bytes = b""
+    model: str = "mki"
 
     def log_message(self, *a):  # quiet
         pass
@@ -3995,8 +3996,11 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": ok, "result": str(res)})
         elif path == "/map":
             # the identified panel map (keys, knobs, leds): tools/panel/key_map.json
+            # plus "model": "mkii" | "mki", the model the child runs as
             mp = pathlib.Path(__file__).parent / "key_map.json"
-            self._send(200, mp.read_bytes() if mp.exists() else b"{}", "application/json")
+            m = json.loads(mp.read_bytes()) if mp.exists() else {}
+            m["model"] = Handler.model
+            self._send(200, json.dumps(m).encode(), "application/json")
         elif path == "/transport":
             ok, res = p.transport(args.get("k", ""))
             self._json({"ok": ok, "result": str(res)})
@@ -4088,6 +4092,9 @@ def main():
                          "(/audio/status, /audio/pcm, /audio.wav, takes on PLAY..STOP); an rt child that cannot start is respawned "
                          "with the lockstep --dsp (~0.2x real time while it plays; /status sound_note says so); off: no DSP cores, no sound. "
                          "--port-arg=--dsp asks for the lockstep cores explicitly; --sound off wins over it")
+    ap.add_argument("--mki", action="store_true",
+                    help="run the port as an MKI (no --mkii): the MKI keymap, no PROJ/PART/AED/ARR/REC3 keys. "
+                         "Default: the port child runs --mkii (docs/firmware/PANEL.md); route A is always an MKI")
     a = ap.parse_args()
 
     # Default to the STOCK image: out/mainos_bus.bin is whatever the last
@@ -4245,6 +4252,20 @@ def main():
     port_args = [x for x in a.port_arg if x != "--dsp"]
     if len(port_args) != len(a.port_arg) and not sound:
         print("panel: --sound off: --port-arg=--dsp dropped (the child runs without the DSP cores)")
+    # The model: the port boots as an MKII unless --mki (the GPIO loopback,
+    # the panel loader handshake and the 0x7r report: ot_emu --mkii); route
+    # A, a .py stand-in and a port binary without the flag stay MKI. /map
+    # says which.
+    model = "mki"
+    pb = pathlib.Path(a.port_bin)
+    if backend == "port" and not a.mki and pb.suffix != ".py":
+        if b"--mkii" in pb.read_bytes():
+            if "--mkii" not in port_args:
+                port_args.append("--mkii")
+            model = "mkii"
+        else:
+            print(f"panel: {pb} has no --mkii (built before it landed): running as an MKI")
+    Handler.model = model
     takes_dir = ROOT / "out" / f"_panel_takes_{a.port}"
     Handler.panel = Panel(image, card, project=project, internal_clock=not a.midi_clock,
                           backend=backend, port_bin=a.port_bin, port_args=port_args,
@@ -4254,7 +4275,7 @@ def main():
                           sound=sound, takes_dir=takes_dir, card_persistent=card_path is not None,
                           card_rw=card_rw, card_meta=card_meta)
     Handler.html = (pathlib.Path(__file__).parent / "panel.html").read_bytes()
-    print(f"panel: http://localhost:{a.port}/   image={image}   backend={backend}"
+    print(f"panel: http://localhost:{a.port}/   image={image}   backend={backend}   model={model}"
           f"   sound={'on' if Handler.panel.sound_wanted else 'off'} (takes in {takes_dir})"
           f"   card={card_file} ({'persistent, write-back ' + ('on' if card_rw else 'OFF') if card_path else 'fresh per port'})")
 

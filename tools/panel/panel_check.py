@@ -6,7 +6,8 @@
 Phases (default `all` = boot, key, knob, save): the screen decodes to a
 128x64 PNG; a page key changes the screen; a knob turn changes the
 parameter's value (read from the firmware's memory through /peek); the
-unit's own SAVE PROJECT (FUNC+MIXER, RIGHT, DOWN to SAVE, YES, YES) writes
+unit's own SAVE PROJECT (FUNC+MIXER on an MKI, PROJ on an MKII; RIGHT, DOWN
+to SAVE, YES, YES) writes
 sectors into the persistent card. `persist` runs against a server
 restarted on the same card and checks the value saved in `save` is there.
 The value and its address are kept in <out>/saved.json between the two.
@@ -32,7 +33,9 @@ class Panel:
     def __init__(self, url, out):
         self.url = url.rstrip("/")
         self.out = out
-        self.keys = get(self.url + "/map")["keys"]
+        m = get(self.url + "/map")
+        self.keys = m["keys"]
+        self.model = m.get("model", "mki")
 
     def status(self):
         return get(self.url + "/status")
@@ -139,7 +142,12 @@ def main():
 
     # the unit's SAVE PROJECT onto the persistent card
     st0 = get(p.url + "/card")
-    p.chord("func", "mixer", settle=1.0)
+    # the PROJECT menu: FUNC+MIXER on an MKI, the PROJ key on an MKII (FUNC+MIXER
+    # does not open it there, measured 25 Sep 2026)
+    if p.model == "mkii":
+        p.press("proj", settle=1.0)
+    else:
+        p.chord("func", "mixer", settle=1.0)
     p.screen("save_menu")
     p.press("right", settle=0.6)
     p.screen("save_list")

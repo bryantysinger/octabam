@@ -32,7 +32,7 @@ All traffic on the panel UART comes from six places (reference counts are
 | `0x40010aa4` byte pusher `(byte)` | one byte, same ring. 12 references; every builder loads it with `lea 0x40010aa4,%aN` and `jsr %aN@` |
 | `0x40010a4c` polled drain | spins on TXRDY (`0xfc064004`) and empties the ring. 9 references: boot LED animation `0x4006308a`/`0x40063102`/`0x40063186`/`0x400633bc`, `0x4000fa86`, `0x4007fcfc`-`0x40080152` |
 | `0x400109bc` UART1 ISR | drains the ring on TX-ready, hands RX bytes to `[0x460ba980]` |
-| `0x4001f40c`, `0x4001f4dc` | boot-time polled handshake, direct `UTB` writes; only on the alternate panel path (flag `0x46c8d18c`), never taken under emulation |
+| `0x4001f40c`, `0x4001f4dc` | boot-time polled handshake, direct `UTB` writes; the MKII panel loader (flag `0x46c8d18c`, `docs/firmware/PANEL.md` §4c), taken under `ot_emu --mkii` |
 
 Every message builder takes the mutex `0x400b96f4` (`0x40010db0` lock,
 `0x40010d90` unlock) around its pushes, so messages never interleave: the
@@ -48,7 +48,7 @@ frame the stream.
 | `0xa0`-`0xaf` | 2 | `0x40013634` | LED bitmap row `16 + (op & 0xf)` (17 rows = 136 LEDs; the state array is `0x460ba9ae` XOR the blink phase `0x460ba98c`) |
 | `0x30`-`0x3f` | 2 | `0x400135b0` (cache `0x400b9714`), `0x4006322c` init | **LED level**: nibble `op & 0xf`, then the LED id. Init sends `3f 00 .. 3f 57` (88 ids at 15) |
 | `0x40`-`0x4f` | 1 | `0x400926d8` | one-byte command `0x40 | (n & 0xf)`; boot sends `0x43` (`0x4001f9ac`) |
-| `0x60`, `0x74` | 2 | `0x4001fa08`, `0x4001f98a` | `60 00` / `74 00`, alternate panel boot path only (flag `0x46c8d18c`) |
+| `0x60`, `0x70`, `0x74` | 2 | `0x4001f4dc`, `0x4001fa08`, `0x4001f98a` | MKII only (flag `0x46c8d18c`): `60 02 70 00` the loader query (reply `70 05 <version> ..`, polled), `60 00` leave the loader, `74 00` ask for the `0x7r` report (PANEL.md §4c) |
 | `0xb5` | 6 | `0x40013368` via `0x400133cc` | 16-bit index (`2*a+b`), then three bytes; sent when the LED brightness setting changes (`0x4003f430`). Palette/brightness table entry -- inferred from the caller, not measured |
 | `0xb7` | 2 | `0x400926a8` | LCD backlight 0-255 (`0x4003f430` from the table at `0x400a7632`; the screen saver at `0x400523da` sends 0 and clears the LCD after 216000 ticks) |
 
@@ -155,7 +155,7 @@ length; the low nibble is the row:
 | `0x2r` | 1 byte | **key matrix row r**, bitmask (set = held); changed bits against the last mask (`0x46100b18[r]`) become key events from the descriptor table at `[0x46c901dc] + (r*8+bit)*12` (+770 with the modifier row's key held -- never: the table's modifier row is 0xff), posted to the UI/sys queues. Rows 0-7 are all live entries (key codes 0x00-0x3f); **row 7 (`0x27`) is the encoders' push switches**, bit = the encoder (A-F = 0-5, LEVEL = 6): with a TRIG key held it toggles the step's parameter lock (KEYMAP.md, 13 Sep 2026) |
 | `0x3r` | 1 byte | **encoder r**, signed detent delta; if the previous report is still unread it is ADDED into the pending message (`0x4009250c`), else a 6-byte message `{type, sub, delta, stamp}` is posted (`0x40092526`) |
 | `0x40` | 1 byte | **the crossfader**: the ADC byte 0..255. Scaled by the calibration record at `0x1ffffe` (magic `0x1234`: min `[0x1ffffc]+1`, span from `[0x1ffffa]`, `0x400925ac`), none under emulation so `pos = (byte >> 1) & 127`; `0x40092fac` drops a repeat of the last value (`0x400d16cc`) and `0x40092f2c` writes it into a 2-byte ping-pong message `04 <pos>` at `0x400d16c8/ca` (coalesced while one is pending) and posts it to the sys queue registered in `0x46104ca4`. Sys kind 4 -> `0x40061e0a`: gated on AUDIO CC OUT having INT (`0x8000004a` bit 0), stores `0x460d16c8`, rebuilds the 10 weight longs `0x80003c60`, echoes CC 48 = 127-pos if EXT, runs the STRT/LEN/RATE morph `0x4003f1b4` and redraws the fader icon (`0x4003577c`, five glyphs from `0x400bcd7c`, LCD x 104-108 / y 59-61). Rows `0x41`-`0x4f` are ignored (`0x4009256a` wants row 0) |
-| `0x7r` | 9 bytes | a report copied to `0x46100b48` with its pointer in `0x46100b52` (the panel's handshake/version reply; not seen under emulation) |
+| `0x7r` | 9 bytes | a report copied to `0x46100b48` with its pointer in `0x46100b52`: the MKII panel's answer to `74 00` (byte 1 = UI version minor, byte 3 = UI tested, byte 4 == 22 sets `0x46c8d188`); `ot_emu --mkii` sends one (`docs/firmware/PANEL.md` §4c) |
 | anything else | -- | the parser stays in its header state |
 
 Measured on the port (`out/_agents/panel-ctl/lab_params.py`, OTLIVE):
@@ -172,12 +172,11 @@ side are.
 
 ## Not yet known
 
-- The meaning of the `0xb5` five bytes and of `0x4n` for n != 3; `60 00` /
-  `74 00` and the polled handshake (`60 02 70 00`, five-byte reply) on the
-  alternate panel path.
+- The meaning of the `0xb5` five bytes and of `0x4n` for n != 3 (`60 xx`,
+  `70 00`, `74 00` are the MKII's: `docs/firmware/PANEL.md` §4c).
 - Which physical LED each bitmap bit and each level id is (the boot
   animation at `0x4006307c`-`0x40063178` walks ids 0-15 with levels
   14-30, a starting point for a map).
-- The RX side's `0x7r` nine-byte report (its producer on the panel board)
+- The `0x7r` report's bytes other than 1, 3 and 4 (no MKII panel capture)
   and the encoder message's type/sub bytes per row (the descriptor table at
   `[0x46c901dc]`); keys, encoders and the crossfader are decoded above.

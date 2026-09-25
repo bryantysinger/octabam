@@ -276,7 +276,11 @@ namespace ot
 		if(_off == 0x0c)
 		{
 			if(!_replay)
+			{
 				m_tx.push_back(static_cast<uint8_t>(_val));
+				if(m_farEnd)
+					m_farEnd(static_cast<uint8_t>(_val));
+			}
 		}
 		else if(_off == 0x14)
 			m_imr = _val & 0xff;

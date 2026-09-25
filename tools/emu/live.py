@@ -9,8 +9,9 @@ the way tools/verify/verify_set.py does, boots `ot_emu --live <fifo> --lcd
 <file>` and opens tools/emu/lcd_view.py's window on the same FIFO: the
 screen (page plus popups, composited) with the keys and encoders under it.
 Closing the window quits the port. The boot's date prompt is up first:
-[NO] (Escape) clears it. The keymap is the MKI one (the port boots as a
-MKI); the MKII-only keys do nothing.
+[NO] (Escape) clears it. The port boots as an MKII (`--mkii`,
+docs/firmware/PANEL.md), so the window's PROJ/PART/AED/ARR/REC3 keys work;
+--mki boots it as an MKI, where those keys do nothing.
 """
 import argparse, os, pathlib, re, shutil, signal, subprocess, sys, tempfile, time
 
@@ -35,6 +36,7 @@ def main():
     ap.add_argument("--scale", type=int, default=4)
     ap.add_argument("--shot", type=float, default=0,
                     help="no window: wait this many seconds after the boot, write out/live/screen.png, quit")
+    ap.add_argument("--mki", action="store_true", help="boot the port as an MKI (default: --mkii)")
     a = ap.parse_args()
 
     if not a.project:
@@ -72,6 +74,8 @@ def main():
     os.mkfifo(fifo)
     cmd = [str(EMU), "--image", str(image), "--card", str(card), "--set", a.set_name,
            "--project", a.name, "--load-ms", "20000", "--live", str(fifo), "--lcd", str(lcd)]
+    if not a.mki:
+        cmd.append("--mkii")
     print("emu-live: booting (the screen appears once the project has loaded; ~30 s)")
     with open(log, "w") as lf:
         port = subprocess.Popen(cmd, cwd=ROOT, stdout=lf, stderr=subprocess.STDOUT)

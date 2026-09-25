@@ -29,6 +29,10 @@ make panel REMIX=bamsep26 PANEL_PORT=8571 PANELARGS='--sound off'
 make panel-app                                   # out/Virtual Panel.app (File > Open Firmware Image: out/panel_<remix>.bin)
 ```
 
+- The port runs as an MKII (`ot_emu --mkii`, `docs/firmware/PANEL.md`
+  §4c): the page draws PROJ / PART / AED / ARR / REC3 and the PAGE legend
+  and `/map` returns `"model": "mkii"`. `PANELARGS=--mki` runs it as an
+  MKI (the MKI keymap; those keys do nothing there).
 - `make panel` builds the remix (`XBUS=1 SPEC=1`), copies it to
   `out/panel_<remix>.bin` (a later build into `out/mainos_bus.bin` cannot
   change what a running panel respawns) and starts `panel_server.py` on
