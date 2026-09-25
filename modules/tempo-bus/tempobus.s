@@ -149,17 +149,8 @@ edone:  movem.l %sp@,%d2-%d7/%a2-%a6
         lea     %sp@(44),%sp
         bra.w   tb_draw
 
-| ---- LEFT / RIGHT: the focused box; the cursor keeps its line ---------
+| ---- LEFT / RIGHT: the focused box; each box keeps its own cursor ----
 tb_lr:  moveq   #0,%d0
-        moveb   FOCUS,%d0
-        lea     SEL,%a0                | SEL[2], then SCR[2]
-        moveb   %a0@(0,%d0:l),%d1
-        moveb   %d1,%a0@
-        moveb   %d1,%a0@(1)
-        moveb   %a0@(2,%d0:l),%d1
-        moveb   %d1,%a0@(2)
-        moveb   %d1,%a0@(3)
-        moveq   #0,%d0
         moveq   #0x21,%d1              | RIGHT
         cmpl    %sp@(4),%d1
         bne.s   1f
@@ -335,12 +326,7 @@ dbox:   movel   %d7,%sp@-
         moveq   #57,%d7
         mulu.l  %d0,%d7
         addql   #4,%d7                 | d7 = box x
-        moveq   #0,%d1
-        moveb   FOCUS,%d1
-        cmpl    %d0,%d1
-        seq     %d1
-        extb.l  %d1                    | -1 when focused, as the stock screens
-        movel   %d1,%sp@-
+        clrl    %sp@-                  | the title plain: the row bar marks focus
         clrl    %sp@-
         lea     TITLES,%a0
         movel   %a0@(0,%d0:l:4),%sp@-
@@ -383,6 +369,14 @@ dbox:   movel   %d7,%sp@-
         lea     SCR,%a1
         moveq   #0,%d2
         moveb   %a1@(0,%d1:l),%d2
+        movel   %d3,%d0
+        subql   #ROWS,%d0              | the last full view's first row
+        bpl.s   5f
+        moveq   #0,%d0
+5:      cmpl    %d0,%d2
+        ble.s   6f
+        movel   %d0,%d2                | a view past the list's end (a MODE
+6:      movel   %a6@(24),%d0           | turn on the host page) comes back
         cmpl    %d2,%d0
         bge.s   3f
         movel   %d0,%d2                | cursor above the view
