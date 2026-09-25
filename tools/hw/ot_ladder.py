@@ -86,9 +86,9 @@ def _sends(aux, verb=False, delay=False):
     out = {}
     for t in range(1, 8):
         if t == 1 and delay:
-            out[t] = ("DELAY SERVER", {"SEND": aux.get(t, 0)})
+            out[t] = ("DELAY SERVER", {"DEL": aux.get(t, 0)})
         elif t == 5 and verb:
-            out[t] = ("REVERB SERVER", {"SEND": aux.get(t, 0)})
+            out[t] = ("REVERB SERVER", {"REV": aux.get(t, 0)})
         else:
             out[t] = ("SEND", {"SEND": aux.get(t, 0)})
     return out

@@ -74,14 +74,16 @@ REVERB_ID = SERVER_ID.get("R")
 SEND_ID = SERVER_ID.get("S")
 DELAY_ID = SERVER_ID.get("D")
 
-REV_FLAGS = {"time": "TIME", "mix": "WET", "raux": "SEND",
+REV_FLAGS = {"time": "TIME", "mix": "WET", "raux": "REV",  # the host's own REV send (slot 0 SEND until 26 Sep 2026)
+             "rdel": "DEL",
              "shmr": "SHMR",                  # page-1 slot 2 since 15 Sep 2026 (MOD's; the tank mod is pinned)
              "rmode": "MODE", "width": "SHFT", "gate": "GATE",
              "rtone": "TONE", "rdly": "DLY"}
 DELAY_FLAGS = {"dtime": "TIME", "dfdbk": "FDBK", "dtone": "TONE",
-               "dping": "PING", "dmix": "WET", "din": "SEND",
+               "dping": "PING", "dmix": "WET", "din": "DEL",   # the host's own DEL send (SEND until 26 Sep 2026)
+               "drev": "REV",
                "dmode": "MODE", "drate": "DENS", "dptch": "SIZE",
-               "dspray": "SCTR", "dpitch": "PTCH", "dwow": "WOW"}
+               "dspray": "SCTR", "dpitch": "PTCH"}   # WOW went 26 Sep 2026
 
 
 def _slots(key, flags):
@@ -418,10 +420,15 @@ def write_wav(path, L, R):
         w.writeframes(bytes(b))
 
 
-REV_PARAMS  = [0, 64, 0, 127, 64, 127, 0, 0, 64, 0, 127, 0]   # slot 2 = SHMR since 15 Sep 2026 (the tank mod is pinned); slot 10 = DLY, 127 = its default (25 Sep 2026)
+# 26 Sep 2026: DEL / REV on slots 0 / 1 and TIME on slot 11 (TIME was slot 1,
+# the host's REV send slot 0), so every knob here keeps its old value and
+# meaning; DEL is new and 0. Slot 10 = DLY, 127 = its default (25 Sep 2026).
+REV_PARAMS  = [0, 0, 0, 127, 64, 127, 0, 0, 64, 0, 127, 64]
 # send: x:(r6+0) = AUX, the one send; main() sets it from --level
 SEND_PARAMS = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-DELAY_PARAMS = [0, 40, 60, 100, 64, 127, 0, 0, 64, 0, 64, 0]
+# 26 Sep 2026: DEL / REV on slots 0 / 1, TIME on slot 11 (was slot 1); WOW,
+# slot 11 until then, is gone. REV is new and 0.
+DELAY_PARAMS = [0, 0, 60, 100, 64, 127, 0, 0, 64, 0, 64, 40]
 
 
 def main():
@@ -502,9 +509,6 @@ def main():
                     help="delay PTCH select 0..3 (slot-9 companion; DINT=\n"
                          "equivalent). Interval in PITCH, interval SET in\n"
                          "GRAIN, segment SIZE in REVERSE.")
-    ap.add_argument("--dwow", type=int, default=None,
-                    help="delay WOW 0..127 (slot-11 companion): tape wobble\n"
-                         "depth on the loop tap, every mode")
     ap.add_argument("--rmode", type=int, default=None,
                     help="reverb MODE 0..2 via the slot-7 COMPANION field\n"
                          "(0=ROOM 1=PLATE 2=BIG) -- the --dmode twin. Default\n"
@@ -618,7 +622,7 @@ def main():
     dpar = None
     if any(v is not None for v in (a.dtime, a.dfdbk, a.dmix, a.din, a.dpitch,
                                    a.dtone, a.dping, a.dspray, a.dmode,
-                                   a.drate, a.dptch, a.dwow)):
+                                   a.drate, a.dptch)):
         dpar = list(DELAY_PARAMS)
         _ds = _slots("DELAY SERVER", DELAY_FLAGS)
         for _f, val in (("dtime", a.dtime), ("dfdbk", a.dfdbk),
@@ -626,7 +630,7 @@ def main():
                         ("dmix", a.dmix), ("din", a.din), ("dpitch", a.dpitch),
                         ("dmode", a.dmode),
                         ("drate", a.drate), ("dptch", a.dptch),
-                        ("dspray", a.dspray), ("dwow", a.dwow)):
+                        ("dspray", a.dspray)):
             if val is not None:
                 dpar[_ds[_f]] = val
     ins = None

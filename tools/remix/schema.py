@@ -1087,6 +1087,15 @@ class Remix:
     # that itself, the way modules/modulation does with its allocator slot.
     hidden: tuple[str, ...] = ()
     named: tuple[str, ...] = ()
+    # THE HOST PAGE DRAWS ITS FIRST SLOTS ONLY (26 Sep 2026, Sam: "want
+    # all the tracks to look the same"): (key, n) pairs. The hidden
+    # module's page draws slots 0..n-1 under their manifest names (the rig:
+    # DEL and REV, SEND's two knobs); the rest are blank-named. Unlike a
+    # blanked module it keeps its label formatters, and its MODE rename
+    # cave writes into the names table a linked unit exports as
+    # `NAMES_<fx2 id, 2 hex digits>` (TEMPO BUS), never into the shared
+    # descriptor, so a MODE turn puts no name back on the host page.
+    host_slots: tuple[tuple[str, int], ...] = ()
     # LOCKED TO THE HOST SLOT (22 Sep 2026): a listed module runs only at
     # r7 == 0x6200, its core's position 0 (T1 on core 1, T5 on core 0), and
     # is an exact dry pass anywhere else -- the HOSTGUARD body hidden
@@ -1101,7 +1110,8 @@ class Remix:
         descriptor serves both menus) and not `named`. The ONE definition
         the build and every verifier share."""
         return tuple(k for k in self.hidden
-                     if k not in self.fx1 and k not in self.named)
+                     if k not in self.fx1 and k not in self.named
+                     and k not in dict(self.host_slots))
     # GRAINS PER LINE in BusDelay's GRAIN mode: 4 (the source's own) or 2.
     #
     # A CYCLE LEVER, not a voicing choice. The delay's core cannot carry four
@@ -1138,6 +1148,13 @@ class Remix:
             raise ValueError(
                 f"remix {self.name!r}: named={bad} are not in hidden -- "
                 f"`named` only says which HIDDEN modules keep their names")
+        bad = [k for k, _ in self.host_slots if k not in self.hidden or k in self.named]
+        if bad:
+            raise ValueError(
+                f"remix {self.name!r}: host_slots={bad} must be hidden and not named")
+        bad = [n for _, n in self.host_slots if not 0 < n < 12]
+        if bad:
+            raise ValueError(f"remix {self.name!r}: host_slots counts {bad}: 1..11")
         if len(set(self.modules)) != len(self.modules):
             raise ValueError(f"remix {self.name!r}: duplicate module keys")
         # ⚠️ NO PER-KEY CHECK HERE. An fx1 key may be a STOCK effect,

@@ -672,8 +672,7 @@ firmware scales the byte by a calibration record in its boot flash
 rebuilds the morph weights and redraws the fader icon in the LCD's bottom
 right. `/xfader?pos=` sends exactly that byte; the page's fader is a drag
 (the handle, or a click in the bed), a wheel (Shift = 8 steps) or, after a
-click on it, the Left/Right arrows (otherwise the keyboard's four arrow
-keys press the panel's arrows, held while held), with the position (0 = A at the left,
+click on it, the Left/Right arrows, with the position (0 = A at the left,
 127 = B at the right, the CC 48 value) and the two assigned scenes in its
 tooltip (the readout under the bed went 13 Sep 2026). Nothing is remembered across reloads: the page asks the firmware
 where the fader is on load and every few seconds while idle.

@@ -71,9 +71,10 @@ MODULE = Module(
             source="modules/tempo-sync/time_fmt.s",
             # A (P+0x0ca) points at the cave and B (P+0x0fa) stays zero --
             # stock DELAY TIME's own configuration.
-            # TIME is slot 1 since the one-aux re-slot (7 Sep 2026); at slot 0
-            # the division labels drew on SEND (seen on the unit, 15 Sep 2026).
-            registers_formatter=FormatterReg(module="DELAY SERVER", slot=1),
+            # TIME is page-2 slot 11 since 26 Sep 2026 (slot 1 from the
+            # one-aux re-slot, 7 Sep 2026; at slot 0 the division labels
+            # drew on SEND, seen on the unit, 15 Sep 2026).
+            registers_formatter=FormatterReg(module="DELAY SERVER", slot=11),
             report_note=", registered as BusDelay TIME's formatter",
         ),
     ),

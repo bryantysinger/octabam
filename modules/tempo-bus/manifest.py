@@ -2,8 +2,8 @@
 
 The TEMPO key opens the stock TEMPO window at the menu window's size
 (118 x 64) with a stock-style settings screen in place of its big-digit
-draw: the header ("TEMPO 121.2" at the left, then a key: the four
-arrows, "A" and the font's knob glyph; the rule) and two titled boxes, DELAY and
+draw: the header ("TMP 121.2" at the left, then a key: "NAV", the
+four arrows, "A" and the font's knob glyph; the rule) and two titled boxes, DELAY and
 REVERB, listing each engine's named parameters with the values its own
 formatters print. UP/DOWN move the cursor in the focused box, A (or B)
 edits (x7 while pushed, as stock),
@@ -35,19 +35,32 @@ ENGINES = ("DELAY SERVER", "REVERB SERVER")    # box 0, box 1
 
 
 def table_inc(modules):
-    """ENGIDS (the two FX2 ids) and NAMED (per box, a bit per slot the
-    engine's manifest names). The screen lists a named slot while its
-    current name is not the mode's "---". An engine not in the remix has
-    no rows."""
-    ids, masks = [], []
-    for key in ENGINES:
+    """ENGIDS (the two FX2 ids), NAMED (per box, a bit per slot the engine's
+    manifest names) and two macros, NAMETAB_0 / NAMETAB_1: each engine's
+    twelve 6-byte names, labelled NAMES_<fx2 id>. helpers.s places the
+    delay's, tempobus.s the reverb's. The screen reads its labels there;
+    with the engine a host_slots module (the remix), its MODE cave renames
+    there too (build_bus.py), so the shared descriptor keeps the host
+    page's one name. An engine not in the remix has no rows."""
+    ids, masks, tabs = [], [], []
+    for box, key in enumerate(ENGINES):
         m = modules.get(key)
         named = [i for i, p in enumerate(m.params) if p.name] if m is not None else []
-        ids.append(m.menu.fx2_id if m is not None else 0xff)
+        fid = m.menu.fx2_id if m is not None else 0xff
+        ids.append(fid)
         masks.append(sum(1 << i for i in named))
+        rows = []
+        for i in range(12):
+            nm = (m.params[i].name or b"") if m is not None else b""
+            rows.append("        .byte   " + ", ".join(str(c) for c in (nm + bytes(6))[:6]))
+        tabs.append(f"        .macro  NAMETAB_{box}\n        .globl  NAMES_{fid:02x}\n"
+                    f"NAMES_{fid:02x}:\n" + "\n".join(rows) + "\n        .endm\n")
+    tabs.append("        .macro  NTABS_LONGS\n        .long   "
+                + ", ".join(f"NAMES_{i:02x}" for i in ids) + "\n        .endm\n")
     return ("ENGIDS: .byte   " + ", ".join(map(str, ids)) + "\n"
             "        .even\n"
-            "NAMED:  .word   " + ", ".join(f"{m:#x}" for m in masks) + "\n")
+            "NAMED:  .word   " + ", ".join(f"{m:#x}" for m in masks) + "\n"
+            + "".join(tabs))
 
 
 MODULE = Module(

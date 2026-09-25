@@ -3,7 +3,7 @@
 ; low-pass inside the loop, and three engines on the same lines -- CLEAN,
 ; GRAIN (four unity-rate grain readers per line, one continuous pitch) and
 ; REVERSE (the two lines as one 32K mono ring, segments played backwards) --
-; with tape wow and a sticky tempo snap on TIME.
+; with a sticky tempo snap on TIME.
 ; CYCLES_FORWARD_BRANCHES -- the REVERSE skips of the R line are forward
 ; branches the pricer admits.
 ;
@@ -70,9 +70,11 @@
 ;   r7+$26              TIME, Q8: the ramp's running value at a call's start
 ;                       and end (the loop walks it in n4); the glide state
 ;                       itself is the core-private TIME word
-;   r7+$27/$28          wow / flutter LFO phase (persistent, masked)
-;   r7+$29, $2b, $2c    free
-;   r7+$2d/$2e          wow depth / flutter depth (per block)
+;   r7+$27/$28, $2e     free (the tape wow's LFO phases and flutter depth
+;                       until 26 Sep 2026)
+;   r7+$29              REV, this block's level (per block)
+;   r7+$2b/$2c          REV ramped per sample / its per-sample step
+;   r7+$2d              this call's REV ACC write pointer (walked per sample)
 ;   r7+$2f/$30          free
 ;   r7+$31              LineL base
 ;   r7+$32              GRAIN base age, Q11.12 (persistent, masked on load
@@ -149,9 +151,12 @@
 ;                       $84..$8a as not persisting since 10 Aug 2026.
 ;
 ; Parameters (a knob arrives as value<<16, value 0..127):
-;   p0 SEND  -> this host's own dry send into the aux (headroomed, summed
+;   p0 DEL   -> this host's own dry send into the aux (headroomed, summed
 ;               before the auto-gain, counted as a client while nonzero)
-;   p1 TIME  -> delay length, 64 .. 32576 samples (~1.5 .. 739 ms; the hatch
+;   p1 REV   -> this host's own dry send into the reverb (the REV
+;               accumulator, counted as a REV client while nonzero; bits
+;               8-15 of the word are the held MIDI note, masked off)
+;   p11 TIME -> (slot 11, r6+$e bits 8-15, since 26 Sep 2026) delay length, 64 .. 32576 samples (~1.5 .. 739 ms; the hatch
 ;               clamps at 16320), a free
 ;               dial that sticky-snaps to a tempo division (1/32T .. 1/4. of
 ;               stock's tempo24 at r6+$13, ticks derived per block), holds it
@@ -171,10 +176,6 @@
 ;               REVERSE segment, one select for both
 ;   p10 PTCH -> slot 10 KNOB field (r6+$e bits 16-23): GRAIN pitch, +-2 oct;
 ;               a held MIDI note (r6+$1 bits 8-15, latched) overrides
-;   p11 WOW  -> slot 11 companion (r6+$e bits 8-15): tape wobble depth,
-;               0 .. +-254 samples (wow 0.8 Hz + flutter 7.3 Hz at an
-;               eighth; ~47 + ~54 cents peak at 127, computed, not
-;               measured), on the loop tap in every mode
 ; ---------------------------------------------------------------------------
 
 init:
@@ -586,9 +587,9 @@ dwarmdone:
         move    x:(r7-$18),x0           ; LineL base
 
 ; ---- per-block: TIME, FDBK, TONE, PING, -VRB, IN, ... ---------------------
-        move    x:(r6+$1),a             ; TIME: slot 1 (one-aux re-slot, 7 Sep 2026)
-        and     #>$7f0000,a             ; knob field only
-        asr     #$8,a,a                 ; value*256 (0..32512)
+        move    x:(r6+$e),a             ; TIME: page-2 slot 11, $e's companion
+        and     #>$7f00,a               ; field (page-1 slot 1 until 26 Sep
+                                        ; 2026): value<<8 = value*256 (0..32512)
         move    #>64,x0
         add     x0,a                    ; floor 64 samples (~1.45 ms)
         move    a,x:(r7+$2c)            ; TIME, 64..32576 samples (the hatch clamps at 16320 below)
@@ -653,9 +654,9 @@ tickz:
 snapz:
 ; ---- knob moved? then held = candidate, else keep ---------------------------
         move    b,x1                    ; candidate (B2 clean: clr/Tcc only)
-        move    x:(r6+$1),a             ; TIME (slot 1)
-        and     #>$7f0000,a
-        asr     #$10,a,a                ; knob, 0..127
+        move    x:(r6+$e),a             ; TIME (slot 11, $e's companion)
+        and     #>$7f00,a
+        asr     #$8,a,a                 ; knob, 0..127
         move    a,y0
         move    y:>$0908,x0             ; last knob
         move    y0,y:>$0908
@@ -742,8 +743,8 @@ stpdn:
 ; edge was a read that jumped up to 17 samples every 16, a click per block
 ; for the ~1 s a big TIME move glides (measured under dsp_host and the
 ; port, image 38: 24 second-difference spikes per 1,000 samples for the
-; whole glide, 0 at rest). Each sample adds the wobble to the ramped Q8
-; value and splits the sum into the lag and a fraction; modtap reads
+; whole glide, 0 at rest). Each sample splits the ramped Q8 value into
+; the lag and a fraction; modtap reads
 ; BETWEEN samples at that fraction. Raw $26 holds the running value (r7
 ; is rebased by $49 here and in the loop), raw $64 the per-sample increment.
 ; A split block's two calls walk the same ramp end to end (the a=1 call
@@ -838,6 +839,54 @@ slewdn:
         move    a,x:(r7-$2e)            ; block until 23 Sep 2026, a click per
                                         ; block while the knob turned
 
+; ---- REV: this host's own send into the reverb (26 Sep 2026) -------------
+; Page-1 slot 1's KNOB field; its bits 8-15 carry the held MIDI note
+; (tempo-sync's cave, id 6), so the field is masked. SEND's recipe
+; (modules/send/send_client.asm), so T1's REV lands exactly as a SEND
+; track's (verify_onebus): the level ramped per sample from where the ramp
+; stands toward this call's knob (a sixteenth of the gap per sample),
+; written with 3 bits of headroom into the REV accumulator at this block's
+; write offset plus this call's frame offset, and counted as a REV client,
+; on a block's first call, only while nonzero (an idle client that
+; registers dilutes the real ones). Raw $29 this block's level (the count's
+; test), $2b the running value, $2c its per-sample step, $2d the write
+; pointer.
+        move    x:(r6+$1),a             ; REV, slot 1
+        and     #>$7f0000,a             ; knob field only
+        move    a,x:(r7-$20)            ; REV, this block
+        move    x:(r7-$1e),x0           ; the ramp's running value
+        sub     x0,a                    ; the gap, a sixteenth per sample
+        asr     #$4,a,a
+        move    a,x:(r7-$1d)
+        move    #>$9d8,a                ; the REV accumulator: the chain's
+        add     #>$80,a                 ; base plus its length
+        move    x:(r7-$29),x0           ; + this block's write offset (raw $20)
+        add     x0,a
+        move    x:(r7+$1e),x0           ; + this call's frame offset (raw $67)
+        add     x0,a
+        move    a,x:(r7-$1c)            ; the REV write pointer, walked per sample
+        move    x:(r7+$1e),a
+        tst     a
+        bne     drevcnt                 ; not this block's first call
+        move    x:(r7-$29),a            ; the WRITE buffer's count, as a bare
+        asr     #$4,a,a                 ; index
+        move    a1,x0
+        move    x0,a
+        move    #>$9c7,x0               ; the AUX count region; the REV count
+        add     x0,a                    ; sits 0x44 below it (0x983; both
+        move    #>$44,x0                ; relocate together)
+        sub     x0,a
+        move    a,r5
+        move    #>$1,x0
+        clr     b                       ; b = 0 -- BEFORE the tst below
+        move    x:(r7-$20),a            ; REV, this block
+        tst     a
+        tne     x0,b                    ; sending -> b = 1
+        move    y:(r5),a
+        add     b,a
+        move    a,y:(r5)                ; REV count += 1 ONLY if sending
+drevcnt:
+
 ; ---- MODE: engine select, page-2 slot 6's knob field ($c bits 16-23) ------
 ; MSB-aligned, the same convention as BusVerb's MODE. The dispatch in the
 ; loop compares MSB-aligned short immediates on raw $69; 0 and every unknown
@@ -920,27 +969,6 @@ slewdn:
 ; went 15 Sep 2026, Sam: the modulation is the LFOs' and the Modulation
 ; station's, and the crackle gathered around these knobs. Slots 7 and 8
 ; are GRAIN's SCTR and DENS now, inert in CLEAN and REVERSE.)
-
-; ---- WOW: tape wobble depth, page-2 slot 11 (r6+$e bits 8-15) -----------
-; knob<<13 is the depth in Q11.12: two samples per knob step, +-254 at 127.
-; Flutter rides at an eighth of it. Peak pitch deviation at 127, from the
-; smoothstepped triangle's slope (3*depth*inc/2^22 per sample): ~47 cents
-; wow + ~54 cents flutter (computed, not measured; the old '~17 cents'
-; figure was the slope without the x3 smoothstep factor). The per-sample
-; lag clamp below keeps TIME + wobble inside the line, so no depth is unsafe.
-; (Back 20 Sep 2026 in freeze's slot -- Sam: "wow back freeze gone". The
-; 15 Sep removal was for the crackle, whose cause was the TIME jump, since
-; glided; the wobble rides the same between-samples read.)
-        move    x:(r6+$e),a
-        and     #>$7f00,a               ; slot 11's companion field: knob<<8
-        asl     #$5,a,a                 ; knob<<13
-        move    a1,x0
-        move    x0,a                    ; A2-clean
-        move    a,x:(r7-$1c)            ; WOWD
-        asr     #$3,a,a
-        move    a1,x0
-        move    x0,a
-        move    a,x:(r7-$1b)            ; FLTD = WOWD/8
 
 ; ---- SCTR: GRAIN scatter depth ----------------------------------------------
 ; Page-2 slot 7's COMPANION field (r6+$c bits 8-15, the word MODE's knob
@@ -1233,16 +1261,31 @@ gvrdone:
         do      n7,>dlyend
 
 ; ---- input: own dry mono sum + shared DELAY bus accumulator --------------
-        move    x:(r7-$30),a            ; SEND, ramped per sample: + this
-        move    x:(r7-$2e),x0           ; block's step
-        add     x0,a
-        move    a,x:(r7-$30)
-        move    a,y1                    ; this sample's send level
         move    x:(r0),a
         move    x:(r0+n0),x0
         add     x0,a
         asr     #$1,a,a
         move    a,x0                    ; own dry mono
+; REV: the dry x the ramped REV level into the reverb's accumulator
+        move    x:(r7-$1e),a            ; REV, ramped per sample (raw $2b)
+        move    x:(r7-$1d),y1           ; + this block's step ($2c)
+        add     y1,a
+        move    a,x:(r7-$1e)
+        move    a,y1
+        mpy     x0,y1,a                 ; dry x REV: x0 signed, y1 >= 0
+        asr     #$3,a,a                 ; 3 bits of bus headroom
+        move    x:(r7-$1c),r5           ; the REV write pointer ($2d)
+        move    x:(r7-$30),y1           ; (spaces the r5 use)
+        move    y:(r5),b
+        add     b,a
+        move    a,y:(r5)+               ; REV ACC[write][i] += contribution
+        move    r5,x:(r7-$1c)
+; SEND, ramped per sample: + this block's step
+        move    y1,a                    ; SEND's running value ($19)
+        move    x:(r7-$2e),y1           ; + this block's step ($1b)
+        add     y1,a
+        move    a,x:(r7-$30)
+        move    a,y1                    ; this sample's send level
         mpy     x0,y1,a                 ; our contribution to the bus
         asr     #$3,a,a                 ; the 3 bits of headroom every writer
                                         ; applies
@@ -1258,51 +1301,19 @@ gvrdone:
                                         ; the line writes and the output stage
                                         ; read it back from n6
 
-; ---- the loop's tap: the read at lag TIME + wobble, every mode ------------
+; ---- the loop's tap: the read at lag TIME, every mode --------------------
 ; The loop recirculates this tap in every mode; GRAIN and REVERSE replace
 ; the OUTPUT wet only, after the lines are written, so nothing of theirs
-; re-enters the loop. Two LFOs at a fixed non-integer ratio (wow $98/sample
-; = 0.8 Hz, flutter $56d = 7.3 Hz) never lock; WOW 0 gives a wobble of
-; exactly 0, so the lag is the glide's state and the read is the glide's
-; own, bit for bit.
-        move    x:(r7-$22),a            ; wow phase
-        add     #>$98,a
-        and     #>$7fffff,a
-        move    a1,x0
-        move    x0,a                    ; A2-clean; boot garbage dies here
-        move    a,x:(r7-$22)
-        bsr     smoothw                 ; s = g^2*(3-2g), 0..1
-        move    a1,x0
-        move    x:(r7-$1c),y1           ; WOWD
-        mpy     x0,y1,a                 ; s*depth
-        asl     #$1,a,a
-        sub     y1,a                    ; depth*(2s-1): centred, +-depth
-        move    a,x1                    ; the wow, parked
-
-        move    x:(r7-$21),a            ; flutter phase
-        add     #>$56d,a
-        and     #>$7fffff,a
-        move    a1,x0
-        move    x0,a
-        move    a,x:(r7-$21)
-        bsr     smoothw
-        move    a1,x0
-        move    x:(r7-$1b),y1           ; FLTD
-        mpy     x0,y1,a
-        asl     #$1,a,a
-        sub     y1,a
-        add     x1,a                    ; wobble = wow + flutter, Q11.12 signed
-; ---- this sample's lag: the glided TIME plus the wobble, Q8, kept inside
-; the line: never nearer the write head than 8, never past the ring's oldest
-; valid sample (32760; the hatch's 16376). Pinning at an extreme is a flat
-; spot in the wobble; a wrap would be a full-lap discontinuity.
-        asr     #$4,a,a                 ; Q11.12 -> Q8
-        move    a,b                     ; the wobble
+; re-enters the loop. (The tape wow and flutter that rode this lag went 26
+; Sep 2026, WOW's slot to TIME; at WOW 0 they added exactly 0, so the lag
+; is the one they left.)
+; ---- this sample's lag: the glided TIME, Q8, kept inside the line: never
+; nearer the write head than 8, never past the ring's oldest valid sample
+; (32760; the hatch's 16376); a wrap would be a full-lap discontinuity.
         move    n4,a                    ; the ramped TIME, Q8
         move    x:(r7+$1b),x0           ; this block's per-sample increment
         add     x0,a
         move    a,n4                    ; ... advanced for the next sample
-        add     b,a                     ; + the wobble
         move    #>$800,x0               ; 8 samples
         cmp     x0,a
         tlt     x0,a

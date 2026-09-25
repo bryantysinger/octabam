@@ -98,16 +98,21 @@
 ;   (fourteen; $25/$26 and $39 went to registers 23 Sep 2026)
 ;
 ; Parameters (page 1 slots 0-5, page 2 slots 6-11):
-;   p0 SEND -> this host's own dry send into the reverb (written to the
-;              REV accumulator, flagged at y:$981)
-;   p1 TIME -> the decay law (README.md)
+;   p0 DEL  -> this host's own dry send into the delay (the AUX
+;              accumulator, counted as an AUX client while nonzero; ramp
+;              and pointer in core-private y:$09f4..$09f6)
+;   p1 REV  -> this host's own dry send into the reverb (written to the
+;              REV accumulator, flagged at y:$981); slot 0 until 26 Sep 2026
 ;   p2 SIZE, p3 SHMR (linked), p4 SHFT
 ;   p5 WET  -> the reverb's level: the host prints wet*WET under its dry
 ;   page 2: MODE (slot 6, $c's KNOB field), TONE (slot 7, $c's companion:
 ;   LP and HP on one knob, the HI/LO blocks), DIFF (slot 8, $d's KNOB
-;   field), GATE (slot 9, $d's companion); slots 10 and 11 blank
-;   core-private y:$09f1 delay-liveness grace; $09f0 the SEND level for
-;   the loop; $09f3 SIZE's glide state; $0905/$0906 the shimmer's read
+;   field), GATE (slot 9, $d's companion), DLY (slot 10, $e's KNOB
+;   field), TIME (slot 11, $e's companion: the decay law, README.md; page-1
+;   slot 1 until 26 Sep 2026)
+;   core-private y:$09f1 delay-liveness grace; $09f0 the REV level for
+;   the loop; $09f3 SIZE's glide state; $09f4/$09f5 DEL's ramp and step;
+;   $09f6 DEL's AUX write pointer; $0905/$0906 the shimmer's read
 ;   phase and HP state
 ;
 ; Every proc() call runs the position-0 rotation-flip-and-clear housekeeping
@@ -133,6 +138,7 @@ init:
         move    a,x:(r7+$6d)            ; DIFF's g
         move    a,x:(r7+$70)            ; WET
         move    a,y:>$09f3              ; SIZE's f (the glide state)
+        move    a,y:>$09f4              ; DEL's ramp (the per-sample level)
         rts
 
 proc:
@@ -409,9 +415,10 @@ bus_mine:
 ; was dead on hardware, mechanism unknown. What would falsify this: a delay
 ; whose level drops by 1/sqrt(N) when the reverb host's SEND comes up with
 ; nothing playing on it.
-        move    x:(r6),a                ; SEND (slot 0), the knob itself: the
-                                        ; host's own dry into the one aux bus
-        move    a,y:>$981               ; the aux client flag (shared window)
+        move    x:(r6+$1),a             ; REV (slot 1 since 26 Sep 2026, slot 0
+        and     #>$7f0000,a             ; until then), the knob field: the
+                                        ; host's own dry into the REV bus
+        move    a1,y:>$981              ; the REV client flag (shared window)
 ; The sample loop's copy of the level. r6 walks the state table in the loop,
 ; so the knob is copied to core-private Y at $09f0: a zero-padded `$09xx`
 ; literal is the one form the XBUS pass leaves alone (build_bus.py).
@@ -419,7 +426,48 @@ bus_mine:
 ; shared-window state was dead on hardware for in-loop reads (mechanism
 ; unknown); the flag above is only ever read per block. Outside the delay's
 ; own core-private words ($0901-$0904, $0907-$090d).
-        move    a,y:>$09f0              ; SEND level, for the loop
+        move    a1,y:>$09f0             ; REV level, for the loop
+
+; ---- DEL: this host's own send into the delay's aux (26 Sep 2026) --------
+; SEND's DEL recipe (modules/send/send_client.asm): the level ramped per
+; sample from where the last block's ramp ended (core-private y:$09f4, zeroed
+; at init; its step at $09f5), written with 3 bits of headroom into the AUX
+; accumulator at this block's write offset (x1) plus this call's frame
+; offset (the pointer at $09f6, walked per sample), and counted as an AUX
+; client, on a block's first call, only while nonzero (an idle client that
+; registers dilutes the real ones). Tapped from the dry at the loop's top,
+; before the tank: T5's own wet never reaches the delay.
+        move    x:(r6),a                ; DEL (slot 0), the knob field
+        and     #>$7f0000,a
+        move    y:>$09f4,b              ; the ramp's running value
+        sub     b,a
+        asr     #$4,a,a                 ; the change, spread over 16 frames
+        move    a,y:>$09f5              ; ... its per-sample step
+        move    #>$901,a                ; the AUX accumulator
+        add     x1,a                    ; + this block's write offset
+        move    x:(r7+$67),x0           ; + this call's frame offset
+        add     x0,a
+        move    a,y:>$09f6              ; the AUX write pointer, for the loop
+        move    x:(r7+$67),a
+        tst     a
+        bne     rvdelcnt                ; not this block's first call
+        move    x1,a                    ; the WRITE buffer's count, as a bare
+        asr     #$4,a,a                 ; index
+        move    a1,x0
+        move    x0,a
+        move    #>$9c7,x0               ; the AUX count region
+        add     x0,a
+        move    a,r5                    ; (m5 linear: set above)
+        move    #>$1,x0
+        clr     b                       ; b = 0 -- BEFORE the tst below
+        move    x:(r6),a                ; DEL
+        and     #>$7f0000,a
+        tst     a
+        tne     x0,b                    ; sending -> b = 1
+        move    y:(r5),a
+        add     b,a
+        move    a,y:(r5)                ; AUX count += 1 ONLY if sending
+rvdelcnt:
 
 ; ---- DLY: how much of the delay's repeats the chain carries ---------------
 ; Page-2 slot 10, $e's KNOB field, published to y:$982 every block (one
@@ -792,7 +840,10 @@ mdcpy:
                                         ; at the end forces it linear again.
 
 ; ---- feedback gain from TIME --------------------------------------------
-        move    x:(r6+$1),x0            ; TIME: slot 1 (one-aux re-slot), t
+        move    x:(r6+$e),a             ; TIME: page-2 slot 11, $e's companion
+        and     #>$7f00,a               ; field (page-1 slot 1 until 26 Sep
+        asl     #$8,a,a                 ; 2026) -> value<<16, t
+        move    a1,x0
         move    #>$3bbbbb,y1            ; the bloom's g: 0.40 + 0.467 t
         mpy     x0,y1,a
         add     #>$333333,a
@@ -1423,15 +1474,32 @@ lfrol:
         move    x:(r0)-,x0              ; R, and r0 back on L (m0 linear)
         add     x0,a
         asr     #$1,a,a
-; The host's own send: dry mono x SEND (the knob's copy at y:$09f0: r6 walks
-; the state table in this loop), with the writers' 3-bit headroom, into this
-; call's AUX ACC slot; the bus is read back three blocks on through the
-; auto-gain, so the host is one client among N. mpy x1,y1 is the
-; mpysu-encoded order: safe because y1 = SEND >= 0. The pointers advance
+; The host's own sends: dry mono x DEL into the delay's AUX accumulator, and
+; dry mono x REV (the knob's copy at y:$09f0: r6 walks the state table in
+; this loop) into this call's REV ACC slot, each with the writers' 3-bit
+; headroom; the REV bus is read back three blocks on through the auto-gain,
+; so the host is one client among N. mpy x1,y1 is the mpysu-encoded order:
+; safe because y1 = REV >= 0. The pointers advance
 ; through r5's post-increment under m5 = $7ff: the accumulators sit inside
 ; one 2048-aligned block, so the modulo never wraps there.
         move    a,x1
-        move    y:>$09f0,y1             ; SEND level (core-private copy)
+; DEL: the dry x the ramped DEL level into the delay's aux
+        move    y:>$09f4,a              ; DEL, ramped per sample
+        move    y:>$09f5,y1             ; + this block's step
+        add     y1,a
+        move    a,y:>$09f4
+        move    a,y1
+        move    x1,x0
+        mpy     x0,y1,a                 ; dry x DEL: x0 signed, y1 >= 0
+        asr     #$3,a,a                 ; 3 bits of bus headroom
+        move    y:>$09f6,b              ; the AUX write pointer
+        move    b1,r5
+        move    y:>$09f0,y1             ; REV level (spaces the r5 use)
+        move    y:(r5),b
+        add     b,a
+        move    a,y:(r5)+               ; AUX ACC[write][i] += contribution
+        move    r5,b
+        move    b,y:>$09f6
         mpy     x1,y1,a
         asr     #$3,a,a                 ; 3 bits of bus headroom
         move    n2,r5                   ; this call's REV write address

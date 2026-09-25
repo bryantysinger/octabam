@@ -63,23 +63,25 @@ at the target).
 
 | | CLEAN | GRAIN | REVERSE |
 |---|---|---|---|
-| page 1: SEND · TIME ⌐FDBK · TONE · PING · WET | the same everywhere | | PING reads `---` (the mode pins it to 0) |
+| page 1: DEL · REV · FDBK · TONE · PING · WET | the same everywhere | | PING reads `---` (the mode pins it to 0) |
 | MODE (p6) | CLEAN | GRAIN | REVRS |
 | SCTR (p7) | `---` | how far apart the grains read | `---` |
 | DENS ⌐(p8) | `---` | density, level-flat | `---` |
 | SIZE (p9) | `---` | GLEN: grain length 46 / 93 / 23 ms, XTRM 186 ms | SLEN: segment; XTRM = 371 ms |
 | PTCH ⌐(p10) | `---` | ±2 oct, 64 = unison; a held MIDI note overrides | `---` |
-| WOW (p11) | tape wobble on the loop tap: 0 none, 127 = ±254 samples (wow 0.8 Hz + flutter 7.3 Hz at an eighth; ≈ 47 + 54 cents peak by the LFO slopes, not measured) | the same | the same |
+| TIME (p11) | delay time, a free dial that sticky-snaps to tempo divisions | the same | the same |
 
 Each mode's `ModeView` re-defaults the knobs and names every knob the mode
 never reads `---` (20 Sep 2026, every effect). PING 0 by default: an aux
-delay sits still; the bounce is the knob's. The tape wow (WOW, a
-lerped read at TIME + wow, flutter, and a loop saturation gated on the
-depth) went 15 Sep 2026 for the crackle, whose cause was the TIME jump
-(glided 20 Sep); the wow came back the same day in the freeze's slot as one
-depth knob at a fixed rate, riding the glide's between-samples read (Sam:
-"wow back freeze gone"). WOW 0 is bit-identical to the glide alone
-(`verify_delay`, every case). The freeze hold is gone.
+delay sits still; the bounce is the knob's. DEL (p0) is the host's own dry
+send into the delay; REV (p1) its dry send into the reverb's REV
+accumulator (26 Sep 2026, SEND's recipe: ramped per sample, counted as a
+REV client only while nonzero). On the host page these two are the only
+knobs drawn (the remix's `host_slots`); the rest are the TEMPO window's.
+TIME moved from p1 to p11 the same day, and the tape wow that sat on p11
+(20 Sep 2026, in the freeze's slot) went: at WOW 0 it added exactly 0 to
+the lag, so every render at WOW 0 is unchanged (verify-bus). The freeze
+hold is gone.
 In REVERSE LineL alone is the 32K mono ring (the R line is not read or
 written; XTRM = 16,384 samples = 371 ms, the mode's default), PING is forced
 off and the output is mono to both channels.
