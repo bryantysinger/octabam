@@ -7,6 +7,11 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- RECORDER HOLD in `recfix` (26 Sep 2026): in sound-on-sound (SRC3 = the
+  track) a recorder-buffer voice that reads one sample past its recording
+  repeats the last sample instead of playing zero. Port-gated; the click
+  Bryan T reported on OCTABAM84 at 128 BPM (`docs/firmware/RECORDER_CLICK.md`
+  §5).
 - THE HOST PAGES LOOK LIKE THE SEND TRACKS (26 Sep 2026, Sam: "want all
   the tracks to look the same"): BusDelay (T1) and BusVerb (T5) carry
   DEL / REV on page-1 slots 0 / 1 and their pages draw those two only
