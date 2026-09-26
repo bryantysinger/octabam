@@ -77,7 +77,7 @@
 .set PEEK_REQ,       0x57           | vendor GET: read a peripheral register
 .set POKE_LO,        0x58           | vendor OUT: write the low half of an out_poketab entry
 .set POKE_HI,        0x59           | vendor OUT: the high half
-.set NPOKE,          17
+.set NPOKE,          18
 .set NCOUNT,         28             | longs in out_counters
 .set EP0_STATUS_IN,  0x4001d524     | zero-length EP0 IN status (ACK)
 .set SETIFACE_DONE,  0x4001de74     | control-request-done
@@ -803,6 +803,8 @@ out_poketab:
     .long   0xfc004500, 0xfc004600, 0xfc004700
     .long   0xfc004110, 0xfc004210, 0xfc004310, 0xfc004410   | 10-16 XBS CRS1..7
     .long   0xfc004510, 0xfc004610, 0xfc004710              | (stock 0x110 on all)
+    .long   0xfc040024              | 17 SCM BCR: USB bursts to/from the crossbar (reset 0 = off;
+                                    |    the unit reads 0, build 11; 0x3ff = read + write + all slaves)
 qh_out:        .long 0
 out_ring:      .space OUT_FRAMES*FRAME_B
 out_alt:       .byte 0              | the host's request (USB interrupt)

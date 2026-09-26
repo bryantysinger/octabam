@@ -7,6 +7,7 @@ modules/usbaudio-out/usbaudio_out.s out_ctrl_shim).
   tools/hw/usb_reg.py peek 0xfc0b01a8      # any long in 0xfc000000.. (see the warning)
   tools/hw/usb_reg.py poke USBMODE 0x1e    # a register from the allowlist below
   tools/hw/usb_reg.py sdis on|off          # USBMODE.SDIS (stream disable), the first test
+  tools/hw/usb_reg.py poke BCR 0x3ff       # SCM BCR: let the USB controller burst (reset 0 = single beats)
 
 0x57 (GET) reads the long at wIndex<<16 | wValue; the device refuses
 anything outside 0xfc000000..0xfcffffff. An address with no register
@@ -29,7 +30,8 @@ POKE = {  # name -> (index in out_poketab, address)
 for n in range(1, 8):
     POKE[f"PRS{n}"] = (2 + n, 0xfc004000 + 0x100 * n)
     POKE[f"CRS{n}"] = (9 + n, 0xfc004010 + 0x100 * n)
-SHOW = ["USBMODE", "BURSTSIZE", "TXFILLTUNING"] + [f"PRS{n}" for n in range(1, 8)] + [f"CRS{n}" for n in range(1, 8)]
+POKE["BCR"] = (17, 0xfc040024)   # SCM burst configuration: USB bursting over the crossbar (0x3ff = on), build 12
+SHOW = ["BCR", "USBMODE", "BURSTSIZE", "TXFILLTUNING"] + [f"PRS{n}" for n in range(1, 8)] + [f"CRS{n}" for n in range(1, 8)]
 
 
 def device():
