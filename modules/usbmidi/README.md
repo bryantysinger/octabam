@@ -56,7 +56,7 @@ decoder once, the same six FIFO writes).
 - Receive: 896,760 messages (7,170/s, notes + CCs on channel 16) and then
   1,471,080 messages (7,950/s, 185 s) sent into the unit, with the audio
   stream running, without a stall or a change in the audio stream
-  (`modules/usbaudio/README.md`, takes 4 and 5).
+  (`modules/usbaudio/README.md`, the image 64 takes).
 - No USB MIDI transmit measurement from the unit is recorded.
 - The `usb` remix (this module without USB AUDIO) has not been flashed.
 

@@ -1,19 +1,11 @@
-"""USB AUDIO -- the eight tracks over USB as a UAC2 sixteen-channel input.
+"""USB AUDIO -- the unit as a UAC2 audio input, 20 channels at 44.1 kHz 24-bit.
 
-markandrus (octemu, MIT): at USB high speed the unit adds an audio function
-to the USB MIDI composite, sixteen channels of 44.1 kHz PCM, track N's
-post-FX pre-fader L/R on channels 2N-1/2N, taken from the read-back arena
-the eDMA fills every block; at full speed the stereo sum of the tracks.
-His stream is 16-bit; this one carries 24 bits in 4-byte subslots at a
-250 us poll. His card-loaded payload, page allocator, runtime hook installer,
-trampoline, reporter and guard are replaced by the DRAM platform: the unit
-is linked into the reserve, the rings are its data, and every hook is a
-build-time detour. Needs USB MIDI (the audio function shares its
-composite: the descriptor unit generates the five-interface configuration
-when this module is in the remix, and this module's ISR shim chains to
-USB MIDI's). The dTDs and packet buffers the controller DMAs are the
-unit's own data, read and written only through the uncached SDRAM alias.
-README.md has what was measured and what was not.
+High speed: the eight tracks' L/R (post-FX, pre-fader) on channels 1-16,
+MAIN on 17-18, CUE on 19-20. Full speed: the tracks' stereo sum.
+markandrus (octemu, MIT); MAIN/CUE Bryan T. A DRAM unit with build-time
+detours. Needs USB MIDI: the audio function joins its composite, and the
+ISR shim chains to USB MIDI's. README.md has the design and what was
+measured.
 """
 from remix.schema import Detour, Kind, Linked, Module, Override, Poke
 
@@ -21,7 +13,7 @@ H = bytes.fromhex
 
 MODULE = Module(
     name="usbaudio", key="USB AUDIO", kind=Kind.CF_PATCH,
-    doc="Sixteen 24-bit channels of the tracks over USB (UAC2, post-FX pre-fader), the stereo sum at full speed (markandrus/octemu).",
+    doc="Twenty 24-bit channels over USB (UAC2): the tracks post-FX pre-fader, MAIN, CUE; the stereo sum at full speed (markandrus/octemu).",
     linked=(Linked("usbaudio", "modules/usbaudio/usbaudio.s", cpu="5475", dram=True),),
     detours=(
         Detour(0x4001dd04, H("2039fc0b01c4"), "usbaudio", "audio_setiface_shim",
