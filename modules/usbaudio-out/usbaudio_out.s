@@ -241,7 +241,11 @@ out_up:
     subql   #1,%d1                  | are power-on garbage (usbaudio.s)
     bpls    1b
     moveal  qh_out,%a0
-    movel   #(0x60000000+(OPKT<<16)),%d0   | Mult 1, ZLT off, maxpkt 192
+    movel   #(0x20000000+(OPKT<<16)),%d0   | Mult 0, ZLT off, maxpkt 192
+    | Mult 0 on this RX endpoint: Linux's chipidea udc (ep_enable) sets Mult
+    | only for ISO TX and leaves it 0 for ISO RX. Image 95 ran Mult 1 (copied
+    | from EP3 IN) and saw ~1 packet in 2000 truncated by 2-12 bytes with
+    | the transaction-error bit; image 96 tests this one change.
     movel   %d0,%a0@
     moveq   #1,%d0
     movel   %d0,%a0@(8)             | next dTD: terminate
