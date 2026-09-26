@@ -33,6 +33,13 @@ from remix.schema import Detour, Kind, Linked, Module, Poke
 H = bytes.fromhex
 ENGINES = ("DELAY SERVER", "REVERB SERVER")    # box 0, box 1
 HOST_SENDS = (0, 1)                            # DEL, REV: on the host page, not the screen
+# The rows, top to bottom, by knob name: the four both engines have, in the
+# same place in both boxes, then each engine's own from most to least used.
+# A slot not named here follows in slot order.
+ROW_ORDER = {
+    "DELAY SERVER":  ("MODE", "TIME", "WET", "TONE", "FDBK", "PING", "SIZE", "SCTR", "DENS", "PTCH"),
+    "REVERB SERVER": ("MODE", "TIME", "WET", "TONE", "SIZE", "DLY", "SHMR", "SHFT", "DIFF", "GATE"),
+}
 
 
 def table_inc(modules):
@@ -58,6 +65,14 @@ def table_inc(modules):
             rows.append("        .byte   " + ", ".join(str(c) for c in (nm + bytes(6))[:6]))
         tabs.append(f"        .macro  NAMETAB_{box}\n        .globl  NAMES_{fid:02x}\n"
                     f"NAMES_{fid:02x}:\n" + "\n".join(rows) + "\n        .endm\n")
+    order = []
+    for key in ENGINES:
+        m = modules.get(key)
+        names = [(p.name or b"").decode("latin1") for p in m.params] if m is not None else [""] * 12
+        slots = [names.index(n) for n in ROW_ORDER.get(key, ()) if n in names]
+        order.append(slots + [i for i in range(12) if i not in slots])
+    tabs.append("        .macro  ORDERTAB\nORDER:\n" + "".join(
+        "        .byte   " + ", ".join(map(str, o)) + "\n" for o in order) + "        .endm\n")
     tabs.append("        .macro  NTABS_LONGS\n        .long   "
                 + ", ".join(f"NAMES_{i:02x}" for i in ids) + "\n        .endm\n")
     return ("ENGIDS: .byte   " + ", ".join(map(str, ids)) + "\n"
