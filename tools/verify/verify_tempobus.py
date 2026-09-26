@@ -10,15 +10,16 @@ card.img), drives the panel through `ot_emu --live` (key and encoder events
 on the panel link), dumps RAM at the end and checks:
 
   window   TEMPO opens a 118 x 64 window (the menu window's size)
-  delay    on the delay host: row 0 is MODE, A to 0 then +2 (REVERSE, its
-           view: MODE DEFAULTS); DOWN x4 to row 4, which is WET with DEL
-           and REV not listed and REVERSE's --- PING left out, A to 0 then +9
-           -> page-1 flat 29 = 9 (PING stays 0); UP x2 to FDBK, B to 0 then
-           +5 -> flat 26 = 5; with MODE DEFAULTS, the view's SLEN (page-2
-           slot 3) = 3
-  reverb   RIGHT: the reverb's own cursor, row 0 (MODE); UP held there;
-           DOWN x2 to SIZE, B to 0 then +7 -> page-1 flat 26 = 7; UP to row
-           1 (TIME), A to 0 then +5 -> page-2 slot 11 = 5
+  delay    rows MODE TIME WET TONE FDBK PING SIZE SCTR DENS PTCH, a mode's
+           --- slots left out. Row 0 MODE: A to 0 then +2 (REVERSE; with
+           MODE DEFAULTS its view: TIME, page-2 slot 11 = 20); row 2 WET,
+           A to 0 then +9 -> page-1 flat 29 = 9; row 4 FDBK, B to 0 then +5
+           -> flat 26 = 5; row 5 is SLEN with PING left out, B to 0 then +1
+           -> page-2 slot 3 = 1, PING (flat 28) stays 0
+  reverb   rows MODE TIME WET TONE SIZE DLY SHMR SHFT DIFF GATE. RIGHT: its
+           own cursor, row 0; UP held there; row 4 SIZE, B to 0 then +7 ->
+           flat 26 = 7; row 5 DLY, A to 0 then +11 -> page-2 slot 10 = 11;
+           row 1 TIME, A to 0 then +5 -> page-2 slot 11 = 5
   tempo    LEVEL to the 30.0 floor and +5, then FUNC + LEVEL +3 -> 35.3 BPM
            (project tempo 0x80000020 = BPM x 24; skipped while the pattern
            tempo is on)
@@ -114,21 +115,26 @@ def main():
 
         key(KEY_NO, 1.0)                                  # the boot's date prompt
         key(KEY_TEMPO, 1.0)
-        # rows (26 Sep 2026): MODE, TIME, then the rest in slot order; DEL
-        # and REV are the host pages' own knobs, and a mode's --- slots are
-        # left out
+        # rows (26 Sep 2026): MODE TIME WET TONE in both boxes, then each
+        # engine's own (delay FDBK PING SIZE SCTR DENS PTCH, reverb SIZE DLY
+        # SHMR SHFT DIFF GATE); DEL and REV are the host pages', and a mode's
+        # --- slots are left out
         send("enc 0 -5"); send("enc 0 2", 0.6)            # row 0 MODE: A to REVERSE (its view)
-        for _ in range(4):
-            key(KEY_DOWN, 0.3)                            # row 4: WET, REVERSE's --- PING left out
+        key(KEY_DOWN, 0.3); key(KEY_DOWN, 0.3)            # row 2: WET
         send("enc 0 -64"); send("enc 0 -64"); send("enc 0 9", 0.6)
-        key(KEY_UP, 0.3); key(KEY_UP, 0.3)                # row 2: FDBK
+        key(KEY_DOWN, 0.3); key(KEY_DOWN, 0.3)            # row 4: FDBK
         send("enc 1 -64"); send("enc 1 -64"); send("enc 1 5")
+        key(KEY_DOWN, 0.3)                                # row 5: SLEN, REVERSE's --- PING left out
+        send("enc 1 -64"); send("enc 1 -64"); send("enc 1 1", 0.6)
         key(KEY_RIGHT)                                    # reverb: its own cursor, row 0 (MODE)
         key(KEY_UP, 0.3)                                  # UP at row 0: held there
-        for _ in range(2):
-            key(KEY_DOWN, 0.3)                            # row 2: SIZE (DEL, REV not listed)
+        for _ in range(4):
+            key(KEY_DOWN, 0.3)                            # row 4: SIZE
         send("enc 1 -64"); send("enc 1 -64"); send("enc 1 7", 0.6)
-        key(KEY_UP, 0.3)                                  # row 1: TIME
+        key(KEY_DOWN, 0.3)                                # row 5: DLY
+        send("enc 0 -64"); send("enc 0 -64"); send("enc 0 11", 0.6)
+        for _ in range(4):
+            key(KEY_UP, 0.3)                              # row 1: TIME
         send("enc 0 -64"); send("enc 0 -64"); send("enc 0 5", 0.6)
         send("enc 6 -128"); send("enc 6 -128")            # LEVEL: to the 30.0 floor
         send("enc 6 5", 0.4)                              # LEVEL: +5 BPM
@@ -183,12 +189,14 @@ def main():
     else:
         check(f"delay: FDBK (T{dly + 1} page-1 flat 26) = 5", L(dly, 26) == 5, f"{L(dly, 26)}")
         check(f"delay: MODE (T{dly + 1} page-2 slot 0) = 2, REVERSE", L(dly, 0x38) == 2, f"{L(dly, 0x38)}")
-        check(f"delay: DEL, REV and REVERSE's --- PING left out, row 4 set WET (page-1 flat 29) = 9",
-              L(dly, 29) == 9 and L(dly, 28) == 0, f"WET {L(dly, 29)}, PING {L(dly, 28)}")
+        check(f"delay: row 2 set WET (page-1 flat 29) = 9", L(dly, 29) == 9, f"{L(dly, 29)}")
+        check(f"delay: REVERSE's --- PING left out, row 5 set SLEN (page-2 slot 3) = 1, PING stays 0",
+              L(dly, 0x3b) == 1 and L(dly, 28) == 0, f"SLEN {L(dly, 0x3b)}, PING {L(dly, 28)}")
         if "MODE DEFAULTS" in mods:
-            check(f"delay: REVERSE's view landed (SLEN, page-2 slot 3 = 3)", L(dly, 0x3b) == 3, f"{L(dly, 0x3b)}")
+            check(f"delay: REVERSE's view landed (TIME, page-2 slot 11 = 20)", L(dly, 0x3d) == 20, f"{L(dly, 0x3d)}")
         check(f"reverb: TIME (T{vrb + 1} page-2 slot 11) = 5, row 1", L(vrb, 0x3d) == 5, f"{L(vrb, 0x3d)}")
-        check(f"reverb: SIZE (T{vrb + 1} page-1 flat 26) = 7", L(vrb, 26) == 7, f"{L(vrb, 26)}")
+        check(f"reverb: DLY (T{vrb + 1} page-2 slot 10) = 11, row 5", L(vrb, 0x3c) == 11, f"{L(vrb, 0x3c)}")
+        check(f"reverb: SIZE (T{vrb + 1} page-1 flat 26) = 7, row 4", L(vrb, 26) == 7, f"{L(vrb, 26)}")
     traw, ptn = struct.unpack(">I", tmp.read_bytes()[:4])[0], tmp.read_bytes()[4]
     if ptn:
         print("  [SKIP] tempo: the pattern tempo is on")

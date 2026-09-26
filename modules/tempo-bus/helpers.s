@@ -147,11 +147,12 @@ rows:   movel   %d4,%sp@-
         addal   %d0,%a1                | a1 = VIS[box]
         lea     NAMED,%a0
         movew   %a0@(0,%d1:l:2),%d2    | the named slots, bit per slot
-        moveq   #0,%d3                 | the index into ORDER
+        lea     ORDER,%a0
+        addal   %d0,%a0                | a0 = ORDER[box], its 12 slots in row order
+        moveq   #12,%d3                | slots left to look at
         moveq   #0,%d5                 | the rows listed
-1:      lea     ORDER,%a0
-        moveq   #0,%d0
-        moveb   %a0@(0,%d3:l),%d0      | the slot
+1:      moveq   #0,%d0
+        moveb   %a0@+,%d0              | the slot
         btst    %d0,%d2
         beq.s   2f
         movel   %d0,%d4
@@ -161,18 +162,16 @@ rows:   movel   %d4,%sp@-
         beq.s   2f
         moveb   %d0,%a1@+
         addql   #1,%d5
-2:      addql   #1,%d3
-        moveq   #12,%d0
-        cmpl    %d0,%d3
-        blt.s   1b
+2:      subql   #1,%d3
+        bne.s   1b
         lea     NV,%a0
         moveb   %d5,%a0@(0,%d1:l)
         movel   %d5,%d3
         movel   %sp@+,%d4
         rts
-ORDER:  .byte   6, 11, 0, 1, 2, 3, 4, 5, 7, 8, 9, 10   | MODE (slot 6), TIME (slot 11) first; NAMED leaves out 0, 1
 
         .include "remix.inc"           | ENGIDS, NAMED, the name tables
+        ORDERTAB                       | ORDER: per box, the slots in row order (the manifest's ROW_ORDER); NAMED leaves out 0, 1
         NAMETAB_0                      | the delay's: NAMES_<its id>
 NV:     .byte   0, 0                   | the rows listed per box, by the last draw
 VIS:    .space  24                     | their slots, 12 per box

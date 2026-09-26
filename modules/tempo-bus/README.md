@@ -22,10 +22,11 @@ while the pattern tempo is on (the stock TEMPO draw's test, `0x80000024`,
 `A` and the font's knob glyph (`0x02`), the value knob, at the right edge. The header text sits 6 px under
 the window's top edge; the boxes are 41 px, five rows, 3 px under the rule.
 
-- **Rows and labels.** The rows are each engine's named slots (a mask per
-  engine, taken from its manifest when the remix is built), MODE and TIME
-  first, then the rest in slot order, minus DEL and REV (slots 0 and 1,
-  the host pages' own knobs) and minus the ones the current mode names
+- **Rows and labels.** Top to bottom: MODE, TIME, WET, TONE in both boxes,
+  then each engine's own from most to least used: the delay's FDBK, PING,
+  SIZE (GLEN/SLEN), SCTR, DENS, PTCH; the reverb's SIZE, DLY, SHMR, SHFT,
+  DIFF, GATE (`ROW_ORDER` in the manifest). DEL and REV (the host pages'
+  own knobs) are left out, and so are the ones the current mode names
   `---`: CLEAN lists 6 delay rows, GRAIN 10, REVERSE 6; the reverb 10. The
   list is rebuilt on every draw from the descriptor's names
   after the MODE formatter has renamed them (`rows` in `helpers.s`), so a
