@@ -32,6 +32,7 @@ from remix.schema import Detour, Kind, Linked, Module, Poke
 
 H = bytes.fromhex
 ENGINES = ("DELAY SERVER", "REVERB SERVER")    # box 0, box 1
+HOST_SENDS = (0, 1)                            # DEL, REV: on the host page, not the screen
 
 
 def table_inc(modules):
@@ -45,7 +46,9 @@ def table_inc(modules):
     ids, masks, tabs = [], [], []
     for box, key in enumerate(ENGINES):
         m = modules.get(key)
-        named = [i for i, p in enumerate(m.params) if p.name] if m is not None else []
+        # DEL and REV (slots 0, 1) are the host page's own knobs, not listed here
+        named = ([i for i, p in enumerate(m.params) if p.name and i not in HOST_SENDS]
+                 if m is not None else [])
         fid = m.menu.fx2_id if m is not None else 0xff
         ids.append(fid)
         masks.append(sum(1 << i for i in named))
