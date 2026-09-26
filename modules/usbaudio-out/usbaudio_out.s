@@ -58,6 +58,18 @@
 | above 0x80006907, and under the port nothing above 0x80006924 was read or
 | written (--touch-map, boot + frames + USB streaming, 26 Sep 2026). SRAM is
 | not cached: no alias, and what the CPU writes is what the DMA reads.
+| SCM BCR (MCF54455RM 14.2.6): lets the USB controller burst to and from
+| the crossbar's slaves. It resets to 0 and neither the OS nor the
+| bootloader sets it (the unit read 0). Device mode has ONE 16-byte RX
+| FIFO (10.4.3); emptied a beat at a time it fell behind under a busy
+| project and lost packet tails, which the controller reports as a CRC
+| error (transaction error, 10.5.x). Measured on the unit, build 12,
+| 26 Sep 2026, same busy session, one minute each: BCR 0 = 1,189 bad
+| packets, BCR 0x3ff = 5. Set when EP3 OUT comes up and left on: it
+| helps every USB transfer, EP3 IN included, and stock never relies on
+| it being off.
+.set SCM_BCR,        0xfc040024
+.set BCR_ON,         0x000003ff     | GBR + GBW + all slaves (SBE 0xff)
 .set SRAM_DTDS,      0x80007c00     | NSLOTO dTDs, 32-byte aligned (128 B)
 .set SRAM_BUFS,      0x80007c80     | NSLOTO packet buffers (768 B)
 .set SRAM_REPLY,     0x80007f80     | EP0 reply for 0x56 / 0x57 (128 B)
@@ -348,6 +360,8 @@ out_up:
     andil   #0xffff0000,%d0
     oril    #CTRL3_RX,%d0
     movel   %d0,ENDPTCTRL3
+    movel   #BCR_ON,%d0             | USB bursts over the crossbar (see SCM_BCR)
+    movel   %d0,SCM_BCR
     clrl    out_produced
     clrl    out_consumed
     moveq   #-1,%d0
