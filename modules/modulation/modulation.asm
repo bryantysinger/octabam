@@ -41,7 +41,7 @@ init:
         move    #>$ffffff,m4
         move    x:(r4),x0
         move    x0,x:(r7+$0e)           ; the line base
-; sub/tst rather than cmp: the cmp-encodes-as-max family (CLAUDE.md).
+; sub/tst rather than cmp: the cmp-encodes-as-max family (AGENTS.md).
         move    x0,a
         move    #>$4000,x0
         sub     x0,a                    ; base - 0x4000

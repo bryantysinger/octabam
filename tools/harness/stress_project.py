@@ -30,6 +30,16 @@ FX2 = ("DELAY SERVER", "SEND", "SEND", "SEND",
 LOCK_SLOTS = (0, 3, 6, 7, 9, 10, 15, 16, 18, 19, 20, 21, 22, 23, 24)
 
 
+# verify_set sends CC 40 to T2 (SEND's DEL) and T5 (BusVerb's DEL) and
+# checks the value at the end. A lock or LFO on that lane (FX2 slot 0,
+# flat 24) would overwrite the probe, so those two tracks keep it free.
+MIDI_PROBED = (1, 4)
+
+
+def lock_slots(track):
+    return tuple(slot for slot in LOCK_SLOTS if not (track in MIDI_PROBED and slot == 24))
+
+
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -56,7 +66,7 @@ def make_sample(path):
 
 
 def set_project_text(dest):
-    block = ("[SAMPLE]\r\nTYPE=FLEX\r\nSLOT=001\r\nPATH=../" + SAMPLE_REL
+    block = ("[SAMPLE]\r\nTYPE=FLEX\r\nSLOT=001\r\nPATH=" + SAMPLE_REL
              + "\r\nTRIM_BARSx100=100\r\nLOOP_BARSx100=100\r\nBPMx24=2880"
              + "\r\nTSMODE=0\r\nLOOPMODE=1\r\nGAIN=48"
              + "\r\nTRIGQUANTIZATION=-1\r\n[/SAMPLE]\r\n\r\n").encode()
@@ -114,7 +124,7 @@ def part_values(mods, track, part):
         extra2 = {"REV": 35, "MODE": (2, 1, 0, 2)[part % 4], "TIME": 75, "SIZE": 95,
                   "SHMR": 28, "WET": 65, "DIFF": 95}
     else:
-        extra2 = {"SEND": 35}
+        extra2 = {"DEL": 35, "REV": 35}
     fx2 = otp.module_defaults(mods[key2], extra2)
     return fx1, fx2
 
@@ -144,7 +154,7 @@ def mutate_bank(data, bank_number, mods):
             lfo2 = base + otp.LFO_PM_OFF + track * 30
             data[lfo1:lfo1 + 6] = bytes((20, 36, 52, 20, 28, 18))
             # FX1 frequency/drive, FX1 mix/resonance, FX2 send.
-            data[lfo2:lfo2 + 6] = bytes((18, 19, 24, 1, 1, 1))
+            data[lfo2:lfo2 + 6] = bytes((18, 19, 18 if track in MIDI_PROBED else 24, 1, 1, 1))
 
     # Pattern A01-A04 select Parts 1-4 via the measured PTRN tail byte.
     for pat in range(16):
@@ -171,7 +181,7 @@ def mutate_bank(data, bank_number, mods):
                 rec = off + 0x59 + step * 32
                 # Every step changes FX and modulation values. Keep playback
                 # pitch/rate and SEND within useful, non-silent ranges.
-                for slot in LOCK_SLOTS:
+                for slot in lock_slots(track):
                     value = (step * 17 + track * 11 + pat * 23 + slot * 7) % 128
                     if slot == 0:
                         value = (52, 64, 76, 64)[(step + track) % 4]
@@ -213,7 +223,7 @@ def verify(dest, mods):
                         expected = (16, 32, 64, 64)[pat]
                         assert len(locks) == expected, (path, pat, track)
                         assert len(trigs) == (expected // 4 if pat == 3 else expected)
-                        assert all(set(rec) == set(LOCK_SLOTS) for rec in locks.values())
+                        assert all(set(rec) == set(lock_slots(track)) for rec in locks.values())
                         total_trigs += len(trigs)
                         total_locks += sum(map(len, locks.values()))
                     else:
@@ -256,6 +266,7 @@ def main():
               f"8 FLEX tracks; 24 LFOs per part; FX1: 4 Character, 2 Modulation,"
               f" 2 Spectrum; FX2: BusDelay T1, BusVerb T5, SEND elsewhere\n"
               f"{trigs} trigs; {locks} parameter lock bytes in bank A\n"
+              f"T2 and T5 FX2 slot 0 (DEL) are reserved for verify_set MIDI probing; their third LFO targets FX1 instead.\n"
               f"Generated sample: {SAMPLE_REL}, sha256 {digest(wav)}\n"
               f"Start at A01, 120 BPM. Switch A01-A04 to exercise Part/mode and pattern/lock"
               f" loads. Turn down monitoring before first playback.\n"
@@ -268,6 +279,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-

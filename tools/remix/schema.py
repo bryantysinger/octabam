@@ -965,7 +965,7 @@ class Module:
 # only case this is allowed in; registry.remix() enforces it.
 #
 # ⚠️ AND IT CANNOT BE SETTLED LOCALLY EITHER WAY: dsp_host is single-core, so
-# no local test can reproduce a bus timing defect (CLAUDE.md). The refusal is
+# no local test can reproduce a bus timing defect (AGENTS.md). The refusal is
 # what keeps the question off the table rather than answered by inference.
 NO_FALLBACK = "NONE"
 

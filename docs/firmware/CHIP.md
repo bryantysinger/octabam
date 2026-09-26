@@ -338,4 +338,4 @@ damping state in the instance's own Y region.
   falsified by that bisect (its ADDR = 0 is `0x34000`).
 - Assembler traps: `dsp_asm` emits the nearest encoding; `cmp b,a` →
   `maxm a,b`, `tfr a,b` → `rnd b`, an unknown `MPY` operand pair →
-  `mpysu`. Disassemble every hand-written block (`CLAUDE.md`).
+  `mpysu`. Disassemble every hand-written block (`AGENTS.md`).

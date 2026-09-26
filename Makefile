@@ -173,7 +173,7 @@ reverb: ## Render a wav through BusVerb: make reverb IN=loop.wav [ARGS='-p MIX=8
 
 .PHONY: cycles
 cycles: ## Cycle cost per effect against the measured per-core budget
-	python3 tools/build/cycle_count.py
+	REMIX="$(REMIX)" python3 tools/build/cycle_count.py
 
 .PHONY: benchmark-reverbs
 benchmark-reverbs: ## Stock spring/plate/dark vs Mini Verb: eight instances, all controls, all trigger splits
@@ -198,7 +198,7 @@ modmap: ## DSP module load map — which bytes land at which P address
 .PHONY: verify
 verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it fits; it fits since the one-word displaced move, 14 Sep 2026)
 	@# FIRST, before the selftest rebuilds every remix over out/mainos_bus.bin
-	@# (the boot-verifier trap, CLAUDE.md): a module started from a garbage
+	@# (the boot-verifier trap, AGENTS.md): a module started from a garbage
 	@# instance block must be silent on silence -- the unit's RAM is not zeroed.
 	python3 tools/verify/verify_dirtystate.py $(REMIX)
 	$(PY) tools/verify/verify_tapeecho_cpu.py $(REMIX)
@@ -317,6 +317,16 @@ check: bus cycles verify ## Everything that can be checked without hardware (the
 	@$(MAKE) --no-print-directory bus >/dev/null
 	@echo
 	@echo "  all runnable checks passed (a [SKIP] line above names what did not run); out/mainos_bus.bin restored to the shipping build"
+
+# Full local evidence; ordinary check remains useful for development.
+# STRESS_SOURCE copies a private project and generates the bamsep26 fixture.
+.PHONY: accept
+accept: ## Strict local acceptance + JSON report (OT_PROJECT or STRESS_SOURCE required)
+	BUILD="$(BUILD)" python3 tools/verify/acceptance.py --remix "$(REMIX)" $(if $(STRESS_SOURCE),--stress-source "$(STRESS_SOURCE)",) $(ACCEPTARGS)
+
+.PHONY: test-acceptance
+test-acceptance: ## Firmware-free tests of acceptance failures, skips and report handling
+	python3 -m unittest discover -s tools/verify/tests -p 'test_*.py' -v
 
 .PHONY: modules
 modules: ## List the module index and the available remixes

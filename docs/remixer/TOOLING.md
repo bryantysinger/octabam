@@ -51,7 +51,7 @@ ones — the DSP toolchain itself is plain CMake). It builds:
 
 | tool | from | what it is |
 |---|---|---|
-| `dsp_asm` | `vendor/dsp56300` | the DSP56300 assembler. It mis-encodes some instructions silently (`CLAUDE.md`'s trap list). `tools/patches/dsp56300.patch` adds the chip's one-word displaced move (displacement −64..63, data-ALU register); a word or cycle figure recorded before 14 Sep 2026 counts such a move as 2 |
+| `dsp_asm` | `vendor/dsp56300` | the DSP56300 assembler. It mis-encodes some instructions silently (`AGENTS.md`'s trap list). `tools/patches/dsp56300.patch` adds the chip's one-word displaced move (displacement −64..63, data-ALU register); a word or cycle figure recorded before 14 Sep 2026 counts such a move as 2 |
 | `dsp_host` | `tools/harness/dsp_host/` (staged into `vendor/dsp56300` and built there) | the emulator harness written here: runs assembled effects on the dsp56300 emulator core. `docs/remixer/HARNESS.md` |
 | `emu_bringup.py` | `tools/emu/` | Tier-0 ColdFire bring-up: boots the MAIN OS image on Unicorn's CFV4E core to the RTOS handoff (the remixer's emulator view). Needs `unicorn`: `make emu-setup` (uv, the `emu` extra). `docs/remixer/EMU.md` |
 | `ot_emu` | `tools/emu/ot_emu/` (`make emu-cf`) | the headless C++ port of the machine: boots the built image, loads a project from a staged card, runs the sequencer and both DSP cores. `docs/remixer/EMU.md`, `docs/firmware/COLDFIRE_PORT.md` (O14i-O24; O1-O14: `git show 3ceba41:docs/history/COLDFIRE_PORT.md`) |
@@ -70,7 +70,7 @@ clean assembly of wrong machine code. Every `build_bus.assemble()` call
 runs `dsp_asm -list` against an independent `dsp56kDisassemble` decode of
 the same bytes and compares mnemonics (Jannik Aßfalg, PR #380, 22 Sep
 2026): a mismatch fails the build. `mpy` encoded as `mpysu` is the one
-mismatch the shipping code carries on purpose (CLAUDE.md: second operand
+mismatch the shipping code carries on purpose (AGENTS.md: second operand
 always non-negative at every site); those sites are counted per module in
 `build_bus.MPYSU_AUDITED`, a count that differs from the table fails the
 build with the site list, and a matching count prints nothing. A build

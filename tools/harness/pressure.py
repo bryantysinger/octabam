@@ -141,13 +141,13 @@ def fmt(combo):
 # loop"; knobs that gate work (a send at 0 registers nothing, MIX 0 can
 # short-circuit a stage) go to their maximum so nothing is skipped.
 DEAR = {
-    # (the knob sets follow the manifests of 16 Sep 2026; rig_render refuses a name it does not know)
+    # (the knob sets follow the manifests of 26 Sep 2026; rig_render refuses a name it does not know)
     "CHARACTER": {"DRV": 127, "FOLD": 127, "COMP": 127, "MIX": 127, "WDTH": 127, "SAT": 0},
     "SPECTRUM": {"RES": 127, "MODE": 4, "ENV": 127, "LDP": 127},
     "MODULATION": {"MIX": 127, "FDBK": 127, "DPTH": 127, "MODE": 4, "LOFI": 127},   # MODE 4 = PHSR, the dearest loop
     "DELAY SERVER": {"DEL": 100, "FDBK": 100, "MODE": 1, "SCTR": 127, "DENS": 127, "WET": 127},
     "REVERB SERVER": {"REV": 100, "MODE": 2, "SHMR": 127, "DIFF": 127, "GATE": 0, "WET": 127},
-    "SEND": {"SEND": 100},
+    "SEND": {"DEL": 100, "REV": 100},
 }
 LETTER_TRACKS = {0: (5, 6, 7, 8), 1: (1, 2, 3, 4)}
 
@@ -249,19 +249,19 @@ def render(a):
 # reads as a rail-to-rail tail after the stems stop).
 ODD = [
     ("two delay servers on core 1 (shared scratch: BUS.md Known limitations)",
-     "T1=DELAY SERVER,T2=DELAY SERVER,T3=SEND,T4=SEND,T5=REVERB SERVER,T6=SEND", ["T3:SEND=100", "T4:SEND=100"]),
+     "T1=DELAY SERVER,T2=DELAY SERVER,T3=SEND,T4=SEND,T5=REVERB SERVER,T6=SEND", ["T3:DEL=100", "T3:REV=100", "T4:DEL=100", "T4:REV=100"]),
     ("two reverb servers on core 0",
-     "T5=REVERB SERVER,T6=REVERB SERVER,T7=SEND,T1=DELAY SERVER,T2=SEND", ["T7:SEND=100", "T2:SEND=100"]),
+     "T5=REVERB SERVER,T6=REVERB SERVER,T7=SEND,T1=DELAY SERVER,T2=SEND", ["T7:DEL=100", "T7:REV=100", "T2:DEL=100", "T2:REV=100"]),
     ("reverb on FX1 and FX2 of one track (PARAM_PAGES 5d)",
-     "T5=REVERB SERVER+REVERB SERVER,T6=SEND,T1=DELAY SERVER,T2=SEND", ["T6:SEND=100", "T2:SEND=100"]),
+     "T5=REVERB SERVER+REVERB SERVER,T6=SEND,T1=DELAY SERVER,T2=SEND", ["T6:DEL=100", "T6:REV=100", "T2:DEL=100", "T2:REV=100"]),
     ("delay on FX1 and FX2 of one track",
-     "T1=DELAY SERVER+DELAY SERVER,T2=SEND,T5=REVERB SERVER,T6=SEND", ["T2:SEND=100", "T6:SEND=100"]),
+     "T1=DELAY SERVER+DELAY SERVER,T2=SEND,T5=REVERB SERVER,T6=SEND", ["T2:DEL=100", "T2:REV=100", "T6:DEL=100", "T6:REV=100"]),
     ("Character on T4 and T8 (the two position-3 slots) beside both engines",
-     "T4=CHARACTER,T1=DELAY SERVER,T2=SEND,T5=REVERB SERVER,T8=CHARACTER", ["T4:COMP=40", "T8:COMP=40", "T2:SEND=100"]),
+     "T4=CHARACTER,T1=DELAY SERVER,T2=SEND,T5=REVERB SERVER,T8=CHARACTER", ["T4:COMP=40", "T8:COMP=40", "T2:DEL=100", "T2:REV=100"]),
     ("reverb DIFF 127 (the 4 Sep squeal)",
-     "T5=REVERB SERVER,T6=SEND,T1=DELAY SERVER,T2=SEND", ["T5:DIFF=127", "T5:TIME=127", "T5:SHMR=127", "T6:SEND=127", "T2:SEND=127"]),
+     "T5=REVERB SERVER,T6=SEND,T1=DELAY SERVER,T2=SEND", ["T5:DIFF=127", "T5:TIME=127", "T5:SHMR=127", "T6:DEL=127", "T6:REV=127", "T2:DEL=127", "T2:REV=127"]),
     ("delay FDBK 127, GRAIN",
-     "T1=DELAY SERVER,T2=SEND,T5=REVERB SERVER,T6=SEND", ["T1:FDBK=127", "T1:MODE=1", "T1:DENS=127", "T2:SEND=127"]),
+     "T1=DELAY SERVER,T2=SEND,T5=REVERB SERVER,T6=SEND", ["T1:FDBK=127", "T1:MODE=1", "T1:DENS=127", "T2:DEL=127", "T2:REV=127"]),
     ("every station at every extreme on one track, both slots",
      "T5=SPECTRUM+CHARACTER,T6=SEND,T1=MODULATION+SPECTRUM,T2=SEND",
      ["T5:FX1:RES=127", "T5:FX1:DRV=127", "T5:FX1:MODE=4", "T5:FX1:ROUT=3", "T5:FX2:DRV=127", "T5:FX2:FOLD=127", "T5:FX2:CRSH=127",
@@ -317,6 +317,7 @@ def oddities(a):
 
 
 def main():
+    global OUT
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("price"); p.add_argument("--remix", default=os.environ.get("REMIX", "bamsep26"))
@@ -334,7 +335,11 @@ def main():
     o.add_argument("--image", default="out/mainos_bus.bin")
     o.add_argument("--seconds", type=float, default=2.0)
     o.add_argument("--stems", default="out/test_audio/rig")
+    for parser in (p, r, o):
+        parser.add_argument("--out", type=pathlib.Path, default=OUT,
+                            help="price, render and evidence directory")
     a = ap.parse_args()
+    OUT = a.out
     return {"price": price, "render": render, "oddities": oddities}[a.cmd](a)
 
 

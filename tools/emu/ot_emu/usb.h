@@ -35,7 +35,7 @@
 // on `UsbDevice::command`. ⚠️ Not modelled: timing. A lock-step emulator
 // serialises the host's polls, the frame interrupt and the eDMA, so a race
 // between the USB-audio producer and the read-back bank swap cannot show
-// here (CLAUDE.md, instrument blindness). Bytes, descriptors, hooks and
+// here (AGENTS.md, instrument blindness). Bytes, descriptors, hooks and
 // crashes from a bad queue head can.
 #pragma once
 

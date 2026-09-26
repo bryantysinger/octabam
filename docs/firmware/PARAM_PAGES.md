@@ -99,7 +99,7 @@ count in this descriptor.
 
 15 effects; ids `04 05 08 0c 0d 10 11 12 13 14 15 16 18 19 1c`. The gaps
 are where a module's id goes (`MODULES.md`); a stock id is also an FX1 id
-(`CLAUDE.md`).
+(`AGENTS.md`).
 
 ### PLAYBACK entries = machine types
 
@@ -242,7 +242,7 @@ AMP (per track, present for every machine type):
 
 `p11 TRIG` is the un-drawn AMP slot. Whether an AMP-page value reaches the
 DSP record, and whether enabling p11 gives it storage and publication, are
-unmeasured; a default outside its count stalls the sequencer (`CLAUDE.md`).
+unmeasured; a default outside its count stalls the sequencer (`AGENTS.md`).
 
 ## 4. Page class handlers
 
@@ -469,7 +469,7 @@ editor (`MAINMENU.md` §9c-ii) writes even slots only; ✅ tag 84: MODE steps
 as a select on slot 6, SHMR/MDEP sweep 0–127 from slot 7 (a count-128 knob
 in a companion field works; the 10 Aug "near-boolean companion" reading was
 the inherited formatter). The first play after the move stalled on stored
-parts (`CLAUDE.md`, stamp-defaults).
+parts (`AGENTS.md`, stamp-defaults).
 
 `dsp_host` implements this map (`cd8964a`); a param-driven companion
 renders bit-identical to the `MODE=`/`DMODE=` build-time overrides, which
@@ -512,7 +512,7 @@ hard-coded (`cmp #N` after a common prologue):
 
 A formatter overrides the count: a cloned slot inherits the donor's A/B,
 and a count-128 slot on a 3-entry word-label renderer draws nothing
-(`CLAUDE.md`; `verify_menu` checks renderer against count).
+(`AGENTS.md`; `verify_menu` checks renderer against count).
 `tools/build/stock_labels.py` reads the stock labels by calling each A
 formatter under the emulator (`emu_bringup._call`): FILTER HP/LP
 "12dB|24dB", ENV "BASE|WDTH", EQ TYP "LOW|PEQ|HIGH", PHASER NUM "2..10",

@@ -562,7 +562,7 @@ dwarmc:
 ; ⚠️ THE HALF-OFFSET CASE HAS AN EXACT TEST and the quarter-offset one does
 ; not: two triangle windows a half period apart sum to exactly 1, so DC in
 ; must come back flat. That is the gate that caught Nimbus's double-rate
-; window (CLAUDE.md, the a0 trap), and it is why the two-grain build is the
+; window (AGENTS.md, the a0 trap), and it is why the two-grain build is the
 ; better-checked of the two.
 ;
 ; GRAIN's PERSISTENT latches: eight scatters, eight window multipliers and

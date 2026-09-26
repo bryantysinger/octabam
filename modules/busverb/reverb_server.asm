@@ -1936,7 +1936,7 @@ tankend:
 ; pointer's discontinuity. The flat top is what keeps the pair summing to ~1;
 ; a pure triangle over the half-range would dip to zero twice a lap.
 ;
-; TRAP (CLAUDE.md): `cmp a,b` has silently encoded as `max a,b`, which updates
+; TRAP (AGENTS.md): `cmp a,b` has silently encoded as `max a,b`, which updates
 ; only C while bge tests N^V. No cmp here at all -- the two comparisons are
 ; done as `sub` + branch, which sets N and V properly. Every mpy is x0,y1 or
 ; x1,x0 (signed) except head 1's frac multiply, an audited mpysu (y0 >= 0).
@@ -2458,7 +2458,7 @@ stampgr:
         and     #>$3,b                  ; boot garbage masked ...
         move    b1,x0
         move    x0,b                    ; ... and B2 clean again (a logical op
-                                        ; leaves it stale; CLAUDE.md)
+                                        ; leaves it stale; AGENTS.md)
         move    #>$1,x0
         sub     x0,b
         move    #0,x0

@@ -250,7 +250,7 @@ check("COMP=0 is unity gain (the stage is skipped, bit-exact)",
 glue, _ = render(tone(438, amp=0.13), COMP=40, slot="master")
 g0, _ = render(tone(438, amp=0.13), COMP=0, slot="master")
 if glue is None:
-    print("  [SKIP] the master path (GLUE by position): the shipping build out/mainos_bus.bin carries no Character")
+    print("  [N/A] the master path (GLUE by position): the shipping build out/mainos_bus.bin carries no Character")
     MASTER = False
 else:
     MASTER = True

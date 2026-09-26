@@ -55,7 +55,7 @@ init:
 ; part that names this id on FX2 (the stock id both menus share) costs its
 ; core nothing: the rig's cycle envelope is priced with the stations on FX1
 ; only (tools/harness/pressure.py), and the FX2 chooser hides them.
-; sub/tst rather than cmp: the cmp-encodes-as-max family (CLAUDE.md).
+; sub/tst rather than cmp: the cmp-encodes-as-max family (AGENTS.md).
         move    x:>$213,r4
         move    #>$ffffff,m4
         move    x:(r4),x0
