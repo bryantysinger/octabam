@@ -139,12 +139,20 @@ firmware too:
   128 BPM, so a sample one bar old has the same value) cannot show it.
 
 `RECORDER HOLD` (in `recfix`) repeats the last sample in place of the zero.
+In a remix with a DRAM runtime the caves follow the moved arena base (the
+build report prints `arena: hold cave ...`); a build of main before that
+change carries caves that never fire in such a remix.
 Port results and conditions: `modules/recorder-hold/README.md`. The
 one-sample skip or repeat when the loop length changes by one stays: a loop
 whose period is not a whole number of samples cannot be seamless in whole
 samples. At a tempo whose bar is a whole number of samples (120 among them)
 the window and the content always match and sound-on-sound is clean without
 a patch.
+
+On hardware (Bryan T, 26 Sep 2026, his USB recording remix with the caves
+following the moved base): 128 BPM / RLEN 16 still clicks every other pass.
+The port shows the caves firing on those wraps in the same configuration.
+Open: whether the caves fire on the unit.
 
 ## 6. Where the detail is
 

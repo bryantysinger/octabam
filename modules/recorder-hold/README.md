@@ -23,9 +23,19 @@ fetch of END − 1 with a count of one.
 | `hold_xfade_a.s` | `0x4000853e` | `movea.l d0,a3 / move.l d1,d4 / move.l (76,a2),-(sp)` |
 | `hold_xfade_b.s` | `0x4000854e` | `move.l d0,d7 / lea (16,sp),sp / tst.l d4` |
 
-Conditions: the fetch returned `0x40a955e0` with a positive count, `+0x15`
+Conditions: the fetch returned the arena base with a positive count, `+0x15`
 is negative (a recorder buffer) and the fetched index equals `+0x64`.
 Anything further past END is stock.
+
+The arena base is `0x40a955e0` on stock. A remix with a DRAM runtime (USB
+AUDIO, any `dram=True` unit) moves it by the platform's 1,707 pages to
+`0x41495de0`, and the fetch then returns the moved base. The manifest
+declares the caves' three base literals each (`pool_base_literals`); the
+build checks the count and rewrites them with the firmware's own base sites
+(build report: `arena: hold cave ...: 3 arena-base literal(s) -> ...`).
+Before that (PR #444 alone), in such a remix the caves compared against the
+stock base and never fired: 0 substitutions and 31 zero samples at RLEN 4
+in the port. Found by Bryan T on his USB recording remix, 26 Sep 2026.
 
 ## Measured in the port (26 Sep 2026)
 
