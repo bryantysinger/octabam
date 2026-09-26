@@ -25,7 +25,7 @@ LOG = pathlib.Path("out/hw/bustest/sweep.log")
 
 # (cc, name, a, b)  -- BusVerb slot order: page 1 then page 2
 VERB = [
-    (42, "SIZE", 0, 127), (43, "SHMR", 0, 127), (44, "SHFT", 0, 3), (45, "WET", 0, 127),
+    (42, "SIZE", 0, 127), (43, "SHMR", 0, 127), (44, "SHFT", 0, 5), (45, "WET", 0, 127),
     (62, "MODE", 0, 2),   (63, "TONE", 0, 127), (64, "DIFF", 0, 127),
     (66, "GATE", 0, 127), (67, "TIME", 0, 127),     # TIME on page-2 slot 11 since 26 Sep 2026
 ]

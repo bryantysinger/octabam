@@ -516,8 +516,8 @@ def main():
                          "reachable mode here until 18 Aug 2026 (the panel\n"
                          "boots BIG; renders wanting it must say so).")
     ap.add_argument("--shft", "--width", type=int, default=None, dest="width",
-                    help="reverb SHFT 0..3 (slot-9 companion): shimmer\n"
-                         "interval +12/+19/+7/-12. Was WIDTH until v6\n"
+                    help="reverb SHFT 0..5 (page-1 slot 4): shimmer\n"
+                         "interval -12/+5/+7/+12/+19/+24. Was WIDTH until v6\n"
                          "(23 Aug 2026; width is pinned wide now); --width\n"
                          "still parses so older command lines do not break,\n"
                          "but it selects the interval, not the image.")

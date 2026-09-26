@@ -11,6 +11,7 @@
         # an in-range MODE byte and applies that mode's ModeView defaults
     python3 tools/hw/ot_project.py stamp-slot PROJECT_DIR MODULE SLOT [VALUE] [--track N[,N]]
     python3 tools/hw/ot_project.py migrate-hosts PROJECT_DIR          # ONCE: a pre-image-71 project's host bytes, carried over
+    python3 tools/hw/ot_project.py remap-slot PROJECT_DIR MODULE SLOT old:new,...   # ONCE: a select whose values changed order
     python3 tools/hw/ot_project.py set-fx PROJECT_DIR fx1|fx2 TRACK MODULE [--page V,V,V,V,V,V] [--page2 V,...]
     python3 tools/hw/ot_project.py thru-track PROJECT_DIR TRACK [--page HEX14]
     python3 tools/hw/ot_project.py stored PROJECT_DIR                  # .strd twins (the unit's saved state)
@@ -848,6 +849,48 @@ def migrate_hosts_441(pdir, guard=True):
     return total
 
 
+def remap_slot(pdir, which, slot, mapping, guard=True):
+    """Translate ONE knob byte through `mapping` ({old: new}) for every
+    part/track naming the module (FX1 or FX2), in .work and .strd, for a
+    select whose values changed order (26 Sep 2026: BusVerb SHFT
+    +12/+19/+7/-12 -> -12/+5/+7/+12/+19/+24 is 0:3,1:4,2:2,3:0). A byte not in
+    the mapping is left alone. RUN IT ONCE: a second run maps again."""
+    pdir = pathlib.Path(pdir)
+    fx_id, mod = _resolve_module(which)
+    slot = _resolve_slot(mod, slot)
+    total = 0
+    for bank in sorted(pdir.glob("bank*.work")):
+        num = int(bank.name[4:6])
+        log = []
+
+        def mut(data, log=log):
+            rec = not log
+            for p in range(NPARTS_ALL):
+                off = PART_BASE + p * PART_STRIDE
+                for t in range(NTRACKS):
+                    for idoff, sub in ((FX1_OFF, 0), (FX2_OFF, 6)):
+                        if data[off + idoff + t] != fx_id:
+                            continue
+                        a = (off + P1_OFF + t * TRACK_STRIDE + sub + slot if slot < 6
+                             else off + P2_OFF + t * P2_STRIDE + sub + slot - 6)
+                        new = mapping.get(data[a])
+                        if new is None:
+                            continue
+                        if rec:
+                            log.append((p, t, data[a], new))
+                        data[a] = new
+
+        _bank_write(pdir, num, mut, guard=guard)
+        data = bank.read_bytes()
+        if int.from_bytes(data[-2:], "big") != (sum(data[0x10:-2]) & 0xFFFF):
+            sys.exit(f"{bank.name}: checksum did not take -- do NOT use this")
+        for p, t, old, new in log:
+            print(f"bank{num:02d} part {p+1} T{t+1} slot {slot}: {old} -> {new}")
+        total += len(log)
+    print(f"{total} byte(s) remapped")
+    return total
+
+
 def stamp_slot(pdir, which, slot, value=None, guard=True, tracks=None):
     """Write ONE knob byte for every part/track that names the module (FX2
     or FX1), leaving the other eleven alone. `which` is a module key, name
@@ -1308,6 +1351,10 @@ if __name__ == "__main__":
             del args[i:i + 2]
         stamp_slot(pdir, args[0], args[1], args[2] if len(args) > 2 else None,
                    tracks=tracks)
+    elif cmd == "remap-slot":                                              # <project> MODULE SLOT old:new,...  ONCE
+        remap_slot(pdir, sys.argv[3], sys.argv[4],
+                   {int(a): int(b) for a, b in (x.split(":") for x in sys.argv[5].split(","))},
+                   guard=False)
     elif cmd == "migrate-hosts":                                          # <project>: ONCE, old host layout -> image 71's
         migrate_hosts_441(pdir, guard=False)
     else: sys.exit(f"unknown command {cmd!r}")

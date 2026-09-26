@@ -109,9 +109,9 @@ MODULE = Module(
         Param(b"SHMR", 0, active=True, formatter=_PLAIN,
               doc="shimmer -- pitch-shifted regeneration in the tail; 0 = off"),
         # SHFT selects the shimmer interval; width is pinned wide.
-        Param(b"SHFT", 0, 4, active=True, formatter=_STEP, link=True,
-              labels=("+12", "+19", "+7", "-12"),
-              doc="shimmer interval in semitones -- heard once SHMR is up"),
+        Param(b"SHFT", 3, 6, active=True, formatter=_STEP, link=True,
+              labels=("-12", "+5", "+7", "+12", "+19", "+24"),
+              doc="shimmer interval, -12 +5 +7 +12 +19 +24; heard once SHMR is up"),
         # WET: the reverb's level. The tank hears the REV sends plus the
         # delay's repeats x DLY; the host prints wet*WET under its own dry.
         Param(b"WET", 127, active=True, formatter=_PLAIN,
