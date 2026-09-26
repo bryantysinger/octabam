@@ -7,6 +7,12 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- BusVerb SHFT (26 Sep 2026): six shimmer intervals, low to high: -12, +5,
+  +7, +12, +19, +24 (pure ratios 1/2, 4/3, 3/2, 2, 3, 4), default +12. The
+  stored index changed meaning (was +12 +19 +7 -12): run `ot_project.py
+  remap-slot <project> "REVERB SERVER" SHFT 0:3,1:4,2:2,3:0` once per saved
+  project.
+
 - ROUTE A RETIRED (26 Sep 2026): `tools/emu/emu_rtos.py`, `make emu-rtos`,
   `scripts/o6_gate.sh` and `tools/emu/ot_emu/oracle.py` removed. The
   panel runs the port only (`--backend`, `--no-rtc` and `/press` gone;

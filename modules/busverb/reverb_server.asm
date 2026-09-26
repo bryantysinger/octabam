@@ -103,7 +103,7 @@
 ;              and pointer in core-private y:$09f4..$09f6)
 ;   p1 REV  -> this host's own dry send into the reverb (written to the
 ;              REV accumulator, flagged at y:$981); slot 0 until 26 Sep 2026
-;   p2 SIZE, p3 SHMR (linked), p4 SHFT
+;   p2 SIZE, p3 SHMR (linked), p4 SHFT (6 intervals, -12..+24)
 ;   p5 WET  -> the reverb's level: the host prints wet*WET under its dry
 ;   page 2: MODE (slot 6, $c's KNOB field), TONE (slot 7, $c's companion:
 ;   LP and HP on one knob, the HI/LO blocks), DIFF (slot 8, $d's KNOB
@@ -1001,36 +1001,46 @@ mdcpy:
         asl     #$1,a,a
         move    a,x:(r7+$28)            ; its full range inside each character
 
-; ---- SHFT: shimmer interval select, page-1 slot 4 (linked to SHMR) --------
+; ---- SHFT: shimmer interval select, page-1 slot 4 ------------------------
 ; The width is pinned at 0.75 at the output stage. SHFT selects the shimmer
 ; READ-PHASE STEP, in 11.12 fixed-point words per sample (the write is
-; decimated 2:1, so step/0.5 is the pitch ratio):
-;   0 -> $1000  1.0  w/s  ratio 2.0   +12
-;   1 -> $1800  1.5  w/s  ratio 3.0   +19  (octave + fifth)
-;   2 -> $0c00  0.75 w/s  ratio 1.5   +7   (bare fifth)
-;   3 -> $0400  0.25 w/s  ratio 0.5   -12  (sub-octave)
-; Any wild index falls through to -12. The step lands in $2c and the shimmer
-; block integrates it into the read phase at y:$0905 (core-private, outside
-; the delay's words, so a DEV build with both effects on one core cannot
-; collide).
+; decimated 2:1, so step/0.5 is the pitch ratio), low to high:
+;   0 -> $0400  ratio 0.5    -12  (sub-octave)
+;   1 -> $0aab  ratio 4/3    +5   (fourth)
+;   2 -> $0c00  ratio 3/2    +7   (fifth)
+;   3 -> $1000  ratio 2      +12  (the default)
+;   4 -> $1800  ratio 3      +19  (octave + fifth)
+;   5 -> $2000  ratio 4      +24  (two octaves)
+; An index past the table falls to -12. The step lands in $2c and the
+; shimmer block integrates it into the read phase at y:$0905 (core-private,
+; outside the delay's words, so a DEV build with both effects on one core
+; cannot collide). Every `move #imm,b` below leaves the flags alone, so each
+; beq tests the sub before it.
         move    x:(r6+$4),a             ; SHFT: page-1 slot 4
-        and     #>$7f0000,a             ; (linked to SHMR on its left)
+        and     #>$7f0000,a
         asr     #$10,a,a
         move    a1,x0
         move    x0,a                    ; SHFT index, A2-clean
-        move    #>$1000,b               ; +12
+        move    #>$400,b                ; -12
         tst     a
         beq     shfst
         move    #>1,x0
         sub     x0,a
-        move    #>$1800,b               ; +19  (the move leaves Z alone)
+        move    #>$aab,b                ; +5
         beq     shfst
-        sub     x0,a                    ; x0 still holds 1 -- the b moves do
-                                        ; not touch it (2 words saved: what
-                                        ; unblocked verify_burn's plain fit)
+        sub     x0,a
         move    #>$c00,b                ; +7
         beq     shfst
-        move    #>$400,b                ; -12, and the wild-index floor
+        sub     x0,a
+        move    #>$1000,b               ; +12
+        beq     shfst
+        sub     x0,a
+        move    #>$1800,b               ; +19
+        beq     shfst
+        sub     x0,a
+        move    #>$2000,b               ; +24
+        beq     shfst
+        move    #>$400,b                ; past the table: -12
 shfst:
         move    b,x:(r7+$2c)            ; read-phase step (WIDTH's old slot)
 
