@@ -89,6 +89,8 @@
 .set PEEK_REQ,       0x57           | vendor GET: read a peripheral register
 .set POKE_LO,        0x58           | vendor OUT: write the low half of an out_poketab entry
 .set POKE_HI,        0x59           | vendor OUT: the high half
+.set POKE32,         0x5a           | vendor OUT: one 32-bit store, high half from 0x5b
+.set POKE_STAGE,     0x5b           | vendor OUT: stage the high half for 0x5a
 .set NPOKE,          18
 .set NCOUNT,         28             | longs in out_counters
 .set EP0_STATUS_IN,  0x4001d524     | zero-length EP0 IN status (ACK)
@@ -228,10 +230,25 @@ out_ctrl_shim:
     | 0x58 / 0x59 poke (image 98): wIndex = an entry of out_poketab (the
     | only registers this will write), wValue = the new low (0x58) or high
     | (0x59) half; the other half is kept. No data stage: ACK and done.
+    | 0x5b / 0x5a (build 14): 0x5b stages wValue as a high half and writes
+    | nothing; 0x5a then writes (staged << 16) | wValue in ONE 32-bit store.
+    | For the XBS priority registers, which bus-error on any value giving two
+    | masters one level -- every pair of half-writes passes through one.
     mvzb    SETUP_BREQ,%d1
-    cmpil   #POKE_LO,%d1
+    cmpil   #POKE_STAGE,%d1
+    bnes    0f
+    mvzb    SETUP_WVALH,%d3
+    lsll    #8,%d3
+    mvzb    SETUP_ALT,%d0
+    orl     %d0,%d3
+    movel   %d3,out_stage
+    jsr     EP0_STATUS_IN
+    jmp     SETIFACE_DONE
+0:  cmpil   #POKE_LO,%d1
     beqs    1f
     cmpil   #POKE_HI,%d1
+    beqs    1f
+    cmpil   #POKE32,%d1
     bne     .Lc_stall
 1:  mvzb    SETUP_WIDXH,%d0
     tstl    %d0
@@ -246,7 +263,14 @@ out_ctrl_shim:
     lsll    #8,%d3
     mvzb    SETUP_ALT,%d0
     orl     %d0,%d3                 | the 16-bit value
-    movel   %a0@,%d0
+    cmpil   #POKE32,%d1
+    bnes    4f
+    movel   out_stage,%d0
+    swap    %d0
+    clrw    %d0
+    orl     %d3,%d0                 | staged high : this low
+    bras    3f
+4:  movel   %a0@,%d0
     cmpil   #POKE_HI,%d1
     beqs    2f
     andil   #0xffff0000,%d0
@@ -807,6 +831,7 @@ out_good_nz:   .long 0              | good packets with non-zero data (build 11)
 out_bad_nz:    .long 0              | bad packets with non-zero data
 out_bad_nzw:   .long 0              | non-zero longs/bytes summed over those
 out_last_nzw:  .long 0              | non-zero longs/bytes in the last such packet
+out_stage:     .long 0              | 0x5b's staged high half (not a counter)
 
 | The registers 0x58/0x59 may write (image 98), by wIndex:
 out_poketab:

@@ -8,6 +8,8 @@ modules/usbaudio-out/usbaudio_out.s out_ctrl_shim).
   tools/hw/usb_reg.py poke USBMODE 0x1e    # a register from the allowlist below
   tools/hw/usb_reg.py sdis on|off          # USBMODE.SDIS (stream disable), the first test
   tools/hw/usb_reg.py poke BCR 0x3ff       # SCM BCR: let the USB controller burst (reset 0 = single beats)
+  tools/hw/usb_reg.py usbprio on|off       # USB first on the SDRAM + SRAM crossbar ports, fixed priority (build 14)
+  tools/hw/usb_reg.py poke32 PRS2 0x...    # one 32-bit store; PRS values are checked (a duplicate level bus-errors)
 
 0x57 (GET) reads the long at wIndex<<16 | wValue; the device refuses
 anything outside 0xfc000000..0xfcffffff. An address with no register
@@ -52,6 +54,33 @@ def peek(dev, addr):
     return struct.unpack(">I", raw)[0]
 
 
+def prs_ok(v):
+    """An XBS_PRSn value the chip will take (MCF54455RM 15.4.1): reserved bits
+    clear, each available master (M0-M3, M5-M7) 0..6, no two alike. Any other
+    write is a bus error -- an access error on the ColdFire, a crash."""
+    if v & 0x88880888 or (v >> 16) & 0xf:          # reserved bits, and M4's field
+        return False
+    levels = [(v >> (4 * m)) & 0xf for m in (0, 1, 2, 3, 5, 6, 7)]
+    return all(x <= 6 for x in levels) and len(set(levels)) == 7
+
+
+def poke32(dev, name, value):
+    """One 32-bit store (0x5b stages the high half, 0x5a writes): build 14 on."""
+    idx, _ = POKE[name]
+    if name.startswith("PRS") and not prs_ok(value):
+        sys.exit(f"refusing {name} = {value:#010x}: two masters on one level (or a reserved field) bus-errors the unit")
+    dev.ctrl_transfer(0x40, 0x5b, value >> 16, idx, None, timeout=1000)
+    dev.ctrl_transfer(0x40, 0x5a, value & 0xffff, idx, None, timeout=1000)
+
+
+# USB OTG (master 6) first on the SDRAM (slave 2) and SRAM backdoor (slave 4)
+# ports, the rest in their stock order below it; fixed arbitration, parked on
+# the last master as stock. Stock: PRS 0x65403210 (USB 6th of 7), CRS 0x110
+# (round robin). MCF54455RM tables 15-3/15-4.
+PRIO_ON = {"PRS2": 0x60504321, "PRS4": 0x60504321, "CRS2": 0x00000010, "CRS4": 0x00000010}
+PRIO_OFF = {"CRS2": 0x00000110, "CRS4": 0x00000110, "PRS2": 0x65403210, "PRS4": 0x65403210}
+
+
 def poke(dev, name, value):
     idx, _ = POKE[name]
     if value >> 16:
@@ -66,6 +95,8 @@ def main():
     p = sub.add_parser("peek"); p.add_argument("addr", type=lambda v: int(v, 0))
     p = sub.add_parser("poke"); p.add_argument("name", choices=sorted(POKE)); p.add_argument("value", type=lambda v: int(v, 0))
     p = sub.add_parser("sdis"); p.add_argument("state", choices=("on", "off"))
+    p = sub.add_parser("poke32"); p.add_argument("name", choices=sorted(POKE)); p.add_argument("value", type=lambda v: int(v, 0))
+    p = sub.add_parser("usbprio"); p.add_argument("state", choices=("on", "off"))
     a = ap.parse_args()
     dev = device()
     try:
@@ -78,6 +109,16 @@ def main():
             before = peek(dev, POKE[a.name][1])
             poke(dev, a.name, a.value)
             print(f"{a.name}: {before:#010x} -> {peek(dev, POKE[a.name][1]):#010x}")
+        elif a.cmd == "poke32":
+            poke32(dev, a.name, a.value)
+            print(f"{a.name} = {peek(dev, POKE[a.name][1]):#010x}")
+        elif a.cmd == "usbprio":
+            # on: priorities first (inert under round robin), then fixed
+            # arbitration; off: round robin first, then the stock priorities
+            for n, v in (PRIO_ON if a.state == "on" else PRIO_OFF).items():
+                poke32(dev, n, v)
+            for n in ("PRS2", "CRS2", "PRS4", "CRS4"):
+                print(f"{n:5s} = {peek(dev, POKE[n][1]):#010x}")
         elif a.cmd == "sdis":
             before = peek(dev, POKE["USBMODE"][1])
             new = (before | 0x10) if a.state == "on" else (before & ~0x10)
