@@ -620,6 +620,21 @@ too. Found by a peer session. Scratch is `tempfile.mkdtemp` per process now
 is a shared-scratch race before it is anything else; and a `make check`
 result taken while another build was running is not a result.
 
+**A STOCK ROUTINE OCTAKIT WRAPS CHECKS ITS CALLER, AND A MODULE THAT
+CALLS IT BARE HALTS THE UNIT.** Her recipe repoints the three stock calls
+to the page-1 writer `0x40054cd8` at her wrapper and rewrites the writer's
+dirty store to check a token long 12 bytes above the arguments; the wrapper
+accepts only the three stock return addresses. TEMPO BUS and MODE DEFAULTS
+called the writer bare, so `bottleservice` (the rig + USB + Octakit) halted
+under the port at frame 40 of `verify_set` on the first CC 68 (26 Sep 2026;
+never flashed). Both push the token now (`P1TOKEN`, read back from her
+`abi.inc` by `modules/octakit/manifest.py`), and the Kit save / reload /
+copy paths were measured intact after it (`modules/octakit/README.md`).
+Before calling a stock routine from a module in a remix that carries a
+`Runtime`, diff the routine and its callers against stock in the built
+image (`tools/build/where.py`, or the recipe's writes): the same family as
+KITS RELOAD's return-address check, found the same way.
+
 **The report is API, and it prints paths.** Moving a tool changed the build
 report (the hints name `tools/harness/send_probe.py`), which refhash
 correctly flagged with every artifact identical. Re-save only after proving

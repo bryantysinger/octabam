@@ -191,7 +191,7 @@ handful of things the panel uses of `emu_rtos.Rtos` (`run(ms=)`,
 **The port** (`tools/emu/ot_emu`, `docs/firmware/COLDFIRE_PORT.md`) runs as
 a child process speaking a line protocol over pipes (the `PortProc`
 docstring in `panel_server.py` is the contract; the port's side was built
-against the same text): `run <ms>`, `key <row> <mask>`, `knob <row>
+against the same text): `run <ms>`, `key <row> <mask>`, `midi <hex>...`, `knob <row>
 <delta>`, `tx`, `peek`/`poke`, `frame on|off`, `status`, `quit`, one line
 back per command. The child boots and loads the project itself
 (`--card --mount --set --project`, the card image being `stage_project`'s
@@ -271,6 +271,7 @@ completed entry is a good PR — pure discovery, no firmware bytes.
 | `GET /leds` | parsed LED bitmap + per-id values |
 | `GET /run?ms=1000` | advance emulated time (the sequencer runs here) |
 | `GET /peek?addr=0x460d175c&len=4` | read memory (either backend), hex |
+| `GET /midi?hex=b04464` | MIDI bytes into the unit's MIDI IN (UART0), the port's `midi` command; `hex` is the raw message |
 | `GET /port` | the port child: pid, argv, its own `status` line, report tail, `restarts` |
 | `GET /project`, `/map`, `/stack`, `/poke_trig?step=1` | the load report, `key_map.json`, thread stacks, a trig on track 1 |
 
