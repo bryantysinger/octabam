@@ -57,7 +57,7 @@
 .set EP0_SEND_TAIL,  0x4001de5c     | jsr usb_ep0_send(len, buf); addq; done
 .set EP0CTRL,        0xfc0b01c0     | ENDPTCTRL0
 .set VENDOR_REQ,     0x56           | usbaudio answers 0x55 with its own
-.set NCOUNT,         13             | longs in out_counters
+.set NCOUNT,         18             | longs in out_counters
 .set EP0_STATUS_IN,  0x4001d524     | zero-length EP0 IN status (ACK)
 .set SETIFACE_DONE,  0x4001de74     | control-request-done
 .set SETIFACE_REJOIN,0x4001dd10     | stock SET_INTERFACE after the displaced oril
@@ -372,6 +372,10 @@ out_retire:
     andil   #0x68,%d0               | halted, buffer error, transaction error
     beqs    1f
     addql   #1,out_bad
+    addql   #1,out_err
+    orl     %d0,out_errmask         | which of the three bits have been seen
+    movel   %d3,out_lasttok         | diagnostic: the whole token of the last bad one
+    movel   %d2,out_lastslot
 1:  movel   %d3,%d0
     swap    %d0
     andil   #0x7fff,%d0             | bytes left
@@ -382,6 +386,9 @@ out_retire:
     andil   #FRAME_B-1,%d0
     beqs    2f
     addql   #1,out_bad              | not whole frames
+    addql   #1,out_partial
+    movel   %d3,out_lasttok
+    movel   %d2,out_lastslot
 2:  lsrl    #4,%d4                  | frames
     movel   %d4,out_lastn
     addql   #1,out_pkts
@@ -596,6 +603,11 @@ out_frames:    .long 0              | frames (first state-7 visits)
 out_seconds:   .long 0              | second state-7 visits (our DMA's completion)
 out_minfill:   .long 0              | lowest fill while consuming, since up
 out_maxfill:   .long 0              | highest fill while consuming, since up
+out_err:       .long 0              | completions with an error bit (diagnostic, image 95)
+out_partial:   .long 0              | completions that were not whole frames
+out_errmask:   .long 0              | OR of the error bits seen: 0x40 halted, 0x20 buffer, 0x08 transaction
+out_lasttok:   .long 0              | the last bad completion's dTD token (bytes left in 30:16)
+out_lastslot:  .long 0              | and its dTD slot (0..3)
 qh_out:        .long 0
 out_ring:      .space OUT_FRAMES*FRAME_B
 out_alt:       .byte 0              | the host's request (USB interrupt)

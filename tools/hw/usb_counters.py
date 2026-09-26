@@ -29,6 +29,10 @@ since the stream came up (the cushion OUT_TARGET has to cover);
 underruns = blocks the ring could not supply; overruns = ring laps;
 reprimes = EP3 OUT self-heal primes; bad = odd-length or error packets;
 frames/seconds = the two state-7 visits (equal while running).
+bad = err + partial: err = completions with a dTD error bit, errmask =
+which bits (0x40 halted, 0x20 data buffer, 0x08 transaction), partial =
+lengths that were not whole frames; lasttok/lastslot = the last bad
+completion's token (bytes left in bits 30:16) and dTD slot.
 """
 import argparse
 import struct
@@ -36,7 +40,8 @@ import sys
 import time
 
 OUT_NAMES = ("produced", "consumed", "pkts", "lastn", "lastfill", "underruns", "overruns",
-             "reprimes", "bad", "frames", "seconds", "minfill", "maxfill")
+             "reprimes", "bad", "frames", "seconds", "minfill", "maxfill",
+             "err", "partial", "errmask", "lasttok", "lastslot")
 NAMES = ("consumed", "acc", "overruns", "underruns", "lastn", "lastfill", "lastbank",
          "bankdup", "lastsamp", "srcjump", "reprimes", "produced")
 
@@ -75,11 +80,12 @@ def main():
         last = read(dev, a.out)
     except Exception as e:  # noqa: BLE001
         sys.exit(f"the request failed: {e} (a STALL means the image carries no USB AUDIO{' OUT' if a.out else ''})")
-    print(" ".join(f"{k}={v}" for k, v in last.items()), flush=True)
+    print(" ".join(f"{k}={v:#x}" if k in ("errmask", "lasttok") else f"{k}={v}" for k, v in last.items()), flush=True)
     while a.watch > 0:
         time.sleep(a.watch)
         now = read(dev, a.out)
-        print(" ".join(f"{k}={now[k]}{'(+%d)' % (now[k] - last[k]) if now[k] != last[k] else ''}" for k in now), flush=True)
+        print(" ".join(f"{k}={now[k]:#x}" if k in ("errmask", "lasttok") else
+                       f"{k}={now[k]}{'(+%d)' % (now[k] - last[k]) if now[k] != last[k] else ''}" for k in now), flush=True)
         last = now
 
 
