@@ -18,7 +18,7 @@
 ;
 ; ---- arithmetic notes -----------------------------------------------------
 ; * The one mpy is `mpy x0,y1` -- one of the two operand orders dsp_asm is
-;   known to encode SIGNED (CLAUDE.md). The SAMPLE sits in x0 and goes
+;   known to encode SIGNED (AGENTS.md). The SAMPLE sits in x0 and goes
 ;   negative every other half-cycle; a silent mpysu here is precisely the
 ;   stock AMF bug class, and the render's negative-sample check is aimed
 ;   at it. Audit by disassembly, not by reading this source.

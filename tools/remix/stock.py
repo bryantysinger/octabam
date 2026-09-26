@@ -422,7 +422,7 @@ BY_KEY = {m.key: m for m in MODULES}
 # ---- the stock curve bank at X:0x4840, and who reads it --------------------
 # A 4,096-word data record (32 curves x 128, docs/firmware/TABLES.md) at the
 # SAME X address in BOTH payloads -- the exception to the per-payload table
-# shift CLAUDE.md warns about (measured, dsp_modmap: A at image
+# shift AGENTS.md warns about (measured, dsp_modmap: A at image
 # 0x400e7181, B at 0x400fa786, word for word identical) -- and immediately
 # above the core's boot clear (P:0x300a6, `do #$7c0` from X:0x4080 ends at
 # 0x4840 exactly), so nothing zeroes it and its image bytes are what the DSP

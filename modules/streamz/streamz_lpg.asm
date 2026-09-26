@@ -59,7 +59,7 @@ proc:
 ; ⚠️ NOT `asl #$1` here: 127<<16 doubled is 0xfe0000, which exceeds the
 ; 24-bit signed range, so the STORE's limiter would clamp it to 1.0 and
 ; every SENS above 64 would behave identically. Legal, silent, and half the
-; knob dead -- the store-limiter family from CLAUDE.md, in its quietest form.
+; knob dead -- the store-limiter family from AGENTS.md, in its quietest form.
         move    x:(r6+$0),x0
         move    x0,x:(r7+$21)
 ; fall: a release COEFFICIENT is hyperbolic in decay time (T60 ~ 6.9/(1-r)),

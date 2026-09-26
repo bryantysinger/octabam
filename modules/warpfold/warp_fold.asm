@@ -40,7 +40,7 @@
 ;
 ; ---- arithmetic notes (the traps this file is written around) -------------
 ; * EVERY mpy is `mpy x0,y1` or `mpy y0,x0` -- the only two operand orders
-;   dsp_asm is known to encode SIGNED (CLAUDE.md: anything it does not know
+;   dsp_asm is known to encode SIGNED (AGENTS.md: anything it does not know
 ;   becomes mpysu, silently, and both operands here go negative). Audited by
 ;   disassembly, not by reading this source.
 ; * The fold is the wrap-and-reflect identity fold(v) = 2*|wrap((v+1)/2)|-1,

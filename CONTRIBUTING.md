@@ -131,7 +131,7 @@ is seen.
 
 ## Etiquette
 
-- Read the traps in `CLAUDE.md` before trusting an assembler, an
+- Read the traps in `AGENTS.md` before trusting an assembler, an
   emulator, or a null result.
 - Collisions are refused by name; `make modules` prints the matrix. If
   your module cannot share an image with another, say so in its README

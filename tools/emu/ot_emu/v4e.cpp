@@ -23,7 +23,7 @@
 // ⚠️ EVERY ENCODING HERE IS VERIFIED AGAINST `m68k-elf-objdump -m m68k:cfv4e`
 // ON THE REAL IMAGE, never against a reading of the manual alone. This
 // project has been bitten twice by a plausible encoding that assembled and did
-// the wrong thing (`CLAUDE.md`: the assembler's `mpysu` family, `tfr a,b` as
+// the wrong thing (`AGENTS.md`: the assembler's `mpysu` family, `tfr a,b` as
 // `rnd b`), and the emulator half cost a week this month (three defects in
 // Unicorn's EMAC, each producing a confident wrong finding). The boot's own
 // first two are the worked example:

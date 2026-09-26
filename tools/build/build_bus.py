@@ -513,7 +513,7 @@ def _dev_hooks(key, src):
 
 _SCRATCH = None
 
-# Disassemble what you assemble (CLAUDE.md): dsp_asm's own listing (-list)
+# Disassemble what you assemble (AGENTS.md): dsp_asm's own listing (-list)
 # against dsp56kDisassemble's decode of the same bytes, mnemonic by mnemonic.
 # Only mnemonics are compared: a branch displacement or a `do` immediate
 # renders differently in a listing and a decoder without any bug. What this
@@ -525,7 +525,7 @@ _LISTLINE = re.compile(r"^([0-9a-f]{6}): (\S+)(?:\s+(.*?))?\s*; "
 
 # `mpy` that dsp_asm encodes as `mpysu` is the one mismatch the shipping
 # code carries on purpose: the second operand is non-negative at every site
-# (CLAUDE.md). Sites per assemble() call, by module label and operands. A
+# (AGENTS.md). Sites per assemble() call, by module label and operands. A
 # build whose count differs from this table stops with the site list: a new
 # site needs its operand audited and this table updated; a vanished site
 # needs the table updated so the count stays exact.
@@ -586,7 +586,7 @@ def _roundtrip(list_out, blob, org, label):
                           for k, v in sorted(mpysu.items()))
         sys.exit(f"mpysu audit{who}: found {found or 'none'}, MPYSU_AUDITED says "
                  f"{audited or 'none'}. Every mpy encoded as mpysu needs its "
-                 f"second operand shown non-negative (CLAUDE.md), then the table "
+                 f"second operand shown non-negative (AGENTS.md), then the table "
                  f"in tools/build/build_bus.py updated:\n{sites or '    (no sites)'}")
 
 

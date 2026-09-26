@@ -367,7 +367,7 @@ def main():
                 # -64..+63 -- A = 0x4003c7a0, B = 0, 0x12a = the signed number
                 # renderer 0x400328e4, read from the stock descriptor at
                 # donor_desc + 0x38. Build-time bytes only until a flash shows
-                # the dial (the descriptor trap family, CLAUDE.md).
+                # the dial (the descriptor trap family, AGENTS.md).
                 check(f1 == 0x4003c7a0 and f2 == 0 and f3 == 0x400328e4,
                       f"{name}: p{i} count {cnt} is a BIPOLAR knob, so it carries "
                       f"SPRING BAL's dial (got 0x{f1:08x}/0x{f2:08x}/0x{f3:08x})")

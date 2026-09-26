@@ -198,7 +198,7 @@ modmap: ## DSP module load map — which bytes land at which P address
 .PHONY: verify
 verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it fits; it fits since the one-word displaced move, 14 Sep 2026)
 	@# FIRST, before the selftest rebuilds every remix over out/mainos_bus.bin
-	@# (the boot-verifier trap, CLAUDE.md): a module started from a garbage
+	@# (the boot-verifier trap, AGENTS.md): a module started from a garbage
 	@# instance block must be silent on silence -- the unit's RAM is not zeroed.
 	python3 tools/verify/verify_dirtystate.py $(REMIX)
 	$(PY) tools/verify/verify_tapeecho_cpu.py $(REMIX)

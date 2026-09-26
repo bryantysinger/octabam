@@ -43,7 +43,7 @@ make emu-setup                       # .venv: unicorn, textual, sounddevice (Tie
 ```
 
 In a worktree, run `make emu-cf` there: a symlinked `out/emu` builds the
-main checkout's sources (`CLAUDE.md`). After a change under
+main checkout's sources (`AGENTS.md`). After a change under
 `tools/patches/dsp56300.patch`: `make dsp-repatch`, then `make emu-cf`.
 
 The milestone records are `docs/firmware/COLDFIRE_PORT.md` (O14i-O24, Tim
