@@ -66,6 +66,7 @@ namespace
 	//   run <ms>          -> ok sample=<double> frames=<u64> stop=<word>
 	//   key <row> <mask>  -> ok            two bytes into UART A's receive queue
 	//   knob <row> <delta>-> ok            row, then delta & 0xff (signed detent delta)
+	//   midi <hex>...     -> ok            bytes into UART0's receive FIFO (MIDI IN), as --live's `midi`
 	//   tx                -> tx <hex>      UART A's transmit bytes since the last tx
 	//   peek <addr> <len> -> peek <hex>    len <= 4096; unmapped -> err
 	//   poke <addr> <hex> -> ok
@@ -725,6 +726,28 @@ namespace
 				}
 				_rtos.uartA().rxPush(static_cast<uint8_t>(row));
 				_rtos.uartA().rxPush(static_cast<uint8_t>(delta & 0xff));
+				reply("ok");
+				continue;
+			}
+			if(cmd == "midi")
+			{
+				// MIDI bytes into UART0's receive FIFO, as --midi and --live's
+				// `midi` line deliver them: `midi b0 44 4d` (hex bytes)
+				std::vector<uint8_t> bytes;
+				bool bad = w.size() < 2;
+				for(size_t i = 1; i < w.size() && !bad; ++i)
+				{
+					char* end = nullptr;
+					const unsigned long v = std::strtoul(w[i].c_str(), &end, 16);
+					bad = *end != 0 || v > 0xff;
+					bytes.push_back(static_cast<uint8_t>(v));
+				}
+				if(bad)
+				{
+					reply("err usage: midi <hex byte>...");
+					continue;
+				}
+				_rtos.midiIn(bytes);
 				reply("ok");
 				continue;
 			}

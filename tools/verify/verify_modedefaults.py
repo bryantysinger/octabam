@@ -53,7 +53,10 @@ def expect_view(mod, mode):
 
 def run_port(image, card, set_name, name, track, call, dump, log):
     cmd = [str(EMU), "--image", str(image), "--card", str(card), "--set", set_name, "--project", name,
-           "--mount", "--load-ms", "20000", "--poke-early", f"0x80000000={track}", "--call", call,
+           "--mount", "--load-ms", "20000",
+           # both current-track bytes, as a track key moves them: Octakit's editor
+           # wrapper halts when the engine's (0x80000000) and the UI's (0x100b14cc) differ
+           "--poke-early", f"0x80000000={track};0x100b14cc={track}", "--call", call,
            "--mem-dump", f"{LANES:#x},576={dump}"]
     with open(log, "w") as f:
         f.write(" ".join(cmd) + "\n"); f.flush()

@@ -7,6 +7,17 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- `bottleservice` (26 Sep 2026): the rig + USB MIDI + USB AUDIO + Octakit
+  (SCENES KITS bridged). TEMPO BUS and MODE DEFAULTS push Octakit's token
+  above the page-1 writer's arguments: her rewrite of the writer's dirty
+  store halted the unit on a bare call (found under the port, never
+  flashed). Kit save, reload and copy measured intact after it. Tier-0
+  maps all 128 MB of SDRAM (her runtime sat in a gap); the port's
+  `--interactive` gains `midi <hex>...` and the panel `/midi`.
+  `verify_modedefaults` pokes both current-track bytes (`0x80000000`,
+  `0x100b14cc`) before its editor call: with one moved, Octakit's editor
+  wrapper halts on the disagreement (the FX1 case, T2; T1 was 0 in both).
+
 - `usb-audio` (26 Sep 2026) follows `bamsep26` again: TEMPO BUS added and
   the host pages draw DEL/REV (`host_slots`) where it had all twelve knobs.
 

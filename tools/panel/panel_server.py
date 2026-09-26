@@ -3792,6 +3792,15 @@ class Handler(BaseHTTPRequestHandler):
             pos = args.get("pos")
             ok, res = p.xfader(None if pos is None else int(pos))
             self._json({"ok": ok, **res})
+        elif path == "/midi":
+            # MIDI bytes into the unit's MIDI IN (UART0): ?hex=b04464 (port backend)
+            hx = args.get("hex", "")
+            if p.proc is None or not hx or len(hx) % 2:
+                self._json({"ok": False, "result": "needs the port backend and ?hex=<even-length hex>"})
+            else:
+                line = "midi " + " ".join(hx[i:i + 2] for i in range(0, len(hx), 2))
+                ok, res = p.do(lambda rt: rt.proc.command(line, "ok"), timeout=30)
+                self._json({"ok": ok, "result": str(res)})
         elif path == "/tap":
             # n presses of one key inside one action (the double-tap chords:
             # /tap?row=0x22&bit=0&n=2 opens track 1's sample slot list)

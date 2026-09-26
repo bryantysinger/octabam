@@ -43,6 +43,9 @@ changed, the build is byte-identical.
 Her recipe rewrites the apply_part entry 0x40009094 and the scene-parameter
 writer 0x40052ae8; the ledger refuses any other module on those sites. CC
 PAGE 2 shares her MIDI CC dispatch entry through the SCENES KITS bridge.
+The page-1 writer 0x40054cd8 stays at its stock address but its dirty
+store checks her token above the arguments: TEMPO BUS and MODE DEFAULTS
+push it (P1TOKEN below; README "Calling the page-1 writer beside her").
 """
 
 import pathlib
@@ -61,6 +64,18 @@ def _pinned_returns() -> tuple[int, ...]:
     return tuple(sorted(int(m.group(1), 16) for m in
                         re.finditer(r"^\.equ\s+GK_STOCK_\w+_RETURN,(0x[0-9a-f]+)",
                                     _ABI.read_text(), re.M)))
+
+
+# TEMPO BUS and MODE DEFAULTS call the stock page-1 writer with this token
+# pushed above its arguments (P1TOKEN in their sources), which is what lets
+# the call through her write marker. Read from her abi.inc so a change there
+# stops the build instead of halting the unit.
+P1TOKEN = 0x54500000
+_armed = re.search(r"^\.equ\s+GK_TRACK_PARAMETER_TOKEN_ARMED,(0x[0-9a-f]+)", _ABI.read_text(), re.M)
+if _armed is None or int(_armed.group(1), 16) != P1TOKEN:
+    raise SystemExit(f"OCTAKIT: abi.inc's GK_TRACK_PARAMETER_TOKEN_ARMED is "
+                     f"{_armed.group(1) if _armed else 'gone'}, not 0x{P1TOKEN:08x}: "
+                     f"update P1TOKEN in modules/tempo-bus/helpers.s and modules/mode-defaults/modedef.s")
 
 
 MODULE = Module(

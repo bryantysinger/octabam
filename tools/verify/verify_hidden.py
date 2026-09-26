@@ -223,7 +223,9 @@ def main():
     lo_a, hi_a = part + 0x8e000, part + 0x92000
     before = bytes(uc.mem_read(lo_a, hi_a - lo_a))
     try:
-        emu._call(uc, WRITER, (4, 0, 99))
+        # the call our modules make: Octakit's token above the arguments
+        # (modules/octakit/manifest.py P1TOKEN), ignored by stock
+        emu._call(uc, WRITER, (4, 0, 99, 0x54500000))
     except UcError:
         pass
     after = bytes(uc.mem_read(lo_a, hi_a - lo_a))
