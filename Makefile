@@ -173,7 +173,7 @@ reverb: ## Render a wav through BusVerb: make reverb IN=loop.wav [ARGS='-p MIX=8
 
 .PHONY: cycles
 cycles: ## Cycle cost per effect against the measured per-core budget
-	python3 tools/build/cycle_count.py
+	REMIX="$(REMIX)" python3 tools/build/cycle_count.py
 
 .PHONY: benchmark-reverbs
 benchmark-reverbs: ## Stock spring/plate/dark vs Mini Verb: eight instances, all controls, all trigger splits
@@ -317,6 +317,16 @@ check: bus cycles verify ## Everything that can be checked without hardware (the
 	@$(MAKE) --no-print-directory bus >/dev/null
 	@echo
 	@echo "  all runnable checks passed (a [SKIP] line above names what did not run); out/mainos_bus.bin restored to the shipping build"
+
+# Full local evidence; ordinary check remains useful for development.
+# STRESS_SOURCE copies a private project and generates the bamsep26 fixture.
+.PHONY: accept
+accept: ## Strict local acceptance + JSON report (OT_PROJECT or STRESS_SOURCE required)
+	BUILD="$(BUILD)" python3 tools/verify/acceptance.py --remix "$(REMIX)" $(if $(STRESS_SOURCE),--stress-source "$(STRESS_SOURCE)",) $(ACCEPTARGS)
+
+.PHONY: test-acceptance
+test-acceptance: ## Firmware-free tests of acceptance failures, skips and report handling
+	python3 -m unittest discover -s tools/verify/tests -p 'test_*.py' -v
 
 .PHONY: modules
 modules: ## List the module index and the available remixes

@@ -106,6 +106,13 @@ the oracles and — for any remix with DRAM code — boots the image under the
 ColdFire port and reads each window back against the linked image. Never
 claim something works because it assembled.
 
+For acceptance evidence, use `make accept REMIX=<name> OT_PROJECT=<dir>`.
+Unlike the development check, this refuses missing evidence and writes a
+versioned JSON report. The initial pressure profile covers the bamsep26
+DSP selection; unsupported DSP selections are blocked, never silently
+approved. See [the acceptance contract](docs/remixer/ACCEPTANCE.md) for
+generated fixtures, report fields, coverage and hardware limitations.
+
 **If you changed the build rather than a module, prove it changed
 nothing**: `scripts/refhash.sh save` on a tree you trust, then
 `scripts/refhash.sh check` — 26 configurations, artifacts *and* build

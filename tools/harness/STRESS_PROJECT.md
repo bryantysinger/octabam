@@ -1,6 +1,6 @@
 # Stress project for bamsep26
 
-Generate a local Octatrack project with eight simultaneous FLEX tracks, three active LFOs per track, 15 locked parameter slots per step, and the rig's costly DSP paths:
+Generate a local Octatrack project with eight simultaneous FLEX tracks, three active LFOs per track, 15 locked parameter slots per step (14 on T2 and T5), and the rig's costly DSP paths:
 
 ```sh
 python3 tools/harness/stress_project.py
@@ -18,15 +18,15 @@ For a local playback check, create `out/stress-run`, stage the card there, and r
 mkdir -p out/stress-run
 python3 tools/emu/ot_emu/stage_card.py out/stress-project OCTABAM STRESS \
   --tree out/stress-run/card-tree --out out/stress-run/card.img \
-  --audio out/stress-project/AUDIO/STRESS_LOOP.wav:AUDIO/STRESS_LOOP.wav
+  --audio out/stress-project/AUDIO/STRESS_LOOP.wav:STRESS/AUDIO/STRESS_LOOP.wav
 out/emu/ot_emu --image out/mainos_bus.bin --card out/stress-run/card.img \
   --set OCTABAM --project STRESS --sequencer --internal-clock \
   --frames 2500 --load-ms 20000 --dsp --main-level 64 \
   --audio-out out/stress-run/smoke
 ```
 
-Check for `run ended REACHED` and nonzero audio. On hardware, copy the generated `.work` and `.strd` files into a project directory under your set, and copy the generated `AUDIO` folder to the set root so `../AUDIO/STRESS_LOOP.wav` resolves. Select A01, then switch through A02–A04. Lower monitoring level before starting: eight tracks and the bus effects may sum loudly. Watch for a freeze, dropout, incorrect Part/effect mode, or a parameter that stops following locks or LFOs. Repeat after each feature change and compare with the same image and project. The emulator run checks loading and short playback; a long hardware soak and manual pattern switching remain separate checks.
+Check for `run ended REACHED` and nonzero audio. On hardware, copy the generated `.work` and `.strd` files into a project directory under your set, and keep the generated `AUDIO` folder inside that project so `AUDIO/STRESS_LOOP.wav` resolves. Select A01, then switch through A02–A04. Lower monitoring level before starting: eight tracks and the bus effects may sum loudly. Watch for a freeze, dropout, incorrect Part/effect mode, or a parameter that stops following locks or LFOs. Repeat after each feature change and compare with the same image and project. The emulator run checks loading and short playback; a long hardware soak and manual pattern switching remain separate checks.
 
-
-
-
+FX2 slot 0 (DEL) on T2 and T5 has no locks or LFO, so `verify_set`'s CC 40
+checks read back the value they sent. Those tracks' third LFO targets FX1
+instead; all 24 LFOs remain active.
