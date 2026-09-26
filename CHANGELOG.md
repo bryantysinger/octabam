@@ -7,6 +7,9 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- `usb-audio` (26 Sep 2026) follows `bamsep26` again: TEMPO BUS added and
+  the host pages draw DEL/REV (`host_slots`) where it had all twelve knobs.
+
 - BusVerb SHFT (26 Sep 2026): six shimmer intervals, low to high: -12, +5,
   +7, +12, +19, +24 (pure ratios 1/2, 4/3, 3/2, 2, 3, 4), default +12. The
   stored index changed meaning (was +12 +19 +7 -12): run `ot_project.py
