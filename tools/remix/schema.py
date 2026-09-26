@@ -328,6 +328,11 @@ class CavePatch:
     # included. The installer is generic; what a given cave actually DOES is
     # not, and the build report is the only place a human sees it.
     report_note: str = ""
+    # 32-bit words in the cave equal to the stock audio-arena base
+    # (0x40a955e0, tools/remix/arena.py). The build checks the count and,
+    # when a remix moves the base (any DRAM runtime, octamax), rewrites them
+    # to the moved base like the firmware's own base sites.
+    pool_base_literals: int = 0
     # ---- SOURCE IS THE TRUTH ---------------------------------
     # With the m68k-elf toolchain now a standard dependency (`make setup`),
     # a cave with a `source` is assembled and LINKED by the build at the

@@ -1049,6 +1049,7 @@ def main():
         elif OVERFLOW_RUN <= _at < OVERFLOW_RUN_END:
             _ovf_top = max(_ovf_top, (_at + len(_b) + 3) & ~3)
 
+    _pool_caves = []          # (label, addr, length, declared base literals)
     for _c, _b in _plan:
         _floating = _c.cave_addr is None
         if _floating:
@@ -1154,6 +1155,8 @@ def main():
             sys.exit(f"{_c.label}: its source is the only truth and there is no "
                      f"m68k-elf toolchain -- run `make setup`")
         img[_c.cave_addr - BASE:_c.cave_addr - BASE + len(_b)] = _b
+        if _c.pool_base_literals:
+            _pool_caves.append((_c.label, _c.cave_addr, len(_b), _c.pool_base_literals))
         for _pa, _expect, _write in _pokes:
             _got = bytes(img[_pa - BASE:_pa - BASE + len(_expect)])
             if _got != _expect:
@@ -1280,6 +1283,22 @@ def main():
         print(f"  arena: base 0x{_abase:08x}, {_acount:,} pages "
               f"({_acount * arena.PAGE // 1048576} MB) left for samples and recorders "
               f"(stock {arena.PAGES:,}); {len(arena.pokes(_reservations))} words rewritten")
+    # A cave that compares against the arena base (RECORDER HOLD: the fetch
+    # returns the base for an unmapped page) carries the stock literal; it
+    # follows the base like the firmware's own sites. The declared count is
+    # checked in every build, moved or not.
+    _pbase = _abase if _reservations else arena.BASE
+    for _lbl, _ca, _cl, _want in _pool_caves:
+        _stock = arena.BASE.to_bytes(4, "big")
+        _hits = [_o for _o in range(0, _cl - 3, 2)
+                 if bytes(img[_ca - BASE + _o:_ca - BASE + _o + 4]) == _stock]
+        if len(_hits) != _want:
+            sys.exit(f"{_lbl}: {len(_hits)} arena-base literal(s) in the cave, "
+                     f"the manifest declares {_want}; refusing")
+        if _pbase != arena.BASE:
+            for _o in _hits:
+                img[_ca - BASE + _o:_ca - BASE + _o + 4] = _pbase.to_bytes(4, "big")
+            print(f"  arena: {_lbl}: {_want} arena-base literal(s) -> 0x{_pbase:08x}")
 
     if _dram or _payloads:
         from remix import platform_build
