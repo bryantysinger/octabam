@@ -27,9 +27,14 @@
 |               and starts one more transfer; its completion is the second
 |               visit, which runs stock state 7 (the frame IRQ unmask).
 |
-| Memory: DMA-visible structures (dTDs, packet buffers, the host-port
-| buffer) are touched only through the uncached alias (+0x08000000), the
-| rule usbaudio.s arrived at on hardware. The ring and the state are CPU-only.
+| Memory: the dTDs and packet buffers are in on-chip SRAM (SRAM_* below,
+| image 99): in SDRAM the controller lost the tail of about 1 packet in
+| 2,000 idle and 1 in 200 under a busy project (image 97/98 on the unit,
+| 26 Sep 2026; transaction error, 2-12 bytes short, rate rising with the
+| firmware's load and with smaller RX bursts). The host-port buffer stays
+| in SDRAM and is touched only through the uncached alias (+0x08000000),
+| the rule usbaudio.s arrived at on hardware. The ring and the state are
+| CPU-only.
 |
 | Latency: the ring runs at OUT_TARGET frames of cushion. With implicit
 | feedback the host's OUT rate follows EP3 IN's packet sizes, and those
@@ -46,6 +51,16 @@
 | SPDX-License-Identifier: MIT
 
 .set UNCACHED,       0x08000000
+| On-chip SRAM (RAMBAR1 0x80000235: 32 KB at 0x80000000, the backdoor
+| (SPV) on, so the USB controller reaches it off the SDRAM bus). Image 99.
+| The top 1 KB: the stock image's highest SRAM use is the 768-byte buffer
+| at 0x80007574 (ends 0x80007874; 0x40098890), no module touches anything
+| above 0x80006907, and under the port nothing above 0x80006924 was read or
+| written (--touch-map, boot + frames + USB streaming, 26 Sep 2026). SRAM is
+| not cached: no alias, and what the CPU writes is what the DMA reads.
+.set SRAM_DTDS,      0x80007c00     | NSLOTO dTDs, 32-byte aligned (128 B)
+.set SRAM_BUFS,      0x80007c80     | NSLOTO packet buffers (768 B)
+.set SRAM_REPLY,     0x80007f80     | EP0 reply for 0x56 / 0x57 (128 B)
 
 | ---- firmware sites (1.40C) ----
 .set SETUP_ALT,      0x46c8ce0a     | SETUP wValue low = alt setting
@@ -174,12 +189,18 @@ out_ctrl_shim:
     bne     .Lc_stall
     moveal  %d0,%a0
     movel   %a0@,%d0
-    movel   %d0,out_peek
-    pea     out_peek
+    movel   %d0,SRAM_REPLY
+    pea     SRAM_REPLY
     moveq   #4,%d3
     bras    .Lc_send
 .Lc_counters:
-    pea     out_counters
+    lea     out_counters,%a0        | snapshot into SRAM: the EP0 DMA reads
+    moveal  #SRAM_REPLY,%a1         | memory, and the counters live in the
+    moveq   #NCOUNT-1,%d0           | data cache (the one-behind reads of 98)
+1:  movel   %a0@+,%a1@+
+    subql   #1,%d0
+    bpls    1b
+    pea     SRAM_REPLY
     moveq   #NCOUNT*4,%d3
 .Lc_send:                           | buffer pushed, d3 = length
     mvzb    SETUP_WLENH,%d1
@@ -345,7 +366,7 @@ out_down:
     movel   ENDPTCTRL3,%d0
     andil   #0xffff0000,%d0         | RX half off, TX half as it was
     movel   %d0,ENDPTCTRL3
-    moveal  #(out_dtds+UNCACHED),%a1
+    moveal  #SRAM_DTDS,%a1
     moveq   #NSLOTO*8-1,%d1
 1:  clrl    %a1@+
     subql   #1,%d1
@@ -389,9 +410,9 @@ out_slot:
     andil   #NSLOTO-1,%d0
     movel   %d0,%d1
     lsll    #5,%d0
-    moveal  #(out_dtds+UNCACHED),%a0
+    moveal  #SRAM_DTDS,%a0
     addal   %d0,%a0
-    moveal  #(out_bufs+UNCACHED),%a3
+    moveal  #SRAM_BUFS,%a3
     lsll    #6,%d1                  | slot * 64
     addal   %d1,%a3
     addal   %d1,%a3
@@ -525,7 +546,7 @@ out_retire:
 | DSP frame after the packet landed: the spacing is what is meaningful).
 | Clobbers d0/d1/d6/a1.
 out_diag:
-    moveal  #(out_dtds+UNCACHED+4),%a1
+    moveal  #(SRAM_DTDS+4),%a1
     moveq   #0,%d6
     moveq   #NSLOTO,%d1
 5:  movel   %a1@,%d0
@@ -730,7 +751,6 @@ out_dry:       .long 0              | enqueues that found the endpoint's list em
 out_late:      .long 0              | retire passes that found 3+ dTDs done
 out_maxpass:   .long 0              | most dTDs done in one pass
 
-out_peek:      .long 0              | 0x57's reply
 | The registers 0x58/0x59 may write (image 98), by wIndex:
 out_poketab:
     .long   0xfc0b01a8              | 0 USBMODE (stock 0x0e; SDIS = 0x10)
@@ -749,6 +769,4 @@ out_ri:        .byte 0              | next dTD slot to retire
 out_busy:      .byte 0              | state 7: our transfer is in flight
 
     .balign 32
-out_dtds:      .space NSLOTO*32
-out_bufs:      .space NSLOTO*OPKT
 out_tx:        .space TX_BYTES

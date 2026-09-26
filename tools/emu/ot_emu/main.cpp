@@ -1085,6 +1085,10 @@ namespace
 	}
 }
 
+static std::vector<uint8_t> g_touch;	// --touch-map
+static uint32_t g_touchBase = 0;
+static std::string g_touchPath;
+
 int main(int _argc, char** _argv)
 {
 	// ⚠️ LINE-BUFFERED, ALWAYS. Redirected to a file, printf is block-buffered,
@@ -1161,6 +1165,7 @@ int main(int _argc, char** _argv)
 	std::string midiFile;		// with --sequencer: MIDI IN bytes onto UART0, one event per line: "<frames after the transport start> <hex byte>..." (e.g. "20 B0 28 7F" = CC 40 to 127 on channel 1) or "pre <hex byte>..." before the transport start ("pre C0 10" = program change 16 while stopped)
 	int mainLevel = -1;			// O9b: post sys command 4 (SET MAIN LEVEL) with this level after the load; -1 = don't (the emulated load never does, and every voice then renders at gain zero)
 	std::string lcd;			// the panel's 1-bpp plane (0x46c7e0ea, 1024 B) plus the popup windows (table + planes) to FILE whenever they have changed, at most once per 2M instructions; tools/emu/lcd_view.py composites and draws it
+	std::string touchMap;		// "addr,len=path": one byte per address, bit 0 = read, bit 1 = written (CPU or a modelled DMA), written at the end -- a census of what a range is used for (26 Sep 2026, the SRAM census)
 	std::string memDump;		// O10.21: "addr,len=path[;...]" -- ColdFire memory ranges, raw bytes, to FILE at the very end (peeks only support one word, pre-sequencer; this is a range, post-run)
 	std::string cardOut;		// the card image as the firmware left it, to FILE at the very end (the load's WRITEs: emu_card.extract_image reads it back)
 	bool mainLevelGiven = false;	// 12 Sep 2026: --interactive defaults it to 64 (the panel wants sound); `--main-level off` keeps the -1. The batch default stays -1.
@@ -1233,6 +1238,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--coverage" && i + 1 < _argc)	coverage = _argv[++i];
 		else if(a == "--main-level" && i + 1 < _argc)	{ const std::string v = _argv[++i]; mainLevel = v == "off" ? -1 : std::atoi(v.c_str()); mainLevelGiven = true; }
 		else if(a == "--mem-dump" && i + 1 < _argc)	memDump = _argv[++i];
+		else if(a == "--touch-map" && i + 1 < _argc)	touchMap = _argv[++i];
 		else if(a == "--lcd" && i + 1 < _argc)		lcd = _argv[++i];
 		else if(a == "--card-out" && i + 1 < _argc)	cardOut = _argv[++i];
 		else if(a == "--poke" && i + 1 < _argc)		pokeAfterLoad = _argv[++i];
@@ -1631,6 +1637,30 @@ int main(int _argc, char** _argv)
 					static_cast<int32_t>(e.tcdField(_ch, 0x18, 4)), e.tcdField(_ch, 0x1c, 2), e.tcdField(_ch, 0x1e, 2));
 				edmaOut << line;
 			});
+		}
+		if(!touchMap.empty())
+		{
+			const auto eq = touchMap.find('=');
+			const auto comma = touchMap.find(',');
+			g_touchBase = static_cast<uint32_t>(std::strtoul(touchMap.c_str(), nullptr, 0));
+			const auto tl = static_cast<uint32_t>(std::strtoul(touchMap.c_str() + comma + 1, nullptr, 0));
+			g_touchPath = touchMap.substr(eq + 1);
+			g_touch.assign(tl, 0);
+			const auto mark = [](const uint8_t _bit)
+			{
+				return [_bit](const uint32_t _addr, const uint8_t _size, uint32_t, uint32_t)
+				{
+					for(uint32_t k = 0; k < _size; ++k)
+					{
+						const uint32_t o = _addr + k - g_touchBase;
+						if(o < g_touch.size())
+							g_touch[o] |= _bit;
+					}
+				};
+			};
+			m.addReadWatch(g_touchBase, g_touchBase + tl - 1, mark(1));
+			m.addWriteWatch(g_touchBase, g_touchBase + tl - 1, mark(2));
+			std::printf("touch-map  : %#x..%#x -> %s\n", g_touchBase, g_touchBase + tl - 1, g_touchPath.c_str());
 		}
 		if(!watchRead.empty())
 		{
@@ -2643,6 +2673,14 @@ int main(int _argc, char** _argv)
 		if(lcdDirty)
 			lcdFlush();
 		std::printf("lcd        : %llu frames -> %s\n", static_cast<unsigned long long>(lcdFrames), lcd.c_str());
+	}
+	if(!g_touch.empty())
+	{
+		std::ofstream f(g_touchPath, std::ios::binary);
+		f.write(reinterpret_cast<const char*>(g_touch.data()), static_cast<std::streamsize>(g_touch.size()));
+		size_t used = 0;
+		for(const auto b : g_touch) used += b != 0;
+		std::printf("touch-map  : %zu of %zu bytes touched -> %s\n", used, g_touch.size(), g_touchPath.c_str());
 	}
 	if(!memDump.empty())
 	{
