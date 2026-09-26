@@ -33,6 +33,17 @@ FS_CHANNELS, FS_MAXPKT, FS_BINTERVAL = 2, 45 * 8, 1       # 44/45 stereo frames 
 UAC2_AC_IFACE, UAC2_AS_IFACE = 3, 4                        # usbaudio.s .set: the same numbers
 UAC2_CLOCK_ID, UAC2_IT_ID, UAC2_OT_ID = 0x10, 0x11, 0x12
 
+# USB AUDIO OUT (Bryan T, 26 Sep 2026): four channels from the host that
+# stand in for inputs A-D. AudioStreaming interface 5, EP3 OUT (the only
+# free endpoint: EP1 is mass storage, EP2 USB MIDI, EP3 IN the input stream).
+# Asynchronous with IMPLICIT feedback: no endpoint is left for an explicit
+# feedback IN, so EP3 IN is marked as the implicit-feedback data endpoint
+# and the host sizes each OUT packet from the IN stream's. Same clock source.
+UAC2_AS_OUT_IFACE = 5
+UAC2_IT_OUT_ID, UAC2_OT_OUT_ID = 0x13, 0x14
+OUT_CHANNELS = 4
+OUT_HS_MAXPKT, OUT_FS_MAXPKT = 12 * OUT_CHANNELS * SUBSLOT, 45 * OUT_CHANNELS * SUBSLOT  # 192 / 720
+
 
 def _ep(addr, pkt):
     return bytes([7, 5, addr, 2]) + struct.pack("<H", pkt) + bytes([0])
@@ -65,7 +76,7 @@ def midi_config(hs, other_speed=False):
     return hdr + body
 
 
-def audio_config(hs, other_speed=False):
+def audio_config(hs, other_speed=False, with_out=False):
     """The MIDI composite plus a UAC2 audio function, 250 bytes (usb-audio.py).
 
     Two SEPARATE functions under interface associations, the shape of a
@@ -85,9 +96,18 @@ def audio_config(hs, other_speed=False):
                bytes([0]) + struct.pack("<H", 0) + bytes([0]))
     out_term = (bytes([12, 0x24, 0x03, ot]) + struct.pack("<H", 0x0101) +
                 bytes([0, it, clk]) + struct.pack("<H", 0) + bytes([0]))
-    ac_audio_total = 9 + len(clock) + len(in_term) + len(out_term)
+    out_path = b""
+    if with_out:
+        # host -> device: a USB streaming input terminal feeding a line
+        # output terminal, on the same (read-only) clock
+        out_path = (bytes([17, 0x24, 0x02, UAC2_IT_OUT_ID]) + struct.pack("<H", 0x0101) +
+                    bytes([0, clk, OUT_CHANNELS]) + struct.pack("<I", 0) +
+                    bytes([0]) + struct.pack("<H", 0) + bytes([0]) +
+                    bytes([12, 0x24, 0x03, UAC2_OT_OUT_ID]) + struct.pack("<H", 0x0603) +
+                    bytes([0, UAC2_IT_OUT_ID, clk]) + struct.pack("<H", 0) + bytes([0]))
+    ac_audio_total = 9 + len(clock) + len(in_term) + len(out_term) + len(out_path)
     ac_audio = (bytes([9, 0x24, 1]) + struct.pack("<H", 0x0200) + bytes([0x0A]) +
-                struct.pack("<H", ac_audio_total) + bytes([0]) + clock + in_term + out_term)
+                struct.pack("<H", ac_audio_total) + bytes([0]) + clock + in_term + out_term + out_path)
     ac, as_ = UAC2_AC_IFACE, UAC2_AS_IFACE
     as_iface = (
         bytes([9, 4, as_, 0, 0, 1, 2, 0x20, 0]) +
@@ -95,12 +115,26 @@ def audio_config(hs, other_speed=False):
         bytes([16, 0x24, 1, ot, 0, 1]) + struct.pack("<I", 1) +
         bytes([nch]) + struct.pack("<I", 0) + bytes([0]) +
         bytes([6, 0x24, 2, 1, SUBSLOT, BITS]) +
-        bytes([7, 5, 0x83, 0x05]) + struct.pack("<H", maxpkt) +
+        # bmAttributes: isochronous, asynchronous; + usage "implicit
+        # feedback data" (bits 5:4 = 10) when the OUT stream pairs with it
+        bytes([7, 5, 0x83, 0x25 if with_out else 0x05]) + struct.pack("<H", maxpkt) +
         bytes([HS_BINTERVAL if hs else FS_BINTERVAL]) +
         bytes([8, 0x25, 1, 0, 0, 0]) + struct.pack("<H", 0))
+    if with_out:
+        oi = UAC2_AS_OUT_IFACE
+        as_iface += (
+            bytes([9, 4, oi, 0, 0, 1, 2, 0x20, 0]) +
+            bytes([9, 4, oi, 1, 1, 1, 2, 0x20, 0]) +
+            bytes([16, 0x24, 1, UAC2_IT_OUT_ID, 0, 1]) + struct.pack("<I", 1) +
+            bytes([OUT_CHANNELS]) + struct.pack("<I", 0) + bytes([0]) +
+            bytes([6, 0x24, 2, 1, SUBSLOT, BITS]) +
+            bytes([7, 5, 0x03, 0x05]) +                      # iso, asynchronous, data
+            struct.pack("<H", OUT_HS_MAXPKT if hs else OUT_FS_MAXPKT) +
+            bytes([HS_BINTERVAL if hs else FS_BINTERVAL]) +
+            bytes([8, 0x25, 1, 0, 0, 0]) + struct.pack("<H", 0))
     ac_midi = bytes([9, 0x24, 1, 0, 1]) + struct.pack("<H", 9) + bytes([1, 2])
     iad_midi = bytes([8, 0x0B, 1, 2, 0x01, 0x00, 0x00, 0])
-    iad_audio = bytes([8, 0x0B, ac, 2, 0x01, 0x00, 0x20, 0])
+    iad_audio = bytes([8, 0x0B, ac, 3 if with_out else 2, 0x01, 0x00, 0x20, 0])
     body = (bytes([9, 4, 0, 0, 2, 8, 6, 0x50, 0]) +
             _ep(0x81, bulk) + _ep(0x01, bulk) +
             iad_midi +
@@ -113,12 +147,15 @@ def audio_config(hs, other_speed=False):
             bytes([9, 4, ac, 0, 0, 1, 1, 0x20, 0]) + ac_audio +
             as_iface)
     total = 9 + len(body)
-    hdr = bytes([9, 7 if other_speed else 2]) + struct.pack("<H", total) + bytes([5, 1, 0, 0xC0, 3])
+    hdr = bytes([9, 7 if other_speed else 2]) + struct.pack("<H", total) + bytes([6 if with_out else 5, 1, 0, 0xC0, 3])
     return hdr + body
 
 
-def configs(with_audio):
-    f = audio_config if with_audio else midi_config
+def configs(with_audio, with_out=False):
+    if with_audio:
+        f = lambda hs, os=False: audio_config(hs, os, with_out)
+    else:
+        f = midi_config
     out = {"cfg_fs": f(False), "cfg_hs": f(True), "cfg_os_fs": f(False, True), "cfg_os_hs": f(True, True)}
     lengths = {len(v) for v in out.values()}
     assert len(lengths) == 1, "the four configurations must share one length (one clamp)"
@@ -126,8 +163,12 @@ def configs(with_audio):
 
 
 def remix_inc(modules):
-    tables, length = configs("USB AUDIO" in modules)
-    lines = [f"| remix.inc -- the configuration descriptors for this remix ({'USB MIDI + USB AUDIO' if 'USB AUDIO' in modules else 'USB MIDI'}),",
+    with_out = "USB AUDIO OUT" in modules
+    tables, length = configs("USB AUDIO" in modules, with_out)
+    what = "USB MIDI + USB AUDIO" if "USB AUDIO" in modules else "USB MIDI"
+    if with_out:
+        what += " + USB AUDIO OUT"
+    lines = [f"| remix.inc -- the configuration descriptors for this remix ({what}),",
              "| generated by modules/usbmidi/descriptors.py; the build rewrites it.",
              f"    .global cfg_len", f"    .set cfg_len, {length}", "",
              "    .text", "    .global cfg_fs, cfg_hs, cfg_os_fs, cfg_os_hs", ""]
