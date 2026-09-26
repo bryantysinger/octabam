@@ -44,7 +44,8 @@ IMAGE = ROOT / "out/mainos_bus.bin"
 ELF = ROOT / "out/platform/runtime/runtime.elf"
 COUNTERS = ("produced", "consumed", "pkts", "lastn", "lastfill", "underruns",
             "overruns", "reprimes", "bad", "frames", "seconds", "minfill", "maxfill",
-            "err", "partial", "errmask", "lasttok", "lastslot")
+            "err", "partial", "errmask", "lasttok", "lastslot",
+            "depth", "badfr", "badfr_prev", "dry", "late", "maxpass")
 fails = []
 
 

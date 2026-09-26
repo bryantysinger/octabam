@@ -57,7 +57,7 @@
 .set EP0_SEND_TAIL,  0x4001de5c     | jsr usb_ep0_send(len, buf); addq; done
 .set EP0CTRL,        0xfc0b01c0     | ENDPTCTRL0
 .set VENDOR_REQ,     0x56           | usbaudio answers 0x55 with its own
-.set NCOUNT,         18             | longs in out_counters
+.set NCOUNT,         24             | longs in out_counters
 .set EP0_STATUS_IN,  0x4001d524     | zero-length EP0 IN status (ACK)
 .set SETIFACE_DONE,  0x4001de74     | control-request-done
 .set SETIFACE_REJOIN,0x4001dd10     | stock SET_INTERFACE after the displaced oril
@@ -70,6 +70,7 @@
 .set EPPRIME,    0xfc0b01b0
 .set EPFLUSH,    0xfc0b01b4
 .set EPCOMPLETE, 0xfc0b01bc
+.set FRINDEX,    0xfc0b014c         | microframe index (EHCI layout: USBCMD+0x0c)
 .set ENDPTCTRL3, 0xfc0b01cc
 .set USBCMD,     0xfc0b0140
 .set ATDTW,      0x00004000
@@ -241,11 +242,10 @@ out_up:
     subql   #1,%d1                  | are power-on garbage (usbaudio.s)
     bpls    1b
     moveal  qh_out,%a0
-    movel   #(0x20000000+(OPKT<<16)),%d0   | Mult 0, ZLT off, maxpkt 192
-    | Mult 0 on this RX endpoint: Linux's chipidea udc (ep_enable) sets Mult
-    | only for ISO TX and leaves it 0 for ISO RX. Image 95 ran Mult 1 (copied
-    | from EP3 IN) and saw ~1 packet in 2000 truncated by 2-12 bytes with
-    | the transaction-error bit; image 96 tests this one change.
+    movel   #(0x60000000+(OPKT<<16)),%d0   | Mult 1, ZLT off, maxpkt 192
+    | Mult must be non-zero here: image 96 (Mult 0, as Linux's chipidea udc
+    | has for ISO RX) got a transaction error with 0 bytes on 800 of 821
+    | packets and then stopped (26 Sep 2026).
     movel   %d0,%a0@
     moveq   #1,%d0
     movel   %d0,%a0@(8)             | next dTD: terminate
@@ -380,6 +380,7 @@ out_retire:
     orl     %d0,out_errmask         | which of the three bits have been seen
     movel   %d3,out_lasttok         | diagnostic: the whole token of the last bad one
     movel   %d2,out_lastslot
+    bsr     out_diag
 1:  movel   %d3,%d0
     swap    %d0
     andil   #0x7fff,%d0             | bytes left
@@ -393,6 +394,10 @@ out_retire:
     addql   #1,out_partial
     movel   %d3,out_lasttok
     movel   %d2,out_lastslot
+    movel   %d3,%d0
+    andil   #0x68,%d0
+    bnes    2f                      | out_diag already ran for this one
+    bsr     out_diag
 2:  lsrl    #4,%d4                  | frames
     movel   %d4,out_lastn
     addql   #1,out_pkts
@@ -430,6 +435,37 @@ out_retire:
     subql   #1,%d7
     bne     .Lr_next
 .Lr_done:
+    moveq   #NSLOTO,%d0             | diagnostic: dTDs retired in this pass
+    subl    %d7,%d0
+    cmpl    out_maxpass,%d0
+    blss    1f
+    movel   %d0,out_maxpass
+1:  moveq   #3,%d1
+    cmpl    %d1,%d0
+    bcss    2f
+    addql   #1,out_late             | 3 or 4 at once: state 7 came late
+2:  rts
+
+| Diagnostic for a bad completion (image 97): how many dTDs were still
+| ACTIVE, and FRINDEX now and at the previous bad one (retire time, up to a
+| DSP frame after the packet landed: the spacing is what is meaningful).
+| Clobbers d0/d1/d6/a1.
+out_diag:
+    moveal  #(out_dtds+UNCACHED+4),%a1
+    moveq   #0,%d6
+    moveq   #NSLOTO,%d1
+5:  movel   %a1@,%d0
+    btst    #7,%d0
+    beqs    6f
+    addql   #1,%d6
+6:  lea     %a1@(32),%a1
+    subql   #1,%d1
+    bnes    5b
+    movel   %d6,out_depth
+    movel   out_badfr,%d0
+    movel   %d0,out_badfr_prev
+    movel   FRINDEX,%d0
+    movel   %d0,out_badfr
     rts
 
 | Append the just-filled dTD (a0, slot d2) after slot d2-1, the Chipidea
@@ -470,6 +506,7 @@ out_enqueue:
     bnes    .Le_done                | still running: it follows the link
     bsr     out_oldest              | a0 = the oldest ACTIVE (this at worst)
 .Le_prime:
+    addql   #1,out_dry              | diagnostic: the endpoint had no dTD left
     moveal  qh_out,%a1
     movel   %a0,%a1@(8)
     clrl    %a1@(12)
@@ -612,6 +649,12 @@ out_partial:   .long 0              | completions that were not whole frames
 out_errmask:   .long 0              | OR of the error bits seen: 0x40 halted, 0x20 buffer, 0x08 transaction
 out_lasttok:   .long 0              | the last bad completion's dTD token (bytes left in 30:16)
 out_lastslot:  .long 0              | and its dTD slot (0..3)
+out_depth:     .long 0              | dTDs still ACTIVE at the last bad one (image 97)
+out_badfr:     .long 0              | FRINDEX at the last bad one
+out_badfr_prev:.long 0              | FRINDEX at the one before
+out_dry:       .long 0              | enqueues that found the endpoint's list empty
+out_late:      .long 0              | retire passes that found 3+ dTDs done
+out_maxpass:   .long 0              | most dTDs done in one pass
 qh_out:        .long 0
 out_ring:      .space OUT_FRAMES*FRAME_B
 out_alt:       .byte 0              | the host's request (USB interrupt)

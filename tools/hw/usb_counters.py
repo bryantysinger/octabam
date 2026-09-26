@@ -33,6 +33,10 @@ bad = err + partial: err = completions with a dTD error bit, errmask =
 which bits (0x40 halted, 0x20 data buffer, 0x08 transaction), partial =
 lengths that were not whole frames; lasttok/lastslot = the last bad
 completion's token (bytes left in bits 30:16) and dTD slot.
+depth = dTDs still queued at the last bad one; badfr/badfr_prev = FRINDEX
+(microframe count, wraps at 16384) at the last two bad ones; dry = times
+the endpoint's dTD list had run empty; late/maxpass = retire passes that
+found 3+ dTDs done, and the most in one pass.
 """
 import argparse
 import struct
@@ -41,7 +45,8 @@ import time
 
 OUT_NAMES = ("produced", "consumed", "pkts", "lastn", "lastfill", "underruns", "overruns",
              "reprimes", "bad", "frames", "seconds", "minfill", "maxfill",
-             "err", "partial", "errmask", "lasttok", "lastslot")
+             "err", "partial", "errmask", "lasttok", "lastslot",
+             "depth", "badfr", "badfr_prev", "dry", "late", "maxpass")
 NAMES = ("consumed", "acc", "overruns", "underruns", "lastn", "lastfill", "lastbank",
          "bankdup", "lastsamp", "srcjump", "reprimes", "produced")
 
