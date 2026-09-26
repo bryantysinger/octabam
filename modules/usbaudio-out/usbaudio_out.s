@@ -50,6 +50,8 @@
 | ---- firmware sites (1.40C) ----
 .set SETUP_ALT,      0x46c8ce0a     | SETUP wValue low = alt setting
 .set SETUP_IFACE,    0x46c8ce0c     | SETUP wIndex low = interface number
+.set SETUP_WVALH,    0x46c8ce0b     | SETUP wValue high
+.set SETUP_WIDXH,    0x46c8ce0d     | SETUP wIndex high
 .set SETUP_BMREQ,    0x46c8ce08     | SETUP bmRequestType
 .set SETUP_BREQ,     0x46c8ce09     | SETUP bRequest
 .set SETUP_WLENL,    0x46c8ce0e     | SETUP wLength low
@@ -57,6 +59,10 @@
 .set EP0_SEND_TAIL,  0x4001de5c     | jsr usb_ep0_send(len, buf); addq; done
 .set EP0CTRL,        0xfc0b01c0     | ENDPTCTRL0
 .set VENDOR_REQ,     0x56           | usbaudio answers 0x55 with its own
+.set PEEK_REQ,       0x57           | vendor GET: read a peripheral register
+.set POKE_LO,        0x58           | vendor OUT: write the low half of an out_poketab entry
+.set POKE_HI,        0x59           | vendor OUT: the high half
+.set NPOKE,          17
 .set NCOUNT,         24             | longs in out_counters
 .set EP0_STATUS_IN,  0x4001d524     | zero-length EP0 IN status (ACK)
 .set SETIFACE_DONE,  0x4001de74     | control-request-done
@@ -136,24 +142,92 @@ out_setiface_shim:
 | usbaudio's 0x55 counters, which read correctly on the unit (25 Sep 2026).
     .global out_ctrl_shim
 out_ctrl_shim:
-    mvzb    SETUP_BMREQ,%d1
-    cmpil   #0xc0,%d1
-    bnes    9f
+    movel   %d0,%d2                 | the stall value, for every reject path
+    mvzb    SETUP_BMREQ,%d1         | d2/d3 are free: the epilogue at
+    cmpil   #0xc0,%d1               | 0x4001de74 pops both
+    beqs    .Lc_get
+    cmpil   #0x40,%d1
+    beq     .Lc_set
+    bra     .Lc_stall
+.Lc_get:
     mvzb    SETUP_BREQ,%d1
     cmpil   #VENDOR_REQ,%d1
-    bnes    9f
+    beqs    .Lc_counters
+    cmpil   #PEEK_REQ,%d1
+    bne     .Lc_stall
+    | 0x57 peek (image 98): address = wIndex << 16 | wValue, a long in the
+    | peripheral space 0xfc000000.. only, 4 bytes back. An address with no
+    | register behind it may take an access error: read the ones you know.
+    mvzb    SETUP_WIDXH,%d0
+    lsll    #8,%d0
+    mvzb    SETUP_IFACE,%d1
+    orl     %d1,%d0
+    swap    %d0
+    mvzb    SETUP_WVALH,%d1
+    lsll    #8,%d1
+    orl     %d1,%d0
+    mvzb    SETUP_ALT,%d1
+    orl     %d1,%d0
+    movel   %d0,%d1
+    andil   #0xff000003,%d1
+    cmpil   #0xfc000000,%d1
+    bne     .Lc_stall
+    moveal  %d0,%a0
+    movel   %a0@,%d0
+    movel   %d0,out_peek
+    pea     out_peek
+    moveq   #4,%d3
+    bras    .Lc_send
+.Lc_counters:
     pea     out_counters
+    moveq   #NCOUNT*4,%d3
+.Lc_send:                           | buffer pushed, d3 = length
     mvzb    SETUP_WLENH,%d1
     lsll    #8,%d1
     mvzb    SETUP_WLENL,%d0
     orl     %d1,%d0                 | wLength
-    moveq   #NCOUNT*4,%d1
-    cmpl    %d0,%d1
+    cmpl    %d0,%d3
     bhis    1f                      | len > wLength: send wLength
-    movel   %d1,%d0
+    movel   %d3,%d0
 1:  movel   %d0,%sp@-
     jmp     EP0_SEND_TAIL
-9:  movel   %d0,EP0CTRL             | displaced: the stall
+.Lc_set:
+    | 0x58 / 0x59 poke (image 98): wIndex = an entry of out_poketab (the
+    | only registers this will write), wValue = the new low (0x58) or high
+    | (0x59) half; the other half is kept. No data stage: ACK and done.
+    mvzb    SETUP_BREQ,%d1
+    cmpil   #POKE_LO,%d1
+    beqs    1f
+    cmpil   #POKE_HI,%d1
+    bne     .Lc_stall
+1:  mvzb    SETUP_WIDXH,%d0
+    tstl    %d0
+    bne     .Lc_stall
+    mvzb    SETUP_IFACE,%d0         | wIndex low
+    cmpil   #NPOKE,%d0
+    bcc     .Lc_stall
+    lsll    #2,%d0
+    lea     out_poketab,%a0
+    moveal  %a0@(0,%d0:l),%a0       | the register
+    mvzb    SETUP_WVALH,%d3
+    lsll    #8,%d3
+    mvzb    SETUP_ALT,%d0
+    orl     %d0,%d3                 | the 16-bit value
+    movel   %a0@,%d0
+    cmpil   #POKE_HI,%d1
+    beqs    2f
+    andil   #0xffff0000,%d0
+    orl     %d3,%d0
+    bras    3f
+2:  andil   #0x0000ffff,%d0
+    swap    %d3
+    orl     %d3,%d0
+3:  movel   %d0,%a0@
+    jsr     EP0_STATUS_IN
+    jmp     SETIFACE_DONE
+.Lc_stall:
+    movel   %d2,%d0
+    movel   %d0,EP0CTRL             | displaced: the stall
     jmp     SETIFACE_DONE
 
 | ---- state 7 (0x40004bc0) -----------------------------------------------------
@@ -655,6 +729,17 @@ out_badfr_prev:.long 0              | FRINDEX at the one before
 out_dry:       .long 0              | enqueues that found the endpoint's list empty
 out_late:      .long 0              | retire passes that found 3+ dTDs done
 out_maxpass:   .long 0              | most dTDs done in one pass
+
+out_peek:      .long 0              | 0x57's reply
+| The registers 0x58/0x59 may write (image 98), by wIndex:
+out_poketab:
+    .long   0xfc0b01a8              | 0 USBMODE (stock 0x0e; SDIS = 0x10)
+    .long   0xfc0b0160              | 1 BURSTSIZE (stock never writes it)
+    .long   0xfc0b0164              | 2 TXFILLTUNING (nor this)
+    .long   0xfc004100, 0xfc004200, 0xfc004300, 0xfc004400   | 3-9 XBS PRS1..7
+    .long   0xfc004500, 0xfc004600, 0xfc004700
+    .long   0xfc004110, 0xfc004210, 0xfc004310, 0xfc004410   | 10-16 XBS CRS1..7
+    .long   0xfc004510, 0xfc004610, 0xfc004710              | (stock 0x110 on all)
 qh_out:        .long 0
 out_ring:      .space OUT_FRAMES*FRAME_B
 out_alt:       .byte 0              | the host's request (USB interrupt)
