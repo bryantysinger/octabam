@@ -33,7 +33,9 @@
 #include "rtos.h"
 #include "dsp.h"
 
-#include <mach/mach.h>
+#ifdef __APPLE__
+#include <mach/mach.h>	// OT_SELFPROF's sampler (Mach thread state)
+#endif
 #include <pthread.h>
 #include <thread>
 #include <atomic>
@@ -288,6 +290,7 @@ namespace
 	// state) and, at exit, prints the busiest addresses on stderr with the
 	// image's load address (symbolize with `atos -o <binary> -l <load>`). The
 	// macOS `sample` tool never returned on this process (12 Sep 2026).
+#ifdef __APPLE__
 	struct SelfProfiler
 	{
 		std::thread thread;
@@ -343,6 +346,14 @@ namespace
 		}
 		static void serveInteractiveMarker() {}
 	};
+#else
+	// Elsewhere OT_SELFPROF has no sampler: it says so and the run is unchanged.
+	struct SelfProfiler
+	{
+		void start(double) { std::fprintf(stderr, "selfprof: OT_SELFPROF samples Mach thread state -- macOS only, ignored\n"); }
+		void finish() {}
+	};
+#endif
 
 	// _afterRun: called after every `run` (main passes the --lcd flush, so the
 	// plane file holds the screen as the run left it)

@@ -1,5 +1,7 @@
 # octabam
 
+[![CI](https://github.com/sambanks/octabam/actions/workflows/ci.yml/badge.svg)](https://github.com/sambanks/octabam/actions/workflows/ci.yml)
+
 > **A personal research project, shared in case it is useful to you.** I
 > work on this for my own unit and publish it so others can build on it.
 > Pull requests are very welcome — a module, a port of someone's mod, a
@@ -110,7 +112,9 @@ make emu-live REMIX=<name>          # the screen and keys in a window, no sound
 ```
 
 `docs/remixer/EMU.md` covers all of them and the Unicorn routes the
-label gates use. What the emulators cannot see — caches, the recorder,
+label gates use. CI (`.github/workflows/ci.yml`, `make ci`) runs the checks that
+need no firmware; `CONTRIBUTING.md` says what those cover and what they
+cannot. What the emulators cannot see — caches, the recorder,
 cross-core timing — is listed beside every gate that is blind to it.
 
 ## Before you flash anything
@@ -137,7 +141,9 @@ AB, used here only to identify the hardware this project targets.
 
 ```
 PLAN.md            what octabam is, where it stands, the work order
-CONTRIBUTING.md    the module contract, the oracle rule, the gates, submodule etiquette
+CONTRIBUTING.md    your first PR, the module contract, the oracle rule, the gates, what CI checks
+AGENTS.md          instructions and traps for coding agents (CLAUDE.md imports it)
+.github/           CI (Ubuntu + macOS, SHA-pinned actions), Dependabot, the PR template
 modules/           the contributions, one directory each
 remixes/           named selections of modules, in chooser order
 docs/remixes/      one page per remix, and the build guide
@@ -148,7 +154,7 @@ tools/harness/     hear and measure the DSP side locally (dsp_host, send_probe, 
 tools/emu/         the ColdFire emulators: the headless port (ot_emu) and the Unicorn bring-up
 tools/hw/          the unit and its card: MIDI control, capture, project files, MIDI flashing
 tools/patches/     local patches to the vendored toolchains
-scripts/           toolchain setup, OS fetch and recon, the bit-identity gate
+scripts/           toolchain setup, vendored pins (vendor.sh), OS fetch and recon, the bit-identity gate
 dsp/               shared DSP infrastructure: the null stub and the probes
 docs/remixer/      using and extending the remixer: MODULES, PLACEMENT, REMIXER, TOOLING, FLASHING
 docs/firmware/     the firmware, reverse-engineered: ARCHITECTURE, KERNEL, DSP, CHIP, TABLES, PARAM_PAGES, MAINMENU, PANEL, MIDI, LFO, LEVEL_LAW, COLDFIRE_DELAY, RECORDER, STORAGE; CONTRIBUTIONS is the dated index of what each contributor sent

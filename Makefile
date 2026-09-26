@@ -345,10 +345,37 @@ dsp-repatch: ## Re-apply tools/patches/dsp56300.patch to vendor/dsp56300 (revert
 	git -C vendor/dsp56300 checkout -- source
 	git -C vendor/dsp56300 apply "$(CURDIR)/tools/patches/dsp56300.patch"
 	cmake --build vendor/dsp56300/build --target dsp56kDisassemble dsp_asm dsp_host -j8
+	@$(MAKE) --no-print-directory check-asm
+	@echo "now rebuild the port against it: make emu-cf"
+
+.PHONY: check-asm
+check-asm: ## dsp_asm is the patched assembler: it emits the one-word displaced move (0257de)
 	@t=$$(mktemp -d); printf '\tmove x:(r7+$$15),a\n' > $$t/m.asm; \
 	  if $(DSP_ASM) -in $$t/m.asm -org 0 -list | grep -q 0257de; then echo "dsp_asm: the one-word displaced move (0257de)"; \
 	  else echo "dsp_asm does not emit the one-word displaced move (0257de)"; rm -rf $$t; exit 1; fi; rm -rf $$t
-	@echo "now rebuild the port against it: make emu-cf"
+
+# What CI runs (.github/workflows/ci.yml). No stock OS, no project, no
+# hardware: each target fetches the vendored trees at their pins
+# (scripts/vendor.sh) and builds from them.
+.PHONY: ci-dsp
+ci-dsp: ## CI: dsp56300 at its pin + our patch, built; upstream's test runner; check-asm
+	scripts/vendor.sh dsp56300
+	cmake -S vendor/dsp56300 -B vendor/dsp56300/build -DCMAKE_BUILD_TYPE=Release
+	cmake --build vendor/dsp56300/build --target dsp56kDisassemble dsp_asm dsp_host dsp56kTestRunner -j
+	vendor/dsp56300/build/source/dsp56kTestRunner/dsp56kTestRunner
+	@$(MAKE) --no-print-directory check-asm
+
+# rtos, dsp and repitch-* read the stock OS and return 0 without it, so
+# they are excluded by name rather than counted as passes.
+.PHONY: ci-emu
+ci-emu: ## CI: build the ColdFire port (tools/emu/ot_emu) and run its unit tests that need no stock OS
+	scripts/vendor.sh mc68k dsp56300
+	cmake -S tools/emu/ot_emu -B out/emu-ci -DCMAKE_BUILD_TYPE=Release
+	cmake --build out/emu-ci -j
+	ctest --test-dir out/emu-ci --output-on-failure -E '^(rtos|dsp|repitch-stock|repitch-patch)$$'
+
+.PHONY: ci
+ci: test-acceptance ci-dsp ci-emu ## Everything CI runs, locally
 
 .PHONY: emu-setup
 emu-setup: ## Provision the remixer deps (unicorn + textual) into .venv via uv
