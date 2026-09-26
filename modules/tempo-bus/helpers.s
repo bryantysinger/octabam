@@ -170,7 +170,7 @@ rows:   movel   %d4,%sp@-
         movel   %d5,%d3
         movel   %sp@+,%d4
         rts
-ORDER:  .byte   6, 11, 0, 1, 2, 3, 4, 5, 7, 8, 9, 10   | MODE (slot 6), TIME (slot 11) first
+ORDER:  .byte   6, 11, 0, 1, 2, 3, 4, 5, 7, 8, 9, 10   | MODE (slot 6), TIME (slot 11) first; NAMED leaves out 0, 1
 
         .include "remix.inc"           | ENGIDS, NAMED, the name tables
         NAMETAB_0                      | the delay's: NAMES_<its id>

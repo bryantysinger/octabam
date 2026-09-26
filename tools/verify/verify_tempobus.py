@@ -11,14 +11,14 @@ on the panel link), dumps RAM at the end and checks:
 
   window   TEMPO opens a 118 x 64 window (the menu window's size)
   delay    on the delay host: row 0 is MODE, A to 0 then +2 (REVERSE, its
-           view: MODE DEFAULTS); DOWN x6 to row 6, which is WET with
-           REVERSE's --- PING left out, A to 0 then +9 -> page-1 flat 29 = 9
-           (PING stays 0); UP x2 to FDBK, B to 0 then +5 -> flat 26 = 5;
-           with MODE DEFAULTS, the view's SLEN (page-2 slot 3) = 3
+           view: MODE DEFAULTS); DOWN x4 to row 4, which is WET with DEL
+           and REV not listed and REVERSE's --- PING left out, A to 0 then +9
+           -> page-1 flat 29 = 9 (PING stays 0); UP x2 to FDBK, B to 0 then
+           +5 -> flat 26 = 5; with MODE DEFAULTS, the view's SLEN (page-2
+           slot 3) = 3
   reverb   RIGHT: the reverb's own cursor, row 0 (MODE); UP held there;
-           DOWN x4 to SIZE, B to 0 then +7 -> page-1 flat 26 = 7; UP to REV,
-           A to 0 then +3 -> flat 25 = 3; UP to DEL, A to 0 then +6 -> flat
-           24 = 6
+           DOWN x2 to SIZE, B to 0 then +7 -> page-1 flat 26 = 7; UP to row
+           1 (TIME), A to 0 then +5 -> page-2 slot 11 = 5
   tempo    LEVEL to the 30.0 floor and +5, then FUNC + LEVEL +3 -> 35.3 BPM
            (project tempo 0x80000020 = BPM x 24; skipped while the pattern
            tempo is on)
@@ -114,23 +114,22 @@ def main():
 
         key(KEY_NO, 1.0)                                  # the boot's date prompt
         key(KEY_TEMPO, 1.0)
-        # rows (26 Sep 2026): MODE, TIME, DEL, REV, then the rest in slot
-        # order; a mode's --- slots are left out
+        # rows (26 Sep 2026): MODE, TIME, then the rest in slot order; DEL
+        # and REV are the host pages' own knobs, and a mode's --- slots are
+        # left out
         send("enc 0 -5"); send("enc 0 2", 0.6)            # row 0 MODE: A to REVERSE (its view)
-        for _ in range(6):
-            key(KEY_DOWN, 0.3)                            # row 6: WET, REVERSE's --- PING left out
+        for _ in range(4):
+            key(KEY_DOWN, 0.3)                            # row 4: WET, REVERSE's --- PING left out
         send("enc 0 -64"); send("enc 0 -64"); send("enc 0 9", 0.6)
-        key(KEY_UP, 0.3); key(KEY_UP, 0.3)                # row 4: FDBK
+        key(KEY_UP, 0.3); key(KEY_UP, 0.3)                # row 2: FDBK
         send("enc 1 -64"); send("enc 1 -64"); send("enc 1 5")
         key(KEY_RIGHT)                                    # reverb: its own cursor, row 0 (MODE)
         key(KEY_UP, 0.3)                                  # UP at row 0: held there
-        for _ in range(4):
-            key(KEY_DOWN, 0.3)                            # row 4: SIZE
+        for _ in range(2):
+            key(KEY_DOWN, 0.3)                            # row 2: SIZE (DEL, REV not listed)
         send("enc 1 -64"); send("enc 1 -64"); send("enc 1 7", 0.6)
-        key(KEY_UP, 0.3)                                  # row 3: REV
-        send("enc 0 -64"); send("enc 0 -64"); send("enc 0 3", 0.6)
-        key(KEY_UP, 0.3)                                  # row 2: DEL
-        send("enc 0 -64"); send("enc 0 -64"); send("enc 0 6", 0.6)
+        key(KEY_UP, 0.3)                                  # row 1: TIME
+        send("enc 0 -64"); send("enc 0 -64"); send("enc 0 5", 0.6)
         send("enc 6 -128"); send("enc 6 -128")            # LEVEL: to the 30.0 floor
         send("enc 6 5", 0.4)                              # LEVEL: +5 BPM
         send(f"key {KEY_FUNC:#x} down", 0.2)
@@ -184,12 +183,11 @@ def main():
     else:
         check(f"delay: FDBK (T{dly + 1} page-1 flat 26) = 5", L(dly, 26) == 5, f"{L(dly, 26)}")
         check(f"delay: MODE (T{dly + 1} page-2 slot 0) = 2, REVERSE", L(dly, 0x38) == 2, f"{L(dly, 0x38)}")
-        check(f"delay: REVERSE's --- PING left out, row 6 set WET (page-1 flat 29) = 9",
+        check(f"delay: DEL, REV and REVERSE's --- PING left out, row 4 set WET (page-1 flat 29) = 9",
               L(dly, 29) == 9 and L(dly, 28) == 0, f"WET {L(dly, 29)}, PING {L(dly, 28)}")
         if "MODE DEFAULTS" in mods:
             check(f"delay: REVERSE's view landed (SLEN, page-2 slot 3 = 3)", L(dly, 0x3b) == 3, f"{L(dly, 0x3b)}")
-        check(f"reverb: REV (T{vrb + 1} page-1 flat 25) = 3", L(vrb, 25) == 3, f"{L(vrb, 25)}")
-        check(f"reverb: DEL (T{vrb + 1} page-1 flat 24) = 6", L(vrb, 24) == 6, f"{L(vrb, 24)}")
+        check(f"reverb: TIME (T{vrb + 1} page-2 slot 11) = 5, row 1", L(vrb, 0x3d) == 5, f"{L(vrb, 0x3d)}")
         check(f"reverb: SIZE (T{vrb + 1} page-1 flat 26) = 7", L(vrb, 26) == 7, f"{L(vrb, 26)}")
     traw, ptn = struct.unpack(">I", tmp.read_bytes()[:4])[0], tmp.read_bytes()[4]
     if ptn:
