@@ -10,6 +10,7 @@
         # including the engines (after a slot re-layout); --keep-mode keeps
         # an in-range MODE byte and applies that mode's ModeView defaults
     python3 tools/hw/ot_project.py stamp-slot PROJECT_DIR MODULE SLOT [VALUE] [--track N[,N]]
+    python3 tools/hw/ot_project.py migrate-hosts PROJECT_DIR          # ONCE: a pre-image-71 project's host bytes, carried over
     python3 tools/hw/ot_project.py set-fx PROJECT_DIR fx1|fx2 TRACK MODULE [--page V,V,V,V,V,V] [--page2 V,...]
     python3 tools/hw/ot_project.py thru-track PROJECT_DIR TRACK [--page HEX14]
     python3 tools/hw/ot_project.py stored PROJECT_DIR                  # .strd twins (the unit's saved state)
@@ -785,6 +786,68 @@ def host_rig(pdir, remix_name="bamsep26", guard=True):
     stamp_defaults(pdir, remix_name, replaced_only=False, guard=guard, keep_mode=True)
 
 
+# Image 71's host layout (PR #441, 26 Sep 2026): the hosts' pages read like
+# SEND's (DEL, REV), so three bytes per host track move. old -> new, per
+# (FX2 id): the page-1 slot index or ("p2", page-2 slot) of each byte.
+HOST_MIGRATION_441 = {
+    0x06: (("p1", 1, "p2", 11),          # BusDelay TIME: slot 1 -> slot 11 (WOW dropped)
+           ("zero", "p1", 1)),           # slot 1 is REV, the new send into the reverb
+    0x07: (("p1", 1, "p2", 11),          # BusVerb TIME: slot 1 -> slot 11
+           ("p1", 0, "p1", 1),           # its reverb send: slot 0 -> REV (slot 1)
+           ("zero", "p1", 0)),           # slot 0 is DEL, the new send into the delay
+}
+
+
+def migrate_hosts_441(pdir, guard=True):
+    """Carry a project saved under the old host layout into image 71's: every
+    part and its saved copy, every track whose FX2 is BusDelay or BusVerb,
+    each file moving its own bytes. Values are copied, never reset; the two
+    new sends start at 0. RUN IT ONCE: a second run would move the moved
+    bytes again (it cannot tell the layouts apart from the bytes)."""
+    pdir = pathlib.Path(pdir)
+
+    def addr(off, t, page, slot):
+        return (off + P1_OFF + t * TRACK_STRIDE + 6 + slot if page == "p1"
+                else off + P2_OFF + t * P2_STRIDE + 6 + slot - 6)
+
+    total = 0
+    for bank in sorted(pdir.glob("bank*.work")):
+        num = int(bank.name[4:6])
+        log = []
+
+        def mut(data, log=log):
+            rec = not log                              # log the .work pass (the first)
+            for p in range(NPARTS_ALL):
+                off = PART_BASE + p * PART_STRIDE
+                for t in range(NTRACKS):
+                    steps = HOST_MIGRATION_441.get(data[off + FX2_OFF + t])
+                    if steps is None:
+                        continue
+                    old = bytes(data)                  # every move reads the pre-move bytes
+                    for st in steps:
+                        if st[0] == "zero":
+                            a = addr(off, t, st[1], st[2])
+                            if rec:
+                                log.append((p, t, f"{st[1]} {st[2]}", old[a], 0))
+                            data[a] = 0
+                    for st in steps:
+                        if st[0] != "zero":
+                            src, dst = addr(off, t, st[0], st[1]), addr(off, t, st[2], st[3])
+                            if rec:
+                                log.append((p, t, f"{st[0]} {st[1]} -> {st[2]} {st[3]}", old[dst], old[src]))
+                            data[dst] = old[src]
+
+        _bank_write(pdir, num, mut, guard=guard)
+        data = bank.read_bytes()
+        if int.from_bytes(data[-2:], "big") != (sum(data[0x10:-2]) & 0xFFFF):
+            sys.exit(f"{bank.name}: checksum did not take -- do NOT use this")
+        for p, t, what, was, now in log:
+            print(f"bank{num:02d} part {p+1} T{t+1} {what}: {was} -> {now}")
+        total += len(log)
+    print(f"{total} host byte(s) moved or zeroed (image 71 layout)")
+    return total
+
+
 def stamp_slot(pdir, which, slot, value=None, guard=True, tracks=None):
     """Write ONE knob byte for every part/track that names the module (FX2
     or FX1), leaving the other eleven alone. `which` is a module key, name
@@ -1245,4 +1308,6 @@ if __name__ == "__main__":
             del args[i:i + 2]
         stamp_slot(pdir, args[0], args[1], args[2] if len(args) > 2 else None,
                    tracks=tracks)
+    elif cmd == "migrate-hosts":                                          # <project>: ONCE, old host layout -> image 71's
+        migrate_hosts_441(pdir, guard=False)
     else: sys.exit(f"unknown command {cmd!r}")
