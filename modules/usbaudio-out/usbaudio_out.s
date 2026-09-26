@@ -78,7 +78,7 @@
 .set POKE_LO,        0x58           | vendor OUT: write the low half of an out_poketab entry
 .set POKE_HI,        0x59           | vendor OUT: the high half
 .set NPOKE,          17
-.set NCOUNT,         24             | longs in out_counters
+.set NCOUNT,         28             | longs in out_counters
 .set EP0_STATUS_IN,  0x4001d524     | zero-length EP0 IN status (ACK)
 .set SETIFACE_DONE,  0x4001de74     | control-request-done
 .set SETIFACE_REJOIN,0x4001dd10     | stock SET_INTERFACE after the displaced oril
@@ -493,7 +493,8 @@ out_retire:
     andil   #0x68,%d0
     bnes    2f                      | out_diag already ran for this one
     bsr     out_diag
-2:  lsrl    #4,%d4                  | frames
+2:  bsr     out_scan                | diagnostic (build 11): non-zero data
+    lsrl    #4,%d4                  | frames
     movel   %d4,out_lastn
     addql   #1,out_pkts
     tstl    %d4
@@ -540,6 +541,44 @@ out_retire:
     bcss    2f
     addql   #1,out_late             | 3 or 4 at once: state 7 came late
 2:  rts
+
+| Diagnostic (build 11): count the non-zero longs (and trailing bytes) in
+| what this completion received. With the host sending digital silence a
+| good packet is all zero; a bad one with non-zero data was corrupted on
+| the way in (bit errors, the CRC failing at the end), one that is zero up
+| to the cut was truncated clean. d4 = bytes received, d3 = token, a3 =
+| the buffer. Clobbers d0/d5/d6/a1.
+out_scan:
+    moveal  %a3,%a1
+    movel   %d4,%d5
+    lsrl    #2,%d5                  | whole longs
+    moveq   #0,%d6
+    tstl    %d5
+    beqs    3f
+1:  tstl    %a1@+
+    beqs    2f
+    addql   #1,%d6
+2:  subql   #1,%d5
+    bnes    1b
+3:  movel   %d4,%d5
+    andil   #3,%d5                  | the 2-byte tail of a cut packet
+    beqs    6f
+4:  tstb    %a1@+
+    beqs    5f
+    addql   #1,%d6
+5:  subql   #1,%d5
+    bnes    4b
+6:  tstl    %d6
+    beqs    9f
+    movel   %d3,%d0
+    andil   #0x68,%d0
+    bnes    7f
+    addql   #1,out_good_nz          | a good packet with data in it
+    bras    8f
+7:  addql   #1,out_bad_nz           | a bad packet with data in it
+    addl    %d6,out_bad_nzw
+8:  movel   %d6,out_last_nzw
+9:  rts
 
 | Diagnostic for a bad completion (image 97): how many dTDs were still
 | ACTIVE, and FRINDEX now and at the previous bad one (retire time, up to a
@@ -750,6 +789,10 @@ out_badfr_prev:.long 0              | FRINDEX at the one before
 out_dry:       .long 0              | enqueues that found the endpoint's list empty
 out_late:      .long 0              | retire passes that found 3+ dTDs done
 out_maxpass:   .long 0              | most dTDs done in one pass
+out_good_nz:   .long 0              | good packets with non-zero data (build 11)
+out_bad_nz:    .long 0              | bad packets with non-zero data
+out_bad_nzw:   .long 0              | non-zero longs/bytes summed over those
+out_last_nzw:  .long 0              | non-zero longs/bytes in the last such packet
 
 | The registers 0x58/0x59 may write (image 98), by wIndex:
 out_poketab:

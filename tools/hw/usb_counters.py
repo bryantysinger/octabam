@@ -37,6 +37,9 @@ depth = dTDs still queued at the last bad one; badfr/badfr_prev = FRINDEX
 (microframe count, wraps at 16384) at the last two bad ones; dry = times
 the endpoint's dTD list had run empty; late/maxpass = retire passes that
 found 3+ dTDs done, and the most in one pass.
+good_nz/bad_nz = good/bad packets whose received data was not all zero,
+bad_nzw = non-zero longs summed over the bad ones, last_nzw = in the
+last (build 11; meaningful while the host sends digital silence).
 """
 import argparse
 import struct
@@ -46,7 +49,8 @@ import time
 OUT_NAMES = ("produced", "consumed", "pkts", "lastn", "lastfill", "underruns", "overruns",
              "reprimes", "bad", "frames", "seconds", "minfill", "maxfill",
              "err", "partial", "errmask", "lasttok", "lastslot",
-             "depth", "badfr", "badfr_prev", "dry", "late", "maxpass")
+             "depth", "badfr", "badfr_prev", "dry", "late", "maxpass",
+             "good_nz", "bad_nz", "bad_nzw", "last_nzw")
 NAMES = ("consumed", "acc", "overruns", "underruns", "lastn", "lastfill", "lastbank",
          "bankdup", "lastsamp", "srcjump", "reprimes", "produced")
 
