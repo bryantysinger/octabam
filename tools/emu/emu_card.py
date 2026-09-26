@@ -251,6 +251,37 @@ def build_image(tree_dir, size_mb=64, label="OCTABAM", part_start=2048, log=None
     return bytes(img)
 
 
+
+def stage_project(project, set_name, name, tree="out/_stage_tree",
+                  audio=(), image_mb=64):
+    """Copy a project directory into <tree>/<SET>/<NAME> and build a card
+    image from it -- the same staging emu_frames does.
+
+    No audio by default: every .wav/.ot is skipped. `audio`
+    is a list of "<src file>:<card-relative path>" pairs to stage as well,
+    e.g. "~/octa/pool/x.wav:AUDIO/Loopmasters/x.wav" (relative to the SET
+    folder, the way project.work's PATH=../AUDIO/... resolves). The image
+    grows to `image_mb`."""
+    import shutil
+    src = pathlib.Path(project)
+    name = name or src.name
+    tree = pathlib.Path(tree)
+    if tree.exists():
+        shutil.rmtree(tree)
+    dst = tree / set_name / name
+    dst.mkdir(parents=True)
+    (tree / set_name / "AUDIO").mkdir()
+    for p in sorted(src.iterdir()):
+        if p.is_file() and not p.name.startswith("._") and p.suffix.lower() not in (".wav", ".ot"):
+            shutil.copy2(p, dst / p.name)
+    for spec in audio:
+        f, rel = spec.split(":", 1)
+        f = pathlib.Path(f).expanduser()
+        out = tree / set_name / rel
+        out.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(f, out)
+    return build_image(str(tree), image_mb), name
+
 def extract_image(img, out_dir=None):
     """Read a card image back (the one `ot_emu --card-out` writes after a
     run): {path: bytes} for every file, long names reconstructed from the

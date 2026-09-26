@@ -1,6 +1,6 @@
 # The ColdFire emulators
 
-Three ways to run the Octatrack's OS without a flash:
+Two ways to run the Octatrack's OS without a flash:
 
 - **The port** (`tools/emu/ot_emu`, C++): Musashi for the ColdFire, both
   DSP56300 cores, the card, the panel link, MIDI, USB. `make check`'s boot
@@ -11,11 +11,11 @@ Three ways to run the Octatrack's OS without a flash:
   label gates in `make verify` (`verify_labels`, `verify_modenames`,
   `verify_hidden`, `verify_ccmap`), `verify_repitch_ui`,
   `tools/build/stock_labels.py` and the remixer's UNIT pane use it.
-- **Route A** (`tools/emu/emu_rtos.py`, Unicorn): the firmware's scheduler
-  run by hand, no DSP. The panel's fallback backend (`--backend routea`),
-  the reference `scripts/o6_gate.sh` diffs the port against, and the
-  owner of `stage_project`, which `stage_card.py` uses to build the port's
-  card image. No gate runs route A itself.
+
+Route A (`emu_rtos.py`: the firmware's scheduler run by hand on Unicorn,
+the port's oracle through O6 and the panel's second backend) was retired
+on 26 Sep 2026; `git log -- tools/emu/emu_rtos.py` finds it.
+`stage_project` moved to `emu_card`.
 
 ## Which one
 
@@ -39,7 +39,7 @@ scratch card, no sound.
 ```sh
 make emu-cf                          # cmake into out/emu, then boots stock 1.40C to the RTOS handoff
 ./out/emu/ot_emu --help              # every option, grouped
-make emu-setup                       # .venv: unicorn, textual, sounddevice (Tier-0, route A, the panel's audio)
+make emu-setup                       # .venv: unicorn, textual, sounddevice (Tier-0, the panel's audio)
 ```
 
 In a worktree, run `make emu-cf` there: a symlinked `out/emu` builds the
@@ -296,7 +296,7 @@ instructions per wall second all-in. By 1 KB of code (`--profile`, the
 frames alone): 28.5% the stock delay's EMAC mix (`0x40003400..`), 22.5%
 the frame builder (`0x4000cc00..`), 7% the frame dispatcher, ~4% the
 host-port transfer state machine — real work, nothing to idle-skip.
-Unicorn's TCG (route A's core, QEMU's m68k JIT) on a store loop from this
+Unicorn's TCG (QEMU's m68k JIT) on a store loop from this
 image with no hooks and no instruction count: 52 M instr/s. Real time
 needs 66 M/s on the ColdFire plus the DSP side.
 
@@ -333,16 +333,11 @@ claim.
 over the boot, and the report carries the ColdFire instruction count over
 the frames.
 
-# The Unicorn routes: Tier-0 and route A
+# Tier-0 (Unicorn)
 
-- **Tier-0** (`tools/emu/emu_bringup.py`): boots a MAIN OS image to the
-  RTOS multitasking handoff (`trap #0`, ~7,000,000 instructions, ~4 s),
-  then calls draw code directly against the warm machine.
-- **Route A** (`tools/emu/emu_rtos.py`): crosses the handoff and runs the
-  firmware's own scheduler (the trap dispatched by hand, every `rte`
-  popped by hand, PIT0 as a timer counted in samples, the interrupt
-  controllers modelled), loads a project from an emulated card, runs the
-  sequencer. ~120× real time, no audio.
+`tools/emu/emu_bringup.py` boots a MAIN OS image to the RTOS multitasking
+handoff (`trap #0`, ~7,000,000 instructions, ~4 s), then calls draw code
+directly against the warm machine.
 
 The bring-up records (`EMU_BRINGUP.md`, `RTOS_FORK.md`, `COLDFIRE_PORT.md`)
 are in git history (`git show 3ceba41:docs/history/<name>`).
@@ -351,13 +346,8 @@ are in git history (`git show 3ceba41:docs/history/<name>`).
 
 ```sh
 make emu-setup                       # uv sync --extra emu -> .venv with unicorn + textual
-make emu-unicorn                     # route A: the EMAC-fixed Unicorn
+make emu-unicorn                     # the EMAC-fixed Unicorn
 .venv/bin/python3 tools/emu/emu_bringup.py [image]
-make emu-rtos PROJECT=<project dir>
-.venv/bin/python3 tools/emu/emu_rtos.py --project <dir> --set OCTABAM --name RIG --load-project --ms 6000
-.venv/bin/python3 tools/emu/emu_rtos.py --project out/_testproj --set OCTABAM --name RIG \
-  --sequencer --internal-clock --poke-trig 2 --frames 400 --ms 20000 [--via-key]
-.venv/bin/python3 tools/emu/emu_rtos.py --selftest
 ```
 
 `unicorn` must be given `UC_CPU_M68K_CFV4E`: the default plain-68k core
@@ -365,16 +355,15 @@ does not decode `mvz`/`mvs`/EMAC. The `.venv` must be the host's native
 architecture (an x86_64 build under Rosetta crashed on its first
 `emu_start`).
 
-**Route A needs the EMAC-fixed Unicorn.** Stock Unicorn 2.1.4 computes the
+**The EMAC-fixed Unicorn.** Stock Unicorn 2.1.4 computes the
 ColdFire's fractional-mode `macl`/`macw` as an unsigned product `>> 32`
 where the MCF5445x does a signed product `>> 31`, and reads the MAC/MSAC
 bit from the wrong word so `msac` adds. `scripts/build_unicorn.sh` applies
 `tools/patches/unicorn_emac_fractional.patch` and builds the m68k-only
 library into `.venv/lib/unicorn-emac/`; `emu_bringup` points the Python
 bindings at it through `LIBUNICORN_PATH`. `emu_bringup.emac_selftest()`
-pins the semantics (`0xc00 × 0x200000` = 3, `−0xc00` = −3, `msacl` = −3);
-`emu_rtos.py` refuses a stock EMAC unless `--stock-emac`. The
-EMAC-with-load shim keeps one trampoline slot per distinct instruction
+pins the semantics (`0xc00 × 0x200000` = 3, `−0xc00` = −3, `msacl` = −3).
+The EMAC-with-load shim keeps one trampoline slot per distinct instruction
 (a rewritten trampoline is not retranslated).
 
 ## What the boot needs
@@ -420,9 +409,11 @@ formatters through the same machine. Item-level descent inside the menu
 `FUN_40064e64`, whose keycodes are position-dependent; repointing the
 display at a submenu descriptor directly lands the labels at a bogus x.
 
-## The card (route A)
+## The card (`emu_card`)
 
-`tools/emu/emu_card.py`: a pure-Python FAT16 image builder (a SET folder
+`tools/emu/emu_card.py`: `stage_project` (a project directory staged into
+a card tree, which `stage_card.py` writes for the port), a pure-Python
+FAT16 image builder (a SET folder
 holding a PROJECT folder → an MBR + FAT16 image the firmware's mount code
 accepts; VFAT long names), an ATA task-file model at the FlexBus window
 `0x90000000` (IDENTIFY advertises PIO only, so the driver never programs
@@ -433,13 +424,11 @@ and performs the transfer the handler would when a command is in flight.
 The set name needs a leading `/`; a WRITE's count byte is the remaining
 count.
 
-## Limits of the Unicorn routes
+## Limits of Tier-0
 
-No audio and no DSP on either. Tier-0 captures strings, not pixels. Route
-A takes keys and draws its screen only through the panel link
-(`tools/panel`, `--backend routea`).
+No audio, no DSP, no keys; strings, not pixels.
 
-Route A's RAM map folds the OS image's uncached alias at `0x48000000` into
+Tier-0's RAM map folds the OS image's uncached alias at `0x48000000` into
 the same 32 MB as `0x40000000` (25 Sep 2026; the port's `machine.h` folds
 it too). octabam's loader depacks the DRAM runtime through that alias and
 the code then runs from the cached address, so with two separate mappings
@@ -458,18 +447,15 @@ independent fix against QEMU 11.1 and confirming the identical lines are
 present, verbatim, in Unicorn's own source: Rx read from the opcode word
 instead of the extension word; a phantom dual-accumulate flag read out of
 Ry's own register field, which `disas_undef`s on `cfv4e` (no
-`M68K_FEATURE_CF_EMAC_B`) — this, not an absent form, is why route A shims
-every site (`emu_bringup._emac_load_shim`, `native_macload_sites`) instead
+`M68K_FEATURE_CF_EMAC_B`) — this, not an absent form, is why Tier-0 shims
+every site (`emu_bringup._emac_load_shim`) instead
 of running them natively; and the MASK register resets to zero instead of
 CFPRM's all-ones, folding every load address to 0. Fixed in
 `tools/patches/unicorn_emac_fractional.patch` (three files: `translate.c`,
 and `unicorn.c` — NOT `cpu.c`'s `m68k_cpu_reset`, which this patch also
 carries for documentation but which Unicorn's own `uc.c` never calls;
 `unicorn.c`'s `reg_reset` is the reset Unicorn actually runs). Verified by
-`emu_bringup.emac_selftest`'s new cases (fails on stock, passes fixed) and
-by a route-A boot to the RTOS handoff completing clean with the shim
-disabled (`OCTA_MACLOAD_NATIVE=1`, `emu_rtos.py`) — but that run never
-executes any of the 435 hooked sites (0 shim calls either way without a
-project on the card), so this is NOT yet evidence the shim can be retired
-on real firmware traffic; `OT_PROJECT=<dir>` would be. The shim stays the
-default until that run exists.
+`emu_bringup.emac_selftest`'s new cases (fails on stock, passes fixed). The
+only native-vs-shim differential (route A with `OCTA_MACLOAD_NATIVE=1`, no
+project on the card) executed none of the 435 hooked sites, so the shim
+stays.

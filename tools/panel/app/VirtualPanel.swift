@@ -1761,7 +1761,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
     /// GET /audio/enable?on=1|0: the server reboots its port child with or
     /// without --dsp; /status "phase" shows it and the poll re-enables the
-    /// checkbox at ready. ok:false (already so, busy, route A) is logged and,
+    /// checkbox at ready. ok:false (already so, busy) is logged and,
     /// unless `quiet` (the hook), shown.
     func setSound(_ on: Bool, source: String, quiet: Bool = false) {
         Log.write("sound (\(source)): GET /audio/enable?on=\(on ? 1 : 0)")

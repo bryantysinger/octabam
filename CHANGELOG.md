@@ -7,6 +7,11 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- ROUTE A RETIRED (26 Sep 2026): `tools/emu/emu_rtos.py`, `make emu-rtos`,
+  `scripts/o6_gate.sh` and `tools/emu/ot_emu/oracle.py` removed. The
+  panel runs the port only (`--backend`, `--no-rtc` and `/press` gone;
+  `/transport` taps the matrix); `panel_link.py --selftest` boots the
+  port; `stage_project` moved to `emu_card`. Tier-0 (`emu_bringup`) stays.
 - `ot_project.py migrate-hosts <project>` (26 Sep 2026): carries a project
   saved before image 71 into its host layout, keeping the values: T1 TIME
   slot 1 -> 11, T5's reverb send slot 0 -> REV (slot 1), T5 TIME slot 1 -> 11,

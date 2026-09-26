@@ -190,7 +190,7 @@ open "out/Virtual Panel.app"
   the server refuses while it boots. Toggling asks first ("the unit
   reboots, ~1 min on / ~40 s off"), then `GET /audio/enable?on=1|0`; the
   checkbox stays disabled through the reboot and follows `/status` at
-  `ready`. A refusal (already so, busy, route A) is a sheet with the
+  `ready`. A refusal (already so, busy) is a sheet with the
   server's `note`.
 - **Audio > Output Device** (13 Sep 2026): the unit's outputs on a Mac
   audio device in real time -- BlackHole for a DAW, or the speakers
