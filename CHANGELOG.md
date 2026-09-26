@@ -7,6 +7,11 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- `ot_project.py migrate-hosts <project>` (26 Sep 2026): carries a project
+  saved before image 71 into its host layout, keeping the values: T1 TIME
+  slot 1 -> 11, T5's reverb send slot 0 -> REV (slot 1), T5 TIME slot 1 -> 11,
+  the new T1 REV and T5 DEL at 0. Once per project. Run on Bottleservice 2026.
+
 - RECORDER HOLD in `recfix` (26 Sep 2026): in sound-on-sound (SRC3 = the
   track) a recorder-buffer voice that reads one sample past its recording
   repeats the last sample instead of playing zero. Port-gated; the click
