@@ -23,6 +23,32 @@ the same way. Keep a hook to whole instructions and the minimum span; data
 tables, routines and anything longer than the displaced instructions come
 from the user's image at build time.
 
+## Your first pull request
+
+1. Fork `sambanks/octabam` on GitHub and clone your fork with its
+   submodules:
+
+   ```bash
+   git clone --recurse-submodules https://github.com/<you>/octabam
+   cd octabam
+   git remote add upstream https://github.com/sambanks/octabam
+   ```
+
+2. `make setup` builds the toolchain: dsp56300 at its pin with our patch,
+   the ColdFire core, `elektron-firmware-tool` (`scripts/vendor.sh` holds
+   the pins). macOS with Homebrew; `docs/WSL.md` for Linux.
+3. `make os && make recon` turns **your own** copy of OS 1.40C into
+   `out/raw/section_3_MAIN_OS.bin`. Every build and most gates read it;
+   it never leaves your machine.
+4. Branch from `upstream/main`, write the module (next section), and run
+   the gates in [Before you open a PR](#before-you-open-a-pr).
+5. Open the PR against `sambanks/octabam:main`. The template asks for the
+   gates you ran and what was measured. CI runs on it; GitHub holds a
+   first-time contributor's first CI run until a maintainer approves it.
+
+Issues are turned off (`README.md`): a question about your change goes in
+its PR.
+
 ## A module
 
 One directory, `modules/<name>/`:
@@ -128,6 +154,45 @@ stamp projects after any parameter-layout change (`tools/hw/ot_project.py
 stamp-defaults`), read `docs/remixer/FLASHING.md` first, and record
 anything that goes wrong in `docs/remixer/FAILURE_MODES.md` the moment it
 is seen.
+
+## Before you open a PR
+
+Rebase onto current main, then run the gates on the rebased tree. Gates
+run before the rebase are not a result: a branch that merges without a
+conflict can still fail on main (PR #396's stress fixture named a knob
+that #415 had renamed).
+
+```bash
+git fetch upstream && git rebase upstream/main
+make check REMIX=<name>              # every remix the change can reach
+make test-acceptance                 # firmware-free, seconds
+make accept REMIX=bamsep26 STRESS_SOURCE=<a local project>
+make accept REMIX=<name> OT_PROJECT=<project>   # any other remix the change reaches
+scripts/refhash.sh check             # the change touches the build (save the baseline on main first)
+make ci                              # optional: exactly what CI runs
+```
+
+A remix whose DSP selection has no pressure profile makes `make accept`
+report `blocked`; name it in the PR. List each command and its result in
+the PR body.
+
+## What CI checks
+
+`.github/workflows/ci.yml` runs on every PR, on `main` and by hand
+(Actions → CI → Run workflow), on Ubuntu and macOS. It has no Elektron
+bytes, so it checks only what needs none:
+
+| job | make target | what it proves |
+|---|---|---|
+| acceptance runner tests | `make test-acceptance` | `make accept` refuses skipped, failed, incomplete and over-budget evidence |
+| dsp56300 + our patch | `make ci-dsp` | the vendored DSP emulator at its pin takes `tools/patches/dsp56300.patch`, builds, passes upstream's own test runner, and `dsp_asm` emits the one-word displaced move (`make check-asm`) |
+| ColdFire port unit tests | `make ci-emu` | `tools/emu/ot_emu` builds against the pinned cores and passes the EMAC, peripheral and mc68k unit tests |
+
+The port's `rtos`, `dsp` and `repitch` tests read the stock OS and are
+excluded from CI by name. **A green CI run says nothing about a
+remix**: building, booting and playing one needs 1.40C, which is why the
+gates above run on your machine. Actions are pinned to commit SHAs (the
+repository requires it); Dependabot proposes the updates.
 
 ## Etiquette
 

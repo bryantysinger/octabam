@@ -53,23 +53,13 @@ make reverb IN=loop.wav ARGS='--wet --mode all'
 Never claim something works because it assembled or linked. `make check` is
 the floor.
 
-**Before opening a PR, and again before merging one:**
-
-1. Rebase onto current main: `git fetch origin && git rebase origin/main`.
-   Gates run before the rebase are not a result. PR #396 was written on
-   `4b07c52`; #415 and #437 renamed SEND's and BusDelay's knobs after that,
-   the merge was textually clean in `pressure.py`, and its stress fixture
-   failed on `SEND has no knob 'SEND'`.
-2. Run the required gates on the rebased tree:
-   - `make check REMIX=<name>` for every remix the change can reach;
-   - `make test-acceptance`;
-   - `make accept REMIX=bamsep26 STRESS_SOURCE=<a local project>` (the
-     stress fixture and the pressure renders), and `make accept
-     REMIX=<name> OT_PROJECT=<project>` for any other remix the change
-     reaches. A remix whose DSP selection has no pressure profile reports
-     `blocked`; name it in the PR;
-   - `scripts/refhash.sh check` if the change touches the build.
-3. List each command and its result in the PR body.
+**Before opening a PR, and again before merging one:** rebase onto
+`origin/main` and run every gate in `CONTRIBUTING.md` "Before you open a
+PR" on the rebased tree; list each command and its result in the PR body.
+Gates run before the rebase are not a result. PR #396 was written on
+`4b07c52`; #415 and #437 renamed SEND's and BusDelay's knobs after that,
+the merge was textually clean in `pressure.py`, and its stress fixture
+failed on `SEND has no knob 'SEND'`.
 
 **ALWAYS WORK IN A GIT WORKTREE, never in the main checkout.** Several
 sessions share this repository at once; the main checkout's working tree,
