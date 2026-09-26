@@ -143,7 +143,7 @@ AB, used here only to identify the hardware this project targets.
 PLAN.md            what octabam is, where it stands, the work order
 CONTRIBUTING.md    your first PR, the module contract, the oracle rule, the gates, what CI checks
 AGENTS.md          instructions and traps for coding agents (CLAUDE.md imports it)
-.github/           CI (Ubuntu + macOS, SHA-pinned actions), Dependabot, the PR template
+.github/           CI (Ubuntu + macOS, SHA-pinned actions), the PR template
 modules/           the contributions, one directory each
 remixes/           named selections of modules, in chooser order
 docs/remixes/      one page per remix, and the build guide

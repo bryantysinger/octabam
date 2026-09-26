@@ -192,7 +192,8 @@ The port's `rtos`, `dsp` and `repitch` tests read the stock OS and are
 excluded from CI by name. **A green CI run says nothing about a
 remix**: building, booting and playing one needs 1.40C, which is why the
 gates above run on your machine. Actions are pinned to commit SHAs (the
-repository requires it); Dependabot proposes the updates.
+repository requires it); a bump is a PR that changes the SHA and the
+version comment beside it.
 
 ## Etiquette
 
