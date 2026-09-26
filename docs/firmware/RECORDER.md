@@ -108,6 +108,54 @@ stereo at 44.1 kHz. The length and cap arrays are `0x461053a8` and
 configuration in an emulator; no `RESERVED_RECORDER_LENGTH` setting (§1's
 keys) has been measured on hardware.
 
+### 2a. The MEMORY page and RLEN MAX (port, 26 Sep 2026) ✅
+
+CONTROL > MEMORY stores five bytes, written in key order by the page's
+apply handler `0x40066466–0x400664ba` (mirrored to `0x100b14b1..b6`):
+
+| byte | setting | key |
+|---|---|---|
+| `0x80000051` | LOAD 24BIT FLEX | `LOAD_24BIT_FLEX` |
+| `0x80000052` | DYNAMIC RECORDERS | `DYNAMIC_RECORDERS` |
+| `0x80000053` | RECORDER FORMAT | `RECORD_24BIT` |
+| `0x80000054` | RESERVE RECORDINGS | `RESERVED_RECORDER_COUNT` |
+| `0x80000056` (word) | RESERVE LENGTH, seconds | `RESERVED_RECORDER_LENGTH` |
+
+Cap at a MAX arm (`0x400069b2`, code read): DYNAMIC set → (free pool
+blocks + the recorder's own blocks) × samples per block from
+`0x80003c20`; clear → tracks at or above RESERVE RECORDINGS get 0, the
+rest RESERVE LENGTH × 44,100. A fixed RLEN takes the tempo converter
+(`0x400069fc`) and no cap. A block draw that finds the pool empty
+(`0x40007234`) calls `0x40005e48`, posts to the engine queue
+`0x460d17ae` and leaves the write path — a stop, not a wrap (never
+reached in the runs below).
+
+Measured under the port (stock 1.40C, RECTRIG backup: DYNAMIC 1, 24-bit,
+RESERVE 8 × 16 s; T1 FLEX, one REC1 + PLAY trig on step 1, 64 steps,
+RLEN MAX, watches on `0x80004a3c` END, `0x46c7fe24` LIMIT, `0x80006920`
+pool cursor, `0x461053a8/e8`):
+
+| scale, BPM | length per pass (END at re-arm) | passes | blocks drawn | buffer after |
+|---|---|---|---|---|
+| 1/4X, 120.0 | 1,411,200 = 32.000 s = 16 bars, 88,200 frames | 3 identical | 689 | 1,379 |
+| 1/8X, 120.0 | 2,822,400 = 64.000 s = 32 bars, 176,400 frames | 2 identical | 2,067 | 2,757 |
+| 1/8X, 128.0 | 2,646,000 = 60.000 s = 32 bars, 165,375 frames | 2 identical | 1,894 | 2,584 |
+
+- A MAX recording is the trig spacing on the track's own scale, to the
+  sample; 1/8X is the slowest scale, so 64 steps at 1/8X (32 bars) is the
+  longest one trig per pattern gives.
+- With DYNAMIC on the cap array `0x461053e8[track]` reads 14,602 (the whole
+  pool); the reserve is still allocated at load (460 blocks, then 690 once
+  24-bit is applied, = 16.0 s either way). Draws start when the reserve
+  fills (16.0 s into the first pass, `0x400071cc`, one block per 1,024
+  24-bit frames); pool free 9,081 → 7,015 at 32 bars. The grown buffer is
+  kept across re-arms: passes after the first draw nothing.
+- LIMIT `0x46c7fe24[track]` is written 0 at the first MAX arm and the
+  previous pass's length at each later one (`0x400069d6`).
+- Not measured: DYNAMIC off (the RESERVE LENGTH cap), the pool-empty
+  stop, and whether the grown buffer is released on a fixed RLEN or a
+  project reload.
+
 ## 3. The primer and the spreadsheet (Bryan T, 6 Sep 2026)
 
 *Sound-on-Sound Looping with the Octatrack* (PDF) and
