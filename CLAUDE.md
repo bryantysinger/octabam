@@ -276,15 +276,15 @@ investigated as firmware behaviour for a day (7 Sep 2026, RTOS_FORK
 timing byte advanced 8 per 16-sample frame, which dropped half the tempos'
 recorder trigs ("nothing re-locks the step clock", plus a compensation
 lever). The firmware's own reciprocal tables (`0x80003c20`: 2^31 / block
-size) said which side was wrong. **Route A refuses to run on a stock EMAC**
-(`emu_bringup.emac_selftest`); `scripts/build_unicorn.sh` builds the fixed
+size) said which side was wrong. `emu_bringup.emac_selftest` pins the
+semantics; `scripts/build_unicorn.sh` builds the fixed
 library (`tools/patches/unicorn_emac_fractional.patch`). The general rule is the
 same as "disassemble what you assemble": when firmware arithmetic comes out
 exactly 2× or ½ off, suspect the INSTRUMENT before inventing a unit, and
 find a site in the firmware whose constants only make sense one way.
 
 **STOCK UNICORN'S MAC-WITH-LOAD DECODE HAS THREE DEFECTS, WHICH IS WHY
-ROUTE A SHIMS IT PER SITE RATHER THAN THE FORM BEING ABSENT.** Found 22 Sep
+TIER-0 SHIMS IT PER SITE RATHER THAN THE FORM BEING ABSENT.** Found 22 Sep
 2026 by reading markandrus/octemu's independent fix against QEMU 11.1 and
 confirming the identical lines are present, verbatim, in Unicorn 2.1.4's
 own vendored QEMU 5.0.1 `target/m68k/translate.c`. In `DISAS_INSN(mac)`:
@@ -308,12 +308,10 @@ reset path). All three are in `tools/patches/unicorn_emac_fractional.patch`;
 `emu_bringup.emac_selftest` gained cases for them (fails on stock, passes
 fixed). The MAIN OS has zero true dual-accumulate instructions
 (`maaac`/`masac`/`msaac`/`mssac`), so forcing `dual = 0` is unconditionally
-safe for it. **Not yet retired**: `emu_rtos.py`'s `OCTA_MACLOAD_NATIVE=1`
-disables the per-site shim for a differential, but a run with no project
-on the card never executes any of the 435 hooked sites (0 shim calls
-either way) — vacuously identical, not evidence. The shim stays the
-default until a run with `OT_PROJECT=<dir>` confirms native and shimmed
-agree on real firmware traffic.
+safe for it. The per-site shim (`emu_bringup._emac_load_shim`) stays:
+the only differential against native decode ran route A with no project
+on the card, which executes none of the 435 hooked sites (0 shim calls
+either way), and route A was retired on 26 Sep 2026.
 
 **MACSR S/U IS BIT 6, AND IN FRACTIONAL MODE IT IS NOT SIGNED/UNSIGNED:
 it selects 16-BIT ROUNDING ON THE ACCUMULATOR READ-OUT.** The ColdFire port

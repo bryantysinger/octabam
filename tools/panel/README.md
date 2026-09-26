@@ -26,6 +26,11 @@ REC3 have no MKI equivalent.
 `docs/remixer/EMU.md` lists the other ways to run the port (`make
 emu-live`, scripted runs, the gates).
 
+Route A (`emu_rtos.py`) was retired on 26 Sep 2026: the panel runs the
+port only. `--backend`, `--no-rtc`, `install_rtc` and `/press` went with
+it; `/transport` taps the matrix keys. His text below still describes
+both backends.
+
 ```sh
 make panel REMIX=bamsep26                       # OT_PROJECT=<dir>, or the path in ~/.octabam_project
 make panel REMIX=bamsep26 PANEL_PORT=8571 PANELARGS='--sound off'

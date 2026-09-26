@@ -1390,7 +1390,7 @@ async function poll() {
     const ph = $("#phase");
     ph.textContent = phase;
     ph.className = phase === "ready" ? "ready" : phase === "failed" ? "failed" : "busy";
-    // x real time, live (null under route A / while booting: the badge hides)
+    // x real time, live (null while booting: the badge hides)
     const rt = $("#rt");
     rt.textContent = typeof s.rt === "number" && phase === "ready" ? s.rt.toFixed(2) + "x" : "";
     rt.classList.toggle("ok", typeof s.rt === "number" && s.rt >= 0.97);

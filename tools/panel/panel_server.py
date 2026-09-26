@@ -4,29 +4,19 @@
 Serves a browser page that shows the firmware's REAL screen -- the LCD
 framebuffer the draw primitives paint at FB (found 10 Sep 2026 by hooking
 memory writes from the draw-primitive region during a menu draw: 16
-bytes/row, MSB left, 128x64) -- and injects key presses through the
-firmware's own per-key jump table (KEY_TABLE, RTOS_FORK.md section 9), the
-same path `press_key_live` proved against the M6c fidelity gate.
+bytes/row, MSB left, 128x64) -- and injects key presses as matrix reports
+over the panel link.
 
-Two emulator backends (12 Sep 2026), the same Panel code over either:
-
-  * `port`  -- the C++ ColdFire port, `out/emu/ot_emu --interactive`, over
-    pipes (PortProc/PortRt below; protocol in the PortProc docstring). The
-    default when the binary exists: boot + the fixture project in 21 s wall
-    (route A ~95 s), 350 emulated ms per wall s while playing (route A
-    60-100; measured 12 Sep 2026), and it loads the project itself during
-    its boot. Missing binary: built here; a build
-    that fails, or a binary without --interactive, falls back to route A
-    with the reason in /status "backend_note".
-  * `routea` -- emu_rtos (Unicorn): the real scheduler, so the UI task
-    consumes what a key handler posts and repaints -- a handler called under
-    route B changes state but nothing redraws (measured: 15 handlers, zero
-    framebuffer changes). --backend routea, or the fallback.
+The emulator is the C++ ColdFire port, `out/emu/ot_emu --interactive`,
+over pipes (PortProc/PortRt below; protocol in the PortProc docstring):
+boot + the fixture project in 21 s wall, 350 emulated ms per wall s while
+playing (measured 12 Sep 2026), and it loads the project itself during its
+boot. A missing binary is built here. Route A (emu_rtos, Unicorn), the
+second backend until 26 Sep 2026, was retired; it is in git history.
 
     .venv/bin/python3 tools/panel/panel_server.py                  # built image, empty card
     .venv/bin/python3 tools/panel/panel_server.py --image out/raw/section_3_MAIN_OS.bin
     .venv/bin/python3 tools/panel/panel_server.py --project <dir> [--set S] [--name N]
-    .venv/bin/python3 tools/panel/panel_server.py --backend routea   # the Python oracle
     .venv/bin/python3 tools/panel/panel_server.py --project <dir> --audio ~/samples   # seed the pool
 
 Samples (12 Sep 2026): the card's AUDIO folder is a per-port pool
@@ -105,7 +95,12 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools")); import toolpath  # noqa: E402,F401
 
 import emu_card as ec  # noqa: E402
-import emu_rtos as er  # noqa: E402
+
+SAMPLE_HZ = 44100.0
+FRAME_PERIOD = 16.0                # samples per DSP-frame interrupt
+CUR_PATTERN = 0x80000004
+PATTERN_STRIDE = 0x8ed8            # 36568; sixteen records fill blob+0..0x8ed80
+FW_MIDI_SETTINGS = 0x80000028      # project MIDI byte: bit 0 = CLOCK RECEIVE
 
 FB = 0x460d1f80          # LCD framebuffer, COLUMN-major: 128 columns x 8 bytes,
                          # bit 7 of a page byte is the LOWEST of its 8 rows --
@@ -219,55 +214,6 @@ def load_param_map(path=PARAM_MAP_FILE):
 KEY_TABLE = 0x400d2954   # per-key jump table: 66 longword handlers
 KEY_COUNT = 66
 IDX_REC, IDX_PLAY, IDX_STOP = 27, 28, 29   # measured: 0x4000a274/0x4000a200/0x4000a1e0
-
-
-def install_rtc(clock=None):
-    """Put a real-time clock on the DSPI (found 10 Sep 2026): the firmware
-    reads a DS1390-style SPI RTC on chip-select 2 -- one transaction per
-    register (`<reg> 00`, CONT held between the two frames), registers
-    0x01 sec, 0x02 min, 0x03 hour, 0x04 weekday, 0x05 date, 0x06 month,
-    0x07 year, all BCD; 0x00 hundredths, 0x0e status; one write `9e 07`
-    (0x1e := 7) at boot. Stock emu_rtos.Dspi answers 0 to everything, which
-    is exactly the 2000-00-00 the SET DATE/TIME dialog shows. Replies must
-    be delimited by the CONT bit, not by counting frames (one boot-time
-    transaction is three frames long). Writes to time registers are kept,
-    so setting the clock through the dialog sticks for the session."""
-    import datetime
-    regs = {}
-    def bcd(n):
-        return ((n // 10) << 4) | (n % 10)
-    def now_regs():
-        t = clock() if clock else datetime.datetime.now()
-        return {0x00: 0, 0x01: bcd(t.second), 0x02: bcd(t.minute), 0x03: bcd(t.hour),
-                0x04: t.isoweekday(), 0x05: bcd(t.day), 0x06: bcd(t.month),   # 1 = Monday (measured: 4 draws THURSDAY)
-                0x07: bcd(t.year % 100), 0x0e: 0}
-    def write(self, off, size, val, replay=False):
-        if off == self.PUSHR:
-            if replay:
-                return
-            attr, data = val >> 16, val & 0xff
-            cont, pcs = bool(attr & 0x8000), attr & 0x3f
-            st = getattr(self, "_tx", None)
-            rep = 0
-            if st is None:
-                st = self._tx = [pcs, data, 0]
-                if pcs == 2 and not data & 0x80:
-                    rep = {**now_regs(), **regs}.get(data & 0x7f, 0)
-            else:
-                st[2] += 1
-                reg = (st[1] & 0x7f) + st[2] - 1
-                if st[0] == 2:
-                    if st[1] & 0x80:
-                        regs[reg] = data          # a write: remember it
-                    else:
-                        rep = {**now_regs(), **regs}.get(reg, 0)
-            self.rx.append(rep)
-            self.pushed += 1
-            if not cont:
-                self._tx = None
-        elif off != self.SR:
-            self.regs[off] = val
-    er.Dspi.write = write
 
 
 LCD_ON, LCD_OFF = bytes((0xf2, 0xf2, 0xf2)), bytes((0x06, 0x06, 0x07))   # lit / unlit pixel, RGB: the MKII display, white on black
@@ -1010,11 +956,10 @@ class PortMem:
 
 
 class PortRt:
-    """What the Panel uses of emu_rtos.Rtos, over the interactive protocol:
+    """The Panel's handle on the port child, over the interactive protocol:
     run(ms=), uart64.rx/tx, uc.mem_read/mem_write, sample, frame,
-    pattern_base(), poke_trig(), internal_clock(). The jump-table paths
-    (press_key_live, call_as_main, load_project_live, gate_m6a) are route
-    A's own and are not here; Panel.press()/transport() say so."""
+    pattern_base(), poke_trig(), internal_clock() -- the shape of the
+    retired route A's emu_rtos.Rtos."""
 
     SLICE_MS = 20.0         # run_ms() slice: a round trip each, ~0.1 s wall while playing
 
@@ -1046,7 +991,7 @@ class PortRt:
         self.stop_reason = f.get("stop", "?")
         if self.meter is not None:
             # what really ran (a wall-ended run advanced less than ms)
-            self.meter.add((self.sample - s0) / er.SAMPLE_HZ * 1000.0 if wall is not None else float(ms), wall_s)
+            self.meter.add((self.sample - s0) / SAMPLE_HZ * 1000.0 if wall is not None else float(ms), wall_s)
         return self.stop_reason
 
     # -- O15f: the child paces itself (see Panel._loop_paced) -------------
@@ -1062,7 +1007,7 @@ class PortRt:
         rep = self.proc.command("pacestatus", "pacestatus")
         f = dict(kv.split("=", 1) for kv in rep.split()[1:] if "=" in kv)
         if "ms" in f:
-            self.sample = float(f["ms"]) * er.SAMPLE_HZ / 1000.0
+            self.sample = float(f["ms"]) * SAMPLE_HZ / 1000.0
         return f
 
     def poll_tx(self):
@@ -1088,7 +1033,7 @@ class PortRt:
     def pattern_base(self):
         """emu_rtos.Rtos.pattern_base, via peek: PART_PTR's blob + pattern * stride."""
         blob = int.from_bytes(self.uc.mem_read(ec.PART_PTR, 4), "big")
-        return blob + self.uc.mem_read(er.CUR_PATTERN, 1)[0] * er.PATTERN_STRIDE
+        return blob + self.uc.mem_read(CUR_PATTERN, 1)[0] * PATTERN_STRIDE
 
     def poke_trig(self, step):
         """emu_rtos.Rtos.poke_trig, via peek/poke (track 1, step 1-64)."""
@@ -1100,8 +1045,8 @@ class PortRt:
 
     def internal_clock(self):
         """emu_rtos.Rtos.internal_clock: clear CLOCK RECEIVE (0x80000028 bit 0)."""
-        midi = self.uc.mem_read(er.FW_MIDI_SETTINGS, 1)[0]
-        self.uc.mem_write(er.FW_MIDI_SETTINGS, bytes([midi & ~1]))
+        midi = self.uc.mem_read(FW_MIDI_SETTINGS, 1)[0]
+        self.uc.mem_write(FW_MIDI_SETTINGS, bytes([midi & ~1]))
         return midi
 
 
@@ -1714,7 +1659,7 @@ def build_card(project, set_name, name, tree, pool):
     audio = pool.audio_specs()
     size_mb = max(64, 16 + pool.total_bytes() // 2**20)
     if project:
-        card, staged = er.stage_project(project, set_name, name, audio=audio, tree=str(tree), image_mb=size_mb)
+        card, staged = ec.stage_project(project, set_name, name, audio=audio, tree=str(tree), image_mb=size_mb)
     else:
         if tree.exists():
             shutil.rmtree(tree)
@@ -1730,8 +1675,8 @@ class Panel:
     """Owns the emulator thread; everything Unicorn happens on it."""
 
     def __init__(self, image, card, pump_ms=25.0, project=None, internal_clock=True,
-                 play_pump_ms=10.0, backend="routea", port_bin=PORT_BIN, port_args=(),
-                 card_file=None, backend_note="", auto=False, pool=None, card_builder=None,
+                 play_pump_ms=10.0, backend="port", port_bin=PORT_BIN, port_args=(),
+                 card_file=None, backend_note="", pool=None, card_builder=None,
                  staged_audio=None, sound=False, takes_dir=None, card_persistent=False,
                  card_rw=False, card_meta=None):
         self.image = image
@@ -1759,7 +1704,7 @@ class Panel:
         # _audio_start, _drain_audio). sound_wanted is what the NEXT child
         # boots with (/audio/enable flips it and reboots); sound is what the
         # current one delivers; audio_on says its capture is running.
-        self.sound_wanted = bool(sound) and backend == "port"
+        self.sound_wanted = bool(sound)
         self.sound = False
         # O17 (12 Sep 2026): with sound on the child runs --dsp-rt (the DSP
         # cores under the JIT on worker threads, real time). rt_wanted is
@@ -1784,13 +1729,10 @@ class Panel:
         # keeps it on from boot: frame_always. `playing` is what PLAY..STOP
         # now means for the pump rate and the take. Without the cores
         # nothing is audible and frame mode stays the PLAY..STOP affair it
-        # was (route A: ~100x wall time).
+        # was.
         self.frame_always = False
         self.playing = False
-        if backend != "port":
-            self.sound_note = "no sound under route A (the DSP cores are the port's)" if sound else SOUND_OFF_NOTE
-        else:
-            self.sound_note = SOUND_ON_NOTE if sound else SOUND_OFF_NOTE
+        self.sound_note = SOUND_ON_NOTE if sound else SOUND_OFF_NOTE
         self.sound_busy = False           # an /audio/enable reboot is in progress
         self.audio_on = False             # the current child accepted `audio start main`
         self.audio_note = None            # what went wrong with the capture, if anything
@@ -1815,7 +1757,7 @@ class Panel:
         self.audio_mode = "main"
         self.audio_words = 2
         self.audio_peak_cue = (0, 0)      # |peak| of the cue pair in the last 8-word read
-        self.card = card                  # the FAT16 card image, bytes (route A takes it as is)
+        self.card = card                  # the FAT16 card image, bytes
         self.card_file = card_file        # ... and the port reads it from this file
         self.pool = pool                  # SamplePool the card's AUDIO was built from
         self.card_builder = card_builder  # () -> (card bytes, staged name, staged AUDIO dir): commit_card
@@ -1827,8 +1769,7 @@ class Panel:
         self.play_pump_ms = play_pump_ms   # the pump while frame mode is on (see _loop)
         self.project = project            # (set_name, project_name) to load at boot
         self.internal_clock = internal_clock
-        self.backend = backend            # "port" | "routea"
-        self.auto = auto                  # backend was chosen by default: a port boot that fails falls back
+        self.backend = backend            # "port"
         self.backend_note = backend_note  # why the backend is what it is, when it is not the default
         self.port_bin = str(port_bin)
         self.port_args = list(port_args)  # extra flags for the child (e.g. --dsp)
@@ -1938,8 +1879,8 @@ class Panel:
     BOOT_TIMEOUT = 900.0     # wall seconds the port may take to print `ready` (boot + load)
 
     def _uc(self):
-        """The memory the RAM-framebuffer fallback reads: Unicorn under route A, peek under the port."""
-        return self.r.uc if self.backend == "routea" else self.rt.uc
+        """The memory the RAM-framebuffer fallback reads: the port's peek."""
+        return self.rt.uc
 
     def _dismiss_clock(self, rt):
         # Every boot opens SET DATE/TIME (the "last set" record lives in
@@ -1976,22 +1917,6 @@ class Panel:
                            else f"popup still open after YES: {tuple(hex(v) for v in g)}")
         self._poll(rt)
         self._snapshot(uc)
-
-    def _boot_routea(self):
-        r, rt = er.attach(self.image if self.image != "raw" else None, self.card)
-        self.r, self.rt = r, rt
-        self._instrument(rt)
-        self.booted = True
-        self._snapshot(r.uc)
-        self._dismiss_clock(rt)
-        if self.project:
-            self.phase = "loading project (about a minute)"
-            self._load_project(rt)
-            # Settle before replaying clicks queued during the load: a
-            # key event injected as the very first thing after the load
-            # wedged emulated time (run(ms=50) never returned, 11 Sep 2026).
-            rt.run(ms=300)
-            self._snapshot(r.uc)
 
     def _port_argv(self):
         argv = [self.port_bin]
@@ -2059,7 +1984,7 @@ class Panel:
                                "posted": (posted.group(1) == "yes") if posted else None,
                                "saved_bank": int(banks.group(1)) if banks else None,
                                "final_bank": int(banks.group(2)) if banks else None,
-                               "elapsed_ms": rt.sample / er.SAMPLE_HZ * 1000.0,
+                               "elapsed_ms": rt.sample / SAMPLE_HZ * 1000.0,
                                "port_report": list(proc.log)[-12:]}
                 if self.internal_clock:
                     rt.internal_clock()
@@ -2075,7 +2000,7 @@ class Panel:
             self.frame_always = bool(self.sound_wanted)
             if self.frame_always and not rt.frame:
                 rt.frame = True
-                rt.next_frame = rt.sample + er.FRAME_PERIOD
+                rt.next_frame = rt.sample + FRAME_PERIOD
             self._poll(rt)
             self._snapshot(rt.uc)
         except BaseException:
@@ -2083,42 +2008,24 @@ class Panel:
             raise
 
     def _boot(self):
-        if self.backend == "port":
-            try:
-                self._boot_port()
-            except PortDied as e:
-                if self.booted:
-                    raise
-                if self.sound_wanted:
-                    # The --dsp child did not come up (a binary built without
-                    # the cores, a DSP boot that faults): once more without
-                    # them -- the panel works, the sound does not, and
-                    # /status says why (backend_note, sound_note).
-                    self.sound_wanted = False
-                    self.audio_note = self.sound_note = f"sound off: the --dsp child did not boot ({e})"
-                    self.backend_note = ((self.backend_note + "; ") if self.backend_note else "") + \
-                        f"the --dsp child did not boot ({e}); booted without the DSP cores (no sound)"
-                    print(f"panel: {self.backend_note}")
-                    try:
-                        self._boot_port()
-                    except PortDied as e2:
-                        e = e2
-                    else:
-                        self.phase = "ready"
-                        return
-                if not self.auto:
-                    raise e
-                # The default choice did not come up (a binary without
-                # --interactive exits 2 with its usage; a build that links
-                # but faults at boot): route A instead, and say so.
-                self.backend_note = f"port did not boot ({e}); running route A"
+        try:
+            self._boot_port()
+        except PortDied as e:
+            if self.booted:
+                raise
+            if self.sound_wanted:
+                # The --dsp child did not come up (a binary built without
+                # the cores, a DSP boot that faults): once more without
+                # them -- the panel works, the sound does not, and
+                # /status says why (backend_note, sound_note).
+                self.sound_wanted = False
+                self.audio_note = self.sound_note = f"sound off: the --dsp child did not boot ({e})"
+                self.backend_note = ((self.backend_note + "; ") if self.backend_note else "") + \
+                    f"the --dsp child did not boot ({e}); booted without the DSP cores (no sound)"
                 print(f"panel: {self.backend_note}")
-                self.backend = "routea"
-                self.sound_note = "no sound under route A (the DSP cores are the port's)"
-                self.play_pump_ms = min(self.play_pump_ms, 10.0)
-                self._boot_routea()
-        else:
-            self._boot_routea()
+                self._boot_port()
+            else:
+                raise
         self.phase = "ready"
 
     def _respawn(self, why):
@@ -2184,7 +2091,7 @@ class Panel:
         names (0x100f8480 / 0x100f8378) into the sidecar when they changed
         (PROJECT > CHANGE on the unit), so the next boot loads what the
         user was in. Nothing without --card-rw."""
-        if not self.card_rw or self.backend != "port" or rt is None or self.card_ejected:
+        if not self.card_rw or rt is None or self.card_ejected:
             return
         now = time.perf_counter()
         if not force and now - self.card_flushed_at < self.CARD_FLUSH_S:
@@ -2334,9 +2241,8 @@ class Panel:
         firmware scans AUDIO/ at mount. Answers at once (ok, phase); the
         work runs as one action on the emu thread, /status "phase" shows
         REINSERT_PHASE, then the clock dialog, then ready. Under the port
-        it is the watchdog's respawn path on the new image (_reboot_port);
-        under route A a fresh attach on the new bytes and the same boot
-        preamble. Adds, removes and a second commit are refused meanwhile
+        it is the watchdog's respawn path on the new image (_reboot_port).
+        Adds, removes and a second commit are refused meanwhile
         (card_busy)."""
         if self.pool is None or (self.card_builder is None and not self.card_persistent):
             return False, "no sample pool"
@@ -2380,25 +2286,16 @@ class Panel:
                     self.project = (self.project[0], staged)
                 self.card_manifest = self.pool.manifest()
                 self.reinserts += 1
-                if self.backend == "port":
-                    self.card_file.write_bytes(card)
-                    self._reboot_port(self.REINSERT_PHASE)
-                else:
-                    self.booted = False
-                    self._new_link()
-                    self.led_bits = bytearray(64); self.led_ids = {}
-                    with self.lock:
-                        self.frame = b""; self.screen_txt = ""
-                    self._boot_routea()
-                    self.phase = "ready"
+                self.card_file.write_bytes(card)
+                self._reboot_port(self.REINSERT_PHASE)
                 self.fault = None
                 print(f"panel: card re-inserted with {len(self.card_manifest)} files in"
-                      f" {time.perf_counter() - t0:.1f} s ({self.backend})")
+                      f" {time.perf_counter() - t0:.1f} s")
             except Exception as e:
                 # a build that failed leaves the old child running; a boot
                 # that failed has said "failed" itself (_reboot_port)
                 self.fault = f"card re-insert: {type(e).__name__}: {e}"
-                alive = self.backend != "port" or (self.proc is not None and self.proc.alive())
+                alive = self.proc is not None and self.proc.alive()
                 self.phase = "ready" if alive else "failed"
             finally:
                 self.card_busy = False
@@ -2411,7 +2308,7 @@ class Panel:
         to) and stay that way -- no child, every action refused -- until
         /card/insert. The user copies samples, projects or whole sets in
         and out as with a CF card in a reader. Persistent card only."""
-        if not self.card_persistent or self.backend != "port":
+        if not self.card_persistent:
             return False, "no persistent card (--card) to eject"
         if self.card_ejected:
             return False, f"the card is already ejected (mounted at {self.card_mount})"
@@ -2478,24 +2375,9 @@ class Panel:
         self.actions.put(act)
         return True, self.INSERT_PHASE
 
-    def _instrument(self, rt):
-        """Route A: time every rt.run(ms=...) for the speed meter (the port's
-        PortRt.run reports to it itself)."""
-        orig = rt.run
-        def run(ms=None, until=None, max_bursts=None):
-            t0 = time.perf_counter()
-            try:
-                return orig(ms=ms, until=until, max_bursts=max_bursts)
-            finally:
-                if ms is not None and until is None:
-                    self.meter.add(float(ms), time.perf_counter() - t0)
-        rt.run = run
-
     def _poll(self, rt):
-        """Port: drain the child's UART A bytes into rt.uart64.tx (one round
-        trip). Route A's Uart.tx grows on its own."""
-        if isinstance(rt, PortRt):
-            rt.poll_tx()
+        """Drain the child's UART A bytes into rt.uart64.tx (one round trip)."""
+        rt.poll_tx()
 
     PACE_POLL_S = 0.02       # the paced loop's cadence (tx, audio drain, pacestatus, render) when no action is queued
     PACE_RATE = 1.0          # `pace on <rate>`: 1.0 = the unit's own clock
@@ -2508,18 +2390,16 @@ class Panel:
             self.phase = "failed"
             return
         threading.Thread(target=self._watchdog, daemon=True, name="watchdog").start()
-        if self.backend == "port":
-            try:
-                self.rt.pace(True, self.PACE_RATE)
-            except PortError as e:
-                # an older child (--port-bin) without `pace`: the pump below, as before
-                self.backend_note = ((self.backend_note + "; ") if self.backend_note else "") + \
-                    f"the child has no pacer ({e}); pumping 25 ms runs instead"
-                print(f"panel: {self.backend_note}")
-            else:
-                return self._loop_paced()
-        # Route A (and a child without `pace`): the pump below, unchanged
-        # (O15f paces the port child only).
+        try:
+            self.rt.pace(True, self.PACE_RATE)
+        except PortError as e:
+            # an older child (--port-bin) without `pace`: the pump below, as before
+            self.backend_note = ((self.backend_note + "; ") if self.backend_note else "") + \
+                f"the child has no pacer ({e}); pumping 25 ms runs instead"
+            print(f"panel: {self.backend_note}")
+        else:
+            return self._loop_paced()
+        # A child without `pace`: the pump below (O15f).
         while True:
             try:
                 while True:
@@ -2572,7 +2452,7 @@ class Panel:
                 burst = time.perf_counter() - t    # the run + tx alone decide the idle sleep below,
                 self._drain_audio(rt)              # so the drain (one more round trip, /audio/status
                 self.busy_since = None             # "drain" measures it) changes no pump cadence
-                self.ran_ms = rt.sample / er.SAMPLE_HZ * 1000.0
+                self.ran_ms = rt.sample / SAMPLE_HZ * 1000.0
                 if isinstance(rt, PortRt) and rt.stop_reason not in ("time", "gate", None, "?") \
                         and not (self.fault or "").startswith("port: run stopped"):
                     self.fault = f"port: run stopped: {rt.stop_reason}"
@@ -2657,7 +2537,7 @@ class Panel:
                 st = rt.pacestatus()
                 self.busy_since = None
                 self.pace = st
-                self.ran_ms = rt.sample / er.SAMPLE_HZ * 1000.0
+                self.ran_ms = rt.sample / SAMPLE_HZ * 1000.0
                 self.rtmeter.add(self.ran_ms)
                 busy = float(st.get("busy", 0.0))
                 if prev is not None and busy > prev[1]:
@@ -2684,37 +2564,6 @@ class Panel:
                 self.busy_since = None
                 self.fault = f"{type(e).__name__}: {e}"
                 time.sleep(0.5)
-
-    def _load_project(self, rt):
-        """The CLI's --sequencer preamble (emu_rtos.main), verbatim in
-        spirit: wait for the M6a gate, mount + LOAD PROJECT through the real
-        sys/engine tasks, then the two compensations RTOS_FORK.md section 7
-        documents (the load ends on bank A here where the unit comes up on
-        the saved bank; the sequencer's own bank/pattern byte is re-issued),
-        and the internal clock so a project saved with CLOCK RECEIVE does not
-        wait for MIDI clock that never arrives in emulation."""
-        set_name, name = self.project
-        if not rt.gate_m6a()[0]:
-            rt.run(ms=1000, until=lambda x: x.gate_m6a()[0])
-        mounted, posted, saved_bank, final_bank, elapsed = rt.load_project_live(set_name, name)
-        if saved_bank is not None and final_bank != saved_bank:
-            final_bank = rt.select_bank_live(saved_bank)
-        pattern = rt.uc.mem_read(er.CUR_PATTERN, 1)[0]
-        rt.seq_select_live(final_bank, pattern)
-        if self.internal_clock:
-            rt.internal_clock()
-        # NOT here: rt.frame / rt.exact_clock(). Both are the sequencer
-        # research's fidelity settings and they cost ~100x wall time (50 ms
-        # of firmware = 5.5 s, measured 11 Sep 2026) -- every click took 11 s
-        # and the panel looked hung. Frame mode goes on with PLAY, off with
-        # STOP (_before_play / _after_stop, shared by the matrix path key()
-        # and the handler path transport()) -- under the port with the
-        # cores it stays on from boot instead (frame_always, 23 Sep 2026:
-        # manual [TRIG] trigs need it while stopped); the exact clock is never
-        # needed for the UI.
-        self.loaded = {"mounted": mounted, "posted": posted, "saved_bank": saved_bank,
-                       "final_bank": final_bank, "elapsed_ms": elapsed}
-        self._snapshot(rt.uc if hasattr(rt, "uc") else self.r.uc)
 
     def knob(self, row, delta):
         """An encoder turn: matrix rows 0x30-0x36 are the seven encoders and
@@ -2945,11 +2794,10 @@ class Panel:
 
     def _before_play(self, rt):
         """What every PLAY needs BEFORE the key lands, whichever path
-        delivers it (the matrix report in key(), the jump-table handler in
-        transport()). The DSP frame interrupt is what steps the sequencer,
-        so frame mode goes on (~17x wall time while it is on under route
-        A; off again in _after_stop -- unless frame_always, the port with
-        the cores, where it has been on since the boot). Without this the
+        delivers it (key(), transport()). The DSP frame interrupt is what
+        steps the sequencer, so frame mode goes on (off again in
+        _after_stop -- unless frame_always, the port with the cores, where
+        it has been on since the boot). Without this the
         matrix PLAY only flipped the transport word and lit the PLAY LED:
         the position bar never moved (12 Sep 2026).
 
@@ -2961,7 +2809,7 @@ class Panel:
         clear and it plays as saved."""
         if not rt.frame:
             rt.frame = True
-            rt.next_frame = rt.sample + er.FRAME_PERIOD
+            rt.next_frame = rt.sample + FRAME_PERIOD
         if not self.playing:
             self.playing = True
             self._open_take(rt)         # sound on: a take file from this PLAY to the next STOP
@@ -3121,7 +2969,7 @@ class Panel:
         """The child's capture to `mode`, as an action, when there is a
         child to ask; a child that boots later (respawn, re-insert, sound
         switch) picks the mode itself in _audio_start."""
-        if self.backend != "port" or not self.booted or self.card_ejected or self.card_busy or self.sound_busy:
+        if not self.booted or self.card_ejected or self.card_busy or self.sound_busy:
             return
 
         def act():
@@ -3283,10 +3131,8 @@ class Panel:
         false meanwhile). Takes and the ring survive; the child's ring
         restarts and the server keeps numbering on. Refused while a
         re-insert or another switch runs, while booting, when already in
-        that state, and under route A."""
+        that state."""
         on = bool(on)
-        if self.backend != "port":
-            return False, "no sound under route A (the DSP cores are the port's)"
         if self.card_busy:
             return False, "the card is being re-inserted (reboot in progress)"
         if self.sound_busy:
@@ -3326,47 +3172,20 @@ class Panel:
         return True, phase
 
     def transport(self, what):
-        """PLAY / REC / STOP through the firmware's own key handlers
-        (press_key_live, RTOS_FORK.md section 9) -- the fallback the page
-        used for these keys before their matrix cells were measured; kept
-        for scripting. Same helpers around the key as key() uses."""
+        """PLAY / REC / STOP for scripting: the key through the matrix
+        (PLAY 0x25.0, REC 0x25.1, STOP 0x24.7), down then up, with the
+        helpers key() wraps around PLAY/STOP."""
         if what not in ("play", "rec", "stop"):
             return False, "play|rec|stop"
-        if self.backend == "port":
-            # No jump table over the pipe: the same key through the matrix
-            # (PLAY 0x25.0, REC 0x25.1, STOP 0x24.7), down then up, with
-            # the helpers key() wraps around PLAY/STOP.
-            row, bit = {"play": self.PLAY_KEY, "rec": (0x25, 1), "stop": self.STOP_KEY}[what]
-            def tap(rt):
-                # one action, down then up: the down edge keeps its 50 ms of
-                # firmware (the paced child would otherwise see both edges
-                # in the same slice)
-                down = self._key_act(rt, row, bit, True, run_ms=50.0)
-                up = self._key_act(rt, row, bit, False, run_ms=50.0)
-                return f"matrix tap: {down}; {up}"
-            return self.do(tap, timeout=120)
-        if what == "play":
-            # PLAY's own handler + FW_START_TRACK per track, as
-            # rt.press_play_live does but WITHOUT its exact_clock(): that
-            # instruction-count hook is the sequencer research's timing
-            # setting, costs ~100x wall time and never comes off again
-            # (every click took 11 s, 11 Sep 2026). The matrix path never
-            # needed it and the position bar advances without it.
-            def play(rt):
-                flags = self._before_play(rt)
-                d0 = rt.press_key_live(er.KEY_PLAY)
-                for t in range(8):
-                    rt.run(until=lambda r: r.pc == er.MAIN_SPIN)
-                    rt.call_as_main(er.FW_START_TRACK, args=(t,))
-                return f"d0={d0} active={flags} (frame mode on: slower while playing)"
-            return self.do(play, timeout=120)
-        handler = {"rec": er.KEY_REC, "stop": er.KEY_STOP}[what]
-        def press(rt):
-            d0 = rt.press_key_live(handler)
-            if what == "stop":
-                self._after_stop(rt)
-            return f"d0={d0}" + (" (frame mode off)" if what == "stop" else "")
-        return self.do(press, timeout=120)
+        row, bit = {"play": self.PLAY_KEY, "rec": (0x25, 1), "stop": self.STOP_KEY}[what]
+        def tap(rt):
+            # one action, down then up: the down edge keeps its 50 ms of
+            # firmware (the paced child would otherwise see both edges
+            # in the same slice)
+            down = self._key_act(rt, row, bit, True, run_ms=50.0)
+            up = self._key_act(rt, row, bit, False, run_ms=50.0)
+            return f"matrix tap: {down}; {up}"
+        return self.do(tap, timeout=120)
 
     def activate_tracks(self, rt, tracks=range(8)):
         """Set the per-track PLAYS FREE byte in the current pattern record
@@ -3462,7 +3281,7 @@ class Panel:
                 # The port CAN be stopped: a child that has not answered in
                 # ACTION_LIMIT is killed here; the command blocked on it
                 # raises PortDied and the loop respawns (_respawn).
-                if self.backend == "port" and self.proc is not None and self.proc.alive():
+                if self.proc is not None and self.proc.alive():
                     self.fault = f"watchdog: the port answered nothing for {self.ACTION_LIMIT:.0f} s; killed"
                     self.proc.kill()
 
@@ -3486,26 +3305,23 @@ class Panel:
         wall = self.ACTION_LIMIT - 1.0 if wall is None else wall
         t0 = time.perf_counter()
         s0 = rt.sample
-        end = s0 + ms * er.SAMPLE_HZ / 1000.0
+        end = s0 + ms * SAMPLE_HZ / 1000.0
         self.abort = False
         why = "done"
         slice_ms = getattr(rt, "SLICE_MS", self.RUN_SLICE_MS)   # the port: a round trip per slice
         while rt.sample < end:
-            left = (end - rt.sample) / er.SAMPLE_HZ * 1000.0
-            if isinstance(rt, PortRt):
-                # O15f: the child ends the slice itself when the budget is
-                # spent (`run <ms> wall <s>`), so the slice, not just the
-                # loop, is bounded in wall time
-                rt.run(ms=min(left, slice_ms), wall=max(0.01, wall - (time.perf_counter() - t0)))
-            else:
-                rt.run(ms=min(left, slice_ms))
-            self.ran_ms = rt.sample / er.SAMPLE_HZ * 1000.0
+            left = (end - rt.sample) / SAMPLE_HZ * 1000.0
+            # O15f: the child ends the slice itself when the budget is
+            # spent (`run <ms> wall <s>`), so the slice, not just the
+            # loop, is bounded in wall time
+            rt.run(ms=min(left, slice_ms), wall=max(0.01, wall - (time.perf_counter() - t0)))
+            self.ran_ms = rt.sample / SAMPLE_HZ * 1000.0
             self._drain_audio(rt)       # the ring and the take keep up slice by slice
             if self.abort:
                 why = "watchdog"; break
             if time.perf_counter() - t0 > wall or getattr(rt, "stop_reason", None) == "wall":
                 why = f"{wall:.0f} s wall budget"; break
-        ran = (rt.sample - s0) / er.SAMPLE_HZ * 1000.0
+        ran = (rt.sample - s0) / SAMPLE_HZ * 1000.0
         dt = time.perf_counter() - t0
         rate = f" ({ran / dt:.0f} emulated ms per wall s{', frame mode on' if rt.frame else ''})" if dt > 0.2 else ""
         if why == "done":
@@ -3536,14 +3352,6 @@ class Panel:
         if not done.wait(timeout):
             return False, "timeout (emulator busy)"
         return box["ok"], box["r"]
-
-    def press(self, idx, edge):
-        if not (0 <= idx < KEY_COUNT):
-            return False, "bad index"
-        if self.backend == "port":
-            return False, "jump-table handlers need route A (--backend routea); use /key"
-        h = self.handlers[idx]
-        return self.do(lambda rt: rt.press_key_live(h, edge))
 
     row_state = None   # per-row pressed-bit bytes, lazily created
 
@@ -3879,7 +3687,7 @@ class Handler(BaseHTTPRequestHandler):
                             "speed": p.meter.value,
                             # O15f: x real time by the WALL clock (emulated ms per
                             # wall s over the last second / 1000): 1.0 = the unit's
-                            # clock; None under route A and before the pacer is up
+                            # clock; None before the pacer is up
                             "rt": p.rtmeter.value,
                             "pace": _pace_json(p.pace),
                             "nice": host_nice(),            # > 0: started as a zsh background job (BG_NICE); slower under load
@@ -3938,15 +3746,15 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": ok, "addr": f"{addr:#x}", "hex": res if ok else None, "result": None if ok else res})
         elif path == "/rtstatus":
             # O17: the port child's `rtstatus` line (the DSP workers' MIPS, waits, edges, faults)
-            if p.backend != "port" or p.proc is None:
-                self._json({"ok": False, "result": f"backend is {p.backend}"})
+            if p.proc is None:
+                self._json({"ok": False, "result": "no port child"})
             else:
                 ok, st = p.do(lambda rt: rt.proc.command("rtstatus", "rtstatus"), timeout=30)
                 self._json({"ok": ok, "rtstatus": st if ok else None, "result": None if ok else st, "sound_rt": p.sound_rt})
         elif path == "/port":
             # the port child itself: argv, pid, its own status line, the tail of its report
-            if p.backend != "port" or p.proc is None:
-                self._json({"ok": False, "result": f"backend is {p.backend}"})
+            if p.proc is None:
+                self._json({"ok": False, "result": "no port child"})
             else:
                 ok, st = p.do(lambda rt: rt.status(), timeout=30)
                 self._json({"ok": ok, "status": st if ok else None, "result": None if ok else st,
@@ -3957,9 +3765,6 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"table": f"0x{KEY_TABLE:08x}",
                         "handlers": [f"0x{h:08x}" for h in p.handlers],
                         "rec": IDX_REC, "play": IDX_PLAY, "stop": IDX_STOP})
-        elif path == "/press":
-            ok, res = p.press(int(args.get("idx", -1)), int(args.get("edge", 0)))
-            self._json({"ok": ok, "result": res if not ok else f"d0={res}"})
         elif path == "/key":
             ok, res = p.key(int(args.get("row", "-1"), 0), int(args.get("bit", "-1")),
                             args.get("down", "1") == "1")
@@ -4072,14 +3877,9 @@ def main():
                          "(a sidecar IMG.json keeps the set/project names; the pool of pending samples is IMG.pool/). "
                          "Without it: a fresh per-port image every start, as before")
     ap.add_argument("--port", type=int, default=8563)
-    ap.add_argument("--no-rtc", action="store_true",
-                    help="leave the DSPI RTC unmodelled (the firmware then reads 2000-00-00 00:00:00)")
     ap.add_argument("--midi-clock", action="store_true",
                     help="keep the project's CLOCK RECEIVE setting (default: clear it so the "
                          "sequencer runs on its own clock -- no MIDI clock ever arrives here)")
-    ap.add_argument("--backend", choices=("auto", "port", "routea"), default="auto",
-                    help="port = out/emu/ot_emu --interactive (default when it exists; built if "
-                         "missing), routea = emu_rtos; auto falls back to route A with a note in /status")
     ap.add_argument("--port-bin", default=str(PORT_BIN),
                     help="the port binary (a .py stand-in runs under this Python)")
     ap.add_argument("--port-arg", action="append", default=[],
@@ -4094,7 +3894,7 @@ def main():
                          "--port-arg=--dsp asks for the lockstep cores explicitly; --sound off wins over it")
     ap.add_argument("--mki", action="store_true",
                     help="run the port as an MKI (no --mkii): the MKI keymap, no PROJ/PART/AED/ARR/REC3 keys. "
-                         "Default: the port child runs --mkii (docs/firmware/PANEL.md); route A is always an MKI")
+                         "Default: the port child runs --mkii (docs/firmware/PANEL.md)")
     a = ap.parse_args()
 
     # Default to the STOCK image: out/mainos_bus.bin is whatever the last
@@ -4209,27 +4009,15 @@ def main():
                   f"{len(pool.names())} pending in {pool.path}{', ' + str(len(added)) + ' from --audio' if added else ''})")
         card = None
 
-    if not a.no_rtc:
-        install_rtc()           # route A only; the port's DSPI answers 0 (the 2000-00-00 dialog)
-
-    # The backend. The port is the default when its binary exists and knows
-    # --interactive (port_available builds it when missing); anything short
-    # of that runs route A and says why in /status "backend_note".
-    backend, note, card_file = a.backend, "", None
-    if backend != "routea":
-        ok, note = port_available(a.port_bin, build=True)
-        if ok:
-            backend = "port"
-        elif a.backend == "port":
-            sys.exit(f"panel: --backend port: {note}")
-        else:
-            backend = "routea"
-            note = f"{note}; running route A"
-            print(f"panel: {note}")
+    # The port: its binary must exist and know --interactive
+    # (port_available builds it when missing).
+    backend, card_file = "port", None
+    ok, note = port_available(a.port_bin, build=True)
+    if not ok:
+        sys.exit(f"panel: {note}")
+    note = ""
     card_rw = False
-    if card_path is not None and backend != "port":
-        sys.exit(f"panel: --card needs the port backend ({note or 'route A has no write-back'})")
-    if backend == "port" and card_path is not None:
+    if card_path is not None:
         # O19: the user's own image, booted as it is; write-back when the
         # binary knows the flag (an older out/emu/ot_emu boots it read-only
         # and /status card_rw says so)
@@ -4240,9 +4028,9 @@ def main():
             note = ((note + "; ") if note else "") + \
                 f"{pb} has no --card-rw (built before O19): the card is booted read-only, SAVE on the unit stays in RAM"
             print(f"panel: {note}")
-    elif backend == "port":
-        # The port reads the card from a file: the same bytes route A would
-        # attach, one file per server port so two panels do not share it.
+    else:
+        # The port reads the card from a file, one per server port so two
+        # panels do not share it.
         card_file = ROOT / "out" / f"_panel_card_{a.port}.img"
         card_file.write_bytes(card)
     # Sound: --dsp is --sound's flag now. A script's --port-arg=--dsp still
@@ -4253,12 +4041,12 @@ def main():
     if len(port_args) != len(a.port_arg) and not sound:
         print("panel: --sound off: --port-arg=--dsp dropped (the child runs without the DSP cores)")
     # The model: the port boots as an MKII unless --mki (the GPIO loopback,
-    # the panel loader handshake and the 0x7r report: ot_emu --mkii); route
-    # A, a .py stand-in and a port binary without the flag stay MKI. /map
+    # the panel loader handshake and the 0x7r report: ot_emu --mkii); a
+    # .py stand-in and a port binary without the flag stay MKI. /map
     # says which.
     model = "mki"
     pb = pathlib.Path(a.port_bin)
-    if backend == "port" and not a.mki and pb.suffix != ".py":
+    if not a.mki and pb.suffix != ".py":
         if b"--mkii" in pb.read_bytes():
             if "--mkii" not in port_args:
                 port_args.append("--mkii")
@@ -4269,8 +4057,8 @@ def main():
     takes_dir = ROOT / "out" / f"_panel_takes_{a.port}"
     Handler.panel = Panel(image, card, project=project, internal_clock=not a.midi_clock,
                           backend=backend, port_bin=a.port_bin, port_args=port_args,
-                          card_file=card_file, backend_note=note, auto=a.backend == "auto",
-                          play_pump_ms=25.0 if backend == "port" else 10.0,
+                          card_file=card_file, backend_note=note,
+                          play_pump_ms=25.0,
                           pool=pool, card_builder=builder, staged_audio=staged_audio,
                           sound=sound, takes_dir=takes_dir, card_persistent=card_path is not None,
                           card_rw=card_rw, card_meta=card_meta)

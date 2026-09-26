@@ -7,6 +7,11 @@ flashed image was built from.
 
 ## Unreleased (main after image 43; image 53 built)
 
+- ROUTE A RETIRED (26 Sep 2026): `tools/emu/emu_rtos.py`, `make emu-rtos`,
+  `scripts/o6_gate.sh` and `tools/emu/ot_emu/oracle.py` removed. The
+  panel runs the port only (`--backend`, `--no-rtc` and `/press` gone;
+  `/transport` taps the matrix); `panel_link.py --selftest` boots the
+  port; `stage_project` moved to `emu_card`. Tier-0 (`emu_bringup`) stays.
 - RECORDER HOLD in `recfix` (26 Sep 2026): in sound-on-sound (SRC3 = the
   track) a recorder-buffer voice that reads one sample past its recording
   repeats the last sample instead of playing zero. Port-gated; the click

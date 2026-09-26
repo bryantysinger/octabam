@@ -344,16 +344,16 @@ dsp-repatch: ## Re-apply tools/patches/dsp56300.patch to vendor/dsp56300 (revert
 emu-setup: ## Provision the remixer deps (unicorn + textual) into .venv via uv
 	uv sync --extra emu
 	@echo "remixer ready — 'make remix' (docs/remixer/EMU.md for the emulator view)"
-	@echo "route A (emu_rtos) also needs the EMAC-fixed Unicorn: make emu-unicorn"
+	@echo "Tier-0 (emu_bringup) uses the EMAC-fixed Unicorn when it is built: make emu-unicorn"
 
-# Route A needs a Unicorn whose ColdFire EMAC multiplies like the MCF5445x
-# (stock 2.1.4 halves every fractional-mode product -- RTOS_FORK section
-# 10.16). Builds it from the PyPI sdist + tools/patches/unicorn_emac_fractional.patch
-# into .venv/lib/unicorn-emac, where emu_bringup picks it up. The .venv's
-# Python must be the host's native architecture (arm64 on Apple silicon):
-# the script checks, and emu_rtos refuses to run on a stock EMAC.
+# A Unicorn whose ColdFire EMAC multiplies like the MCF5445x (stock 2.1.4
+# halves every fractional-mode product -- RTOS_FORK section 10.16). Builds it
+# from the PyPI sdist + tools/patches/unicorn_emac_fractional.patch into
+# .venv/lib/unicorn-emac, where emu_bringup picks it up. The .venv's Python
+# must be the host's native architecture (arm64 on Apple silicon): the
+# script checks.
 .PHONY: emu-unicorn
-emu-unicorn: ## Build the EMAC-fixed Unicorn library for route A (needs cmake)
+emu-unicorn: ## Build the EMAC-fixed Unicorn library for Tier-0 (needs cmake)
 	@arch=$$($(PY) -c 'import platform; print(platform.machine())'); host=$$(uname -m); \
 	  if [ "$$arch" != "$$host" ]; then echo "$(PY) is $$arch on a $$host host -- recreate .venv with a native Python first (uv python install; uv sync --extra emu)"; exit 1; fi
 	scripts/build_unicorn.sh
@@ -368,13 +368,6 @@ NAME ?=
 emu-card: ## Boot with an emulated CF card holding PROJECT and load it
 	@test -n "$(PROJECT)" || { echo "usage: make emu-card PROJECT=<project dir> [SET=..] [NAME=..]"; exit 1; }
 	$(PY) tools/emu/emu_card.py --project "$(PROJECT)" --set "$(SET)" $(if $(NAME),--name "$(NAME)",)
-
-# Route A: the firmware's own scheduler running (docs/history/RTOS_FORK.md). Exits 0
-# when the M6a gate passes: every task created and run once.
-.PHONY: emu-rtos
-emu-rtos: ## Boot with the card and run the real scheduler to the M6a gate
-	@test -n "$(PROJECT)" || { echo "usage: make emu-rtos PROJECT=<project dir> [SET=..] [NAME=..]"; exit 1; }
-	$(PY) tools/emu/emu_rtos.py --project "$(PROJECT)" --set "$(SET)" $(if $(NAME),--name "$(NAME)",) --ms 400 --until-gate
 
 # -------------------------------------------------------------------- misc --
 

@@ -203,32 +203,39 @@ def bars(rows, x0=0, x1=LCD_W, min_run=7, floor=0.3, mean=0.5):
 
 # -- self-test ---------------------------------------------------------------
 def selftest(out_dir):
-    """Boot the stock image on an empty card, open MIXER, decode the UART
-    stream, write PNGs, check the title-bar geometry and that decoding is
-    chunking-independent. ~15-20 s wall (15.4 s and 17.1 s measured 11 Sep
-    2026; the boot itself is most of it)."""
+    """Boot the stock image under the port (`ot_emu --interactive`) on an
+    empty card, open MIXER, decode the UART stream, write PNGs, check the
+    title-bar geometry and that decoding is chunking-independent. Route A
+    ran this until 26 Sep 2026 (15-20 s wall)."""
     import pathlib
     import time
     t0 = time.monotonic()
     root = pathlib.Path(__file__).resolve().parents[2]
     sys.path.insert(0, str(root / "tools")); import toolpath  # noqa: E402,F401
     import emu_card as ec  # noqa: E402
-    import emu_rtos as er  # noqa: E402
-    from panel_server import install_rtc  # noqa: E402
+    from panel_server import PORT_BIN, PortProc, PortRt, port_available  # noqa: E402
 
+    ok, note = port_available(PORT_BIN, build=True)
+    if not ok:
+        print("FAIL:", note)
+        return False
     out = pathlib.Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     tree = root / "out/_panel_tree"
     (tree / "OCTABAM" / "AUDIO").mkdir(parents=True, exist_ok=True)
-    card = ec.build_image(str(tree), size_mb=64)
-    install_rtc()
-    r, rt = er.attach(None, card)
+    card = root / "out/_panel_selftest_card.img"
+    card.write_bytes(ec.build_image(str(tree), size_mb=64))
+    proc = PortProc([str(PORT_BIN), "--image", str(root / "out/raw/section_3_MAIN_OS.bin"),
+                     "--card", str(card), "--interactive"])
+    proc.wait_ready(300)
+    rt = PortRt(proc)
     link = PanelLink()
     pos = 0
 
     def pump(ms):
         nonlocal pos
         rt.run(ms=ms)
+        rt.poll_tx()
         tx = rt.uart64.tx
         # feed in odd-sized pieces on purpose: framing must not care
         while pos < len(tx):
@@ -240,8 +247,8 @@ def selftest(out_dir):
     boot = link.lcd_rows()
     (out / "selftest_boot.png").write_bytes(link.render_png(3))
     boot_stats = dict(link.stats, ops=dict(link.stats["ops"]))
-    rt.uart64.rx.extend([0x26, 0x01]); pump(60)     # MIXER down
-    rt.uart64.rx.extend([0x26, 0x00]); pump(200)    # MIXER up
+    proc.command("key 0x26 0x01", "ok"); pump(60)    # MIXER down
+    proc.command("key 0x26 0x00", "ok"); pump(200)   # MIXER up
     mixer = link.lcd_rows()
     (out / "selftest_mixer.png").write_bytes(link.render_png(3))
 
@@ -285,6 +292,7 @@ def selftest(out_dir):
     print(f"LED rows {dict(sorted(link.led_rows.items()))}")
     print(f"PNGs: {out / 'selftest_boot.png'}, {out / 'selftest_mixer.png'}")
     print(f"wall {time.monotonic() - t0:.1f} s")
+    proc.command("quit", "ok")
     for f in fails:
         print("FAIL:", f)
     return not fails

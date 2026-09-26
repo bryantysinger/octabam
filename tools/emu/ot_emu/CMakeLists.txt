@@ -151,8 +151,8 @@ add_executable(ot_periph_test test_periph.cpp)
 target_link_libraries(ot_periph_test PRIVATE ot_machine)
 add_test(NAME periph COMMAND ot_periph_test)
 
-# The run loop: route A's M6a gate, self-contained (the full oracle diff needs
-# route A itself -- see tools/emu/ot_emu/oracle.py). Runs from the repo root so it
+# The run loop: route A's M6a gate (every task created and run once),
+# self-contained. Runs from the repo root so it
 # finds the operator's own stock image; skips cleanly if it is absent.
 add_executable(ot_rtos_test test_rtos.cpp)
 target_link_libraries(ot_rtos_test PRIVATE ot_machine)

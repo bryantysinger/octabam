@@ -28,7 +28,7 @@ line `hello-dram`'s verifier does.
 | `tools/build/` | **the build** (`build_bus.py`) and the tools that understand the OS layout: the DSP load map, disassembly, reachability, the ELUP/`.bin` codecs, label and formatter emitters, cycle pricing |
 | `tools/verify/` | **the gates**: one `verify_*.py` per property, run by `make verify` |
 | `tools/harness/` | **hearing and measuring the DSP side** locally: the emulator harness (`dsp_host/`), `send_probe`, `render_reverb`, `rig_render` |
-| `tools/emu/` | **the ColdFire emulators**: the headless machine port (`ot_emu/`, C++) and the Unicorn bring-up (`emu_bringup`, `emu_card`, `emu_rtos`) |
+| `tools/emu/` | **the ColdFire emulators**: the headless machine port (`ot_emu/`, C++) and the Unicorn bring-up (`emu_bringup`, `emu_card`) |
 | `tools/hw/` | **the unit and its card**: MIDI control, capture, sweeps, project files, MIDI flashing |
 | `tools/patches/` | local patches to the vendored toolchains (dsp56300, elektron-firmware-tool, unicorn) |
 
