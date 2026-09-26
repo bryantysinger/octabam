@@ -197,10 +197,11 @@ def main():
           abs(rate - 0.689) < 0.01 and abs(c["frames"] - c["seconds"]) <= 1,
           f"{rate:.4f} per poll; first {c['frames']} / second {c['seconds']} visits")
     print(f"  OUT fill while consuming: min {c['minfill']} max {c['maxfill']} (target 384)")
-    check("every OUT packet retired, whole frames, no errors",
-          c["pkts"] >= polls - 2 and c["bad"] == 0, f"pkts {c['pkts']} bad {c['bad']}")
-    check("the ring took every frame the host sent (the last packet or two may be in flight)",
-          0 <= r["frames"] - c["produced"] <= 24, f"produced {c['produced']} sent {r['frames']}")
+    # up to NSLOTO (4) dTDs can still be queued when the bench hangs up
+    check("every OUT packet retired, whole frames, no errors (up to 4 in flight at hangup)",
+          c["pkts"] >= polls - 4 and c["bad"] == 0, f"pkts {c['pkts']} bad {c['bad']}")
+    check("the ring took every frame the host sent (the last four packets may be in flight)",
+          0 <= r["frames"] - c["produced"] <= 48, f"produced {c['produced']} sent {r['frames']}")
     check("no underrun after the cushion filled, no overrun, no re-prime",
           c["underruns"] == 0 and c["overruns"] == 0 and c["reprimes"] == 0,
           f"underruns {c['underruns']} overruns {c['overruns']} reprimes {c['reprimes']}")

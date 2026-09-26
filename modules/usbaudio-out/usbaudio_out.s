@@ -70,6 +70,22 @@
 | it being off.
 .set SCM_BCR,        0xfc040024
 .set BCR_ON,         0x000003ff     | GBR + GBW + all slaves (SBE 0xff)
+| Crossbar arbitration (MCF54455RM ch. 15). With bursts on, 5-11 bad
+| packets a minute were left (build 13, busy session). The USB controller is
+| master 6, stock level 6 of 7 (PRS 0x65403210) under round robin (CRS
+| 0x110) on every slave. On SDRAM (slave 2: the dQH list) and the SRAM
+| backdoor (slave 4: our dTDs and buffers) it goes first under fixed
+| priority, the others below it in their stock order; parking unchanged.
+| Build 14 on the unit, same session, two minutes each: stock 11, this 0,
+| no audible or UI change. A PRS write that puts two masters on one level
+| is a bus error, so the value is written whole (it is valid; checked by
+| tools/hw/usb_reg.py prs_ok) and before the CRS switch to fixed.
+.set XBS_PRS2,       0xfc004200
+.set XBS_CRS2,       0xfc004210
+.set XBS_PRS4,       0xfc004400
+.set XBS_CRS4,       0xfc004410
+.set PRS_USB1ST,     0x60504321     | M6 USB 0, M0 core 1, M1 eDMA 2, M2 3, M3 4, M5 5, M7 6
+.set CRS_FIXED,      0x10           | ARB 0 (fixed), PCTL 01 (park on last) as stock
 .set SRAM_DTDS,      0x80007c00     | NSLOTO dTDs, 32-byte aligned (128 B)
 .set SRAM_BUFS,      0x80007c80     | NSLOTO packet buffers (768 B)
 .set SRAM_REPLY,     0x80007f80     | EP0 reply for 0x56 / 0x57 (128 B)
@@ -386,6 +402,12 @@ out_up:
     movel   %d0,ENDPTCTRL3
     movel   #BCR_ON,%d0             | USB bursts over the crossbar (see SCM_BCR)
     movel   %d0,SCM_BCR
+    movel   #PRS_USB1ST,%d0         | USB first on SDRAM and the SRAM backdoor:
+    movel   %d0,XBS_PRS2            | the priorities first (inert while the port
+    movel   %d0,XBS_PRS4            | still round-robins), each ONE 32-bit store
+    moveq   #CRS_FIXED,%d0
+    movel   %d0,XBS_CRS2            | then fixed arbitration
+    movel   %d0,XBS_CRS4
     clrl    out_produced
     clrl    out_consumed
     moveq   #-1,%d0
