@@ -525,6 +525,8 @@ def main():
              # usbin-test gives up SPATIALIZER only: its DSP inject routine
              # is poked into SPATIALIZER's words on payload A.
              "usbin-test": ("SPATIALIZER",),
+             # usb-io likewise: USB AUDIO OUT's DSP inject lives there.
+             "usb-io": ("SPATIALIZER",),
              "bamsep26": _rig, "rig-scenes": _rig, "rig-kits": _rig,
              "rig-mods": _rig, "usb": _rig, "usb-audio": _rig,
              "bottleservice": _rig}

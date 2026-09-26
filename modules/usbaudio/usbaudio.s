@@ -623,8 +623,10 @@ audio_ep3_up:
     movel   %d0,%a0@(8)             | no dTD primed yet (terminate)
     clrl    %a0@(12)                | TOKEN — the field the firmware clears
     bsr     audio_dtds_clear        | every queue slot idle
-    movel   #0x00840000,%d0         | ENDPTCTRL3: TXE + isochronous (the bench
-    movel   %d0,ENDPTCTRL3          | reads the type to serve one dTD per poll)
+    movel   ENDPTCTRL3,%d0          | ENDPTCTRL3: TXE + isochronous (the bench
+    andil   #0x0000ffff,%d0         | reads the type to serve one dTD per poll);
+    oril    #0x00840000,%d0         | the TX half only -- the RX half is EP3 OUT
+    movel   %d0,ENDPTCTRL3          | (USB AUDIO OUT), which must survive this
     movel   aud_produced,%d0
     subil   #AUD_TARGET,%d0         | start a full cushion BEHIND the producer:
     bccs    .Lcons_ok               | the ring is already full, so there is no
@@ -641,7 +643,9 @@ audio_ep3_down:
     | a dTD that is already primed, so a packet queued microseconds before
     | alt 0 would still go out and the host would see audio after teardown.
     bsr     audio_ep3_flush
-    clrl    ENDPTCTRL3
+    movel   ENDPTCTRL3,%d0          | TX half off; the RX half (EP3 OUT, USB
+    andil   #0x0000ffff,%d0         | AUDIO OUT) stays as it was. d0 is free
+    movel   %d0,ENDPTCTRL3          | here: the flush above clobbered it
     bsr     audio_dtds_clear        | a flushed dTD still reads ACTIVE
     clrb    aud_running
     rts

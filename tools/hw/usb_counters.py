@@ -21,26 +21,40 @@ could not fill; overruns = the host stopped draining and the producer
 lapped the ring; bankdup = blocks where the read-back ping-pong bank did
 NOT alternate (the producer read a bank twice, or skipped one) -- the count
 that decides whether the clicks are the producer's.
+
+--out reads USB AUDIO OUT's counters (0xc0/0x56; modules/usbaudio-out/
+usbaudio_out.s) instead: produced/consumed = frames into and out of the
+OUT ring; minfill/maxfill = the ring's low and high water while consuming
+since the stream came up (the cushion OUT_TARGET has to cover);
+underruns = blocks the ring could not supply; overruns = ring laps;
+reprimes = EP3 OUT self-heal primes; bad = odd-length or error packets;
+frames/seconds = the two state-7 visits (equal while running).
 """
 import argparse
 import struct
 import sys
 import time
 
+OUT_NAMES = ("produced", "consumed", "pkts", "lastn", "lastfill", "underruns", "overruns",
+             "reprimes", "bad", "frames", "seconds", "minfill", "maxfill")
 NAMES = ("consumed", "acc", "overruns", "underruns", "lastn", "lastfill", "lastbank",
          "bankdup", "lastsamp", "srcjump", "reprimes", "produced")
 
 
-def read(dev):
-    raw = bytes(dev.ctrl_transfer(0xc0, 0x55, 0, 0, 48, timeout=1000))
-    if len(raw) != 48:
-        raise RuntimeError(f"{len(raw)} bytes back, expected 48 (not a usb-audio image?)")
-    return dict(zip(NAMES, struct.unpack(">12i", raw)))
+def read(dev, out=False):
+    req, names = (0x56, OUT_NAMES) if out else (0x55, NAMES)
+    n = 4 * len(names)
+    raw = bytes(dev.ctrl_transfer(0xc0, req, 0, 0, n, timeout=1000))
+    if len(raw) != n:
+        raise RuntimeError(f"{len(raw)} bytes back, expected {n}")
+    return dict(zip(names, struct.unpack(f">{len(names)}I" if out else f">{len(names)}i", raw)))
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--watch", type=float, default=0, help="seconds between reads; 0 = once")
+    ap.add_argument("--out", action="store_true",
+                    help="USB AUDIO OUT's counters (vendor request 0x56) instead of USB AUDIO's")
     a = ap.parse_args()
     try:
         import usb.core
@@ -58,14 +72,14 @@ def main():
     if dev is None:
         sys.exit("no Octatrack on USB (1935:0002)")
     try:
-        last = read(dev)
+        last = read(dev, a.out)
     except Exception as e:  # noqa: BLE001
-        sys.exit(f"the request failed: {e} (a STALL means the image carries no USB AUDIO)")
+        sys.exit(f"the request failed: {e} (a STALL means the image carries no USB AUDIO{' OUT' if a.out else ''})")
     print(" ".join(f"{k}={v}" for k, v in last.items()), flush=True)
     while a.watch > 0:
         time.sleep(a.watch)
-        now = read(dev)
-        print(" ".join(f"{k}={now[k]}{'(+%d)' % (now[k] - last[k]) if now[k] != last[k] else ''}" for k in NAMES), flush=True)
+        now = read(dev, a.out)
+        print(" ".join(f"{k}={now[k]}{'(+%d)' % (now[k] - last[k]) if now[k] != last[k] else ''}" for k in now), flush=True)
         last = now
 
 
