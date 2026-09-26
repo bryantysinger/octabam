@@ -43,6 +43,10 @@ UAC2_AS_OUT_IFACE = 5
 UAC2_IT_OUT_ID, UAC2_OT_OUT_ID = 0x13, 0x14
 OUT_CHANNELS = 4
 OUT_HS_MAXPKT, OUT_FS_MAXPKT = 12 * OUT_CHANNELS * SUBSLOT, 45 * OUT_CHANNELS * SUBSLOT  # 192 / 720
+# ... and with it the high-speed input stream carries MAIN L/R + CUE L/R only
+# (usbaudio.s AUD_IN4): the twenty-channel packet shared the USB DMA engine
+# with EP3 OUT's and OUT lost packet tails under load (images 97-99).
+IN4_CHANNELS, IN4_HS_MAXPKT = 4, 12 * 4 * SUBSLOT          # 192
 
 
 def _ep(addr, pkt):
@@ -87,8 +91,8 @@ def audio_config(hs, other_speed=False, with_out=False):
     with a data stage, which the stock EP0 stack does not have.
     """
     bulk = 512 if hs else 64
-    nch = HS_CHANNELS if hs else FS_CHANNELS
-    maxpkt = HS_MAXPKT if hs else FS_MAXPKT
+    nch = (IN4_CHANNELS if with_out else HS_CHANNELS) if hs else FS_CHANNELS
+    maxpkt = (IN4_HS_MAXPKT if with_out else HS_MAXPKT) if hs else FS_MAXPKT
     clk, it, ot = UAC2_CLOCK_ID, UAC2_IT_ID, UAC2_OT_ID
     clock = bytes([8, 0x24, 0x0A, clk, 0x01, 0x05, 0, 0])
     in_term = (bytes([17, 0x24, 0x02, it]) + struct.pack("<H", 0x0603) +

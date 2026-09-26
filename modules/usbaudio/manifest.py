@@ -14,7 +14,10 @@ H = bytes.fromhex
 MODULE = Module(
     name="usbaudio", key="USB AUDIO", kind=Kind.CF_PATCH,
     doc="Twenty 24-bit channels over USB (UAC2): the tracks post-FX pre-fader, MAIN, CUE; the stereo sum at full speed (markandrus/octemu).",
-    linked=(Linked("usbaudio", "modules/usbaudio/usbaudio.s", cpu="5475", dram=True),),
+    # remix.inc: AUD_IN4 -- MAIN + CUE only at high speed when USB AUDIO OUT
+    # is in the remix (usbaudio.s; Bryan T, 26 Sep 2026).
+    linked=(Linked("usbaudio", "modules/usbaudio/usbaudio.s", cpu="5475", dram=True,
+                   include=lambda mods: f"    .set AUD_IN4, {1 if 'USB AUDIO OUT' in mods else 0}\n"),),
     detours=(
         Detour(0x4001dd04, H("2039fc0b01c4"), "usbaudio", "audio_setiface_shim",
                "SET_INTERFACE: interface 4 alt 1 brings the stream up, alt 0 down; others stock"),

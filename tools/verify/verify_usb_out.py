@@ -119,7 +119,8 @@ def run(tag, sym, packets, close_first):
         b.ctrl_nodata(0x01, 0x0b, 1, 5)                 # SET_INTERFACE 5 alt 1: output stream
         frame, sizes, empty, last_n = 0, set(), 0, 11
         snaps = []
-        for k in range(packets):
+        for _k in range(packets):
+            k = _k
             if k in (packets // 4, packets - packets // 4):
                 snaps.append((k, vendor(b)))            # over EP0, as a host on the unit reads them
             pkt = packet(frame, last_n)
@@ -130,9 +131,11 @@ def run(tag, sym, packets, close_first):
                 if p[0] == "err":
                     raise RuntimeError(line)
                 if p[0] == "in":
-                    last_n = (len(p[2]) // 2) // 80 if len(p) > 2 else 0
+                    last_n = (len(p[2]) // 2) // IN_FRAME if len(p) > 2 else 0
                     sizes.add(last_n)
                     empty += last_n == 0
+                    if last_n == 0:
+                        print(f"  (empty IN poll at poll {_k})")
         if close_first:
             b.ctrl_nodata(0x01, 0x0b, 0, 5)             # alt 0: output stream closed
             for _ in range(400):                        # 100 ms more of the input stream
@@ -152,6 +155,7 @@ def run(tag, sym, packets, close_first):
                 cnt=cnt, tx=tx, ring=ring, log=log, snaps=snaps)
 
 
+IN_FRAME = 16                   # the input stream with USB AUDIO OUT: MAIN + CUE, 4 x 4 B (usbaudio.s AUD_IN4)
 SLOT_CH = (2, 3, 0, 1)          # DSP slots 0..3 carry host channels C, D, A, B
 
 

@@ -13,6 +13,19 @@
 | was measured.
 | SPDX-License-Identifier: MIT
 
+| remix.inc (manifest.py): AUD_IN4 = 1 when the remix carries USB AUDIO
+| OUT -- the high-speed stream is then MAIN L/R + CUE L/R only (4 channels,
+| 16 B a frame, <= 192 B a packet), not all twenty (Bryan T, 26 Sep 2026).
+| The twenty-channel packet (up to 960 B, fetched from SDRAM by the one
+| USB DMA engine) shares microframes with EP3 OUT's; under a busy project
+| EP3 OUT lost packet tails about 1 in 200 (images 97-99). 0: unchanged.
+    .include "remix.inc"
+.if AUD_IN4
+.set PKT_CAP_HS,   12*16        | the dQH's max packet: 12 frames x MAIN+CUE
+.else
+.set PKT_CAP_HS,   12*80
+.endif
+
 .set SUM_SHIFT,      8              | 32-bit read-back -> 24-bit units for the sum
 .set UAC2_AC_IFACE,  3              | the audio function's AudioControl
 .set UAC2_AS_IFACE,  4              | ... and its AudioStreaming
@@ -398,15 +411,15 @@ audio_pkt_build:
     cmpl    %d0,%d3
     bhis    .Lhs_wrap               | n > frames to the end: two runs
     movel   %d3,%d0
-    bsr     audio_copy80
+    bsr     audio_copy_hs
     bras    .Lcopied
 .Lhs_wrap:
     subl    %d0,%d3
     moveal  %d3,%a5                 | a5 = frames in the second run (the copy
-    bsr     audio_copy80            |      clobbers every data register)
+    bsr     audio_copy_hs           |      clobbers every data register)
     lea     aud_ring,%a2
     movel   %a5,%d0
-    bsr     audio_copy80
+    bsr     audio_copy_hs
     bras    .Lcopied
 .Lcopy_fs:
     lea     aud_sum,%a2
@@ -430,7 +443,11 @@ audio_pkt_build:
     movel   %d4,%d6
     tstb    aud_hs
     beqs    5f
+.if AUD_IN4
+    lsll    #4,%d6                  | nbytes = n * 16 (MAIN + CUE)
+.else
     MUL_SLOT %d6, %d1               | nbytes = n * 80 (d1 is reloaded below)
+.endif
     bras    6f
 5:  lsll    #3,%d6                  | nbytes = n * 8
 6:  | ---- the dTD: buffer pointers first, the ACTIVE token LAST -------------
@@ -509,6 +526,18 @@ audio_pkt_build:
 
 | Copy d0 (>= 1) 80-byte frames from %a2 to %a1, both advanced: three moveml
 | pairs per frame. Clobbers d1-d7/a4.
+audio_copy_hs:
+.if AUD_IN4
+| AUD_IN4: d0 (>= 1) frames, MAIN L/R + CUE L/R (the slot's last 16 B), from
+| the 80-byte slots at %a2 to 16-byte frames at %a1, both advanced.
+1:  moveml  %a2@(64),%d1-%d4
+    moveml  %d1-%d4,%a1@
+    lea     %a2@(80),%a2
+    lea     %a1@(16),%a1
+    subql   #1,%d0
+    bnes    1b
+    rts
+.endif
 audio_copy80:
 1:  moveml  %a2@,%d1-%d7/%a4
     moveml  %d1-%d7/%a4,%a1@
@@ -609,7 +638,7 @@ audio_ep3_up:
     moveb   %d0,aud_hs
     movel   #STEP_HS,%d0
     movel   %d0,aud_step
-    movel   #(0x60000000+(PKT_MAX_HS<<16)),%d0  | dQH cap: Mult 1, ZLT off, maxpkt 960
+    movel   #(0x60000000+(PKT_CAP_HS<<16)),%d0  | dQH cap: Mult 1, ZLT off, maxpkt 960 (192 with AUD_IN4)
     bras    .Lspeed_set
 .Lspeed_fs:
     clrb    aud_hs
