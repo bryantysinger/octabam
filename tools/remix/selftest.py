@@ -547,7 +547,7 @@ def main():
                  "DJ EQ", "COMB FILTER")
     _want = {"restock": (), "recfix": (), "mods": (), "ok-ms": (), "usb-lean": (), "usb-full": (), "usb-master": (),
              "octatrick": (), "octatrick-usb": (), "usb-mc": (),     # stock effects + ColdFire modules, no DSP words
-             "repitch": (),
+             "repitch": (), "usb-io": ("SPATIALIZER",),   # USB AUDIO IN's DSP inject is poked into its words on payload A
              "cfmeter": ("DARK REV",), "cfmeter-port": ("DARK REV",),   # the readout insert's words
              "euclid": ("SPATIALIZER", "FLANGER", "CHORUS", "COMB FILTER"),
              "rig-scenes": _rig, "rig-kits": _rig,

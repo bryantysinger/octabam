@@ -67,6 +67,7 @@ def main():
     remix = registry.remix(os.environ.get("REMIX"))
     midi = "USB MIDI" in remix.modules
     audio = next((k for k in LAYOUTS if k in remix.modules), None)
+    ain = "USB AUDIO IN" in remix.modules      # + AudioStreaming 5, EP3 OUT (implicit feedback)
     sock = f"/tmp/ot-usb-{os.getpid()}.sock"     # sun_path is 104 bytes on macOS; the scratch dirs are longer
     log = ROOT / "out/verify_usb.log"
     with open(log, "w") as lf:
@@ -102,7 +103,7 @@ def main():
             ms = [d for d in ifaces if d[5:7] == bytes([1, 3])]
             ac = [d for d in ifaces if d[5:8] == bytes([1, 1, 0])]     # the MIDI function's (the audio one is protocol 0x20)
             check("USB MIDI: an AudioControl and a MIDIStreaming interface follow the MSC one",
-                  len(ac) == 1 and len(ms) == 1 and cfg[4] == (5 if audio else 3), f"bNumInterfaces {cfg[4]}")
+                  len(ac) == 1 and len(ms) == 1 and cfg[4] == ((6 if ain else 5) if audio else 3), f"bNumInterfaces {cfg[4]}")
             ep2 = sorted((d[2], d[3] & 3, d[4] | d[5] << 8) for d in eps if d[2] in (0x82, 0x02))
             check("USB MIDI: EP 0x82/0x02 bulk, 512 bytes", ep2 == [(0x02, 2, 512), (0x82, 2, 512)], str(ep2))
             # receive: two channel messages in -> six bytes through midi_rx_enqueue (the log's watch)
@@ -118,8 +119,9 @@ def main():
         if audio:
             check("USB AUDIO: the device descriptor is the interface-association composite", dev[4:7] == bytes([0xef, 2, 1]), dev[4:7].hex())
             as_ = [d for d in ifaces if d[5:7] == bytes([1, 2])]
-            check("USB AUDIO: a UAC2 AudioStreaming interface 4 with alt 0 and alt 1",
-                  sorted((d[2], d[3]) for d in as_) == [(4, 0), (4, 1)], str([(d[2], d[3]) for d in as_]))
+            check("USB AUDIO: a UAC2 AudioStreaming interface 4 with alt 0 and alt 1" + (", and 5 (USB AUDIO IN)" if ain else ""),
+                  sorted((d[2], d[3]) for d in as_) == [(4, 0), (4, 1)] + ([(5, 0), (5, 1)] if ain else []),
+                  str([(d[2], d[3]) for d in as_]))
             nch, maxpkt, bint, taps = LAYOUTS[audio]
             frame_b = 4 * nch
             per = (10, 11, 12) if bint == 2 else (43, 44, 45, 46)     # frames per packet the servo can send
@@ -129,6 +131,16 @@ def main():
             check(f"{audio}: EP 0x83 isochronous, {maxpkt} bytes, bInterval {bint}",
                   len(iso) == 1 and (iso[0][3] & 3, iso[0][4] | iso[0][5] << 8, iso[0][6]) == (1, maxpkt, bint),
                   str([(d[3], d[4] | d[5] << 8, d[6]) for d in iso]))
+            if ain:
+                check(f"{audio}: EP 0x83 marked implicit-feedback data (USB AUDIO IN's feedback source)",
+                      len(iso) == 1 and (iso[0][3] >> 4 & 3) == 2, str([hex(d[3]) for d in iso]))
+                ison = [d for d in eps if d[2] == 0x03]
+                check("USB AUDIO IN: EP 0x03 isochronous asynchronous data, 192 bytes, bInterval 2",
+                      len(ison) == 1 and (ison[0][3], ison[0][4] | ison[0][5] << 8, ison[0][6]) == (0x05, 192, 2),
+                      str([(d[3], d[4] | d[5] << 8, d[6]) for d in ison]))
+                asg_i = cfg.find(bytes([16, 0x24, 1, 0x13]))     # AS_GENERAL linked to the host -> device input terminal
+                check("USB AUDIO IN: AS_GENERAL declares 4 channels",
+                      asg_i >= 0 and cfg[asg_i + 10] == 4, f"bNrChannels {cfg[asg_i + 10] if asg_i >= 0 else None}")
             asg = cfg.find(bytes([16, 0x24, 1]))                 # CS AS_GENERAL: bNrChannels at +10, bmChannelConfig +11
             check(f"{audio}: AS_GENERAL declares {nch} channels",
                   asg >= 0 and cfg[asg + 10] == nch, f"bNrChannels {cfg[asg + 10] if asg >= 0 else None}")
@@ -137,7 +149,7 @@ def main():
                 check(f"{audio}: AS_GENERAL bmChannelConfig = front left + front right (0x3)", cc == 3, f"{cc}")
             fmt24, fmt16 = bytes([6, 0x24, 2, 1, 4, 24]), bytes([6, 0x24, 2, 1, 2, 16])   # FORMAT_TYPE_I: subslot, bits
             check("USB AUDIO: FORMAT_TYPE_I, 24-bit samples in 4-byte subslots",
-                  cfg.count(fmt24) == 1 and fmt16 not in cfg)
+                  cfg.count(fmt24) == (2 if ain else 1) and fmt16 not in cfg)
             # the clock source answers its sample rate; SET_INTERFACE alt 1 brings EP3 up
             cur = b.ctrl_in(0xa1, 1, 0x0100, 0x1000 | 3, 4)
             check("USB AUDIO: CS_SAM_FREQ_CONTROL CUR = 44100", cur == (44100).to_bytes(4, "little"), cur.hex())

@@ -18,8 +18,13 @@ MSC interface byte for byte at the front:
                         speed (tracks, MAIN, CUE), USB AUDIO FULL sixteen
                         (the tracks), both with the stereo sum at full
                         speed; USB AUDIO MASTER track 8's L/R at both
-                        speeds, a front-left/front-right cluster. 24-bit
-                        samples in 4-byte subslots in every layout.
+                        speeds, a front-left/front-right cluster; USB
+                        AUDIO MC MAIN + CUE, with MAIN at full speed.
+                        24-bit samples in 4-byte subslots in every layout.
+  + USB AUDIO IN        the other direction beside it: a USB streaming input
+                        terminal -> line output terminal, and AudioStreaming
+                        interface 5 with EP3 OUT (four channels from the
+                        host, standing in for inputs A-D): six interfaces.
 
 `cfg_len` is exported as an absolute symbol: the responder's two clamp
 shims (usbmidi.s) compare wLength against it, since the stock `moveq #32`
@@ -43,6 +48,19 @@ FRONT_LR = 0x3                                             # bmChannelConfig: fr
 HS_BINTERVAL_1MS = 4                                       # 2^(4-1) microframes = 1 ms (MASTER at high speed)
 UAC2_AC_IFACE, UAC2_AS_IFACE = 3, 4                        # usbaudio.s .set: the same numbers
 UAC2_CLOCK_ID, UAC2_IT_ID, UAC2_OT_ID = 0x10, 0x11, 0x12
+
+# USB AUDIO IN (Bryan T, 26 Sep 2026): four channels from the host that
+# stand in for inputs A-D. AudioStreaming interface 5, EP3 OUT (the only
+# free endpoint: EP1 is mass storage, EP2 USB MIDI, EP3 IN the input stream).
+# Asynchronous with IMPLICIT feedback: no endpoint is left for an explicit
+# feedback IN, so EP3 IN is marked as the implicit-feedback data endpoint
+# and the host sizes each OUT packet from EP3 IN's. Same clock source.
+# It needs a USB AUDIO input layout for that feedback, and one that polls
+# every 250 us as this stream does (not MASTER's 1 ms; untested).
+USBIN_AS_IFACE = 5
+USBIN_IT_ID, USBIN_OT_ID = 0x13, 0x14
+USBIN_CHANNELS = 4
+USBIN_HS_MAXPKT, USBIN_FS_MAXPKT = 12 * USBIN_CHANNELS * SUBSLOT, 45 * USBIN_CHANNELS * SUBSLOT  # 192 / 720
 
 
 def _ep(addr, pkt):
@@ -76,7 +94,7 @@ def midi_config(hs, other_speed=False):
     return hdr + body
 
 
-def audio_config(hs, other_speed=False, key="USB AUDIO EXTENDED"):
+def audio_config(hs, other_speed=False, key="USB AUDIO EXTENDED", with_in=False):
     """The MIDI composite plus a UAC2 audio function, 250 bytes (usb-audio.py).
 
     Two SEPARATE functions under interface associations, the shape of a
@@ -89,6 +107,10 @@ def audio_config(hs, other_speed=False, key="USB AUDIO EXTENDED"):
     `key` is the audio module: USB AUDIO MASTER declares its two channels
     front left / front right (the standard stereo cluster); the other two
     keep bmChannelConfig 0 as his descriptors have it.
+
+    `with_in`: USB AUDIO IN is in the remix -- add the host -> device path
+    (IT 0x13 -> OT 0x14, AudioStreaming interface 5 with EP3 OUT) and mark
+    EP3 IN as its implicit-feedback source.
     """
     bulk = 512 if hs else 64
     nch, maxpkt = HS_LAYOUT[key] if hs else (FS_CHANNELS, FS_MAXPKT)
@@ -100,9 +122,18 @@ def audio_config(hs, other_speed=False, key="USB AUDIO EXTENDED"):
                bytes([0]) + struct.pack("<H", 0) + bytes([0]))
     out_term = (bytes([12, 0x24, 0x03, ot]) + struct.pack("<H", 0x0101) +
                 bytes([0, it, clk]) + struct.pack("<H", 0) + bytes([0]))
-    ac_audio_total = 9 + len(clock) + len(in_term) + len(out_term)
+    in_path = b""
+    if with_in:
+        # host -> device: a USB streaming input terminal feeding a line
+        # output terminal, on the same (read-only) clock
+        in_path = (bytes([17, 0x24, 0x02, USBIN_IT_ID]) + struct.pack("<H", 0x0101) +
+                   bytes([0, clk, USBIN_CHANNELS]) + struct.pack("<I", 0) +
+                   bytes([0]) + struct.pack("<H", 0) + bytes([0]) +
+                   bytes([12, 0x24, 0x03, USBIN_OT_ID]) + struct.pack("<H", 0x0603) +
+                   bytes([0, USBIN_IT_ID, clk]) + struct.pack("<H", 0) + bytes([0]))
+    ac_audio_total = 9 + len(clock) + len(in_term) + len(out_term) + len(in_path)
     ac_audio = (bytes([9, 0x24, 1]) + struct.pack("<H", 0x0200) + bytes([0x0A]) +
-                struct.pack("<H", ac_audio_total) + bytes([0]) + clock + in_term + out_term)
+                struct.pack("<H", ac_audio_total) + bytes([0]) + clock + in_term + out_term + in_path)
     ac, as_ = UAC2_AC_IFACE, UAC2_AS_IFACE
     as_iface = (
         bytes([9, 4, as_, 0, 0, 1, 2, 0x20, 0]) +
@@ -110,12 +141,26 @@ def audio_config(hs, other_speed=False, key="USB AUDIO EXTENDED"):
         bytes([16, 0x24, 1, ot, 0, 1]) + struct.pack("<I", 1) +
         bytes([nch]) + struct.pack("<I", chcfg) + bytes([0]) +
         bytes([6, 0x24, 2, 1, SUBSLOT, BITS]) +
-        bytes([7, 5, 0x83, 0x05]) + struct.pack("<H", maxpkt) +
+        # bmAttributes: isochronous, asynchronous; + usage "implicit
+        # feedback data" (bits 5:4 = 10) when USB AUDIO IN pairs with it
+        bytes([7, 5, 0x83, 0x25 if with_in else 0x05]) + struct.pack("<H", maxpkt) +
         bytes([(HS_BINTERVAL_1MS if key == "USB AUDIO MASTER" else HS_BINTERVAL) if hs else FS_BINTERVAL]) +
         bytes([8, 0x25, 1, 0, 0, 0]) + struct.pack("<H", 0))
+    if with_in:
+        ii = USBIN_AS_IFACE
+        as_iface += (
+            bytes([9, 4, ii, 0, 0, 1, 2, 0x20, 0]) +
+            bytes([9, 4, ii, 1, 1, 1, 2, 0x20, 0]) +
+            bytes([16, 0x24, 1, USBIN_IT_ID, 0, 1]) + struct.pack("<I", 1) +
+            bytes([USBIN_CHANNELS]) + struct.pack("<I", 0) + bytes([0]) +
+            bytes([6, 0x24, 2, 1, SUBSLOT, BITS]) +
+            bytes([7, 5, 0x03, 0x05]) +                      # iso, asynchronous, data
+            struct.pack("<H", USBIN_HS_MAXPKT if hs else USBIN_FS_MAXPKT) +
+            bytes([HS_BINTERVAL if hs else FS_BINTERVAL]) +
+            bytes([8, 0x25, 1, 0, 0, 0]) + struct.pack("<H", 0))
     ac_midi = bytes([9, 0x24, 1, 0, 1]) + struct.pack("<H", 9) + bytes([1, 2])
     iad_midi = bytes([8, 0x0B, 1, 2, 0x01, 0x00, 0x00, 0])
-    iad_audio = bytes([8, 0x0B, ac, 2, 0x01, 0x00, 0x20, 0])
+    iad_audio = bytes([8, 0x0B, ac, 3 if with_in else 2, 0x01, 0x00, 0x20, 0])
     body = (bytes([9, 4, 0, 0, 2, 8, 6, 0x50, 0]) +
             _ep(0x81, bulk) + _ep(0x01, bulk) +
             iad_midi +
@@ -128,15 +173,16 @@ def audio_config(hs, other_speed=False, key="USB AUDIO EXTENDED"):
             bytes([9, 4, ac, 0, 0, 1, 1, 0x20, 0]) + ac_audio +
             as_iface)
     total = 9 + len(body)
-    hdr = bytes([9, 7 if other_speed else 2]) + struct.pack("<H", total) + bytes([5, 1, 0, 0xC0, 3])
+    hdr = bytes([9, 7 if other_speed else 2]) + struct.pack("<H", total) + bytes([6 if with_in else 5, 1, 0, 0xC0, 3])
     return hdr + body
 
 
-def configs(audio=None):
-    """`audio`: the remix's audio module key, or None for USB MIDI alone."""
+def configs(audio=None, with_in=False):
+    """`audio`: the remix's audio module key, or None for USB MIDI alone;
+    `with_in`: USB AUDIO IN beside it."""
     if audio:
         def f(hs, other_speed=False):
-            return audio_config(hs, other_speed, audio)
+            return audio_config(hs, other_speed, audio, with_in)
     else:
         f = midi_config
     out = {"cfg_fs": f(False), "cfg_hs": f(True), "cfg_os_fs": f(False, True), "cfg_os_hs": f(True, True)}
@@ -149,8 +195,16 @@ def remix_inc(modules):
     audio = [k for k in HS_LAYOUT if k in modules]
     assert len(audio) <= 1, f"one USB audio module per remix, not {audio}"
     audio = audio[0] if audio else None
-    tables, length = configs(audio)
-    lines = [f"| remix.inc -- the configuration descriptors for this remix ({'USB MIDI + ' + audio if audio else 'USB MIDI'}),",
+    with_in = "USB AUDIO IN" in modules
+    if with_in:
+        assert audio, ("USB AUDIO IN needs a USB AUDIO input module beside it: EP3 IN is "
+                       "its implicit-feedback source")
+        assert audio != "USB AUDIO MASTER", ("USB AUDIO IN beside USB AUDIO MASTER is untested: "
+                                             "MASTER polls every 1 ms, the IN stream's feedback was "
+                                             "built and measured against a 250 us input stream")
+    tables, length = configs(audio, with_in)
+    what = ("USB MIDI + " + audio if audio else "USB MIDI") + (" + USB AUDIO IN" if with_in else "")
+    lines = [f"| remix.inc -- the configuration descriptors for this remix ({what}),",
              "| generated by modules/usb-midi/descriptors.py; the build rewrites it.",
              f"    .global cfg_len", f"    .set cfg_len, {length}", "",
              "    .text", "    .global cfg_fs, cfg_hs, cfg_os_fs, cfg_os_hs", ""]
