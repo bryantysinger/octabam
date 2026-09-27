@@ -61,7 +61,7 @@ assert len(INJECT_WORDS) == len(SPAT_STOCK_HEAD) == 72
 MODULE = Module(
     name="usb-audio-in", key="USB AUDIO IN", kind=Kind.CF_PATCH,
     category=Category.MIDI_USB, author="bryantysinger", author_url="https://github.com/bryantysinger",
-    proof=Proof.PORT, proof_note="`verify_usb_in` and `verify_usb` under the port beside USB AUDIO MC (27 Sep 2026); this build not on hardware (as USB AUDIO OUT, usbin-test builds 12-15, on Bryan T's MKII, 26 Sep 2026)",
+    proof=Proof.HARDWARE, proof_note="Bryan T's MKII, build 16 (usb-io, beside USB AUDIO MC), 27 Sep 2026; `verify_usb_in` under the port",
     doc="Four channels from the host into inputs A-D (UAC2 EP3 OUT, implicit feedback); the jacks while the stream is closed. Takes SPATIALIZER's words on payload A.",
     linked=(Linked("usbaudio_in", "modules/usb-audio-in/usbaudio_in.s", cpu="5475", dram=True),),
     detours=(

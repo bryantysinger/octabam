@@ -165,7 +165,58 @@ take an access error.
   locked to the device, where the unit's EP3 IN servo lets the fill wander
   +-128 frames. `IN_TARGET` comes down from the unit's `minfill`, not this.
 - **On hardware:** as USB AUDIO OUT with `AUD_IN4`, builds 12-15 on Bryan T's
-  MKII (26 Sep 2026): the numbers above. This port has not been flashed.
+  MKII (26 Sep 2026): the numbers above. This port, as `usb-io` build 16 on
+  the same unit and Mac (27 Sep 2026):
+  - macOS lists the Octatrack as 4 in / 4 out; MAIN and CUE reach the Mac on
+    channels 1-4; the host's channels 1-4 arrive on inputs A-D; the jacks
+    return when the host's stream closes.
+  - About 5 million EP3 OUT packets over the session: `bad`, `err`,
+    `partial`, underruns, overruns and re-primes all 0.
+  - `usb_hw_probe.py` (PR #492), sustained and churn, both CLEAN in a running
+    session. Its later "EP3 IN overruns" verdicts, after a USB re-plug and
+    after DISK MODE, are overruns counted when macOS closed the stream (see
+    *Latency* below): an artifact of where the probe takes its last reading.
+  - DISK MODE: the card mounts and reads on the Mac, ejects, the unit leaves
+    disk mode, and the stream comes back (`bad` 0).
+
+## Latency, measured on the unit (build 16, 27 Sep 2026)
+
+Both rings' `lastfill` over the vendor requests (`0x55`, `0x56`), read
+once a second:
+
+- **The sum of the two fills is conserved while the streams run**: 1,353 to
+  1,360 second by second through a fresh session, and about 1,355 from
+  (not simultaneous) reads in an earlier one. With implicit feedback the
+  host sends as many frames as it reads, and the DSP's frame clock produces
+  into EP3 IN's ring and consumes from this one, so every frame EP3 IN's
+  ring loses, this ring gains. The sum is the round trip through the unit:
+  1,355 frames is about 31 ms, before the host's own buffers.
+- **Where it comes from**: at the first read of a fresh session EP3 IN's
+  fill was already 884, not its 512 start, and this ring 443. Within a
+  second usbaudio's servo had EP3 IN at the top of its band (632) and this
+  ring at 726. So the sum is `AUD_TARGET` + `IN_TARGET` (896) plus about 460
+  frames EP3 IN gains between the stream starting and macOS polling it
+  steadily. (INFERRED from the two sessions: the mechanism fits both, the
+  460 has been seen twice.)
+- **How the sum splits drifts**: this Mac's clock against the unit's moves
+  about 0.5 frames a second (11 ppm) from EP3 IN's ring to this one, until
+  EP3 IN reaches the bottom of its band. In a long session this ring rose
+  about 0.5 frames a second to a plateau of 969 as EP3 IN settled at 390;
+  in the fresh session it began near 725.
+- **EP3 IN overruns happen at stream close**, not while running: the count
+  held through start-up and 10 s of streaming and rose by 4 when the host's
+  playback ended, then froze (the host stops polling EP3 IN before it sends
+  alt 0). The next open restarts both rings, so they do not carry over.
+
+So `IN_TARGET` alone does not set this stream's latency. The levers, in
+order: start usbaudio's consumer at the host's first IN poll rather than at
+SET_INTERFACE (removes the ~460), then lower `AUD_TARGET`, `IN_TARGET` and
+`AUD_BAND` together, keeping `IN_TARGET - AUD_BAND` (this ring's floor)
+above the jitter the unit shows. Both are usbaudio.s or this module's
+constants, for a follow-up. A risk the arithmetic shows: with the sum at
+1,355 and EP3 IN at its floor, this ring sits about 55 frames under its
+1,024-frame capacity (969 seen); a host that starts ~55 frames slower
+would overrun it, an audible jump. Not seen.
 
 ## What the port changed (27 Sep 2026)
 
@@ -180,7 +231,6 @@ take an access error.
 
 ## Open
 
-
 - **Beside FULL or EXTENDED: not measured.** Before the crossbar fix, the
   twenty-channel EP3 IN stream beside EP3 OUT lost EP3 OUT packet tails
   under load (images 97-99), which is why usbin-test forced four channels.
@@ -192,8 +242,10 @@ take an access error.
   Whether the build refuses it (each poke asserts stock bytes first) or
   the inject is overwritten depends on the order it applies pokes and
   placement; not traced, not tested.
-- Lower `IN_TARGET` from `minfill` data.
-- DISK MODE on these images: it failed on image 93, unretested since.
+- Latency: the follow-up in *Latency* above.
+- The session's start and close on other hosts: macOS's start-up delay
+  sets the latency, and nordseele's report (PR #468) came from a host
+  that restarted its IO context repeatedly.
 - The full-speed alt of interface 5 is declared but not served.
 - GET_INTERFACE(5) returns stock `00`.
 - The diagnostic vendor requests (`0x57`-`0x5b`) are debug tools; strip or

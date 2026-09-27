@@ -11,7 +11,7 @@ from remix.schema import Proof, Remix
 
 REMIX = Remix(
     name="usb-io",
-    family="mods", proof=Proof.PORT, proof_note="",
+    family="mods", proof=Proof.HARDWARE, proof_note="Bryan T's MKII, build 16, 27 Sep 2026",
     doc="stock - SPATIALIZER + USB MIDI + USB AUDIO MC (4 ch: MAIN + CUE) + USB AUDIO IN (4 ch -> inputs A-D).",
     modules=("USB MIDI", "USB AUDIO MC", "USB AUDIO IN",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",

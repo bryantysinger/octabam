@@ -50,14 +50,23 @@ hardware, and there as the slice, not this producer.
 - Full speed: 352/360-byte packets (44/45 two-channel frames), none empty
   after the first ten.
 
+## Measured on the unit
+
+Build 16, `usb-io` (this layout beside USB AUDIO IN), Bryan T's MKII and
+Mac, 27 Sep 2026: macOS lists the four inputs; MAIN L/R and CUE L/R reach
+the Mac on channels 1-4; the vendor counters show no underrun while
+streaming. At the start of a session the ring's fill was above its band
+(884), and the servo had it back inside (632) within a second.
+Overruns were counted only when macOS closed the stream (USB AUDIO IN's
+README, *Latency*, has the trace).
+
 ## Not measured
 
-- Anything on hardware.
+- Full speed on a unit.
 - What the full-speed packets contain. The gate checks their size only
   (it checks content for MASTER alone, as for EXTENDED and FULL), so
   "full speed carries MAIN" is from the source, not a measurement.
 - The producer's cost per block. It reads 64 words a block (4 per frame),
   where EXTENDED reads the same 64 plus 256 track words; instructions not
   counted.
-- Pairing with USB AUDIO IN, or IN beside FULL/EXTENDED's larger packets
-  on one bus.
+- USB AUDIO IN beside FULL or EXTENDED's larger packets on one bus.

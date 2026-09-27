@@ -33,7 +33,7 @@ _PRODUCER = 0x4000d9a0
 MODULE = Module(
     name="usb-audio-mc", key="USB AUDIO MC", kind=usbaudio.MODULE.kind,
     category=Category.MIDI_USB, author="markandrus/octemu", author_url="https://github.com/markandrus/octemu",
-    proof=Proof.PORT, proof_note="`verify_usb` under the port (27 Sep 2026); this build not on hardware (usbin-test's AUD_IN4 ran the MAIN+CUE high-speed stream on Bryan T's MKII, 26 Sep 2026, as a slice of the 20-channel producer; the full-speed MAIN-only path is new)",
+    proof=Proof.HARDWARE, proof_note="Bryan T's MKII, build 16 (usb-io), 27 Sep 2026, high speed; the full-speed MAIN-only path not run on a unit",
     doc="MAIN and CUE over USB (UAC2, 4 channels, 24-bit) at EXTENDED/FULL's 250 us cadence; full speed carries MAIN alone (markandrus/octemu; the MC variant Bryan T's, from usbin-test's AUD_IN4).",
     linked=(Linked("usbaudio", usbaudio.SOURCE, cpu="5475", dram=True, include=usbaudio.layout_inc(3)),),
     detours=tuple(

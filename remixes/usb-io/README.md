@@ -10,7 +10,7 @@ The Octatrack as a four-in, four-out USB audio interface plus USB MIDI, on the s
 
 ## Status
 
-Port only (27 Sep 2026): `make check` passes, and USB AUDIO IN's `verify_usb_in` puts the host's samples on inputs A–D bit-exact, with no underrun, over eight runs (one of them 40,000 polls). Two runs failed a check that read the stream flag from a mid-build snapshot, a flaw in the gate that is now fixed (modules/usb-audio-in/README.md). The same combination ran on Bryan T's MKII as usbin-test's `usb-io` (builds 12–15, 26 Sep 2026: USB AUDIO OUT beside a twenty-channel build forced to four channels), with the USB descriptors byte-identical to this remix's. This build has not been flashed.
+On hardware: build 16 on Bryan T's MKII (27 Sep 2026). macOS lists it as 4 in / 4 out; MAIN and CUE reach the Mac, the host's audio arrives on A–D, and the jacks return when the host stops; about 5 million host packets with no bad packet, underrun or overrun; DISK MODE works and the stream comes back after it. The round trip through the unit's two rings measured about 31 ms (modules/usb-audio-in/README.md, *Latency*). Under the port, `make check` and `make accept` pass. Before this port, the same combination ran as usbin-test's `usb-io` (builds 12–15, 26 Sep 2026), with byte-identical USB descriptors.
 
 ## Build
 
