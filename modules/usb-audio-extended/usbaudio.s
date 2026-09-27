@@ -20,12 +20,23 @@
 |                            at both speeds: the producer reads T8's words
 |                            alone and writes one 8-byte slot per frame,
 |                            which both speeds send.
-| Layouts 1 and 2 are ours (27 Sep 2026); every USB_LAYOUT = 0 path is the
-| source as it was.
+|   3  USB AUDIO MC       -- four channels, MAIN L/R + CUE L/R, at the same
+|                            250 us cadence as EXTENDED/FULL (not MASTER's
+|                            1 ms): the producer reads MC_BASE directly (it
+|                            is not ping-ponged, so no bank bookkeeping is
+|                            needed) and writes one 16-byte slot per frame.
+|                            Full speed carries MAIN alone, into aud_sum,
+|                            same as EXTENDED/FULL's stereo sum -- skipped at
+|                            high speed. Pairs with USB AUDIO IN (the host
+|                            -> A-D stream): together they reproduce the
+|                            original AUD_IN4 combination from usbin-test,
+|                            as two independent modules instead of one flag.
+| Layouts 1-3 are ours; every USB_LAYOUT = 0 path is the source as it was.
     .include "remix.inc"
 .set LAYOUT_EXT,  0
 .set LAYOUT_FULL, 1
 .set LAYOUT_T8,   2
+.set LAYOUT_MC,   3
 
 .set SUM_SHIFT,      8              | 32-bit read-back -> 24-bit units for the sum
 .set UAC2_AC_IFACE,  3              | the audio function's AudioControl
@@ -95,6 +106,11 @@
 .macro MUL_SLOT r, t
     lsll    #6,\r
 .endm
+.elseif USB_LAYOUT == LAYOUT_MC
+| x -> x * SLOT_BYTES (16) in place.
+.macro MUL_SLOT r, t
+    lsll    #4,\r
+.endm
 .else
 | x -> x * SLOT_BYTES (80) in place; \t is scratch.
 .macro MUL_SLOT r, t
@@ -140,6 +156,18 @@
 .set PKT_MAX_HS,   12*SLOT_BYTES | 768: the largest 250 us packet
 .set PKT_MAX_FS,   45*SUM_BYTES | 360: the largest 1 ms stereo packet
 .set PKT_BUF,      PKT_MAX_HS   | packet buffer stride
+.elseif USB_LAYOUT == LAYOUT_MC
+| Four channels (MAIN L/R + CUE L/R) at the 250 us cadence: 11.025 frames x
+| 16 B is 176 B a packet, well under the 1,024 B cap. Full speed carries
+| MAIN alone (2 ch, the same SUM_BYTES shape every layout uses), and at
+| 44.1 frames x 8 B = 360 B that packet is LARGER than the high-speed one
+| here, unlike FULL/EXT -- so the buffer stride is sized off the full-speed
+| side, same reasoning as MASTER's 512.
+.set SLOT_BYTES,   16           | ring slot: MAIN (L,R) + CUE (L,R), 4 B each
+.set SUM_BYTES,    8            | sum slot: MAIN (L,R) * 4 B
+.set PKT_MAX_HS,   12*SLOT_BYTES | 192: the largest 250 us packet
+.set PKT_MAX_FS,   45*SUM_BYTES | 360: the largest 1 ms stereo (MAIN-only) packet
+.set PKT_BUF,      512          | packet buffer stride (>= PKT_MAX_FS)
 .else
 .set SLOT_BYTES,   80           | ring slot: 8 tracks * (L,R) + MAIN (L,R) + CUE (L,R), 4 B each
                                 | not a power of two: index math is MUL_SLOT (x*64 + x*16)
@@ -430,6 +458,9 @@ audio_pkt_build:
 .if USB_LAYOUT == LAYOUT_T8
     lsll    #8,%d0
     lsll    #1,%d0                  | slot * 512 = slot * PKT_BUF
+.elseif USB_LAYOUT == LAYOUT_MC
+    lsll    #8,%d0
+    lsll    #1,%d0                  | slot * 512 = slot * PKT_BUF
 .elseif USB_LAYOUT == LAYOUT_FULL
     lsll    #8,%d0
     lsll    #2,%d0                  | slot * 1024
@@ -461,6 +492,8 @@ audio_pkt_build:
     movel   %d3,%d0
 .if USB_LAYOUT == LAYOUT_T8
     bsr     audio_copy8             | an 8-byte slot, as the full-speed ring's
+.elseif USB_LAYOUT == LAYOUT_MC
+    bsr     audio_copy16
 .elseif USB_LAYOUT == LAYOUT_FULL
     bsr     audio_copy64
 .else
@@ -475,6 +508,11 @@ audio_pkt_build:
     lea     aud_ring,%a2
     movel   %a5,%d0
     bsr     audio_copy8
+.elseif USB_LAYOUT == LAYOUT_MC
+    bsr     audio_copy16
+    lea     aud_ring,%a2
+    movel   %a5,%d0
+    bsr     audio_copy16
 .elseif USB_LAYOUT == LAYOUT_FULL
     bsr     audio_copy64
     lea     aud_ring,%a2
@@ -611,6 +649,17 @@ audio_copy80:
     moveml  %d1-%d4,%a1@(64)
     lea     %a2@(80),%a2
     lea     %a1@(80),%a1
+    subql   #1,%d0
+    bnes    1b
+    rts
+.elseif USB_LAYOUT == LAYOUT_MC
+| Copy d0 (>= 1) 16-byte frames from %a2 to %a1, both advanced: one moveml
+| quad per frame. Clobbers d1-d4.
+audio_copy16:
+1:  moveml  %a2@,%d1-%d4
+    moveml  %d1-%d4,%a1@
+    lea     %a2@(16),%a2
+    lea     %a1@(16),%a1
     subql   #1,%d0
     bnes    1b
     rts
@@ -824,6 +873,65 @@ audio_frame_shim:
     movel   %d2,%a3@+
     subql   #1,%d6
     bpls    1b
+    addql   #8,%d4
+    addql   #8,%d4                  | 16 frames produced
+    movel   %d4,aud_produced
+.elseif USB_LAYOUT == LAYOUT_MC
+    | ---- four channels: MAIN L/R + CUE L/R, one 16-byte slot per frame ----
+    | MC_BASE is not ping-ponged (ch6 overwrites it in place every frame), so
+    | there is no bank/ping-pong bookkeeping here, unlike the tracks' arena.
+    | High speed always writes the 16-byte ring; full speed ALSO writes MAIN
+    | alone into aud_sum (the same two-channel shape every layout sends at
+    | full speed), skipped at high speed exactly like EXTENDED/FULL's sum.
+    moveq   #0,%d1
+    movel   PORTSC1,%d0
+    andil   #0x0c000000,%d0
+    cmpil   #0x08000000,%d0
+    seq     %d1                     | d1 = 0xff at high speed
+    moveal  %d1,%a1                 | a1 != 0: skip the MAIN-only ring this block
+    movel   aud_produced,%d4
+    movel   %d4,%d5
+    andil   #AUD_FRAMES-1,%d5
+    MUL_SLOT %d5, %d0               | d0 is dead here; d5 -> slot * SLOT_BYTES (16)
+    lea     aud_ring,%a3
+    addal   %d5,%a3                 | a3 = the 16-byte slot cursor (a block
+                                    | never wraps: 16 divides the ring size)
+    movel   %d4,%d5
+    andil   #AUD_FRAMES-1,%d5
+    lsll    #3,%d5                  | slot * SUM_BYTES (8)
+    lea     aud_sum,%a4
+    addal   %d5,%a4                 | a4 = the MAIN-only cursor
+    moveq   #15,%d6                 | 16 frames
+1:
+    | Frame f's pair sits at MC_BASE + f*8 (+MC_CUE_OFF for CUE); f = 15 - d6.
+    moveq   #15,%d7
+    subl    %d6,%d7
+    lsll    #3,%d7                  | f * 8
+    lea     MC_BASE,%a0
+    addal   %d7,%a0
+    movel   %a0@(MC_MAIN_OFF),%d3   | MAIN L, kept for the full-speed ring
+    clrb    %d3
+    byterev %d3
+    movel   %d3,%a3@+
+    movel   %a0@(MC_MAIN_OFF+4),%d2 | MAIN R
+    clrb    %d2
+    byterev %d2
+    movel   %d2,%a3@+
+    movel   %a1,%d0
+    bne     .Lmc_sum_skip
+    movel   %d3,%a4@+               | MAIN L, full speed
+    movel   %d2,%a4@+               | MAIN R, full speed
+.Lmc_sum_skip:
+    movel   %a0@(MC_CUE_OFF),%d2    | CUE L
+    clrb    %d2
+    byterev %d2
+    movel   %d2,%a3@+
+    movel   %a0@(MC_CUE_OFF+4),%d2  | CUE R
+    clrb    %d2
+    byterev %d2
+    movel   %d2,%a3@+
+    subql   #1,%d6
+    bpl     1b
     addql   #8,%d4
     addql   #8,%d4                  | 16 frames produced
     movel   %d4,aud_produced
@@ -1090,8 +1198,8 @@ aud_step:          .long STEP_HS    | frames per packet x1000, set by the speed
 aud_ring:          .space AUD_FRAMES*SLOT_BYTES  | 1024 x T8 (L,R), 24 in 4 B LE
     .set aud_sum, aud_ring                       | the full-speed stream sends the same ring
 .else
-aud_ring:          .space AUD_FRAMES*SLOT_BYTES  | 1024 x 20 ch (16 in FULL), 24 in 4 B LE
-aud_sum:           .space AUD_FRAMES*SUM_BYTES   | 1024 x stereo sum, 24 in 4 B LE
+aud_ring:          .space AUD_FRAMES*SLOT_BYTES  | 1024 x 20 ch (16 FULL, 4 MC), 24 in 4 B LE
+aud_sum:           .space AUD_FRAMES*SUM_BYTES   | 1024 x stereo sum (MAIN alone in MC), 24 in 4 B LE
 .endif
 usbaudio_alt:      .byte 0          | alt setting the host asked for
 aud_running:       .byte 0          | EP3 is up (frame-ISR owned)
@@ -1114,6 +1222,6 @@ aud_tail:          .byte 0          | next dTD slot to fill (0..NSLOT-1)
 | 32-byte aligned (the dQH and dTD next pointers keep bits 31:5 only).
     .balign 32
 aud_dtds:          .space NSLOT*32               | EP3 IN dTDs, one per queue slot
-aud_bufs:          .space NSLOT*PKT_BUF          | their packets (<= 960 B; 768 FULL, 360 MASTER)
+aud_bufs:          .space NSLOT*PKT_BUF          | their packets (<= 960 B; 768 FULL, 360 MASTER, 192 MC)
 
     .balign 4

@@ -546,7 +546,7 @@ def main():
                  "PLATE REV", "SPRING REV", "DARK REV", "COMPRESSOR", "LO-FI",
                  "DJ EQ", "COMB FILTER")
     _want = {"restock": (), "recfix": (), "mods": (), "ok-ms": (), "usb-lean": (), "usb-full": (), "usb-master": (),
-             "octatrick": (), "octatrick-usb": (),     # stock effects + ColdFire modules, no DSP words
+             "octatrick": (), "octatrick-usb": (), "usb-mc": (),     # stock effects + ColdFire modules, no DSP words
              "repitch": (),
              "cfmeter": ("DARK REV",), "cfmeter-port": ("DARK REV",),   # the readout insert's words
              "euclid": ("SPATIALIZER", "FLANGER", "CHORUS", "COMB FILTER"),

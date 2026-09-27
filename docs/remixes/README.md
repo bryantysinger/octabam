@@ -40,6 +40,7 @@ A remix is a named selection of modules; `make image REMIX=<name>` builds it int
 | [`usb-full`](../../remixes/usb-full/README.md) | stock + USB MIDI + USB AUDIO FULL (16 ch: the tracks). | port-gated |
 | [`usb-lean`](../../remixes/usb-lean/README.md) | stock + USB MIDI + USB AUDIO (20 ch: tracks, MAIN, CUE). | port-gated |
 | [`usb-master`](../../remixes/usb-master/README.md) | stock + USB MIDI + USB AUDIO MASTER (2 ch: track 8). | port-gated |
+| [`usb-mc`](../../remixes/usb-mc/README.md) | stock + USB MIDI + USB AUDIO MC (4 ch: MAIN + CUE). | port-gated |
 
 ## Reference
 

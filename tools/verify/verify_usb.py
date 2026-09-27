@@ -42,6 +42,7 @@ LAYOUTS = {
     "USB AUDIO EXTENDED": (20, 960, 2, [(t, c) for t in range(8) for c in (0, 1)] + [(8, 0), (8, 1), (9, 0), (9, 1)]),
     "USB AUDIO FULL": (16, 768, 2, [(t, c) for t in range(8) for c in (0, 1)]),
     "USB AUDIO MASTER": (2, 360, 4, [(7, 0), (7, 1)]),
+    "USB AUDIO MC": (4, 192, 2, [(8, 0), (8, 1), (9, 0), (9, 1)]),
 }
 RB_BASE, MC_BASE = 0x80003190, 0x80005e60   # the tracks' read-back arena (2 banks) and MAIN/CUE (usbaudio.s)
 

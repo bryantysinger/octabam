@@ -37,7 +37,8 @@ FS_CHANNELS, FS_MAXPKT, FS_BINTERVAL = 2, 45 * 8, 1       # 44/45 stereo frames 
 # per audio module: (channels, max packet) at high speed; full speed is FS_*
 HS_LAYOUT = {"USB AUDIO EXTENDED": (HS_CHANNELS, HS_MAXPKT),
              "USB AUDIO FULL": (16, 12 * 64),                # 11/12 frames x 64 B (16 tracks) every 250 us
-             "USB AUDIO MASTER": (2, 45 * 8)}                # 44/45 frames x 8 B (T8) every 1 ms
+             "USB AUDIO MASTER": (2, 45 * 8),                # 44/45 frames x 8 B (T8) every 1 ms
+             "USB AUDIO MC": (4, 12 * 16)}                   # 11/12 frames x 16 B (MAIN + CUE) every 250 us
 FRONT_LR = 0x3                                             # bmChannelConfig: front left, front right (MASTER)
 HS_BINTERVAL_1MS = 4                                       # 2^(4-1) microframes = 1 ms (MASTER at high speed)
 UAC2_AC_IFACE, UAC2_AS_IFACE = 3, 4                        # usbaudio.s .set: the same numbers
