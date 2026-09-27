@@ -140,8 +140,8 @@ take an access error.
 - **Under the port:**
   - `tools/verify/verify_usb_in.py`, this module's gate (`make check` runs it
     for any remix that carries it): bit-exact C D A B in the RX blocks and
-    the recorder ring, the flag, the counters over `0x56`, and the jacks back
-    after alt 0. EP3 IN's frame size comes from the remix's layout, so the
+    the recorder ring (which the DSP copies only while it sees the flag), the
+    counters over `0x56`, and the flag clear and the jacks back after alt 0. EP3 IN's frame size comes from the remix's layout, so the
     same gate runs beside MC, FULL or EXTENDED. The port does not model
     SCM/XBS, so the click fix itself is measured on the unit only.
   - `verify_usb` for `usb-io`: the six-interface configuration, EP3 IN marked
@@ -150,10 +150,17 @@ take an access error.
   `make check` passes. `verify_usb_in` passed eight runs in a row, one of
   them `POLLS=40000` (10 s of device time): every packet whole, 0 underruns,
   bit-exact C D A B on the RX blocks and the recorder ring; ring fill 343-388
-  frames against the 384 target. The first run on this port failed exactly
-  one check, whose line was not captured; from which checks can fail alone,
-  probably the pacing (0.689 per poll) or the underrun count, i.e. the bench
-  falling out of step with the emulated unit (INFERRED, not reproduced).
+  frames against the 384 target. The first run on this port failed one
+  check, "the stream flag is set", and so did the `make accept` run of
+  `usb-io`: the gate read the flag from a snapshot of `in_tx` taken at
+  whatever instruction the port stopped on, and inside `in_build` the first
+  sample is rewritten before the flag is set (`2157001b`: a valid coded
+  sample without bit 8), while the RX blocks in the same run carried the
+  host's samples, i.e. the DSP saw the flag. On the unit the DMA to the DSP
+  starts only after `in_build` returns. The gate now proves the flag through
+  the RX blocks and checks the snapshot only after the stream closes, where
+  it is a constant zero. (A guess recorded here before the line was caught,
+  pacing or underruns, was wrong.)
   The port's fill band says nothing about hardware headroom: its host is
   locked to the device, where the unit's EP3 IN servo lets the fill wander
   +-128 frames. `IN_TARGET` comes down from the unit's `minfill`, not this.
@@ -173,8 +180,6 @@ take an access error.
 
 ## Open
 
-- **One unexplained gate failure** (first run, 27 Sep 2026, above). If it
-  recurs, keep the whole `verify_usb_in` output: the `[FAIL]` line names it.
 
 - **Beside FULL or EXTENDED: not measured.** Before the crossbar fix, the
   twenty-channel EP3 IN stream beside EP3 OUT lost EP3 OUT packet tails

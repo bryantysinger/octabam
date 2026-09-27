@@ -216,8 +216,15 @@ def main():
     check("no underrun after the cushion filled, no overrun, no re-prime",
           c["underruns"] == 0 and c["overruns"] == 0 and c["reprimes"] == 0,
           f"underruns {c['underruns']} overruns {c['overruns']} reprimes {c['reprimes']}")
-    check("the stream flag is set", len(r["tx"]) >= 4 and (r["tx"][2] << 8 | r["tx"][3]) & 0x100,
-          r["tx"][:4].hex())
+    # The flag while streaming is proven by the RX blocks below: the DSP copies
+    # the host's words only while it sees the flag. A snapshot of in_tx cannot
+    # prove it: the dump lands at whatever instruction the port stops on, and
+    # in_build rewrites the first sample before .Lb_flag sets bit 8, so a
+    # snapshot taken inside that loop reads the flag clear (27 Sep 2026:
+    # `2157001b`, coded sample 0x21571b without it, about one run in ten). On
+    # the unit nothing reads in_tx mid-build: the DMA to the DSP starts only
+    # after in_build returns, from the same state-7 visit.
+    print(f"  in_tx snapshot (not checked while streaming; may land mid-build): {r['tx'][:4].hex()}")
     if r["rx"] and r["cur"] is not None:
         cb = (r["cur"] - 0x8100) // 64
         got = []
@@ -225,7 +232,7 @@ def main():
             blk = (cb - back) % 9
             got.append(block_frame(r["rx"][blk * 64:(blk + 1) * 64]))
         print(f"  RX blocks, newest first: first frames {got}")
-        check("the 7 completed RX blocks hold the host's samples, slot order C D A B, bit-exact",
+        check("the 7 completed RX blocks hold the host's samples, slot order C D A B, bit-exact (so the DSP saw the flag)",
               all(g is not None for g in got), str(got))
         ok = all(g is not None for g in got) and all(a - b == 16 for a, b in zip(got, got[1:]))
         check("... in consecutive frames (no drop, no repeat)", ok)

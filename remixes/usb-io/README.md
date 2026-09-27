@@ -10,7 +10,7 @@ The Octatrack as a four-in, four-out USB audio interface plus USB MIDI, on the s
 
 ## Status
 
-Port only (27 Sep 2026): `make check` passes, and USB AUDIO IN's `verify_usb_in` puts the host's samples on inputs A–D bit-exact, with no underrun, over eight runs (one of them 40,000 polls); one earlier run failed a single check that was not captured. The same combination ran on Bryan T's MKII as usbin-test's `usb-io` (builds 12–15, 26 Sep 2026: USB AUDIO OUT beside a twenty-channel build forced to four channels), with the USB descriptors byte-identical to this remix's. This build has not been flashed.
+Port only (27 Sep 2026): `make check` passes, and USB AUDIO IN's `verify_usb_in` puts the host's samples on inputs A–D bit-exact, with no underrun, over eight runs (one of them 40,000 polls). Two runs failed a check that read the stream flag from a mid-build snapshot, a flaw in the gate that is now fixed (modules/usb-audio-in/README.md). The same combination ran on Bryan T's MKII as usbin-test's `usb-io` (builds 12–15, 26 Sep 2026: USB AUDIO OUT beside a twenty-channel build forced to four channels), with the USB descriptors byte-identical to this remix's. This build has not been flashed.
 
 ## Build
 
