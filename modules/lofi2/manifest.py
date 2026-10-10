@@ -1,6 +1,6 @@
 """LOFI2 -- one modulator, then sample-rate and bit reduction.
 
-A per-track INSERT on a free id (0x1e), so it displaces no stock effect and
+A per-track INSERT on a free id (0x1f), so it displaces no stock effect and
 LO-FI stays exactly where it is.
 
   * MODE picks the modulator: RING, SHIFT UP or SHIFT DOWN. Ring mod and
@@ -71,11 +71,13 @@ MODULE = Module(
     doc="Ring mod or frequency shifter, then sample-rate and bit reduction.",
 
     menu=MenuEntry(
-        # 0x1e: read out of the pristine image 5 Sep 2026 -- FX1_IDS and
-        # FX2_IDS both point it at NONE (0x400d4618), so it is free on both
-        # menus. 0x1f is the other one. NOT a stock id, so no `replaces=`
-        # and nothing of the unit's is taken.
-        fx2_id=0x1e,
+        # 0x1f: read out of the pristine image 5 Sep 2026 -- FX1_IDS and
+        # FX2_IDS point 0x1e and 0x1f at NONE (0x400d4618), so both are free
+        # on both menus. NOT a stock id, so no `replaces=` and nothing of the
+        # unit's is taken. LOFI2 sat on 0x1e until the October port; the
+        # selftest's placement probes build their scratch fixtures on 0x1e,
+        # and the registry refuses two modules on one id.
+        fx2_id=0x1f,
         # DARK REV, the template's donor and Character's: twelve slots and
         # page-2 selects already present. Every field not written below
         # stays DARK REV's, which is why the formatter is stated on EVERY
@@ -170,8 +172,9 @@ MODULE = Module(
         xtables=(0x13c7, 0x15c7, 0x1bf9, 0x1c79),
     ),
 
-    # "X" was LOFI2's letter on the tree it was written on; VOCODER holds it now.
-    harness=Harness(layout_char="L", is_server=False),
+    # "X" was LOFI2's letter on the tree it was written on; VOCODER holds it
+    # now, and "L" is stock LO-FI's (tools/remix/stock.py).
+    harness=Harness(layout_char="F", is_server=False),
     # Dearest: a SHIFT mode (the two Hilbert pairs, the dear loop), every
     # continuous knob at the end that does the most work, the shelf in band.
     dear={"FREQ": 127, "MIX": 127, "FDBK": 127, "SRR": 127, "BRR": 127,

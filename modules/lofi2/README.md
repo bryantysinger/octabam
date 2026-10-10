@@ -2,7 +2,7 @@
 
 One modulator, ring mod or a stereo frequency shifter, followed by stock LO-FI's sample-rate and bit reduction and a high-shelf cut.
 
-An insert on a free id (`0x1e`), so it displaces no stock effect: stock LO-FI stays in the chooser beside it. Signal chain: `dry -> modulator -> MIX -> SRR -> BRR -> LPF -> out`. MIX is the modulator's depth, not a global wet/dry: SRR and BRR run after it and stay live at MIX 0, as they do in stock LO-FI. The defaults are a passthrough (MIX, FREQ, FDBK, SRR, BRR, AMPH at 0, LPF at 127).
+An insert on a free id (`0x1f`; `0x1e` until the October port), so it displaces no stock effect: stock LO-FI stays in the chooser beside it. Signal chain: `dry -> modulator -> MIX -> SRR -> BRR -> LPF -> out`. MIX is the modulator's depth, not a global wet/dry: SRR and BRR run after it and stay live at MIX 0, as they do in stock LO-FI. The defaults are a passthrough (MIX, FREQ, FDBK, SRR, BRR, AMPH at 0, LPF at 127).
 
 How it differs from CHARACTER, which replaces stock LO-FI and also crushes and ring-modulates: LOFI2 is built around the modulator. It adds a frequency shifter, gives the ring mod an MF-102-style exponential FREQ with a LOW/HIGH range and LO-FI's L/R phase offset, and keeps stock LO-FI's own SRR and BRR curves (ported, not reinvented) so measurements and note tables made against stock LO-FI still apply. CHARACTER is a channel-strip chain (crush, fold, saturation, compression, width).
 
