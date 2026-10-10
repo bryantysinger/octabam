@@ -68,6 +68,12 @@ path, so the harness's own gains cancel.
   LPF 127         a 1,234.5 Hz tone at 0.5 FS comes out bit for bit (at
                   whatever whole-sample delay the chain has, 0..4).
   LPF turn        as SRR's: under -70 dBFS.
+  FREQ fraction   RING, MIX 127, RANGE HIGH on DC: the carrier at FREQ 64, at
+                  64 with the knob word's bits 15-8 at $80 (as an LFO leaves
+                  it, by -pword) and at 65; the half step lands 25-75% of the
+                  way between, in octaves. A masked read lands at 0.
+  FREQ turn       as SRR's, in RING and in SHIFT UP (MIX 127, RANGE HIGH):
+                  under -70 dBFS.
 
 Not covered: payload B (tracks 1-4) -- dsp_host renders one payload here;
 `rig_render` covers both, and the October port's A/B found T1 == T5.
@@ -111,7 +117,7 @@ def sine(seconds, amp=0.125, f=440.0):
     return [int(round(amp * math.sin(2 * math.pi * f * i / SR) * (1 << 23))) for i in range(n)]
 
 
-def render(samples, schedule=None, raw=None, mem=None, ep=None, sched=None, **kw):
+def render(samples, schedule=None, raw=None, mem=None, ep=None, sched=None, extra=None, **kw):
     """Mono Q23 ints in, fed to both channels; (L, R) ints out. `schedule`
     is [(block, {knob: value}), ...] on top of kw, by -paramfile. `raw` (a
     12-value list), `mem`/`ep` and `sched` (dsp_host -sched) render another
@@ -127,6 +133,8 @@ def render(samples, schedule=None, raw=None, mem=None, ep=None, sched=None, **kw
            "-params", ",".join(str(x) for x in (raw if raw is not None else params(**kw)))]
     if sched:
         cmd += ["-sched", sched]
+    if extra:
+        cmd += extra
     if schedule:
         pf = TMP / "sched.txt"
         rows = []
@@ -363,6 +371,35 @@ held, _ = render(toneT, LPF=20)
 tl, hl = step_db(turn, T0, T1), step_db(held, T0, T1)
 check("LPF turn 20 -> 110: block-locked step under -70 dBFS", tl < -70.0,
       f"turn {tl:.1f} dBFS, held {hl:.1f}")
+
+# ---- FREQ: the LFO fraction is heard, and a turn does not step ----------------
+def carrier_hz(y, a, b):
+    """Frequency from the first and last upward crossings of y less its mean."""
+    m = sum(y[a:b]) / (b - a)
+    ups = [i + (m - y[i]) / (y[i + 1] - y[i]) for i in range(a, b - 1) if y[i] < m <= y[i + 1]]
+    return (len(ups) - 1) * SR / (ups[-1] - ups[0])
+
+
+dcin = [int(0.25 * 8388607)] * (SR // FRAMES * FRAMES)
+ring = dict(MIX=127, RANGE=1, MODE=0)
+fk = {}
+for tag, kv, word in (("64", 64, None), ("64.5", 64, "408000"), ("65", 65, None)):
+    y, _ = render(dcin, extra=["-pword", f"0:0={word}"] if word else None, FREQ=kv, **ring)
+    fk[tag] = carrier_hz(y, SETTLE, len(y) - 16)
+pos = math.log2(fk["64.5"] / fk["64"]) / math.log2(fk["65"] / fk["64"])
+check("FREQ: an LFO's fraction between two knob steps is heard (64 + 1/2 lands between 64 and 65)",
+      0.25 < pos < 0.75,
+      f"{fk['64']:.2f} / {fk['64.5']:.2f} / {fk['65']:.2f} Hz, {pos:.2f} of the step")
+
+slot = K["FREQ"]
+for mname, mode in (("RING", 0), ("SHIFT UP", 2)):
+    ctx = dict(MIX=127, RANGE=1, MODE=mode)
+    turn, _ = render(toneT, sched=",".join(f"{T0 + 2 * i}:0:{slot}={20 + 1 + i}" for i in range(90)),
+                     FREQ=20, **ctx)
+    held, _ = render(toneT, FREQ=20, **ctx)
+    tl, hl = step_db(turn, T0, T1), step_db(held, T0, T1)
+    check(f"FREQ turn 20 -> 110, {mname}: block-locked step under -70 dBFS", tl < -70.0,
+          f"turn {tl:.1f} dBFS, held {hl:.1f}")
 
 print()
 if FAILS:

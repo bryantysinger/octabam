@@ -10,7 +10,7 @@ How it differs from CHARACTER, which replaces stock LO-FI and also crushes and r
 
 | page | slot | name | range | what it does |
 |---|---|---|---|---|
-| 1 | 0 | FREQ | 0-127 | modulator frequency, exponential over six octaves from RANGE's base; read by whichever MODE is selected |
+| 1 | 0 | FREQ | 0-127 | modulator frequency, exponential over six octaves from RANGE's base; read by whichever MODE is selected; keeps an LFO's fraction between steps and glides, so sweeps are smooth |
 | 1 | 1 | MIX | 0-127 | modulator depth: crossfades the ring or shift output against the dry |
 | 1 | 2 | FDBK / GAIN | 0-127 | one knob, read per MODE, and the panel renames it. SHIFT: FDBK, the feedback ladder (f, f+d, f+2d), capped at 0.45. RING: GAIN on the ring product, 2^(k/64): 0 dB at 0 (today's level), +6 dB at 64, +11.9 dB at 127 |
 | 1 | 3 | SRR | 0-127 | sample-rate reduction, a fractional hold at stock LO-FI's measured rates: no reduction through 7, 8,018 Hz at 64, 3,564 Hz at 127; the rate glides, so turns and LFOs sweep smoothly |
@@ -22,7 +22,7 @@ How it differs from CHARACTER, which replaces stock LO-FI and also crushes and r
 
 ## Design
 
-- **Ring mod** is not stock's: WarpFold's parabolic carrier `4p(1-|p|)` under an exponential six-octave taper (the MF-102's ranges, 2-130 Hz and 60-4,000 Hz, are each exactly six octaves). An exponential taper has no zero: FREQ 0 is the base frequency, not silence.
+- **Ring mod** is not stock's: WarpFold's parabolic carrier `4p(1-|p|)` under an exponential six-octave taper (the MF-102's ranges, 2-130 Hz and 60-4,000 Hz, are each exactly six octaves). An exponential taper has no zero: FREQ 0 is the base frequency, not silence. One knob step is 6/128 octave (56 cents), so the knob word's LFO fraction (bits 15-8) is kept, and the carrier step glides to the block's value per sample (1/64 a sample, about 1.5 ms), for the ring mod and the shifter alike.
 - **The shifter is stereo**: two Hilbert allpass pairs (BodeShift's eight coefficients) sharing one oscillator, rather than BodeShift's analytic pair on the mono sum, which would collapse the image at MIX 127. Direction is a per-block sign on Q, so UP/DOWN costs no branch in the loop. The chains are pointer-walked, which lets each section carry parallel moves (12 words a section against 21 with displaced addressing).
 - **SRR** is our own fractional sample-and-hold: a phase advances by `inc` a sample and the held pair is re-latched on each wrap. `inc` comes from the module's own table (`SRR_INC`, 129 words, carried by `DspSection.ptable`), indexed by the knob and interpolated by the fraction an LFO leaves in the knob word, and it glides to its target per sample (about 1.5 ms), so a turn does not step at the block rate. The rates are stock LO-FI's as measured on the unit (10 Oct 2026: a 1 kHz tone through each over USB, the rate read from the images): 8,018 Hz at 64 and 3,564 Hz at 127, a hold of L(k) = (k+128)^2/4096 - 3.5 samples, floored at 1. The September port of stock's code held twice as long at every setting (4,009 Hz at 64, 1,782 Hz at 127).
 - **BRR** is our own quantiser: `y = round(x * 2^-E) * 2^E`, E the step above the LSB in bits. E = 23(1 - (1 - 0.78125 k/128)^2) - 1, floored at 0, stock LO-FI's curve (measured against stock from DC plateaus, 10 Oct 2026: within 0.01 bit at every setting from 16 to 127; the -1 is the bit stock's own arithmetic carries), from the module's own table (`BRR_E`, 129 words after `SRR_INC` in the same `ptable`), interpolated by the knob word's LFO fraction and gliding per sample (1/64 a sample, about 1.5 ms). E's whole bits are a variable shift; its fraction (to 1/128 bit) indexes one 129-word table, `m = 2^-(j/128)`, read from both ends: `1/(2m) = 2^((j-128)/128)` is the entry at 128 - j, so the step's mantissa and its reciprocal are a pair to 1.4e-7 and the gain below the clip is unity at every setting. At BRR 0 the held sample passes untouched. A rounded sample a step above full scale is caught by the limited move into the shelf.
@@ -41,18 +41,18 @@ How it differs from CHARACTER, which replaces stock LO-FI and also crushes and r
   - `init` zeroes the block (verify_dirtystate), where it had been a bare `rts`.
 - Rendered against the September source in this tree (the same image built from each, `rig_render`, T1 on payload B and T5 on payload A; passthrough, RING with and without AMPH, SRR/BRR/LPF, SHIFT UP, SHIFT DOWN with FDBK): bit-identical in every case, and T1 bit-identical to T5.
 - The port ran on Bryan T's MKII as image 96 (remix `_bt_oct`, his own: LOFI2 with RECORDER LOOP FIX, USB AUDIO IN ABCD and OUT MAIN CUE), 10 Oct 2026: LPF right on track 1 (payload B), SHIFT on two tracks at once, MODE through RING / DOWN / UP without a fault.
-- AMPH bipolar, GAIN and the MODE duck ran on the unit as image 97 (October 2026). Our own SRR, BRR and LPF have not been flashed.
+- AMPH bipolar, GAIN and the MODE duck ran on the unit as image 97 (October 2026).
+- Our own SRR, BRR and LPF ran on the unit as image 98 (10 Oct 2026), on track 1 (payload B) and track 5 (payload A): "sounding and working great", and the MODE change no longer clicks. The FREQ glide has not been flashed.
 
 ## Open
 
 - The September port's BRR stepped at the block rate when turned (-47.8 dBFS by verify_knob_clicks's instrument, stock -140); the glide is the fix, gated below.
 - Stock LO-FI follows its hold with a fixed linear-phase FIR near Nyquist (seen in its step response: symmetric pre-ringing, 7-10 samples of latency); LOFI2 does not, and at stock's rates it is not what makes stock's SRR sound smoother.
 - Under `dsp_host`, stock LO-FI clips its input at +-0.5 FS at every BRR setting, 0 included (a +-0.95 FS ramp, 10 Oct 2026). Not checked on the unit, where the input may arrive scaled; LOFI2 does not copy it, and its BRR gate stays inside +-0.45 FS.
-- Changing MODE clicked on image 96; the duck is the fix, on image 97, not yet checked by ear.
 - On page 2, MODE names itself (RING / DOWN / UP in the name field) and the turn-flash prints the same word beneath it; RANGE and AMPH show their values only while turned.
 - Tuning by ear: whether six exponential octaves suit the knob, and the SHIFT range pair.
 
 ## Gates
 
-- `tools/verify/verify_lofi2.py` (the manifest's `Gate`), through `dsp_host` on payload A: the ring level against dry, GAIN at 64 and 127, the SHIFT level, AMPH (L == R at 0, L untouched and R moved at +-45), the start-up fade-in, a RING -> UP switch scheduled mid-render (no step larger than the steady states', and a pass through the dry), SRR's rate against stock LO-FI's at five settings (stock rendered from the user's own image), BRR's step against stock's at eight settings (within 0.05 bit, read from DC plateaus so neither effect's filters enter), BRR 64's gain against BRR 0 (within 0.05 dB), the LPF shelf against its design at six settings (coefficient, DC gain, depth), no gain above unity anywhere, LPF 127 bit for bit, and SRR, BRR and LPF turns under verify_knob_clicks's -70 dBFS.
+- `tools/verify/verify_lofi2.py` (the manifest's `Gate`), through `dsp_host` on payload A: the ring level against dry, GAIN at 64 and 127, the SHIFT level, AMPH (L == R at 0, L untouched and R moved at +-45), the start-up fade-in, a RING -> UP switch scheduled mid-render (no step larger than the steady states', and a pass through the dry), SRR's rate against stock LO-FI's at five settings (stock rendered from the user's own image), BRR's step against stock's at eight settings (within 0.05 bit, read from DC plateaus so neither effect's filters enter), BRR 64's gain against BRR 0 (within 0.05 dB), the LPF shelf against its design at six settings (coefficient, DC gain, depth), no gain above unity anywhere, LPF 127 bit for bit, FREQ's LFO fraction (a half step lands between the two steps), and SRR, BRR, LPF and FREQ (RING and SHIFT UP) turns under verify_knob_clicks's -70 dBFS.
 - `make check REMIX=lofi2`.

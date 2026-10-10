@@ -56,11 +56,12 @@
 ;     $19 held L      $1a held R      $1b srr phase      $1c carrier phase
 ;   per block:
 ;     $20 m = MIX     $21 range       $22 mode
-;     $24 carrier step   $25 ptable base   $26 amph offset  $27 ring flag
+;     $24 carrier step target   $25 ptable base   $26 amph offset  $27 ring flag
 ;     $16 SRR rate target (per block)   $17 SRR rate in use (PERSISTENT)
 ;     $28 BRR E target (per block)  $29 E in use (PERSISTENT)
 ;     $2a m, $2b 1/(2m), $18 n -- BRR's step, per sample
-;     $1d LPF c target  $1e kd target (per block)   $23 free
+;     $1d LPF c target  $1e kd target (per block)
+;     $23 carrier step in use, glided toward $24 (PERSISTENT)
 ;     $3f c in use  $1f kd in use -- glided per sample (PERSISTENT)
 ;     $01/$02 the shelf allpass's dropped bits, L/R (PERSISTENT)
 ;     $2c sin  $2d cos  $2e I_L $2f Q_L $30 I_R $31 Q_R  $32 shift flag
@@ -390,8 +391,10 @@ lf_rdone:
 
 ; t = 0.75 * knob, so the six octaves land in bits 22..20 (integer) and the
 ; rest is the fraction. The knob word IS knob/128, so t = 6*knob/128 / 8.
+; The knob's LFO fraction (bits 15-8) is KEPT: one knob step is 6/128 of an
+; octave, 56 cents, so an LFO on FREQ needs the bits between the steps.
         move    x:(r6+$0),a
-        and     #>$7f0000,a
+        and     #>$7fff00,a             ; the knob AND its fraction
         move    a1,x0
         move    #>$600000,y1            ; 0.75
         mpy     x0,y1,a
@@ -472,6 +475,23 @@ lf_noct:
         move    x1,x:(r7+$34)
         move    x1,x:(r7+$36)
 
+; FREQ: the carrier step glides to the block's target, 1/64 of the way a
+; sample (about 1.5 ms), snapping onto it when the step rounds to nothing,
+; so a turned knob or an LFO sweeps instead of stepping at the block rate.
+; Here, before the fork, because both modulators read it.
+        move    x:(r7+$24),a            ; target (per block)
+        move    x:(r7+$23),x0           ; in use
+        sub     x0,a
+        asr     #$6,a,a
+        move    a,x1                    ; the step, a0 dropped
+        move    x0,b
+        add     x1,b
+        move    x1,a
+        tst     a
+        move    x:(r7+$24),y0
+        teq     y0,b
+        move    b,x:(r7+$23)
+
 ; MODEFORK_BEGIN -- cycle_count.py: RING and SHIFT are MUTUALLY EXCLUSIVE.
 ; Without these markers the tool sums both and prices a whole engine that
 ; can never run on the same sample. BEGIN..first MID is the dispatch.
@@ -488,7 +508,7 @@ lf_noct:
 
 ; carrier: WarpFold's parabolic sine 4*p*(1-|p|) on a phase wrapped by A1
 ; extraction -- continuous at the wrap, exact +/-1 peaks.
-        move    x:(r7+$24),y0           ; step
+        move    x:(r7+$23),y0           ; step, glided
         move    x:(r7+$1c),a            ; phase
         add     y0,a
         move    a1,x0                   ; p, wrapped
@@ -566,7 +586,7 @@ lf_nomod:
         move    a,x:(r7+$3e)
 
 ; ---- the oscillator, ONCE for both channels ------------------------------
-        move    x:(r7+$24),y0           ; step
+        move    x:(r7+$23),y0           ; step, glided
         move    x:(r7+$1c),a            ; phase (shared with the ring mod --
         add     y0,a                    ;  the two modes are exclusive)
         move    a1,x0
