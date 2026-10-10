@@ -50,6 +50,10 @@ path, so the harness's own gains cancel.
                   0.05 bit of stock's. A tone's residual would also read
                   each effect's own filters (LOFI2's shelf, stock's FIR
                   after the hold), which differ; plateaus do not.
+                  The ramp stays inside +-0.45 FS: stock LO-FI clips its
+                  input near 0.5 FS once BRR is up, which would bend the
+                  DC gain (measured with +-0.8 FS: 0.24-0.34 bit off at
+                  80-127, as a clip at 0.5 predicts, 0.837 at +-0.77).
   BRR gain        the tone's level at BRR 64 against BRR 0: within 0.05 dB
                   (the step's mantissa and its reciprocal are an exact pair).
   BRR turn        as SRR's: under -70 dBFS.
@@ -293,7 +297,7 @@ def brr_bits(y, x):
 NR = 32768
 MOD_BRR_E = MOD.dsp.ptable[129:258]          # BRR_E, after SRR_INC
 for k in (16, 32, 48, 64, 80, 96, 112, 127):
-    span = min(1.6 * 8388607, 200 * 2 ** (MOD_BRR_E[k] / (1 << 17) + 1))
+    span = min(0.9 * 8388607, 200 * 2 ** (MOD_BRR_E[k] / (1 << 17) + 1))
     ramp = [int(-span / 2 + span * i / NR) for i in range(NR)]
     z = [0] * 12
     bs, ps = brr_bits(render(ramp, raw=z[:4] + [k] + z[5:], mem=SMEM, ep=SEP)[0], ramp)
