@@ -56,7 +56,7 @@
 ;     $19 held L      $1a held R      $1b srr phase      $1c carrier phase
 ;   per block:
 ;     $20 m = MIX     $21 range       $22 mode
-;     $24 carrier step   $26 amph offset  $27 ring flag
+;     $24 carrier step   $25 ptable base   $26 amph offset  $27 ring flag
 ;     $16 SRR rate target (per block)   $17 SRR rate in use (PERSISTENT)
 ;     $28 BRR E target (per block)  $29 E in use (PERSISTENT)
 ;     $2a m, $2b 1/(2m), $18 n -- BRR's step, per sample
@@ -249,7 +249,9 @@ lf_ringf:
 ; interpolated by the knob word's LFO fraction; the loop glides to it.
 ; E is held as bits * 2^17: the whole bits in 22..17, the fraction below.
         move    #>$ffffff,m5
-        move    #>$fab1e0,r5            ; SRR_INC, then BRR_E at +129
+        move    #>$fab1e0,r5            ; the ptable's base, placed by the build
+        move    r5,x:(r7+$25)           ; kept for SRR and the loop: the build
+                                        ; wants the base literal exactly once
         move    x:(r6+$4),a
         and     #>$7fff00,a             ; the knob AND its fraction (bits 15-8)
         move    a1,x1
@@ -389,7 +391,7 @@ lf_ringf:
 ; Phase units: 1.0 = $400000, so inc runs up to exactly 1.0 (a latch every
 ; sample, no reduction) without leaving Q23.
         move    #>$ffffff,m5
-        move    #>$fab1e0,r5            ; SRR_INC, placed by the build
+        move    x:(r7+$25),r5           ; the ptable's base: SRR_INC
         move    x:(r6+$3),a
         and     #>$7fff00,a             ; the knob AND its fraction (bits 15-8)
         move    a1,x1
@@ -1040,7 +1042,7 @@ lf_srrdn:
         asr     #$a,a,a
         and     #>$7f,a
         move    a1,x1                   ; j
-        move    #>$fab1e0,a             ; BRR_M at +258, BRR_R at +386
+        move    x:(r7+$25),a            ; the ptable's base: BRR_M at +258, BRR_R at +386
         add     #>$102,a
         add     x1,a
         move    a1,r5
