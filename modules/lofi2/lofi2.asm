@@ -31,8 +31,8 @@
 ;        GAIN   RING: makeup gain on the ring product, 2^(k/64): 0 dB at 0,
 ;             +6 dB at 64, +11.9 dB at 127 (the panel renames the slot per
 ;             MODE; one knob word, read per mode)
-;   p3 SRR    sample-rate reduction: stock LO-FI's own curve, 44100 Hz
-;             down to 1782 Hz; 0 = off
+;   p3 SRR    sample-rate reduction, a fractional hold at stock LO-FI's
+;             measured rates: 44,100 Hz at 0 down to 3,564 Hz at 127
 ;   p4 BRR    bit depth, CONTINUOUS round-to-nearest -- stock LO-FI's own
 ;             quantiser and its X:0x7400 table, ported
 ;   p5 LPF    high-shelf cut, LAST in the chain: stock EQUALIZER's HIGH
@@ -53,10 +53,11 @@
 ;     $14 m*(1-e), the MIX the crossfade uses (per sample)
 ;     $15 MODE as the knob has it (per block)
 ;   persistent (Character's slots for the same jobs, so the two read alike):
-;     $19 held L      $1a held R      $1b srr accum      $1c carrier phase
+;     $19 held L      $1a held R      $1b srr phase      $1c carrier phase
 ;   per block:
 ;     $20 m = MIX     $21 range       $22 mode
-;     $24 carrier step   $25 srr threshold  $26 amph offset  $27 ring flag
+;     $24 carrier step   $26 amph offset  $27 ring flag
+;     $16 SRR rate target (per block)   $17 SRR rate in use (PERSISTENT)
 ;     $28/$29 s low/high     $2a/$2b 1/s low/high  (48-bit, BRR)
 ;     $1d c0 TARGET  $1e c1  $1f c2  (LPF shelf)   $23 index scratch
 ;     $3f c0 IN USE -- smoothed toward $1d one step per sample (PERSISTENT)
@@ -88,9 +89,7 @@
 ; below still hold and are kept:
 ;   * carrier phase: any value is a legal phase, and A1 extraction wraps it.
 ;   * held pair: at worst one wrong sample before the first latch.
-;   * SRR phase: NOT self-correcting -- a negative value never reaches the
-;     wrap threshold and the hold would stick forever -- so it is still
-;     sanitised with one AND per block, not per sample.
+;   * SRR phase: init zeroes it, and it stays in 0 .. 1.0 by construction.
 ;
 ; CYCLES_FORWARD_BRANCHES
 ; Every conditional branch in the sample loop jumps FORWARD and can only
@@ -122,6 +121,9 @@ lfiniz:
 ; wet in over the duck's 5 ms instead of starting it with a step
         move    #>$7fffff,x0
         move    x0,x:(r7+$11)
+; SRR's rate starts at 1.0 (a latch every sample) and glides to the knob's
+        move    #>$400000,x0
+        move    x0,x:(r7+$17)
         rts
 
 proc:
@@ -424,42 +426,42 @@ lf_ringf:
         sub     x0,a
         move    a1,x:(r7+$1f)           ; c2 = 0.0625 - g
 
-; ---- SRR -> stock LO-FI's hold THRESHOLD ---------------------------------
-; PORTED FROM STOCK (payload A, P:0x01c56 + func_001cba). The mechanism I
-; built independently was already the right one -- a fractional hold with an
-; accumulator and a wrap -- but with the roles inverted: I varied the rate
-; against a fixed threshold, stock varies the THRESHOLD against a fixed
-; increment of $10. Equivalent arithmetic, different taper, and stock's is
-; the one that matters:
+; ---- SRR -> the hold's rate, from our own table -------------------------
+; A fractional sample-and-hold: a phase advances by `inc` a sample and the
+; held pair is re-latched on each wrap, so the hold lasts 1/inc samples on
+; average. inc comes from the module's own 129-word table (manifest.py,
+; SRR_INC), indexed by the knob and interpolated by the knob word's bits
+; 15-8 -- the fraction an LFO leaves there, which is what lets a modulated
+; SRR sweep smoothly instead of in 128 steps.
 ;
-;   t = 128*v                     (the knob word, asr 9)
-;   t = (t + $4000)^2
-;   t = (t - 32)*4 + 16
+; The curve is stock LO-FI's as MEASURED ON THE UNIT (10 Oct 2026, a 1 kHz
+; tone over USB, the rate read from the image positions): 8,018 Hz at 64,
+; 3,564 Hz at 127. As a hold length L(k) = (k+128)^2/4096 - 3.5 samples,
+; floored at 1: 1 at 0, 5.50 at 64, 12.37 at 127. The September port held
+; twice as long at every setting (11 at 64, 1,782 Hz at 127).
 ;
-; threshold runs 16 at knob 0 to 396 at 127, and the hold is threshold/16 --
-; exactly 1 sample at the bottom, 24.75 at the top. 44100/24.75 = 1782 Hz,
-; matching the hardware-confirmed floor in our notes to the digit.
-;
-; Beyond correctness this makes the MUSICAL NOTE-MAPPING TABLE from prior
-; work valid for LOFI2's knob, because the curve is now the same one it was
-; measured against. Against my invented curve that table meant nothing.
+; Phase units: 1.0 = $400000, so inc runs up to exactly 1.0 (a latch every
+; sample, no reduction) without leaving Q23.
+        move    #>$ffffff,m5
+        move    #>$fab1e0,r5            ; SRR_INC, placed by the build
         move    x:(r6+$3),a
-        and     #>$7f0000,a
-        move    a1,a                    ; clean A2/A0 before the shift
-        asr     #$9,a,a
-        add     #>$4000,a
-        move    a,x0
-        mpy     x0,x0,a
-        sub     #>$20,a
-        asl     #$2,a,a
-        move    #>$10,x0
-        add     x0,a
-        move    a,x:(r7+$25)            ; the threshold
-
-        move    x:(r7+$1b),a            ; sanitise the SRR phase once
-        and     #>$3fffff,a
-        move    a1,x0
-        move    x0,x:(r7+$1b)
+        and     #>$7fff00,a             ; the knob AND its fraction (bits 15-8)
+        move    a1,x1
+        asr     #$10,a,a
+        move    a1,n5                   ; k, 0..127
+        move    x1,a
+        and     #>$00ff00,a
+        asl     #$7,a,a
+        move    a1,x0                   ; the fraction, Q23
+        move    (r5)+n5
+        move    p:(r5)+,y0              ; inc[k]
+        move    p:(r5),b                ; inc[k+1]
+        move    y0,a
+        sub     a,b
+        move    b,y1
+        mpy     x0,y1,a                 ; frac * (inc[k+1] - inc[k])
+        add     y0,a
+        move    a,x:(r7+$16)            ; the rate's target; $17 glides to it
 
 ; ---- FREQ -> carrier step, SIX OCTAVES, EXPONENTIAL ----------------------
 ; The MF-102's ranges are 2-130 Hz and 60-4000 Hz, both six octaves, so the
@@ -1041,20 +1043,31 @@ lf_noshift:
         add     b,a
         move    a,x:(r7+$36)
 
-; ---- SRR: advance the phase, latch the MODULATED pair on the wrap --------
-        move    x:(r7+$1b),a            ; accumulator
-        move    #>$10,x0                ; stock's fixed increment
+; ---- SRR: glide the rate, advance the phase, latch the MODULATED pair ---
+; The rate moves 1/64 of the way to its target every sample (a ~1.5 ms
+; time constant), so a turned knob never steps at the block rate.
+        move    x:(r7+$16),a            ; target
+        move    x:(r7+$17),x0           ; the rate in use
+        sub     x0,a
+        asr     #$6,a,a
         add     x0,a
-        move    x:(r7+$25),x0           ; threshold
-        cmp     x0,a
+        move    a,x:(r7+$17)
+        move    x:(r7+$17),x0           ; inc
+        move    x:(r7+$1b),a            ; phase, 0 .. < $400000
+        add     x0,a
+        move    #>$400000,x1
+        sub     x1,a                    ; >= 0: it wrapped
         blt     lf_held
-        sub     x0,a                    ; crossed -- wrap by one threshold
-        move    x:(r7+$35),x1           ; fresh: latch v, not the dry
+        move    a,x:(r7+$1b)            ; phase - 1.0
+        move    x:(r7+$35),x1           ; latch v, not the dry
         move    x1,x:(r7+$19)
         move    x:(r7+$36),x1
         move    x1,x:(r7+$1a)
+        bra     lf_srrdn
 lf_held:
+        add     x1,a                    ; no wrap: phase + inc
         move    a,x:(r7+$1b)
+lf_srrdn:
 
 ; ---- L: quantise the held sample and write it out ------------------------
 ; out = dry + m*(wet - dry). The halve/double straddle keeps the difference

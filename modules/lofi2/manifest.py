@@ -58,6 +58,19 @@ SHIFT follows the Bode 1630 (2 Hz / 31.25 Hz, six octaves to 2 kHz).
 from remix.schema import (BusRole, Category, DspSection, Formatter, Gate, Harness,
                           Kind, MenuEntry, ModeView, Module, Param, Proof, YBase)
 
+
+def _srr_inc(k):
+    """SRR's per-sample phase step at knob k, 1.0 = $400000: the hold lasts
+    1/inc samples. The hold length is stock LO-FI's as measured on the unit
+    (10 Oct 2026, a 1 kHz tone over USB, the rate read from the image
+    positions: 8,018 Hz at 64, 3,564 Hz at 127), L = (k+128)^2/4096 - 3.5,
+    floored at 1 sample. Entry 128 is the interpolation's upper neighbour."""
+    hold = max(1.0, (k + 128) ** 2 / 4096 - 3.5)
+    return min(0x400000, round(0x400000 / hold))
+
+
+SRR_INC = tuple(_srr_inc(k) for k in range(129))
+
 _PLAIN = Formatter.PLAIN
 _BIP = Formatter.BIPOLAR
 _STEP = Formatter.STEPPED
@@ -176,6 +189,8 @@ MODULE = Module(
         # here that is not also a `#>$xxxx` immediate in lofi2.asm: the build
         # checks and stops.
         xtables=(0x13c7, 0x15c7, 0x1bf9, 0x1c79),
+        # SRR's rate table, our own (read through the $fab1e0 literal).
+        ptable=SRR_INC,
     ),
 
     # "X" was LOFI2's letter on the tree it was written on; VOCODER holds it

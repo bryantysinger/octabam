@@ -34,6 +34,16 @@ path, so the harness's own gains cancel.
                   16-sample window where it is within 1% FS of the MIX 0
                   render (the steady wet differs from it by ~12% FS).
 
+  SRR rate        the hold's droop on a 2 kHz tone, sinc(pi f / f_r), against
+                  stock LO-FI's at SRR 16/32/64/96/127 (each re its own SRR 0),
+                  within 0.15 dB. Stock is rendered from the user's own image
+                  (audition's pristine dump); under this harness it matched
+                  the unit at 64 and 127 (8,018 and 3,564 Hz, 10 Oct 2026).
+                  A rate off by 2x misses by several dB.
+  SRR turn        verify_knob_clicks's instrument: SRR turned 20 -> 110 one
+                  value every two blocks, the block-locked step under
+                  -70 dBFS.
+
 Not covered: payload B (tracks 1-4) -- dsp_host renders one payload here;
 `rig_render` covers both, and the October port's A/B found T1 == T5.
 """
@@ -76,17 +86,22 @@ def sine(seconds, amp=0.125, f=440.0):
     return [int(round(amp * math.sin(2 * math.pi * f * i / SR) * (1 << 23))) for i in range(n)]
 
 
-def render(samples, schedule=None, **kw):
+def render(samples, schedule=None, raw=None, mem=None, ep=None, sched=None, **kw):
     """Mono Q23 ints in, fed to both channels; (L, R) ints out. `schedule`
-    is [(block, {knob: value}), ...] on top of kw, by -paramfile."""
+    is [(block, {knob: value}), ...] on top of kw, by -paramfile. `raw` (a
+    12-value list), `mem`/`ep` and `sched` (dsp_host -sched) render another
+    effect -- stock LO-FI -- through the same path."""
     n = len(samples)
     src, out = TMP / "in.raw", TMP / "out.raw"
     src.write_bytes(b"".join(struct.pack("<i", s) for s in samples))
-    cmd = [str(HOST), "-mem", str(MEM), "-init", f"{INIT:x}", "-proc", f"{PROC:x}",
-           "-inst", "1", "-r7", "1", "-alloc", "0", "-inmask", "1",
+    m, (i0, p0) = (mem or MEM), (ep or (INIT, PROC))
+    cmd = [str(HOST), "-mem", str(m), "-init", f"{i0:x}", "-proc", f"{p0:x}",
+           "-inst", "1", "-r7", "1", "-alloc", "0", "-inmask", "1", "-audio", "0",
            "-frames", str(FRAMES), "-blocks", str(n // FRAMES),
            "-in", str(src), "-out", str(out),
-           "-params", ",".join(str(x) for x in params(**kw))]
+           "-params", ",".join(str(x) for x in (raw if raw is not None else params(**kw)))]
+    if sched:
+        cmd += ["-sched", sched]
     if schedule:
         pf = TMP / "sched.txt"
         rows = []
@@ -177,6 +192,61 @@ lim = (1 << 23) // 100
 quiet = min(max(abs(swL[j] - dlL[j]) for j in range(i, i + 16)) for i in range(s0, s1 - 16))
 check("MODE RING -> UP: passes through the dry", quiet <= lim,
       f"closest 16-sample window {quiet} LSB (limit {lim})")
+
+# ---- SRR: the rate against stock's, and a turn ------------------------------
+def fit_amp(y, f, a, b):
+    w = 2 * math.pi * f / SR
+    sc = ss = cc = ys = yc = 0.0
+    for i in range(a, b):
+        s_, c_ = math.sin(w * i), math.cos(w * i)
+        ss += s_ * s_; cc += c_ * c_; sc += s_ * c_; ys += y[i] * s_; yc += y[i] * c_
+    det = ss * cc - sc * sc
+    return math.hypot((ys * cc - yc * sc) / det, (yc * ss - ys * sc) / det)
+
+
+SMEM = audition._ensure_stock_mem()
+SEP = send_probe.entry_points(SMEM, 0x1c)            # stock LO-FI
+tone2k = sine(0.5, amp=0.3, f=2000.0)
+def droop(lofi2, k):
+    if lofi2:
+        y0, _ = render(tone2k, SRR=0)
+        y1, _ = render(tone2k, SRR=k)
+    else:
+        z = [0] * 12
+        y0, _ = render(tone2k, raw=z, mem=SMEM, ep=SEP)
+        y1, _ = render(tone2k, raw=z[:3] + [k] + z[4:], mem=SMEM, ep=SEP)
+    a, b = SR // 8, len(tone2k) - 64
+    return db(fit_amp(y1, 2000.0, a, b), fit_amp(y0, 2000.0, a, b))
+for k in (16, 32, 64, 96, 127):
+    ds, dl = droop(False, k), droop(True, k)
+    check(f"SRR {k}: the hold's droop at 2 kHz matches stock's", abs(ds - dl) <= 0.15,
+          f"stock {ds:+.2f} dB, LOFI2 {dl:+.2f} dB")
+
+
+def step_db(x, b0, b1):
+    """verify_knob_clicks.step_db on Q23 ints."""
+    e = [0.0] * FRAMES
+    for n in range(b0 * FRAMES, b1 * FRAMES):
+        a_, b_, c_, d_ = (v / 8388607.0 for v in x[n - 2:n + 2])
+        if max(abs(a_), abs(b_), abs(c_), abs(d_)) >= 0.9999:
+            continue
+        v = d_ - 3 * c_ + 3 * b_ - a_
+        e[n % FRAMES] += v * v
+    import statistics
+    med = statistics.median(e)
+    spread = 1.4826 * statistics.median(abs(v - med) for v in e)
+    excess = max(e) - med - 3 * spread
+    return max(-140.0, 10 * math.log10(max(excess, 1e-30) / (6 * (b1 - b0))))
+
+
+T0, T1 = 400, 400 + 2 * 90
+toneT = sine((T1 + 100) * FRAMES / SR, amp=0.3, f=438.75)
+slot = K["SRR"]
+turn, _ = render(toneT, sched=",".join(f"{T0 + 2 * i}:0:{slot}={20 + 1 + i}" for i in range(90)), SRR=20)
+held, _ = render(toneT, SRR=20)
+tl, hl = step_db(turn, T0, T1), step_db(held, T0, T1)
+check("SRR turn 20 -> 110: block-locked step under -70 dBFS", tl < -70.0,
+      f"turn {tl:.1f} dBFS, held {hl:.1f}")
 
 print()
 if FAILS:
