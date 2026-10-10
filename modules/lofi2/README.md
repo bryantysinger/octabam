@@ -2,7 +2,7 @@
 
 One modulator, ring mod or a stereo frequency shifter, followed by stock LO-FI's sample-rate and bit reduction and a high-shelf cut.
 
-An insert on a free id (`0x1f`; `0x1e` until the October port), so it displaces no stock effect: stock LO-FI stays in the chooser beside it. Signal chain: `dry -> modulator -> MIX -> SRR -> BRR -> LPF -> out`. MIX is the modulator's depth, not a global wet/dry: SRR and BRR run after it and stay live at MIX 0, as they do in stock LO-FI. The defaults are a passthrough (MIX, FREQ, FDBK, SRR, BRR, AMPH at 0, LPF at 127).
+An insert on a free id (`0x1f`; `0x1e` until the October port), so it displaces no stock effect: stock LO-FI stays in the chooser beside it. Signal chain: `dry -> modulator -> MIX -> SRR -> BRR -> LPF -> out`. MIX is the modulator's depth, not a global wet/dry: SRR and BRR run after it and stay live at MIX 0, as they do in stock LO-FI. The defaults are a passthrough (MIX, FREQ, FDBK, SRR, BRR at 0, AMPH at its centre, LPF at 127).
 
 How it differs from CHARACTER, which replaces stock LO-FI and also crushes and ring-modulates: LOFI2 is built around the modulator. It adds a frequency shifter, gives the ring mod an MF-102-style exponential FREQ with a LOW/HIGH range and LO-FI's L/R phase offset, and keeps stock LO-FI's own SRR and BRR curves (ported, not reinvented) so measurements and note tables made against stock LO-FI still apply. CHARACTER is a channel-strip chain (crush, fold, saturation, compression, width).
 
@@ -12,13 +12,13 @@ How it differs from CHARACTER, which replaces stock LO-FI and also crushes and r
 |---|---|---|---|---|
 | 1 | 0 | FREQ | 0-127 | modulator frequency, exponential over six octaves from RANGE's base; read by whichever MODE is selected |
 | 1 | 1 | MIX | 0-127 | modulator depth: crossfades the ring or shift output against the dry |
-| 1 | 2 | FDBK | 0-127 | shifter feedback (the f, f+d, f+2d ladder), capped at 0.45; does nothing in RING |
+| 1 | 2 | FDBK / GAIN | 0-127 | one knob, read per MODE, and the panel renames it. SHIFT: FDBK, the feedback ladder (f, f+d, f+2d), capped at 0.45. RING: GAIN on the ring product, 2^(k/64): 0 dB at 0 (today's level), +6 dB at 64, +11.9 dB at 127 |
 | 1 | 3 | SRR | 0-127 | sample-rate reduction, stock LO-FI's fractional hold: 44,100 Hz at 0 down to 1,782 Hz at 127 |
 | 1 | 4 | BRR | 0-127 | bit-depth reduction, stock LO-FI's continuous round-to-nearest quantiser |
 | 1 | 5 | LPF | 0-127 | high-shelf cut, stock EQUALIZER's HIGH shelf at a fixed -32; 127 does nothing, turning down darkens |
 | 2 | 6 | RANGE | LOW / HIGH | FREQ's base: RING 2 Hz / 60 Hz (MF-102), SHIFT 2 Hz / 31.25 Hz (Bode 1630, six octaves to 2 kHz) |
 | 2 | 8 | MODE | RING / DOWN / UP | ring mod, or the shifter moving every partial down or up; mutually exclusive |
-| 2 | 10 | AMPH | 0-127 | ring carrier's L/R phase offset, 0 to ~360 degrees; RING only |
+| 2 | 10 | AMPH | -64..+63 | ring carrier's L/R phase offset, -90 to +90 degrees, 0 at the centre; + puts R ahead, - puts L ahead; RING only |
 
 ## Design
 
@@ -26,7 +26,10 @@ How it differs from CHARACTER, which replaces stock LO-FI and also crushes and r
 - **The shifter is stereo**: two Hilbert allpass pairs (BodeShift's eight coefficients) sharing one oscillator, rather than BodeShift's analytic pair on the mono sum, which would collapse the image at MIX 127. Direction is a per-block sign on Q, so UP/DOWN costs no branch in the loop. The chains are pointer-walked, which lets each section carry parallel moves (12 words a section against 21 with displaced addressing).
 - **SRR** is stock's hold from `P:0x01c56` / `func_001cba` and **BRR** stock's quantiser from `P:0x01c84` / `func_001cac` and the table at `X:0x7400`, read out of `payload_A.asm`. Stock's quantiser carries a structural x0.5 that stock's surrounding pipeline makes up; LOFI2 restores it with one extra shift (`asl #$18` where stock stores off `#$17`).
 - **LPF** is stock EQUALIZER's HIGH shelf (`func_000bfa` coefficients, `func_000cb9` filter) with GN fixed. Its four curve-bank reads are declared in `DspSection.xtables`, so the build rewrites them for payload B (`docs/firmware/TABLES.md` "Payload-relative addresses"). The coefficient glides to its target once a sample (`c += (target - c)/256`).
-- `init` zeroes the whole instance block (`$00..$83`).
+- `init` zeroes the whole instance block (`$00..$83`), then starts the wet fully ducked, so a fresh instance fades in.
+- **GAIN** makes up the ring path's level. The ring product sits 2.73 dB under the dry (the parabolic carrier's RMS is sqrt(8/15)), and a sub-audio tremolo reads lower still (its envelope averages 2/3). GAIN is 2^(k/64), computed per block as `2^n * 2^f` with a quadratic for `2^f` (exact at 0 and 1, within 0.023 dB between), stored as GAIN/4 and applied with `asl #2`, so GAIN 0 is bit-exact unity. Above unity a hot input clips at the store's limiter.
+- **AMPH** is bipolar: the knob word less `$400000` is exactly -1/4..+1/4 cycle in phase units. Every distinct stereo motion of a ring mod lives inside +-90 degrees: offsets of theta and 180-theta give the same envelope with lead and lag swapped, and the sign says which channel leads.
+- **The MODE duck.** A MODE change swaps one modulator for an unrelated one, or flips Q's sign, which is a step in the output. The wet is ducked to dry over 5 ms, the running mode switches only once it is fully out (at the next block boundary), and the wet returns over 5 ms. The flags read the running mode, never the knob, and MIX runs at m*(1-e), exactly m when nothing is ducking.
 
 ## Status
 
@@ -36,16 +39,18 @@ How it differs from CHARACTER, which replaces stock LO-FI and also crushes and r
   - every page-1 knob read is masked with `and #>$7f0000` (an LFO-modulated knob word carries bits 8-15; AGENTS.md).
   - `init` zeroes the block (verify_dirtystate), where it had been a bare `rts`.
 - Rendered against the September source in this tree (the same image built from each, `rig_render`, T1 on payload B and T5 on payload A; passthrough, RING with and without AMPH, SRR/BRR/LPF, SHIFT UP, SHIFT DOWN with FDBK): bit-identical in every case, and T1 bit-identical to T5.
-- This port has not been flashed.
+- The port ran on Bryan T's MKII as image 96 (remix `_bt_oct`, his own: LOFI2 with RECORDER LOOP FIX, USB AUDIO IN ABCD and OUT MAIN CUE), 10 Oct 2026: LPF right on track 1 (payload B), SHIFT on two tracks at once, MODE through RING / DOWN / UP without a fault.
+- AMPH bipolar, GAIN and the MODE duck (October 2026) have not been flashed.
 
 ## Open
 
 - Turning BRR off 0 clicks; stock does not. Suspected cause: coefficients that snap per block rather than glide (the LPF clicked the same way until its smoother).
 - Whether the LPF smoother cured the LPF's click on the unit was never recorded.
-- The MODE labels (`RING` / `DOWN` / `UP`) are built but not confirmed on the unit through all three positions.
-- Ring mod's level against the dry has not been measured.
+- Changing MODE clicked on image 96; the duck is the fix, unflashed.
+- On page 2, MODE names itself (RING / DOWN / UP in the name field) and the turn-flash prints the same word beneath it; RANGE and AMPH show their values only while turned.
 - Tuning by ear: whether six exponential octaves suit the knob, and the SHIFT range pair.
 
 ## Gates
 
+- `tools/verify/verify_lofi2.py` (the manifest's `Gate`), through `dsp_host` on payload A: the ring level against dry, GAIN at 64 and 127, the SHIFT level, AMPH (L == R at 0, L untouched and R moved at +-45), the start-up fade-in, and a RING -> UP switch scheduled mid-render (no step larger than the steady states', and a pass through the dry).
 - `make check REMIX=lofi2`.

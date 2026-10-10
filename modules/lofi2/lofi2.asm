@@ -27,7 +27,10 @@
 ;   p0 FREQ   carrier frequency, EXPONENTIAL, six octaves from RANGE's base
 ;   p1 MIX    modulator depth only: crossfades ring/shift against dry.
 ;             SRR and BRR run after it and are LIVE AT MIX=0.
-;   p2 FDBK   shifter feedback, the f/f+d/f+2d ladder; inactive in RING
+;   p2 FDBK   SHIFT: feedback, the f/f+d/f+2d ladder
+;        GAIN   RING: makeup gain on the ring product, 2^(k/64): 0 dB at 0,
+;             +6 dB at 64, +11.9 dB at 127 (the panel renames the slot per
+;             MODE; one knob word, read per mode)
 ;   p3 SRR    sample-rate reduction: stock LO-FI's own curve, 44100 Hz
 ;             down to 1782 Hz; 0 = off
 ;   p4 BRR    bit depth, CONTINUOUS round-to-nearest -- stock LO-FI's own
@@ -38,9 +41,17 @@
 ;   p6 RANGE  MODE-DEPENDENT base: RING 2 Hz / 60 Hz (MF-102), SHIFT 2 Hz /
 ;             31.25 Hz (Bode 1630) -- knob field of r6+$c
 ;   p8 MODE   0 RING, 1 SHIFT DOWN, 2 SHIFT UP -- knob field of r6+$d
-;   p10 AMPH  ring carrier L/R phase offset, 0..~360 deg -- knob field of r6+$e
+;   p10 AMPH  ring carrier L/R phase offset, BIPOLAR: -90..+90 deg, 0 at
+;             the knob's centre (64); + puts R ahead, - puts L ahead. Knob
+;             field of r6+$e
 ;
 ; ---- r7 slots -------------------------------------------------------------
+;   the MODE duck:
+;     $10 running mode (PERSISTENT: the mode actually playing)
+;     $11 duck depth e, 0 = none .. $7fffff = wet fully out (PERSISTENT)
+;     $12 ring GAIN / 4 (per block)   $13 duck step, signed (per block)
+;     $14 m*(1-e), the MIX the crossfade uses (per sample)
+;     $15 MODE as the knob has it (per block)
 ;   persistent (Character's slots for the same jobs, so the two read alike):
 ;     $19 held L      $1a held R      $1b srr accum      $1c carrier phase
 ;   per block:
@@ -107,6 +118,10 @@ init:
         move    a,x:(r5)+
 lfiniz:
         nop
+; start fully ducked: the first block takes the knob's MODE and fades the
+; wet in over the duck's 5 ms instead of starting it with a step
+        move    #>$7fffff,x0
+        move    x0,x:(r7+$11)
         rts
 
 proc:
@@ -124,7 +139,28 @@ proc:
         move    x:(r6+$d),a             ; MODE, slot 8, knob field
         and     #>$7f0000,a
         move    a1,x0
-        move    x0,x:(r7+$22)
+        move    x0,x:(r7+$15)           ; MODE as the knob has it
+
+; ---- the MODE duck --------------------------------------------------------
+; A MODE change swaps one modulator for an unrelated one (or flips Q's sign),
+; a step in the output. So the wet is ducked to dry over 5 ms, the running
+; mode switches only once it is fully out, and the wet comes back over 5 ms.
+; Only the running mode ($10) reaches the flags below, never the knob. The
+; switch waits for a block boundary, so the wet may sit out for up to one
+; block (16 samples) longer. MIX then runs at m*(1-e), exactly m when e = 0.
+        move    x:(r7+$11),a            ; e
+        move    #>$7fff00,x1
+        sub     x1,a                    ; >= 0: fully ducked
+        move    x:(r7+$10),b            ; the running mode
+        tpl     x0,b                    ; fully ducked: take the knob's
+        move    b,x:(r7+$10)
+        move    b,x:(r7+$22)            ; every flag below reads THIS
+        move    x:(r7+$15),a
+        sub     b,a                     ; knob - running; Z when they agree
+        move    #>$949c,b               ; +1/220.5 a sample: duck
+        move    #>$ff6b64,y1            ; -1/220.5 a sample: recover
+        teq     y1,b
+        move    b,x:(r7+$13)
 
 ; shift flag: 1 in MODE 1 and 2. Resolved at block setup with the ring flag.
         move    x:(r7+$22),a
@@ -162,6 +198,34 @@ lf_sgn:
         move    #>$39999a,y1
         mpy     x0,y1,a
         move    a,x:(r7+$38)
+
+; GAIN = 2^(k/64) on the same knob word, read only by the RING block. Stored
+; as GAIN/4 (it reaches 3.96) and restored there with asl #2. k/64 = n + f:
+; n is bit 23 of the doubled knob word, f the 23 bits below it, and
+; 2^f = 1 + 0.66023 f + 0.33977 f^2 (exact at 0 and 1, within 0.023 dB
+; between). h = 2^f / 2; GAIN/4 = h at n = 1, h/2 at n = 0. GAIN 0 is
+; therefore exactly 0.25 * 4: unity, bit-exact.
+        move    x:(r6+$2),a
+        and     #>$7f0000,a
+        asl     #$1,a,a                 ; k/64: bit 23 = n, bits 22-0 = f
+        move    a1,x1
+        move    x1,a
+        and     #>$7fffff,a
+        move    a1,x0                   ; f
+        move    #>$2a4135,a             ; 0.66023/2
+        move    #>$15becb,y1            ; 0.33977/2
+        mac     x0,y1,a                 ; 0.33012 + 0.16989 f
+        move    a,y1
+        move    #>$400000,a             ; 0.5
+        mac     x0,y1,a                 ; h = 2^f / 2
+        move    a,x0
+        asr     #$1,a,a
+        move    a,y0                    ; h/2
+        move    x1,b
+        tst     b                       ; N: n = 1
+        move    y0,a
+        tmi     x0,a
+        move    a,x:(r7+$12)            ; GAIN/4
 
 ; ring flag: 1 only in MODE 0. Resolved HERE, at block setup -- a dispatch
 ; inside the sample loop could not be priced by tools/cycle_count.py.
@@ -497,14 +561,15 @@ lf_octl:
 lf_noct:
 
 ; ---- AMPH -> the L/R carrier phase offset --------------------------------
-; The phase word spans one cycle over the full 24 bits, so a Q23 value of
-; 1.0 is half a cycle: doubling the knob gives 0..~360 degrees, wrapping
-; naturally in A1 exactly as the phase itself does.
+; BIPOLAR (October 2026; 0..~357 degrees before): the phase word spans one
+; cycle over 24 bits, so the knob word less $400000 (knob 64) is exactly
+; -1/4..+1/4 cycle: -90..+88.6 degrees, 1.4 a step, 0 at the centre. Every
+; distinct stereo motion of a ring mod lives inside +-90 (theta and
+; 180-theta give the same envelope, lead and lag swapped); the sign says
+; which channel leads. Wraps in A1 exactly as the phase itself does.
         move    x:(r6+$e),a
         and     #>$7f0000,a
-        move    a1,x0
-        move    x0,a
-        asl     #$1,a,a
+        sub     #>$400000,a
         move    a1,x0
         move    x0,x:(r7+$26)
 
@@ -553,6 +618,10 @@ lf_noct:
         move    a,y1
         move    x:(r7+$33),x0           ; dry L
         mpy     x0,y1,a
+        move    a,x0
+        move    x:(r7+$12),y1           ; GAIN/4
+        mpy     x0,y1,a
+        asl     #$2,a,a                 ; x GAIN; the store limits
         move    a,x:(r7+$35)            ; v L
 
 ; the R carrier is the same shape read at p + AMPH; at AMPH=0 the offset is
@@ -572,6 +641,10 @@ lf_noct:
         move    a,y1
         move    x:(r7+$34),x0           ; dry R
         mpy     x0,y1,a
+        move    a,x0
+        move    x:(r7+$12),y1           ; GAIN/4
+        mpy     x0,y1,a
+        asl     #$2,a,a
         move    a,x:(r7+$36)            ; v R
 lf_nomod:
 
@@ -921,6 +994,21 @@ lf_noshift:
         add     x0,a
         move    a,x:(r7+$3f)
 
+; ---- the MODE duck, per sample: e moves one step toward its target -------
+; Floored at 0 by tmi, capped near 1 by the store's limiter.
+        move    x:(r7+$11),a            ; e
+        move    x:(r7+$13),x0           ; the step, signed
+        add     x0,a
+        move    #>$0,x0
+        tmi     x0,a
+        move    a,x:(r7+$11)
+        move    x:(r7+$11),x0           ; e as stored
+        move    x:(r7+$20),y1           ; m
+        mpy     x0,y1,b                 ; m*e
+        move    x:(r7+$20),a
+        sub     b,a                     ; m*(1-e): exactly m at e = 0
+        move    a,x:(r7+$14)
+
 ; ---- MIX: crossfade the MODULATOR against the dry, HERE ------------------
 ; MIX is the modulator's depth, NOT a global wet/dry -- it sits between the
 ; ring/shift stage and the reduction stage, so SRR and BRR run on the result
@@ -936,7 +1024,7 @@ lf_noshift:
         sub     b,a
         asr     #$1,a,a
         move    a,x0
-        move    x:(r7+$20),y1           ; m
+        move    x:(r7+$14),y1           ; m*(1-e)
         mpy     x0,y1,a
         asl     #$1,a,a
         add     b,a
@@ -947,7 +1035,7 @@ lf_noshift:
         sub     b,a
         asr     #$1,a,a
         move    a,x0
-        move    x:(r7+$20),y1
+        move    x:(r7+$14),y1
         mpy     x0,y1,a
         asl     #$1,a,a
         add     b,a

@@ -55,10 +55,11 @@ RANGE's bases are MODE-dependent: RING follows the MF-102 (2 Hz / 60 Hz),
 SHIFT follows the Bode 1630 (2 Hz / 31.25 Hz, six octaves to 2 kHz).
 """
 
-from remix.schema import (BusRole, Category, DspSection, Formatter, Harness,
-                          Kind, MenuEntry, Module, Param, Proof, YBase)
+from remix.schema import (BusRole, Category, DspSection, Formatter, Gate, Harness,
+                          Kind, MenuEntry, ModeView, Module, Param, Proof, YBase)
 
 _PLAIN = Formatter.PLAIN
+_BIP = Formatter.BIPOLAR
 _STEP = Formatter.STEPPED
 
 MODULE = Module(
@@ -98,8 +99,10 @@ MODULE = Module(
               doc="modulator frequency; scaled by RANGE, read by whichever MODE selects"),
         Param(b"MIX", 0, active=True, formatter=_PLAIN,
               doc="dry/wet; 0 = exact passthrough"),
+        # One knob, read per MODE: FDBK in SHIFT, GAIN in RING (ModeView
+        # renames it below). GAIN 0 is unity, 64 +6 dB, 127 +11.9 dB.
         Param(b"FDBK", 0, active=True, formatter=_PLAIN,
-              doc="shifter feedback, the f/f+d/f+2d ladder; does nothing in RING"),
+              doc="SHIFT: feedback (the f/f+d/f+2d ladder); RING: GAIN, 0 to +12 dB"),
         # ---- page 1, bottom row -------------------------------------------
         Param(b"SRR", 0, active=True, formatter=_PLAIN,
               doc="sample-rate reduction, continuous; 0 = off"),
@@ -135,15 +138,18 @@ MODULE = Module(
               labels=("RING", "DOWN", "UP"),
               doc="RING - SHIFT DOWN - SHIFT UP; ring and shift are exclusive"),
         Param(),
-        Param(b"AMPH", 0, active=True, formatter=_PLAIN,
-              doc="ring carrier L/R phase offset, 0 = none; RING mode only"),
+        # BIPOLAR since October 2026 (0..~357 degrees before): a part saved
+        # with the old AMPH 0 reads -90 now -- stamp-defaults after flashing.
+        Param(b"AMPH", 64, 128, active=True, formatter=_BIP,
+              doc="ring carrier L/R phase: -90..+90 deg, 0 = none, + puts R ahead; RING only"),
         Param(),
     ),
 
-    # Declared so the remixer knows which slot is the mode select. No
-    # ModeView: FDBK and AMPH have their own slots and never change meaning,
-    # so nothing needs renaming or re-defaulting when MODE moves.
+    # MODE is slot 8; in RING slot 2 is GAIN, in SHIFT it keeps FDBK. No
+    # defaults: a per-mode default for slot 2 would also reset FDBK on every
+    # DOWN <-> UP turn.
     mode_slot=8,
+    mode_views=(ModeView(mode=0, names={2: b"GAIN"}),),
 
     dsp=DspSection(
         asm="modules/lofi2/lofi2.asm",
@@ -175,6 +181,7 @@ MODULE = Module(
     # "X" was LOFI2's letter on the tree it was written on; VOCODER holds it
     # now, and "L" is stock LO-FI's (tools/remix/stock.py).
     harness=Harness(layout_char="F", is_server=False),
+    gates=(Gate("tools/verify/verify_lofi2.py", remix_arg=False),),
     # Dearest: a SHIFT mode (the two Hilbert pairs, the dear loop), every
     # continuous knob at the end that does the most work, the shelf in band.
     dear={"FREQ": 127, "MIX": 127, "FDBK": 127, "SRR": 127, "BRR": 127,
