@@ -64,6 +64,8 @@
 ;     $23 carrier step in use, glided toward $24 (PERSISTENT)
 ;     $3f c in use  $1f kd in use -- glided per sample (PERSISTENT)
 ;     $01/$02 the shelf allpass's dropped bits, L/R (PERSISTENT)
+;     $03 MIX  $04 GAIN/4  $05 fdbk  $06 amph offset -- in use, glided
+;         toward $20 / $12 / $38 / $26 (PERSISTENT)
 ;     $2c sin  $2d cos  $2e I_L $2f Q_L $30 I_R $31 Q_R  $32 shift flag
 ;     $37 sign  $38 fdbk  $39/$3a aPrev L/R  $3b/$3c lastwet L/R
 ;     $3d/$3e chain inputs L/R
@@ -132,7 +134,7 @@ lfiniz:
 proc:
 ; ---- per-block knob decode ------------------------------------------------
         move    x:(r6+$1),a             ; m = MIX, value<<16
-        and     #>$7f0000,a             ; knob field only: an LFO dirties bits 8-15
+        and     #>$7fff00,a             ; the knob AND its LFO fraction (bits 15-8)
         move    a1,x0
         move    x0,x:(r7+$20)
 
@@ -198,7 +200,7 @@ lf_sgn:
 ; fdbk = FDBK * 0.45, BodeShift's cap. Inactive in RING by design: ring
 ; feedback is a harmonic-order generator, not a ladder, and was not wanted.
         move    x:(r6+$2),a
-        and     #>$7f0000,a
+        and     #>$7fff00,a             ; the knob AND its LFO fraction
         move    a1,x0
         move    #>$39999a,y1
         mpy     x0,y1,a
@@ -211,7 +213,7 @@ lf_sgn:
 ; between). h = 2^f / 2; GAIN/4 = h at n = 1, h/2 at n = 0. GAIN 0 is
 ; therefore exactly 0.25 * 4: unity, bit-exact.
         move    x:(r6+$2),a
-        and     #>$7f0000,a
+        and     #>$7fff00,a             ; the knob AND its LFO fraction
         asl     #$1,a,a                 ; k/64: bit 23 = n, bits 22-0 = f
         move    a1,x1
         move    x1,a
@@ -457,7 +459,7 @@ lf_noct:
 ; 180-theta give the same envelope, lead and lag swapped); the sign says
 ; which channel leads. Wraps in A1 exactly as the phase itself does.
         move    x:(r6+$e),a
-        and     #>$7f0000,a
+        and     #>$7fff00,a             ; the knob AND its LFO fraction
         sub     #>$400000,a
         move    a1,x0
         move    x0,x:(r7+$26)
@@ -475,22 +477,30 @@ lf_noct:
         move    x1,x:(r7+$34)
         move    x1,x:(r7+$36)
 
-; FREQ: the carrier step glides to the block's target, 1/64 of the way a
-; sample (about 1.5 ms), snapping onto it when the step rounds to nothing,
-; so a turned knob or an LFO sweeps instead of stepping at the block rate.
-; Here, before the fork, because both modulators read it.
-        move    x:(r7+$24),a            ; target (per block)
+; The continuous page-1 knobs glide to the block's values, 1/64 of the way a
+; sample (about 1.5 ms, lf_glide), so a turned knob or an LFO sweeps instead
+; of stepping at the block rate: FREQ's carrier step, MIX, GAIN, FDBK and
+; AMPH's offset. Here, before the fork, because both modulators read them.
+        move    x:(r7+$24),y0           ; carrier step target
         move    x:(r7+$23),x0           ; in use
-        sub     x0,a
-        asr     #$6,a,a
-        move    a,x1                    ; the step, a0 dropped
-        move    x0,b
-        add     x1,b
-        move    x1,a
-        tst     a
-        move    x:(r7+$24),y0
-        teq     y0,b
+        bsr     lf_glide
         move    b,x:(r7+$23)
+        move    x:(r7+$20),y0           ; MIX
+        move    x:(r7+$03),x0           ; in use
+        bsr     lf_glide
+        move    b,x:(r7+$03)
+        move    x:(r7+$12),y0           ; GAIN/4
+        move    x:(r7+$04),x0           ; in use
+        bsr     lf_glide
+        move    b,x:(r7+$04)
+        move    x:(r7+$38),y0           ; fdbk
+        move    x:(r7+$05),x0           ; in use
+        bsr     lf_glide
+        move    b,x:(r7+$05)
+        move    x:(r7+$26),y0           ; amph offset
+        move    x:(r7+$06),x0           ; in use
+        bsr     lf_glide
+        move    b,x:(r7+$06)
 
 ; MODEFORK_BEGIN -- cycle_count.py: RING and SHIFT are MUTUALLY EXCLUSIVE.
 ; Without these markers the tool sums both and prices a whole engine that
@@ -525,7 +535,7 @@ lf_noct:
         move    x:(r7+$33),x0           ; dry L
         mpy     x0,y1,a
         move    a,x0
-        move    x:(r7+$12),y1           ; GAIN/4
+        move    x:(r7+$04),y1           ; GAIN/4, glided
         mpy     x0,y1,a
         asl     #$2,a,a                 ; x GAIN; the store limits
         move    a,x:(r7+$35)            ; v L
@@ -533,7 +543,7 @@ lf_noct:
 ; the R carrier is the same shape read at p + AMPH; at AMPH=0 the offset is
 ; zero and the two are identical, so this costs cycles rather than a branch
         move    x:(r7+$1c),a
-        move    x:(r7+$26),x0           ; amph offset
+        move    x:(r7+$06),x0           ; amph offset, glided
         add     x0,a
         move    a1,x0                   ; pR, wrapped
         move    x0,a
@@ -548,7 +558,7 @@ lf_noct:
         move    x:(r7+$34),x0           ; dry R
         mpy     x0,y1,a
         move    a,x0
-        move    x:(r7+$12),y1           ; GAIN/4
+        move    x:(r7+$04),y1           ; GAIN/4, glided
         mpy     x0,y1,a
         asl     #$2,a,a
         move    a,x:(r7+$36)            ; v R
@@ -575,13 +585,13 @@ lf_nomod:
         move    x:(r7+$33),a            ; dry L
         asr     #$1,a,a
         move    x:(r7+$3b),x0           ; lastwet L
-        move    x:(r7+$38),y1           ; fdbk
+        move    x:(r7+$05),y1           ; fdbk, glided
         mac     x0,y1,a
         move    a,x:(r7+$3d)
         move    x:(r7+$34),a            ; dry R
         asr     #$1,a,a
         move    x:(r7+$3c),x0           ; lastwet R
-        move    x:(r7+$38),y1
+        move    x:(r7+$05),y1
         mac     x0,y1,a
         move    a,x:(r7+$3e)
 
@@ -877,29 +887,13 @@ lf_noshift:
 ; reloaded through a register before the test (AGENTS.md: asr leaves a
 ; remainder in a0, and Z needs all 56 bits clear). HERE, after MODEFORK_END,
 ; so it runs in every mode; a, b, x0, x1 and y0 are all free at this point.
-        move    x:(r7+$1d),a            ; c target
+        move    x:(r7+$1d),y0           ; c target
         move    x:(r7+$3f),x0           ; c in use
-        sub     x0,a
-        asr     #$6,a,a
-        move    a,x1
-        move    x0,b
-        add     x1,b
-        move    x1,a
-        tst     a
-        move    x:(r7+$1d),y0
-        teq     y0,b
+        bsr     lf_glide
         move    b,x:(r7+$3f)
-        move    x:(r7+$1e),a            ; kd target
+        move    x:(r7+$1e),y0           ; kd target
         move    x:(r7+$1f),x0           ; kd in use
-        sub     x0,a
-        asr     #$6,a,a
-        move    a,x1
-        move    x0,b
-        add     x1,b
-        move    x1,a
-        tst     a
-        move    x:(r7+$1e),y0
-        teq     y0,b
+        bsr     lf_glide
         move    b,x:(r7+$1f)
 
 ; ---- the MODE duck, per sample: e moves one step toward its target -------
@@ -911,9 +905,9 @@ lf_noshift:
         tmi     x0,a
         move    a,x:(r7+$11)
         move    x:(r7+$11),x0           ; e as stored
-        move    x:(r7+$20),y1           ; m
+        move    x:(r7+$03),y1           ; m, glided
         mpy     x0,y1,b                 ; m*e
-        move    x:(r7+$20),a
+        move    x:(r7+$03),a
         sub     b,a                     ; m*(1-e): exactly m at e = 0
         move    a,x:(r7+$14)
 
@@ -952,12 +946,10 @@ lf_noshift:
 ; ---- SRR: glide the rate, advance the phase, latch the MODULATED pair ---
 ; The rate moves 1/64 of the way to its target every sample (a ~1.5 ms
 ; time constant), so a turned knob never steps at the block rate.
-        move    x:(r7+$16),a            ; target
+        move    x:(r7+$16),y0           ; target
         move    x:(r7+$17),x0           ; the rate in use
-        sub     x0,a
-        asr     #$6,a,a
-        add     x0,a
-        move    a,x:(r7+$17)
+        bsr     lf_glide
+        move    b,x:(r7+$17)
         move    x:(r7+$17),x0           ; inc
         move    x:(r7+$1b),b            ; phase, 0 .. < $400000
         add     x0,b                    ; phase + inc
@@ -983,17 +975,9 @@ lf_noshift:
 ; that step rounds to nothing (Modulation's mo_glide). The step is reloaded
 ; through a register before the test: `asr` leaves a remainder in a0 and Z
 ; needs all 56 bits clear (AGENTS.md).
-        move    x:(r7+$28),a            ; target
+        move    x:(r7+$28),y0           ; target
         move    x:(r7+$29),x0           ; E in use
-        sub     x0,a
-        asr     #$6,a,a
-        move    a,x1                    ; the step, a0 dropped
-        move    x0,b
-        add     x1,b                    ; E + step
-        move    x1,a
-        tst     a
-        move    x:(r7+$28),y0
-        teq     y0,b                    ; a step of nothing: land on the target
+        bsr     lf_glide
         move    b,x:(r7+$29)
 ; n = whole bits (a variable shift), j = the fraction to 1/128 bit
         move    b,a
@@ -1118,6 +1102,27 @@ lf_end:
 ; lf_sin -- sin(pi*p) for p in [-1,1), from BodeShift, which took it from
 ; WarpFold's carrier: the parabola 4p(1-|p|) refined by the standard
 ; 0.775/0.225 correction. Argument and result both in A.
+; ---------------------------------------------------------------------------
+; ---------------------------------------------------------------------------
+; lf_glide: one step of every glide in the loop. In: y0 = target, x0 = the
+; value in use. Out: b = in use + (target - in use)/64, or exactly the
+; target when that step rounds to nothing (so a glide lands on 0, unity or
+; a bypass exactly). The step is reloaded through x1 before the test:
+; `asr` leaves a remainder in a0, and Z needs all 56 bits clear (AGENTS.md).
+; Uses a, b, x1.
+; ---------------------------------------------------------------------------
+lf_glide:
+        move    y0,a
+        sub     x0,a
+        asr     #$6,a,a
+        move    a,x1
+        move    x0,b
+        add     x1,b
+        move    x1,a
+        tst     a
+        teq     y0,b
+        rts
+
 ; ---------------------------------------------------------------------------
 lf_sin:
         move    a,x1

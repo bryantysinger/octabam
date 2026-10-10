@@ -74,6 +74,8 @@ path, so the harness's own gains cancel.
                   way between, in octaves. A masked read lands at 0.
   FREQ turn       as SRR's, in RING and in SHIFT UP (MIX 127, RANGE HIGH):
                   under -70 dBFS.
+  MIX/GAIN/FDBK/  as SRR's: MIX and GAIN in RING, FDBK in SHIFT UP, AMPH in
+  AMPH turns      RING on the R channel (AMPH leaves L alone); under -70 dBFS.
 
 Not covered: payload B (tracks 1-4) -- dsp_host renders one payload here;
 `rig_render` covers both, and the October port's A/B found T1 == T5.
@@ -399,6 +401,19 @@ for mname, mode in (("RING", 0), ("SHIFT UP", 2)):
     held, _ = render(toneT, FREQ=20, **ctx)
     tl, hl = step_db(turn, T0, T1), step_db(held, T0, T1)
     check(f"FREQ turn 20 -> 110, {mname}: block-locked step under -70 dBFS", tl < -70.0,
+          f"turn {tl:.1f} dBFS, held {hl:.1f}")
+
+# ---- MIX, GAIN, FDBK, AMPH: turns (AMPH moves R only, so R is measured) -------
+for label, knob, ch, ctx in (("MIX, RING", "MIX", 0, dict(FREQ=64, RANGE=1, MODE=0)),
+                             ("GAIN, RING", "FDBK", 0, dict(MIX=127, FREQ=64, RANGE=1, MODE=0)),
+                             ("FDBK, SHIFT UP", "FDBK", 0, dict(MIX=127, FREQ=64, RANGE=1, MODE=2)),
+                             ("AMPH, RING (R)", "AMPH", 1, dict(MIX=127, FREQ=64, RANGE=1, MODE=0))):
+    slot = K[knob]
+    turn = render(toneT, sched=",".join(f"{T0 + 2 * i}:0:{slot}={20 + 1 + i}" for i in range(90)),
+                  **{knob: 20}, **ctx)[ch]
+    held = render(toneT, **{knob: 20}, **ctx)[ch]
+    tl, hl = step_db(turn, T0, T1), step_db(held, T0, T1)
+    check(f"{label} turn 20 -> 110: block-locked step under -70 dBFS", tl < -70.0,
           f"turn {tl:.1f} dBFS, held {hl:.1f}")
 
 print()
