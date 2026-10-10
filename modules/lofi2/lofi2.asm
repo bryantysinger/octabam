@@ -94,8 +94,8 @@
 ;
 ; CYCLES_FORWARD_BRANCHES
 ; Every conditional branch in the sample loop jumps FORWARD and can only
-; SKIP code, so the word span remains a ceiling: the SRR hold's `blt`, and
-; the two modulator gates. A backward one would be a loop the span counts
+; SKIP code, so the word span remains a ceiling: the two modulator gates
+; (the SRR latch is branch-free, with Tccs). A backward one would be a loop the span counts
 ; once, which is the thing that declaration must never be used to hide.
 ;
 ; Every mpy is `mpy x0,y1` or `mpy y0,x0` -- the two operand orders dsp_asm
@@ -1001,21 +1001,24 @@ lf_noshift:
         add     x0,a
         move    a,x:(r7+$17)
         move    x:(r7+$17),x0           ; inc
-        move    x:(r7+$1b),a            ; phase, 0 .. < $400000
-        add     x0,a
+        move    x:(r7+$1b),b            ; phase, 0 .. < $400000
+        add     x0,b                    ; phase + inc
         move    #>$400000,x1
+        move    b,a
         sub     x1,a                    ; >= 0: it wrapped
-        blt     lf_held
-        move    a,x:(r7+$1b)            ; phase - 1.0
-        move    x:(r7+$35),x1           ; latch v, not the dry
-        move    x1,x:(r7+$19)
-        move    x:(r7+$36),x1
-        move    x1,x:(r7+$1a)
-        bra     lf_srrdn
-lf_held:
-        add     x1,a                    ; no wrap: phase + inc
-        move    a,x:(r7+$1b)
-lf_srrdn:
+        move    a,y0
+        tge     y0,b                    ; wrapped: phase - 1.0
+        move    b,x:(r7+$1b)
+; The latch, branch-free: the one compare above drives all three Tccs, and
+; only moves sit between them (AGENTS.md, the shared-compare trap).
+        move    x:(r7+$19),b
+        move    x:(r7+$35),y1           ; latch v, not the dry
+        tge     y1,b
+        move    b,x:(r7+$19)
+        move    x:(r7+$1a),b
+        move    x:(r7+$36),y1
+        tge     y1,b
+        move    b,x:(r7+$1a)
 
 ; ---- BRR: glide E, then the shift and the mantissa pair, once a sample ---
 ; E moves 1/64 of the way to its target each sample and snaps to it when
