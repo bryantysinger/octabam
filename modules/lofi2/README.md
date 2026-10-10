@@ -32,9 +32,10 @@ How it differs from CHARACTER, which replaces stock LO-FI and also crushes and r
 
 - Flashed and heard on Bryan T's MKII in September 2026, built on the tree of 12 Sep 2026.
 - Ported to this tree in October 2026. Three changes the port required:
-  - the shifter's chain pointer was `lua (r7+$40)`, which assembles to `r7-$40` (`lua` takes a displacement of -64..63; AGENTS.md). All four Hilbert chains had been reading and writing the 64 words below the instance's own block. This tree's build refuses it (the disassemble-what-you-assemble round-trip); the pointer is now `r7 + n1`. SHIFT is expected to sound different from the September images; RING is not.
+  - the shifter's chain pointer was `lua (r7+$40)`, which assembles to `r7-$40` (`lua` takes a displacement of -64..63; AGENTS.md). All four Hilbert chains had been keeping their state in the 64 words below the instance's own block. This tree's build refuses it (the disassemble-what-you-assemble round-trip); the pointer is now `r7 + n1`. It moved where the state lives, not the arithmetic: under `rig_render` (T1 and T5, every MODE), the September source and this one render bit-identically, because nothing in that layout uses those 64 words (the top of the slot below, `$c0..$ff`). On the unit it was a latent corruption of whatever does.
   - every page-1 knob read is masked with `and #>$7f0000` (an LFO-modulated knob word carries bits 8-15; AGENTS.md).
   - `init` zeroes the block (verify_dirtystate), where it had been a bare `rts`.
+- Rendered against the September source in this tree (the same image built from each, `rig_render`, T1 on payload B and T5 on payload A; passthrough, RING with and without AMPH, SRR/BRR/LPF, SHIFT UP, SHIFT DOWN with FDBK): bit-identical in every case, and T1 bit-identical to T5.
 - This port has not been flashed.
 
 ## Open
