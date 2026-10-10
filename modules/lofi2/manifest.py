@@ -74,12 +74,15 @@ SRR_INC = tuple(_srr_inc(k) for k in range(129))
 
 def _brr_e(k):
     """BRR's step exponent at knob k, in bits above the LSB, held as
-    bits * 2^17. The curve is stock LO-FI's as the September notes recorded
-    it (u = 1 - 0.78125 k/128, t = 1 - u^2, 0x5c00 t / 1024 bits: 0 at 0,
-    about 21.9 at 127); verify_lofi2 checks the quantisation noise it gives
-    against stock's own, rendered from the user's image."""
+    bits * 2^17: 23 t - 1, floored at 0, with u = 1 - 0.78125 k/128 and
+    t = 1 - u^2 (the September notes' curve, 0x5c00 t / 1024 bits) less the
+    one bit stock's own arithmetic carries (its quantiser runs on a doubled
+    signal). Measured against stock from DC plateaus (10 Oct 2026): stock's
+    step sat exactly 1.00 bit under 23 t at every setting from 16 to 127.
+    0 through BRR 3, 13.46 at 64, 20.84 at 127; verify_lofi2 checks it
+    against stock's, rendered from the user's image."""
     t = 1 - (1 - 0.78125 * k / 128) ** 2
-    return round(0x5C00 * t / 1024 * (1 << 17))
+    return round(max(0.0, 0x5C00 * t / 1024 - 1) * (1 << 17))
 
 
 BRR_E = tuple(_brr_e(k) for k in range(129))

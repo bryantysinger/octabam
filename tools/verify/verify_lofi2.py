@@ -43,11 +43,13 @@ path, so the harness's own gains cancel.
   SRR turn        verify_knob_clicks's instrument: SRR turned 20 -> 110 one
                   value every two blocks, the block-locked step under
                   -70 dBFS.
-  BRR noise       a 440 Hz tone at 0.3 FS through BRR 32/64/96/127, all of
-                  the output but the fitted tone as dB re the tone, against
-                  stock LO-FI's at the same settings: within 1.0 dB (one bit
-                  of resolution is 6 dB). LOFI2's runs through its LPF shelf
-                  at 127, which takes a little of the noise near Nyquist.
+  BRR step        a slow ramp through BRR 16..127 on stock and LOFI2: the
+                  spacing of the output's plateaus (runs of one value, 24+
+                  samples, so any filter has settled) over the DC gain (the
+                  output's regression on the ramp), as bits: LOFI2's within
+                  0.05 bit of stock's. A tone's residual would also read
+                  each effect's own filters (LOFI2's shelf, stock's FIR
+                  after the hold), which differ; plateaus do not.
   BRR gain        the tone's level at BRR 64 against BRR 0: within 0.05 dB
                   (the step's mantissa and its reciprocal are an exact pair).
   BRR turn        as SRR's: under -70 dBFS.
@@ -269,16 +271,40 @@ def fit_res(y, f, a, b):
     return math.hypot(A, B), math.sqrt(res / (b - a))
 
 
+def brr_bits(y, x):
+    """The quantiser's step in input units, as bits: plateau spacing / DC gain."""
+    a = 2048
+    n = len(x) - a
+    mx, my = sum(x[a:]) / n, sum(y[a:]) / n
+    slope = (sum((u - mx) * (v - my) for u, v in zip(x[a:], y[a:]))
+             / sum((u - mx) ** 2 for u in x[a:]))
+    vals, run = [], 1
+    for u, v in zip(y[a:], y[a + 1:]):
+        if u == v:
+            run += 1
+        else:
+            if run >= 24:
+                vals.append(u)
+            run = 1
+    d = sorted(abs(v - u) for u, v in zip(vals, vals[1:]) if v != u)
+    return (math.log2(d[len(d) // 2] / slope), len(vals)) if len(d) >= 2 else (None, len(vals))
+
+
+NR = 32768
+MOD_BRR_E = MOD.dsp.ptable[129:258]          # BRR_E, after SRR_INC
+for k in (16, 32, 48, 64, 80, 96, 112, 127):
+    span = min(1.6 * 8388607, 200 * 2 ** (MOD_BRR_E[k] / (1 << 17) + 1))
+    ramp = [int(-span / 2 + span * i / NR) for i in range(NR)]
+    z = [0] * 12
+    bs, ps = brr_bits(render(ramp, raw=z[:4] + [k] + z[5:], mem=SMEM, ep=SEP)[0], ramp)
+    bl, pl = brr_bits(render(ramp, BRR=k)[0], ramp)
+    ok = bs is not None and bl is not None and abs(bs - bl) <= 0.05
+    check(f"BRR {k}: the step matches stock's", ok,
+          f"stock {bs if bs is None else round(bs, 3)} bits ({ps} plateaus), "
+          f"LOFI2 {bl if bl is None else round(bl, 3)} bits ({pl})")
+
 tone440 = sine(0.5, amp=0.3, f=440.0)
 a0, b0 = SR // 8, len(tone440) - 64
-for k in (32, 64, 96, 127):
-    z = [0] * 12
-    ys, _ = render(tone440, raw=z[:4] + [k] + z[5:], mem=SMEM, ep=SEP)
-    yl, _ = render(tone440, BRR=k)
-    (fs_, rs), (fl, rl) = fit_res(ys, 440.0, a0, b0), fit_res(yl, 440.0, a0, b0)
-    ns, nl = db(rs, fs_), db(rl, fl)
-    check(f"BRR {k}: quantisation noise matches stock's", abs(ns - nl) <= 1.0,
-          f"stock {ns:+.1f} dB, LOFI2 {nl:+.1f} dB re the tone")
 g0, _ = fit_res(render(tone440, BRR=0)[0], 440.0, a0, b0)
 g64, _ = fit_res(render(tone440, BRR=64)[0], 440.0, a0, b0)
 check("BRR 64: unity gain against BRR 0", abs(db(g64, g0)) <= 0.05, f"{db(g64, g0):+.3f} dB")
