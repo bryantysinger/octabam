@@ -43,6 +43,14 @@ path, so the harness's own gains cancel.
   SRR turn        verify_knob_clicks's instrument: SRR turned 20 -> 110 one
                   value every two blocks, the block-locked step under
                   -70 dBFS.
+  BRR noise       a 440 Hz tone at 0.3 FS through BRR 32/64/96/127, all of
+                  the output but the fitted tone as dB re the tone, against
+                  stock LO-FI's at the same settings: within 1.0 dB (one bit
+                  of resolution is 6 dB). LOFI2's runs through its LPF shelf
+                  at 127, which takes a little of the noise near Nyquist.
+  BRR gain        the tone's level at BRR 64 against BRR 0: within 0.05 dB
+                  (the step's mantissa and its reciprocal are an exact pair).
+  BRR turn        as SRR's: under -70 dBFS.
 
 Not covered: payload B (tracks 1-4) -- dsp_host renders one payload here;
 `rig_render` covers both, and the October port's A/B found T1 == T5.
@@ -246,6 +254,40 @@ turn, _ = render(toneT, sched=",".join(f"{T0 + 2 * i}:0:{slot}={20 + 1 + i}" for
 held, _ = render(toneT, SRR=20)
 tl, hl = step_db(turn, T0, T1), step_db(held, T0, T1)
 check("SRR turn 20 -> 110: block-locked step under -70 dBFS", tl < -70.0,
+      f"turn {tl:.1f} dBFS, held {hl:.1f}")
+
+# ---- BRR: noise against stock's, unity gain, a turn ---------------------------
+def fit_res(y, f, a, b):
+    w = 2 * math.pi * f / SR
+    sc = ss = cc = ys = yc = 0.0
+    for i in range(a, b):
+        s_, c_ = math.sin(w * i), math.cos(w * i)
+        ss += s_ * s_; cc += c_ * c_; sc += s_ * c_; ys += y[i] * s_; yc += y[i] * c_
+    det = ss * cc - sc * sc
+    A, B = (ys * cc - yc * sc) / det, (yc * ss - ys * sc) / det
+    res = sum((y[i] - A * math.sin(w * i) - B * math.cos(w * i)) ** 2 for i in range(a, b))
+    return math.hypot(A, B), math.sqrt(res / (b - a))
+
+
+tone440 = sine(0.5, amp=0.3, f=440.0)
+a0, b0 = SR // 8, len(tone440) - 64
+for k in (32, 64, 96, 127):
+    z = [0] * 12
+    ys, _ = render(tone440, raw=z[:4] + [k] + z[5:], mem=SMEM, ep=SEP)
+    yl, _ = render(tone440, BRR=k)
+    (fs_, rs), (fl, rl) = fit_res(ys, 440.0, a0, b0), fit_res(yl, 440.0, a0, b0)
+    ns, nl = db(rs, fs_), db(rl, fl)
+    check(f"BRR {k}: quantisation noise matches stock's", abs(ns - nl) <= 1.0,
+          f"stock {ns:+.1f} dB, LOFI2 {nl:+.1f} dB re the tone")
+g0, _ = fit_res(render(tone440, BRR=0)[0], 440.0, a0, b0)
+g64, _ = fit_res(render(tone440, BRR=64)[0], 440.0, a0, b0)
+check("BRR 64: unity gain against BRR 0", abs(db(g64, g0)) <= 0.05, f"{db(g64, g0):+.3f} dB")
+
+slot = K["BRR"]
+turn, _ = render(toneT, sched=",".join(f"{T0 + 2 * i}:0:{slot}={20 + 1 + i}" for i in range(90)), BRR=20)
+held, _ = render(toneT, BRR=20)
+tl, hl = step_db(turn, T0, T1), step_db(held, T0, T1)
+check("BRR turn 20 -> 110: block-locked step under -70 dBFS", tl < -70.0,
       f"turn {tl:.1f} dBFS, held {hl:.1f}")
 
 print()

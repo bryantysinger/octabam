@@ -33,8 +33,8 @@
 ;             MODE; one knob word, read per mode)
 ;   p3 SRR    sample-rate reduction, a fractional hold at stock LO-FI's
 ;             measured rates: 44,100 Hz at 0 down to 3,564 Hz at 127
-;   p4 BRR    bit depth, CONTINUOUS round-to-nearest -- stock LO-FI's own
-;             quantiser and its X:0x7400 table, ported
+;   p4 BRR    bit depth: our own round-to-nearest quantiser, a continuous
+;             step exponent from our own table, gliding per sample
 ;   p5 LPF    high-shelf cut, LAST in the chain: stock EQUALIZER's HIGH
 ;             shelf with GN fixed at -32. 127 = no impact, turning down
 ;             walks the corner into the band
@@ -58,7 +58,8 @@
 ;     $20 m = MIX     $21 range       $22 mode
 ;     $24 carrier step   $26 amph offset  $27 ring flag
 ;     $16 SRR rate target (per block)   $17 SRR rate in use (PERSISTENT)
-;     $28/$29 s low/high     $2a/$2b 1/s low/high  (48-bit, BRR)
+;     $28 BRR E target (per block)  $29 E in use (PERSISTENT)
+;     $2a m, $2b 1/(2m), $18 n -- BRR's step, per sample
 ;     $1d c0 TARGET  $1e c1  $1f c2  (LPF shelf)   $23 index scratch
 ;     $3f c0 IN USE -- smoothed toward $1d one step per sample (PERSISTENT)
 ;     $2c sin  $2d cos  $2e I_L $2f Q_L $30 I_R $31 Q_R  $32 shift flag
@@ -241,88 +242,33 @@ lf_noring:
 lf_ringf:
         move    a,x:(r7+$27)
 
-; ---- BRR -> stock LO-FI's quantiser coefficients ------------------------
-; PORTED FROM STOCK, not from Character. Character's CRSH is a truncating
-; power-of-two MASK: 22 integer depths over 128 knob positions, and it floors,
-; which biases every sample toward zero. Stock LO-FI is a CONTINUOUS
-; round-to-nearest quantiser, y = round(x*s)/s, and it is the control LOFI2 is
-; meant to improve on -- shipping a coarser one was a regression I introduced.
-; Read from payload A at P:0x01c84 (block) and func_001cac (loop).
-;
-;   u   = 1 - 0.78125*(BRR/128)          the maci; $9c0000 IS -0.78125
-;   t   = 1 - u^2                        quadratic, NOT logarithmic
-;   idx = t * $5c00, split 10/14: low 10 bits index a 1024-word table,
-;                                 the rest is a power-of-two shift count
-;
-; The table at X:0x7400 is read FORWARD for s and BACKWARD from $77ff for
-; 1/s: through an exponential table the two exponents sum to a constant, so
-; one table yields a mantissa and its reciprocal. Mantissa from the table,
-; exponent from the shift -- which is where "bits = -log2(value)" comes from.
-; Confirmed at the same absolute X address in BOTH payloads.
-;
-; ⚠️ Both coefficients are 48-BIT. s can be large where the steps are fine,
-; and a 24-bit product would lose exactly the precision the fine end needs,
-; so a0/a1 and b0/b1 are all kept and the loop does double-precision.
+; ---- BRR -> the quantiser's step exponent, from our own table ------------
+; Our own quantiser (the loop below): y = round(x * 2^-E) * 2^E, E the step
+; above the LSB in bits. The target E comes from the module's own table
+; (manifest.py, BRR_E, 129 words after SRR_INC), indexed by the knob and
+; interpolated by the knob word's LFO fraction; the loop glides to it.
+; E is held as bits * 2^17: the whole bits in 22..17, the fraction below.
+        move    #>$ffffff,m5
+        move    #>$fab1e0,r5            ; SRR_INC, then BRR_E at +129
         move    x:(r6+$4),a
-        and     #>$7f0000,a
-        move    a1,x0
-        move    #>$7fffff,a
-        maci    #>$9c0000,x0,a          ; u = 1 - 0.78125*k
-        move    a,x0
-        mpy     x0,x0,a                 ; u^2
-        add     #>$800000,a             ; u^2 - 1
-        neg     a                       ; t = 1 - u^2
-        move    a,x1
-        mpyri   #>$5c00,x1,a            ; the table index
-        asr     #$a,a,b                 ; b1 = shift count
-        and     #>$3ff,a                ; a1 = 10-bit fraction
-        move    a1,y0                   ; frac
-        move    b1,x0                   ; shift count
-
-; ⚠️ Stock reaches the table with x:(r3+n3) and x:(r2+$7400) after setting
-; m2/m4 for modulo addressing. Offset-by-Nn addressing IS modulo-controlled,
-; and we do not know what the host leaves in m3. So both addresses are
-; computed WHOLE into r2/r3 and read with plain register-indirect, which no
-; m register touches. Costs four instructions per block and removes the
-; assumption entirely.
-        move    #>$7400,a
+        and     #>$7fff00,a             ; the knob AND its fraction (bits 15-8)
+        move    a1,x1
+        asr     #$10,a,a
+        add     #>$81,a                 ; k + 129
+        move    a1,n5
+        move    x1,a
+        and     #>$00ff00,a
+        asl     #$7,a,a
+        move    a1,x0                   ; the fraction, Q23
+        move    (r5)+n5
+        move    p:(r5)+,y0              ; E[k]
+        move    p:(r5),b                ; E[k+1]
+        move    y0,a
+        sub     a,b
+        move    b,y1
+        mpy     x0,y1,a
         add     y0,a
-        move    a1,r2                   ; forward:  $7400 + frac
-        move    #>$77ff,a
-        sub     y0,a
-        move    a1,r3                   ; backward: $77ff - frac
-
-        move    x:(r3),a                ; 1/s mantissa
-        asr     #$17,a,a
-        asl     x0,a,a                  ; scaled up by the exponent
-        neg     a
-; ⚠️ 13 Sep 2026: the x4 correction USED to live here as `asl #$2,a,a` on the
-; reciprocal coefficient. Confirmed against payload A's func_001c84 block
-; (bare, un-annotated disassembly, this session): stock has NO such shift
-; anywhere in this sequence -- it goes straight from `asl x0,a,a` to `neg a`.
-; So the x4 shift was never a port of stock behaviour; it was compensation
-; for taking the quantiser out of stock's surrounding pipeline (the input
-; FIR at func_001cc6 most likely carries the gain in context), bolted onto
-; a coefficient that was never meant to carry it. Sweeping BRR confirmed
-; the failure mode directly: flat ~1.0 through BRR 63, then 1.7875 at 127 --
-; an overflow as the reciprocal's mantissa grows into a shift count the
-; extra x4 was never checked against. MOVED to the loop's final `asl #$17`
-; -> `#$19` instead (see below), so this block is now byte-identical to
-; stock's func_001c84 -- same numbers stock uses, so it cannot overflow any
-; differently than stock's own quantiser does at any BRR position.
-        move    x:(r2),b                ; s mantissa
-        asr     x0,b,b                  ; scaled down by the exponent
-        neg     b                       ; both negated: the signs cancel in
-                                        ; the product, exactly as stock leaves
-                                        ; them
-        move    b0,x:(r7+$28)           ; s   low
-        move    b,x:(r7+$29)            ; s   high -- LIMITED move, as stock's
-                                        ; `move b,y:(r4)+` at 001ca2. At BRR=0 the
-                                        ; table entry is exactly -1.0 and `neg b`
-                                        ; yields +1.0, which needs the limiter;
-                                        ; b1 raw would write $800000 and invert.
-        move    a0,x:(r7+$2a)           ; 1/s low
-        move    a,x:(r7+$2b)            ; 1/s high -- LIMITED, as stock's 001ca4
+        move    a,x:(r7+$28)            ; the target; $29 glides to it
 
 ; ---- LPF -> stock EQUALIZER's HIGH-shelf coefficients ---------------------
 ; PORTED FROM STOCK, from EQUALIZER's coefficient block at func_000bfa in
@@ -1069,36 +1015,59 @@ lf_held:
         move    a,x:(r7+$1b)
 lf_srrdn:
 
+; ---- BRR: glide E, then the shift and the mantissa pair, once a sample ---
+; E moves 1/64 of the way to its target each sample and snaps to it when
+; that step rounds to nothing (Modulation's mo_glide). The step is reloaded
+; through a register before the test: `asr` leaves a remainder in a0 and Z
+; needs all 56 bits clear (AGENTS.md).
+        move    x:(r7+$28),a            ; target
+        move    x:(r7+$29),x0           ; E in use
+        sub     x0,a
+        asr     #$6,a,a
+        move    a,x1                    ; the step, a0 dropped
+        move    x0,b
+        add     x1,b                    ; E + step
+        move    x1,a
+        tst     a
+        move    x:(r7+$28),y0
+        teq     y0,b                    ; a step of nothing: land on the target
+        move    b,x:(r7+$29)
+; n = whole bits (a variable shift), j = the fraction to 1/128 bit
+        move    b,a
+        asr     #$11,a,a
+        move    a1,x:(r7+$18)           ; n
+        move    b,a
+        asr     #$a,a,a
+        and     #>$7f,a
+        move    a1,x1                   ; j
+        move    #>$fab1e0,a             ; BRR_M at +258, BRR_R at +386
+        add     #>$102,a
+        add     x1,a
+        move    a1,r5
+        move    #>$80,n5
+        move    p:(r5)+n5,y0            ; m = 2^-(j/128), (0.5, 1)
+        move    y0,x:(r7+$2a)
+        move    p:(r5),y0               ; r = 1/(2m), [0.5, 1)
+        move    y0,x:(r7+$2b)
+
 ; ---- L: quantise the held sample and write it out ------------------------
 ; out = dry + m*(wet - dry). The halve/double straddle keeps the difference
 ; inside the accumulator when wet and dry have opposite signs.
         move    x:(r7+$19),x0           ; held L
-        move    x:(r7+$28),y1
-        mpysu   x0,y1,a                 ; low half:  signed x unsigned
-        move    x:(r7+$29),y1
-        dmac    ss x0,y1,a              ; high half, accumulated shifted
-        rnd     a                       ; ROUND TO NEAREST -- stock rounds;
-        move    a,x1                    ; a truncating mask biases toward zero
-        move    x:(r7+$2a),y1
-        move    x:(r7+$2b),y0
-        mpysu   x1,y1,b
-        dmac    ss x1,y0,b              ; back up by 1/s
-; 14 Sep 2026: #$19 -> #$18. The table at X:0x7400 is T[i] = -2^(-i/1024), so
-; s = 2^(-frac/1024 - shift) and the backward read gives 2^(-(1023-frac)/1024)
-; * 2^(shift-23). Their product is 2^(-1023/1024 - 23), i.e. 2^-24 to within
-; 0.07%, while the double-precision chain's restoring shift of #$17 supplies
-; only 2^23. Stock's quantiser therefore carries a structural x0.5, which
-; stock's chain makes up elsewhere (the doubled coefficient half at Y:0x20a,
-; exactly 2x the unit half at Y:0x212, feeds the filter at func_001d19 that
-; writes the buffer this quantiser then crushes in place). LOFI2 has no such
-; filter, so it supplies the x2 itself, here. #$18 measures +1.00135, flat
-; through BRR ~64 and tracking stock's curve above it.
-;
-; The earlier "overflow at 127" reading was wrong: stock itself measures
-; 0.447 at knob 127 for a 0.5 input, and 1.7875 was simply 4x that. Nothing
-; overflows in the sweep. The one real overflow is the `neg` on the exact
-; -1.0 at the table's first entry, handled by the limited stores above.
-        asl     #$18,b,b                ; stock stores off #$17; ours off #$18
+        move    x:(r7+$2a),y1           ; m
+        mpy     x0,y1,a                 ; x * 2^-frac
+        move    x:(r7+$18),y0           ; n
+        asr     y0,a,a                  ; * 2^-n
+        rnd     a                       ; to the nearest step
+        asl     y0,a,a
+        move    a,x0
+        move    x:(r7+$2b),y1           ; 1/(2m)
+        mpy     x0,y1,b
+        asl     #$1,b,b                 ; back by 2^frac: exactly unity gain
+        move    x:(r7+$19),x1           ; E = 0: the held sample, untouched
+        move    x:(r7+$29),a
+        tst     a
+        teq     x1,b
 
 ; ---- L: the shelf, LAST in the chain -------------------------------------
 ; func_000cb9 transcribed. Per sample, per channel:
@@ -1116,7 +1085,7 @@ lf_srrdn:
 ; the blanket "$84+ hangs" was retracted 30 Aug 2026).
 ; Boot garbage in the state is self-correcting: c0 < 1, so any legal word
 ; decays. No init needed.
-        move    b1,x1                   ; in[n], the BRR output
+        move    b,x1                    ; in[n], the BRR output (limited)
         move    x:(r7+$3f),y1           ; c0, smoothed
         move    x1,x0
         mpy     -x0,y1,b                ; -c0*in[n]
@@ -1139,20 +1108,23 @@ lf_srrdn:
 
 ; ---- R: the same ---------------------------------------------------------
         move    x:(r7+$1a),x0           ; held R
-        move    x:(r7+$28),y1
-        mpysu   x0,y1,a
-        move    x:(r7+$29),y1
-        dmac    ss x0,y1,a
-        rnd     a
-        move    a,x1
         move    x:(r7+$2a),y1
-        move    x:(r7+$2b),y0
-        mpysu   x1,y1,b
-        dmac    ss x1,y0,b
-        asl     #$18,b,b                ; matching L
+        mpy     x0,y1,a
+        move    x:(r7+$18),y0
+        asr     y0,a,a
+        rnd     a
+        asl     y0,a,a
+        move    a,x0
+        move    x:(r7+$2b),y1
+        mpy     x0,y1,b
+        asl     #$1,b,b
+        move    x:(r7+$1a),x1
+        move    x:(r7+$29),a
+        tst     a
+        teq     x1,b
 
 ; ---- R: the same shelf, its own two state words --------------------------
-        move    b1,x1
+        move    b,x1
         move    x:(r7+$3f),y1           ; c0, smoothed
         move    x1,x0
         mpy     -x0,y1,b

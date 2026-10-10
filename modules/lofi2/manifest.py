@@ -71,6 +71,23 @@ def _srr_inc(k):
 
 SRR_INC = tuple(_srr_inc(k) for k in range(129))
 
+
+def _brr_e(k):
+    """BRR's step exponent at knob k, in bits above the LSB, held as
+    bits * 2^17. The curve is stock LO-FI's as the September notes recorded
+    it (u = 1 - 0.78125 k/128, t = 1 - u^2, 0x5c00 t / 1024 bits: 0 at 0,
+    about 21.9 at 127); verify_lofi2 checks the quantisation noise it gives
+    against stock's own, rendered from the user's image."""
+    t = 1 - (1 - 0.78125 * k / 128) ** 2
+    return round(0x5C00 * t / 1024 * (1 << 17))
+
+
+BRR_E = tuple(_brr_e(k) for k in range(129))
+# The step's mantissa 2^-(j/128), j = 0..127, and 1/(2m) computed from the
+# STORED m, so m * 2r is unity to the last bit the multiply keeps.
+BRR_M = tuple(min(0x7FFFFF, round(2 ** (-j / 128) * (1 << 23))) for j in range(128))
+BRR_R = tuple(round((1 << 45) / m) for m in BRR_M)
+
 _PLAIN = Formatter.PLAIN
 _BIP = Formatter.BIPOLAR
 _STEP = Formatter.STEPPED
@@ -189,8 +206,9 @@ MODULE = Module(
         # here that is not also a `#>$xxxx` immediate in lofi2.asm: the build
         # checks and stops.
         xtables=(0x13c7, 0x15c7, 0x1bf9, 0x1c79),
-        # SRR's rate table, our own (read through the $fab1e0 literal).
-        ptable=SRR_INC,
+        # Our own tables, one block read through the $fab1e0 literal:
+        # SRR_INC at +0, BRR_E at +129, BRR_M at +258, BRR_R at +386.
+        ptable=SRR_INC + BRR_E + BRR_M + BRR_R,
     ),
 
     # "X" was LOFI2's letter on the tree it was written on; VOCODER holds it
