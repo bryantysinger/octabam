@@ -2,8 +2,8 @@
 ; LOFI2 -- one modulator, then sample-rate and bit reduction.
 ;
 ; STAGE 4 OF 4 -- COMPLETE. Ring mod OR stereo frequency shifter, then SRR
-; and BRR, then a high-shelf cut. Stock's quantiser, stock's hold curve and
-; stock EQUALIZER's HIGH shelf, all three ported. The chain is
+; and BRR, then a high-shelf cut. All three are our own code, measured
+; against stock LO-FI where it has the same control. The chain is
 ;   dry -> modulator -> MIX -> SRR -> BRR -> LPF -> out,
 ; which is Bryan's stated order: the hold and the crush see the MODULATED
 ; signal, so the reduction aliases the ring output rather than the dry. MIX is
@@ -35,9 +35,9 @@
 ;             measured rates: 44,100 Hz at 0 down to 3,564 Hz at 127
 ;   p4 BRR    bit depth: our own round-to-nearest quantiser, a continuous
 ;             step exponent from our own table, gliding per sample
-;   p5 LPF    high-shelf cut, LAST in the chain: stock EQUALIZER's HIGH
-;             shelf with GN fixed at -32. 127 = no impact, turning down
-;             walks the corner into the band
+;   p5 LPF    high-shelf cut, LAST in the chain: our own first-order shelf,
+;             -12 dB above a corner swept exponentially from 100 Hz (0)
+;             to 16 kHz (126); 127 takes it out of circuit, bit for bit
 ;   p6 RANGE  MODE-DEPENDENT base: RING 2 Hz / 60 Hz (MF-102), SHIFT 2 Hz /
 ;             31.25 Hz (Bode 1630) -- knob field of r6+$c
 ;   p8 MODE   0 RING, 1 SHIFT DOWN, 2 SHIFT UP -- knob field of r6+$d
@@ -60,8 +60,9 @@
 ;     $16 SRR rate target (per block)   $17 SRR rate in use (PERSISTENT)
 ;     $28 BRR E target (per block)  $29 E in use (PERSISTENT)
 ;     $2a m, $2b 1/(2m), $18 n -- BRR's step, per sample
-;     $1d c0 TARGET  $1e c1  $1f c2  (LPF shelf)   $23 index scratch
-;     $3f c0 IN USE -- smoothed toward $1d one step per sample (PERSISTENT)
+;     $1d LPF c target  $1e kd target (per block)   $23 free
+;     $3f c in use  $1f kd in use -- glided per sample (PERSISTENT)
+;     $01/$02 the shelf allpass's dropped bits, L/R (PERSISTENT)
 ;     $2c sin  $2d cos  $2e I_L $2f Q_L $30 I_R $31 Q_R  $32 shift flag
 ;     $37 sign  $38 fdbk  $39/$3a aPrev L/R  $3b/$3c lastwet L/R
 ;     $3d/$3e chain inputs L/R
@@ -70,7 +71,7 @@
 ;   the hot scalars keep the short encodings below:
 ;     $40 A-L   $50 B-L   $60 A-R   $70 B-R      (ends at $7f)
 ;   the LPF shelf's persistent state, two words per channel:
-;     $80/$81 allpass state and in[n-1], L    $82/$83 the same, R
+;     $80/$81 allpass ap[n-1] and x[n-1], L    $82/$83 the same, R
 ;   $84..$8a is host-owned for state ACROSS CALLS and per-call scratch there
 ;   is fine (CHIP.md, bisected; the blanket "$84+ hangs" was retracted
 ;   30 Aug 2026 and BusDelay ships using $84..$88).
@@ -272,107 +273,42 @@ lf_ringf:
         add     y0,a
         move    a,x:(r7+$28)            ; the target; $29 glides to it
 
-; ---- LPF -> stock EQUALIZER's HIGH-shelf coefficients ---------------------
-; PORTED FROM STOCK, from EQUALIZER's coefficient block at func_000bfa in
-; payload A. Not a design of ours: the arithmetic, the tables, the index
-; resolution and the #$8 immediates are all stock's, with exactly three
-; deliberate departures, all agreed:
-;
-;   1. GN is FIXED at 32 (stock's bipolar -32), so both gain-indexed reads
-;      are at constant addresses. Stock recomputes them from the knob.
-;   2. The PEAKING section is not ported at all. In stock, TYP selects
-;      nothing: BOTH sections always run, and HIGH simply forces the peak's
-;      gain word to $40 so it passes unity. With GN2 neutral there is
-;      nothing for that section to do, so it is omitted rather than run.
-;   3. Coefficients SNAP per block. Stock smooths them into absolute Y and
-;      streams y:(r4)+ per sample; we declare ybase=NEVER and that is what
-;      keeps this module eligible for an FX1 row. If a FRQ sweep clicks,
-;      the fix is a smoother in r7 state, not absolute Y.
-;
-; The arithmetic, as stock does it:
-;
-;   i  = T[$13c7 + 4*FRQ] - T[$1c59 + GN]     HIGH subtracts; LOW adds
-;   c0 = T[$15c7 + i]                         the allpass coefficient
-;   g  = T[$1bd9 + GN]
-;   c1 = g + 0.0625        c2 = 0.0625 - g    HIGH; LOW is g - 0.0625
-;
-; ⚠️ `docs/firmware/TABLES.md` calls $13c7 and $1c59 "trim" tables and reads
-; their contents as ~3e-5 and ~1e-5 CORRECTION TERMS. They are not
-; corrections. Stock puts their difference straight into r3 and indexes
-; $15c7 with it: they are INTEGER INDEX tables that happen to look tiny read
-; as fractions (3e-5 in Q23 is about 250). So the frequency index is warped
-; by the gain, which is what a first-order shelf needs. Correct that file.
-;
-; FRQ indexes with FOUR TIMES a normal knob's resolution -- `asr #$e` on a
-; value<<16 word, not `asr #$10`. Unexplained but stock, and kept, which is
-; also why the knob needs no remapping to hold stock's range.
-;
-; ⚠️ THE FOUR TABLE ADDRESSES BELOW ARE PAYLOAD A'S and are rewritten by the
-; build. They sit in the curve bank, which is at X:0x438 on payload A and
-; X:0x42b on payload B -- 13 words apart, because the X block under it is 23
-; words on A and 10 on B. Stock needs no mechanism for this: each payload is
-; separately linked, so EQUALIZER reads `x:(r3+$13c7)` on A and
-; `x:(r3+$13ba)` on B, same opcode, different extension word. A module is one
-; source assembled into both, so `DspSection.xtables` in manifest.py declares
-; these and build_bus.py substitutes per payload.
-; Consequence: a COMMENT here naming $1c59 or $1bd9 describes payload A only.
-; Read the emitted disassembly, not this header, for what payload B runs.
-; The fault that produced all of this (13 Sep 2026): with A's addresses baked
-; into both payloads, tracks 1-4 ran the whole LPF travel about three times
-; too bright, and at knob 125-127 the $13c7 read ran past the end of its
-; 512-word table into $7ffffe, putting 0x8015ab in r3 -- off the end of
-; anything the image uploads. Knobs 125 and 126 landed on the SAME bogus
-; address and sounded identically dull; 127 landed one word away and passed.
-; Tracks 5-8 were correct throughout, and no render ever showed it, because
-; dsp_host boots payload A.
-;
-; ⚠️ Every table address is computed WHOLE into r3 and read with plain
-; register-indirect, for the same reason the BRR block does it: stock reaches
-; these with r3+displacement, displacement addressing goes through the AGU,
-; and we do not know what the host leaves in m3.
-; ⚠️ The AND is NOT stock's -- stock goes straight from the read to `asr #$e`.
-; It is here because `asr #$e` on a value<<16 word KEEPS BITS 14 AND 15, so
-; anything the host leaves below the knob field lands directly in the table
-; index. At knob resolution those bits fall off the bottom and no other read
-; in this file cares; here they are worth up to three table entries, and at
-; the top of the curve one entry is several hundred Hz. Symptom on hardware
-; (repeatable, RING and both SHIFT modes, invisible in every render because
-; dsp_host pokes r6 directly): LPF 125 and 126 sounded like a far lower knob
-; setting while the rest of the sweep measured correctly.
-; The other three reads in this block (RANGE, MODE, AMPH) already mask; this
-; one did not because it was ported from stock, where the read is clean.
-        move    x:(r6+$5),a             ; LPF knob, value<<16
-        and     #>$7f0000,a             ; knob field ONLY -- see above
-        move    a1,a
-        asr     #$e,a,a                 ; stock's index: knob x 4
-        move    a1,x0
-        move    #>$13c7,a
-        add     x0,a
-        move    a1,r3
-        move    x:(r3),a                ; the frequency index term
-        move    a1,x:(r7+$23)           ; park it: r3 is needed again
-        move    #>$1c79,a               ; $1c59 + 32, GN fixed
-        move    a1,r3
-        move    x:(r3),x0               ; the gain index term
-        move    x:(r7+$23),a
-        sub     x0,a                    ; HIGH SUBTRACTS. LOW would add here,
-        move    a1,x0                   ;  and that is the whole difference
-        move    #>$15c7,a               ;  between the two shelf directions
-        add     x0,a
-        move    a1,r3
-        move    x:(r3),a
-        move    a1,x:(r7+$1d)           ; c0 TARGET -- the loop walks $3f
-                                        ;  toward this, it is not used direct
-        move    #>$1bf9,a               ; $1bd9 + 32, GN fixed
-        move    a1,r3
-        move    x:(r3),x0               ; g
-        move    #>$080000,y0            ; 0.0625 -- stock's #$8 immediate
-        move    x0,a
-        add     y0,a
-        move    a1,x:(r7+$1e)           ; c1 = g + 0.0625
+; ---- LPF -> the shelf's corner and depth, from our own table ------------
+; A first-order high shelf of our own (the loop below): unity at DC, 1/4
+; (-12.04 dB) at Nyquist, no resonance, so its gain never exceeds 1 at any
+; frequency -- safe inside a feedback loop. The corner is the allpass
+; coefficient c from the module's own table (manifest.py, LPF_C, 129 words
+; at +387), an exponential sweep of the allpass break frequency from 100 Hz
+; at 0 to 16 kHz at 126, indexed by the knob and interpolated by its LFO
+; fraction. The depth kd is 3/4 at 0..126 and 0 at 127, where the shelf is
+; out of circuit bit for bit. The loop glides both.
+        move    x:(r6+$5),a
+        and     #>$7fff00,a             ; the knob AND its fraction (bits 15-8)
+        move    a1,x1
+        asr     #$10,a,a
+        move    a1,y0                   ; k
+        add     #>$183,a                ; k + 387
+        move    a1,n5
+        move    #>$600000,b             ; kd = 3/4: the shelf in
+        move    #>$0,x0
         move    y0,a
-        sub     x0,a
-        move    a1,x:(r7+$1f)           ; c2 = 0.0625 - g
+        sub     #>$7f,a
+        teq     x0,b                    ; k = 127: out
+        move    b,x:(r7+$1e)            ; kd target; $1f glides to it
+        move    x1,a
+        and     #>$00ff00,a
+        asl     #$7,a,a
+        move    a1,x0                   ; the fraction, Q23
+        move    x:(r7+$25),r5           ; the ptable's base (m5 set above)
+        move    (r5)+n5
+        move    p:(r5)+,y0              ; c[k]
+        move    p:(r5),b                ; c[k+1]
+        move    y0,a
+        sub     a,b
+        move    b,y1
+        mpy     x0,y1,a
+        add     y0,a
+        move    a,x:(r7+$1d)            ; c target; $3f glides to it
 
 ; ---- SRR -> the hold's rate, from our own table -------------------------
 ; A fractional sample-and-hold: a phase advances by `inc` a sample and the
@@ -915,34 +851,36 @@ lf_nomod:
 lf_noshift:
 ; MODEFORK_END
 
-; ---- LPF: walk c0 toward its target, once per sample ---------------------
-; The shelf's OTHER two coefficients are constants -- GN is fixed, so c1 and
-; c2 never move and only c0 tracks the knob. Snapping it stepped the allpass
-; output and clicked on every knob movement, which is what stock's smoother
-; exists to prevent. Stock interpolates all three into absolute Y and streams
-; them; we interpolate the one that moves, in r7, for six instructions a
-; sample shared by both channels.
-;
-;   c += (target - c) / 256          ~5.8 ms time constant at 44.1k
-;
-; The shift truncates, so c stalls within 2^-16 of target instead of reaching
-; it exactly. That is 1.5e-5 on a filter coefficient: inaudible, and stalling
-; is the benign failure. A `mpy` by a smoothing constant would close the gap
-; and cost a coefficient word to no audible end.
-;
-; ⚠️ HERE, after MODEFORK_END, deliberately: it must run in every mode, and
-; inside the fork cycle_count.py would price it against one alternative only.
-; a and b are both free at this point; b is live inside the shelf itself,
-; which is why this cannot sit next to the code that uses it.
-; Boot garbage in $3f is a legal coefficient (any 24-bit word is |c| <= 1, so
-; the allpass stays stable) and it walks to target within a few ms of the
-; first block. Consistent with the rest of the module's stance on r7 garbage.
-        move    x:(r7+$1d),a            ; target c0, computed per block
-        move    x:(r7+$3f),x0           ; c, the value actually in use
+; ---- LPF: glide c and kd toward their targets, once per sample ----------
+; 1/64 of the way a sample (about 1.5 ms), snapping to the target when the
+; step rounds to nothing, so kd lands on exactly 0 at LPF 127. The step is
+; reloaded through a register before the test (AGENTS.md: asr leaves a
+; remainder in a0, and Z needs all 56 bits clear). HERE, after MODEFORK_END,
+; so it runs in every mode; a, b, x0, x1 and y0 are all free at this point.
+        move    x:(r7+$1d),a            ; c target
+        move    x:(r7+$3f),x0           ; c in use
         sub     x0,a
-        asr     #$8,a,a
-        add     x0,a
-        move    a,x:(r7+$3f)
+        asr     #$6,a,a
+        move    a,x1
+        move    x0,b
+        add     x1,b
+        move    x1,a
+        tst     a
+        move    x:(r7+$1d),y0
+        teq     y0,b
+        move    b,x:(r7+$3f)
+        move    x:(r7+$1e),a            ; kd target
+        move    x:(r7+$1f),x0           ; kd in use
+        sub     x0,a
+        asr     #$6,a,a
+        move    a,x1
+        move    x0,b
+        add     x1,b
+        move    x1,a
+        tst     a
+        move    x:(r7+$1e),y0
+        teq     y0,b
+        move    b,x:(r7+$1f)
 
 ; ---- the MODE duck, per sample: e moves one step toward its target -------
 ; Floored at 0 by tmi, capped near 1 by the store's limiter.
@@ -1045,14 +983,17 @@ lf_noshift:
         asr     #$a,a,a
         and     #>$7f,a
         move    a1,x1                   ; j
-        move    x:(r7+$25),a            ; the ptable's base: BRR_M at +258, BRR_R at +386
+        move    x:(r7+$25),a            ; the ptable's base: BRR_M at +258
         add     #>$102,a
         add     x1,a
         move    a1,r5
-        move    #>$80,n5
-        move    p:(r5)+n5,y0            ; m = 2^-(j/128), (0.5, 1)
+        move    p:(r5),y0               ; m = M[j] = 2^-(j/128), (0.5, 1]
         move    y0,x:(r7+$2a)
-        move    p:(r5),y0               ; r = 1/(2m), [0.5, 1)
+        move    x:(r7+$25),a
+        add     #>$182,a
+        sub     x1,a
+        move    a1,r5
+        move    p:(r5),y0               ; r = M[128-j] = 2^(j/128)/2 = 1/(2m)
         move    y0,x:(r7+$2b)
 
 ; ---- L: quantise the held sample and write it out ------------------------
@@ -1075,40 +1016,34 @@ lf_noshift:
         teq     x1,b
 
 ; ---- L: the shelf, LAST in the chain -------------------------------------
-; func_000cb9 transcribed. Per sample, per channel:
-;   b[n] = c0*b[n-1] + (in[n-1] - c0*in[n])/2      a one-pole allpass
-;   out  = 16 * ( c1*in[n]/2 + c2*b[n] )
-; The `asr` on the allpass sum, the `asr` on the direct term and the closing
-; `asl #$4` are all stock's and are not a scaling of ours. What is NOT ported
-; is stock's frame plumbing: it walks a copied frame with n0=2 and m0=$3f off
-; n6, where we are already per-sample on the host's buffer, so the difference
-; equation comes across and the pointer setup does not. Same call as the
-; quantiser port.
-; State is $80..$83 -- above the short-form line, so these are two-word
-; moves, accepted because everything below $40 is spoken for. $00..$83 is
-; usable and only $84..$8a is host-owned across calls (CHIP.md, bisected;
-; the blanket "$84+ hangs" was retracted 30 Aug 2026).
-; Boot garbage in the state is self-correcting: c0 < 1, so any legal word
-; decays. No init needed.
-        move    b,x1                    ; in[n], the BRR output (limited)
-        move    x:(r7+$3f),y1           ; c0, smoothed
+;   ap[n] = c*ap[n-1] + x[n-1] - c*x[n]      a first-order allpass
+;   y     = x - kd*(x - ap)/2                 = (5/8)x + (3/8)ap at kd = 3/4
+; At DC ap = x (y = x); at Nyquist ap = -x (y = x/4). kd = 0 is y = x exactly.
+; The allpass keeps the bits its store drops (a0) and adds them back the
+; next sample: first-order error feedback, so the rounding error is
+; high-passed and cannot pile up into a dead band when c is near 1 (the
+; ported shelf lost an impulse's low-frequency tail to it).
+        move    b,x1                    ; x[n], the BRR output (limited)
+        clr     a
+        move    x:(r7+$01),a0           ; last sample's dropped bits
+        move    x:(r7+$3f),y1           ; c, smoothed
         move    x1,x0
-        mpy     -x0,y1,b                ; -c0*in[n]
-        move    x:(r7+$81),x0           ; in[n-1]
-        add     x0,b
-        asr     b
-        move    x:(r7+$80),x0           ; b[n-1]
-        mac     x0,y1,b                 ; b[n]
-        move    x1,x:(r7+$81)           ; in[n-1] <- in[n]
-        move    b,x:(r7+$80)
-        move    x:(r7+$1e),y1           ; c1
-        move    x1,x0
-        mpy     x0,y1,a
-        asr     a                       ; c1*in[n]/2
-        move    b,x0                    ; b[n]
-        move    x:(r7+$1f),y1           ; c2
-        mac     x0,y1,a
-        asl     #$4,a,a                 ; stock's x16
+        mac     -x0,y1,a                ; - c*x[n]
+        move    x:(r7+$81),x0           ; x[n-1]
+        add     x0,a
+        move    x:(r7+$80),x0           ; ap[n-1]
+        mac     x0,y1,a                 ; ap[n], 48 bits
+        move    a0,x:(r7+$01)
+        move    x1,x:(r7+$81)           ; x[n-1] <- x[n]
+        move    a,x:(r7+$80)            ; ap[n-1] <- ap[n] (limited)
+        move    a,x0
+        move    x1,a
+        sub     x0,a                    ; x - ap
+        asr     a                       ; /2
+        move    a,x0
+        move    x:(r7+$1f),y1           ; kd, smoothed
+        move    x1,a
+        mac     -x0,y1,a
         move    a,x:(r0)
 
 ; ---- R: the same ---------------------------------------------------------
@@ -1128,26 +1063,28 @@ lf_noshift:
         tst     a
         teq     x1,b
 
-; ---- R: the same shelf, its own two state words --------------------------
+; ---- R: the same shelf, its own state ----------------------------------
         move    b,x1
-        move    x:(r7+$3f),y1           ; c0, smoothed
+        clr     a
+        move    x:(r7+$02),a0
+        move    x:(r7+$3f),y1
         move    x1,x0
-        mpy     -x0,y1,b
-        move    x:(r7+$83),x0           ; in[n-1]
-        add     x0,b
-        asr     b
-        move    x:(r7+$82),x0           ; b[n-1]
-        mac     x0,y1,b
-        move    x1,x:(r7+$83)
-        move    b,x:(r7+$82)
-        move    x:(r7+$1e),y1           ; c1
-        move    x1,x0
-        mpy     x0,y1,a
-        asr     a
-        move    b,x0
-        move    x:(r7+$1f),y1           ; c2
+        mac     -x0,y1,a
+        move    x:(r7+$83),x0
+        add     x0,a
+        move    x:(r7+$82),x0
         mac     x0,y1,a
-        asl     #$4,a,a
+        move    a0,x:(r7+$02)
+        move    x1,x:(r7+$83)
+        move    a,x:(r7+$82)
+        move    a,x0
+        move    x1,a
+        sub     x0,a
+        asr     a
+        move    a,x0
+        move    x:(r7+$1f),y1
+        move    x1,a
+        mac     -x0,y1,a
         move    a,x:(r0+n0)
 
         move    #>$2,n0

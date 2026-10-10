@@ -20,8 +20,8 @@ LO-FI stays exactly where it is.
     degrees the two channels are in quadrature and the modulation walks
     across the image. RING MODE ONLY.
   * SRR / BRR are the reduction pair, continuous, after the modulator.
-  * LPF is stock EQUALIZER's HIGH shelf, gain fixed at -32, LAST in the
-    chain so it tames the whole module and not just the dry. It is the one
+  * LPF is our own first-order high shelf (-12 dB, no resonance), LAST in
+    the chain so it tames the whole module and not just the dry. It is the one
     control whose no-op is at the TOP of its travel.
 
 Chain order is fixed: modulator -> MIX -> SRR -> BRR -> LPF.
@@ -55,6 +55,8 @@ RANGE's bases are MODE-dependent: RING follows the MF-102 (2 Hz / 60 Hz),
 SHIFT follows the Bode 1630 (2 Hz / 31.25 Hz, six octaves to 2 kHz).
 """
 
+import math
+
 from remix.schema import (BusRole, Category, DspSection, Formatter, Gate, Harness,
                           Kind, MenuEntry, ModeView, Module, Param, Proof, YBase)
 
@@ -86,10 +88,25 @@ def _brr_e(k):
 
 
 BRR_E = tuple(_brr_e(k) for k in range(129))
-# The step's mantissa 2^-(j/128), j = 0..127, and 1/(2m) computed from the
-# STORED m, so m * 2r is unity to the last bit the multiply keeps.
-BRR_M = tuple(min(0x7FFFFF, round(2 ** (-j / 128) * (1 << 23))) for j in range(128))
-BRR_R = tuple(round((1 << 45) / m) for m in BRR_M)
+# The step's mantissa 2^-(j/128), j = 0..128. Its reciprocal needs no table
+# of its own: 1/(2m) = 2^((j-128)/128) = M[128-j], read from the far end
+# (m * 2r is unity within 1.2e-7).
+BRR_M = tuple(min(0x7FFFFF, round(2 ** (-j / 128) * (1 << 23))) for j in range(129))
+
+
+def _lpf_c(k):
+    """The LPF shelf's allpass coefficient at knob k, as a 24-bit word: the
+    break frequency swept exponentially from 100 Hz at 0 to 16 kHz at 126
+    (7.3 octaves, about 17 knob steps an octave), c = (1 - t)/(1 + t) with
+    t = tan(pi f / fs). 127 repeats 126 (the shelf is out at 127; its depth
+    goes to 0, not its corner), and 128 is the interpolation's end point.
+    The shelf's -2.7 dB point is the break; its -6 dB point about twice it."""
+    f = 100.0 * 160.0 ** (min(k, 126) / 126)
+    t = math.tan(math.pi * f / 44100)
+    return round((1 - t) / (1 + t) * (1 << 23)) & 0xFFFFFF
+
+
+LPF_C = tuple(_lpf_c(k) for k in range(129))
 
 _PLAIN = Formatter.PLAIN
 _BIP = Formatter.BIPOLAR
@@ -141,12 +158,11 @@ MODULE = Module(
               doc="sample-rate reduction, continuous; 0 = off"),
         Param(b"BRR", 0, active=True, formatter=_PLAIN,
               doc="bit-depth reduction; 0 = full depth"),
-        # Stock EQUALIZER's HIGH shelf with GN fixed at -32, LAST in the
-        # chain so it tames everything the module does. Stock's own index
-        # resolution is kept (knob x 4), so this is stock's FRQ range
-        # unaltered. 127 puts the corner above the band and does nothing,
-        # which is why the default is 127 and not 0 -- the ONLY control here
-        # whose passthrough is at the top of its travel.
+        # Our own first-order high shelf, LAST in the chain so it tames
+        # everything the module does: -12 dB above a corner swept from 100 Hz
+        # (0) to 16 kHz (126), and out of circuit bit for bit at 127, which is
+        # why the default is 127 and not 0 -- the ONLY control here whose
+        # passthrough is at the top of its travel.
         Param(b"LPF", 127, active=True, formatter=_PLAIN,
               doc="high-shelf cut; 127 = no impact, turn down to darken"),
         # ---- page 2 --------------------------------------------------------
@@ -197,21 +213,10 @@ MODULE = Module(
         # 16,384, and every stage here is per-sample arithmetic over r7
         # state words with no delay line at all.
         ybase=YBase.NEVER,
-        # The shelf's four table reads, spelled as PAYLOAD A's addresses.
-        # $13c7 frequency index, $15c7 allpass coefficient, $1bf9 = $1bd9+32
-        # gain, $1c79 = $1c59+32 gain index. All four live in the curve bank,
-        # which sits at X:0x438 in payload A and X:0x42b in payload B, so the
-        # build rewrites the `#>$xxxx` immediates 13 words down for B. Stock
-        # gets this from its linker: EQUALIZER is `x:(r3+$13c7)` in A and
-        # `x:(r3+$13ba)` in B. Without the declaration a LOFI2 on tracks 1-4
-        # runs the whole LPF travel ~3x too bright and reads off the end of
-        # the 512-word $13c7 table at knob 125-127. Do not add an address
-        # here that is not also a `#>$xxxx` immediate in lofi2.asm: the build
-        # checks and stops.
-        xtables=(0x13c7, 0x15c7, 0x1bf9, 0x1c79),
         # Our own tables, one block read through the $fab1e0 literal:
-        # SRR_INC at +0, BRR_E at +129, BRR_M at +258, BRR_R at +386.
-        ptable=SRR_INC + BRR_E + BRR_M + BRR_R,
+        # SRR_INC at +0, BRR_E at +129, BRR_M at +258, LPF_C at +387. No
+        # stock table is read, so nothing differs between the payloads.
+        ptable=SRR_INC + BRR_E + BRR_M + LPF_C,
     ),
 
     # "X" was LOFI2's letter on the tree it was written on; VOCODER holds it

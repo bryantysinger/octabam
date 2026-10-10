@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""LOFI2's render gate: levels, AMPH, GAIN and the MODE duck, through dsp_host.
+"""LOFI2's render gate: levels, AMPH, GAIN, the MODE duck, SRR, BRR and LPF, through dsp_host.
 
     python3 tools/verify/verify_lofi2.py
 
@@ -57,11 +57,22 @@ path, so the harness's own gains cancel.
   BRR gain        the tone's level at BRR 64 against BRR 0: within 0.05 dB
                   (the step's mantissa and its reciprocal are an exact pair).
   BRR turn        as SRR's: under -70 dBFS.
+  LPF shelf       an impulse at LPF 0/32/64/96/120/126 (after 8,192 samples,
+                  so the glide has settled): the allpass coefficient from the
+                  tail's ratio within 2e-4 of LPF_C, the DC gain (the sum)
+                  within 0.2% of 1 -- the ported shelf read 0.32 at LPF 0,
+                  its tail lost to rounding -- and -12.04 dB at Nyquist.
+  LPF peak        the same impulse responses' largest |H| over 0..fs/2
+                  under +0.01 dB: no gain above unity at any frequency, the
+                  property a filter inside a feedback loop needs.
+  LPF 127         a 1,234.5 Hz tone at 0.5 FS comes out bit for bit (at
+                  whatever whole-sample delay the chain has, 0..4).
+  LPF turn        as SRR's: under -70 dBFS.
 
 Not covered: payload B (tracks 1-4) -- dsp_host renders one payload here;
 `rig_render` covers both, and the October port's A/B found T1 == T5.
 """
-import math, pathlib, struct, subprocess, sys
+import cmath, math, pathlib, struct, subprocess, sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 from remix import audition, registry  # noqa: E402
@@ -318,6 +329,39 @@ turn, _ = render(toneT, sched=",".join(f"{T0 + 2 * i}:0:{slot}={20 + 1 + i}" for
 held, _ = render(toneT, BRR=20)
 tl, hl = step_db(turn, T0, T1), step_db(held, T0, T1)
 check("BRR turn 20 -> 110: block-locked step under -70 dBFS", tl < -70.0,
+      f"turn {tl:.1f} dBFS, held {hl:.1f}")
+
+# ---- LPF: the shelf against its design, feedback-safe, out at 127, a turn --------
+LPF_C = [(v - (1 << 24) if v & 0x800000 else v) / (1 << 23) for v in MOD.dsp.ptable[387:516]]
+AT, IA, IN = 8192, int(0.5 * 8388607), 2048
+imp = [0] * AT + [IA] + [0] * (IN - 1)
+for k in (0, 32, 64, 96, 120, 126):
+    y, _ = render(imp, LPF=k)
+    h = [v / IA for v in y[AT:AT + IN]]
+    rat = sorted(h[n + 1] / h[n] for n in range(1, 6) if abs(h[n]) > 1e-3)
+    c = rat[len(rat) // 2]
+    dc = sum(h)
+    g = sum(v if n % 2 == 0 else -v for n, v in enumerate(h))
+    peak = max(abs(sum(v * cmath.exp(-1j * math.pi * i / 512 * n) for n, v in enumerate(h)))
+               for i in range(513))
+    check(f"LPF {k}: the shelf matches its design",
+          abs(c - LPF_C[k]) < 2e-4 and abs(dc - 1) < 2e-3 and abs(20 * math.log10(abs(g)) + 12.04) < 0.05,
+          f"c {c:.5f} (table {LPF_C[k]:.5f}), DC {dc:.5f}, Nyquist {20 * math.log10(abs(g)):+.2f} dB")
+    check(f"LPF {k}: no gain above unity anywhere (feedback-safe)", 20 * math.log10(peak) < 0.01,
+          f"peak {20 * math.log10(peak):+.4f} dB")
+
+x = sine(0.25, amp=0.5, f=1234.5)
+y, _ = render(x, LPF=127)
+lag = next((d for d in range(5) if y[d:] == x[:len(x) - d]), None)
+check("LPF 127: the shelf out of circuit, output == input bit for bit", lag is not None,
+      f"delay {lag} samples" if lag is not None else
+      f"max difference {max(abs(a - b) for a, b in zip(y, x))} LSB")
+
+slot = K["LPF"]
+turn, _ = render(toneT, sched=",".join(f"{T0 + 2 * i}:0:{slot}={20 + 1 + i}" for i in range(90)), LPF=20)
+held, _ = render(toneT, LPF=20)
+tl, hl = step_db(turn, T0, T1), step_db(held, T0, T1)
+check("LPF turn 20 -> 110: block-locked step under -70 dBFS", tl < -70.0,
       f"turn {tl:.1f} dBFS, held {hl:.1f}")
 
 print()
