@@ -145,9 +145,12 @@ single-payload render dumps payload A. Our modules' `#>` immediates in
 `0x438..0x1cd8` (156 sites) were read 14 Sep 2026: modulo masks, bus
 scratch (`$901`…`$9da`, placed identically on both cores), a tap length
 (1407), a decay coefficient (`$755`); none reads a stock table.
-`docs/contributing/FAILURE_MODES.md` carries the failure mode. His fix (an `xtables` field on
-`DspSection`, immediates rewritten per payload with the delta read from
-the image being built) is in his fork, not landed here. Also argued for:
+`docs/contributing/FAILURE_MODES.md` carries the failure mode. The fix is
+`DspSection.xtables`: declare payload A's addresses, spell each as a
+`#>$xxxx` immediate, and the build rewrites them per payload with the delta
+read from the image being built. It refuses unless the two payloads' blocks
+are word-for-word identical, and refuses a declared address the source does
+not spell. Also argued for:
 a build flag on undeclared absolute X literals in the relocated range; a
 four-character limit on `Formatter.STEPPED` labels (a ten-character label
 threw `VEC:04` at `ADDR 4E007890`); a range check on `lua` displacements

@@ -2506,6 +2506,67 @@ mkgo:""",
                           f"a client that never housekeeps")
                 _texts[_k] = _src_k
 
+        # ---- XTABLES: DspSection.xtables, payload-relative X addresses -----
+        # Stock has no runtime mechanism for this and needs none: each payload
+        # is separately linked, so the table address is a link-time constant
+        # (payload A `move x:(r3+$13c7),a`, payload B `move x:(r3+$13ba),a`,
+        # identical opcodes). A module is one source assembled into both, so
+        # the build does the linker's job here.
+        #
+        # The delta is NOT hardcoded. It is read out of this image's own module
+        # map by locating the block that holds the declared addresses in
+        # payload A and the block of the same length in the other payload, and
+        # it refuses to rewrite anything unless the two blocks are word-for-
+        # word identical. A future image that relocates or edits the curve bank
+        # stops the build instead of emitting a quietly mistuned module.
+        def _xdelta(spans):
+            if tag == "A":
+                return 0
+            from dsp_modmap import w24
+            _img = IMG.read_bytes()
+            _blk = {}
+            for _t, _va, _ln in PAYLOADS:
+                _mods, _blob = modules(_img, _va, _ln)
+                _blk[_t] = ([(a, c, d) for sp, a, c, d in _mods if sp == 1], _blob)
+            _ab, _ablob = _blk["A"]
+            _home = [(a, c, d) for a, c, d in _ab
+                     if a <= min(spans) and a + c > max(spans)]
+            if len(_home) != 1:
+                sys.exit(f"XTABLES: {len(_home)} payload-A X blocks span "
+                         f"{'/'.join('$%x' % s for s in spans)}")
+            _aa, _ac, _ad = _home[0]
+            _bb, _bblob = _blk[tag]
+            _cand = [(a, c, d) for a, c, d in _bb if c == _ac]
+            if len(_cand) != 1:
+                sys.exit(f"XTABLES: payload {tag} has {len(_cand)} X blocks of "
+                         f"{_ac} words -- cannot identify the curve bank")
+            _ba, _, _bd = _cand[0]
+            for _i in range(_ac):
+                if w24(_ablob, _ad + _i * 3) != w24(_bblob, _bd + _i * 3):
+                    sys.exit(f"XTABLES: the {_ac}-word blocks at A:${_aa:x} and "
+                             f"{tag}:${_ba:x} differ at word {_i} -- not the same "
+                             f"table, refusing to rewrite")
+            return _ba - _aa
+
+        def _xtables(m, src):
+            if not m.dsp.xtables:
+                return src
+            _d = _xdelta(tuple(sorted(m.dsp.xtables)))
+            if _d == 0:
+                return src
+            _pat = re.compile(r"#>\$(" + "|".join("%x" % a for a in m.dsp.xtables)
+                              + r")\b", re.IGNORECASE)
+            _hits = _pat.findall(src)
+            _missing = {"%x" % a for a in m.dsp.xtables} - {h.lower() for h in _hits}
+            if _missing:
+                sys.exit(f"XTABLES: {m.key} declares "
+                         f"{'/'.join('$' + x for x in sorted(_missing))} but the "
+                         f"source has no `#>$...` immediate for it")
+            src = _pat.sub(lambda mo: "#>$%x" % (int(mo.group(1), 16) + _d), src)
+            print(f"  XTABLES: {m.key} -- {len(_hits)} X table refs moved "
+                  f"{_d:+d} words for payload {tag}")
+            return src
+
         def _ybase_check(m, src):
             if any(os.environ.get(k) for k in _VARIANT_FLAGS):
                 return None
@@ -2581,7 +2642,8 @@ hostquit:
                   + (" (locked)" if _k in REMIX.locked else ""))
 
         plan = tuple(
-            (m.key, _prep(_ybase(m, _texts[m.key]), m.key, m.dsp.r7_latch_slot))
+            (m.key, _prep(_xtables(m, _ybase(m, _texts[m.key])), m.key,
+                          m.dsp.r7_latch_slot))
             for m in sorted((remix_modules()[k] for k in CARRIED + HOOKED
                              if k in _texts), key=lambda m: m.dsp.priority))
         if _x:

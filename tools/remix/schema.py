@@ -447,6 +447,21 @@ class DspSection:
     # X data each block goes into the first run it fits, so a table larger
     # than any one run is declared as two blocks. Requires `ptable`.
     ptable2: tuple[int, ...] = ()
+    # ABSOLUTE X ADDRESSES IN THE PAYLOAD-RELATIVE CURVE BANK, spelled as
+    # payload A's. Elektron links each payload separately, so stock reaches
+    # the same table with a different extension word in each -- EQUALIZER's
+    # frequency index is `0a73ce 0013c7` in payload A and `0a73ce 0013ba` in
+    # payload B, same opcode, 13 words apart, because the X block below the
+    # curve bank is 23 words on A and 10 on B. A MODULE IS ONE SOURCE
+    # ASSEMBLED INTO BOTH PAYLOADS and has no linker to do that for it, so an
+    # address baked for A reads 13 words high on B. Declare payload A's
+    # addresses here, spell each one in the source as a `#>$xxxx` immediate,
+    # and the build rewrites the immediates per payload.
+    # 13 Sep 2026, the fault that produced this: LOFI2's shelf ran off the end
+    # of the 512-word $13c7 table at knob 125-127 on tracks 1-4 (payload B),
+    # reading X:0x8015ab, and was correct on tracks 5-8 (payload A). Invisible
+    # to every render, because dsp_host boots payload A.
+    xtables: tuple[int, ...] = ()
     # Entries into this section from STOCK code (schema.DspHook). A section
     # with hooks and no MenuEntry is placed on `payloads` only and takes no
     # dispatch entry; one with a menu may carry hooks as well.
