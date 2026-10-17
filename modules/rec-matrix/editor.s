@@ -434,18 +434,8 @@ rmx_draw:
         move.b  (CUR_TRACK).l,%d0
         cmp.l   %d3,%d0
         bne.s   6f
-        pea     -1                          | the active track's row inverted, as stock
-        move.l  %d5,%d0                     | marks the current row of a list: its boxes
-        add.l   #BOX-1,%d0                  | and the pixel row under them
-        move.l  %d0,-(%sp)
-        pea     BAND_X1
-        move.l  %d5,%d0
-        subq.l  #1,%d0
-        move.l  %d0,-(%sp)
-        pea     BAND_X0
-        move.l  %a4,-(%sp)
-        jsr     (INVERT).l
-        lea     24(%sp),%sp
+        bsr     rmx_mark                    | the active track's row: its number at
+                                            | the left, a pointer at the right
 6:      addq.l  #1,%d3
         moveq   #8,%d0
         cmp.l   %d0,%d3
@@ -454,6 +444,61 @@ rmx_draw:
         lea     40(%sp),%sp
         unlk    %fp
         rts
+
+| The active row's marks, leaving the boxes alone: the buffer's number in the
+| left margin and a pointer at the right. a4 = surface, d3 = row, d5 = its
+| box bottom. Clobbers d0-d2, d4, a0, a1, a5.
+rmx_mark:
+        move.l  %d3,%d0
+        add.l   #'1',%d0
+        lsl.l   #8,%d0                      | "n\0" in a word on the stack
+        move.w  %d0,-(%sp)
+        move.l  %sp,%a1
+        subq.l  #2,%sp                      | keep the stack long-aligned
+        move.l  %a1,-(%sp)
+        pea     -1
+        move.l  %d5,%d0
+        add.l   #NUM_DY,%d0
+        move.l  %d0,-(%sp)
+        pea     NUM_X
+        move.l  %a4,-(%sp)
+        pea     FONT
+        jsr     (DRAWSTR).l
+        lea     28(%sp),%sp
+        lea     rmx_arrow,%a5               | the pointer: three columns
+        moveq   #3,%d4
+1:      pea     1
+        move.b  3(%a5),%d0
+        ext.w   %d0
+        ext.l   %d0
+        add.l   %d5,%d0
+        move.l  %d0,-(%sp)                  | y1
+        moveq   #0,%d0
+        move.b  2(%a5),%d0
+        move.l  %d0,-(%sp)                  | x1
+        move.b  1(%a5),%d0
+        ext.w   %d0
+        ext.l   %d0
+        add.l   %d5,%d0
+        move.l  %d0,-(%sp)                  | y0
+        moveq   #0,%d0
+        move.b  (%a5),%d0
+        move.l  %d0,-(%sp)                  | x0
+        move.l  %a4,-(%sp)
+        jsr     (INVERT).l
+        lea     24(%sp),%sp
+        addq.l  #4,%a5
+        subq.l  #1,%d4
+        bgt.s   1b
+        rts
+
+| x0, dy0, x1, dy1 (dy from the row's box bottom): a left-pointing arrowhead
+| 6 px tall, its outer column in the 1-px gaps between rows
+rmx_arrow:
+        .byte   120, 1, 120, 2
+        .byte   121, 0, 121, 3
+        .byte   122, -1, 122, 4
+        .balign 2
 
 | d0 = the left x of column d2's box (rmx_col_xs).
 rmx_col_x:
@@ -472,12 +517,12 @@ rmx_hdr_xs:
         .balign 2
 
 | the grid (checked against the screen under the port)
-        .equ    HDR_FROM_TOP,   18
+        .equ    HDR_FROM_TOP,   17
         .equ    ROW1_BELOW_HDR, 7
         .equ    ROW_PITCH,      5
         .equ    BOX,            4
-        .equ    BAND_X0,        5
-        .equ    BAND_X1,        121
+        .equ    NUM_X,          4           | the active row's number
+        .equ    NUM_DY,         0
 
 rmx_title_fmt:
         .asciz  "REC BUF %d"
