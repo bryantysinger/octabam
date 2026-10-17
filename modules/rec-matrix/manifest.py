@@ -78,12 +78,13 @@ def mask_inc(mods):
 MODULE = Module(
     name="rec-matrix", key="REC MATRIX", kind=Kind.CF_PATCH,
     category=Category.UTILITIES, author="bryantysinger", author_url="https://github.com/bryantysinger",
-    proof=Proof.PORT,
-    proof_note=("hardcoded matrix on Bryan T's unit (BUILD 1, 17 Oct 2026): MTRX selected on T2, "
-                "A + B + T1 heard as expected. Under the port, 17 Oct 2026, 24-bit, 19,120 samples: REC2 "
-                "from brain.work = A + B + T1 records 0.5(A+B) at gain 1.0000000 and stock's own SRC3 = T1 "
-                "take, both within 1 LSB; REC2 = A records A on both sides bit for bit; no brain.work "
-                "records silence. The stored matrix is not yet run on hardware"),
+    proof=Proof.HARDWARE,
+    proof_note=("Bryan T's unit, 17 Oct 2026: BUILD 1 (hardcoded matrix) and BUILD 2 (REC2 from the "
+                "project's brain.work = A + B + T1): MTRX selected on T2 records T1 with A and B, as expected; "
+                "REC2 edited in BRAIN > SETTINGS is saved to brain.work and read back on reload. A brain.work "
+                "created on a Mac is not read (one the unit created and the Mac edited in place is). Under the "
+                "port, 24-bit, 19,120 samples: 0.5(A+B) at gain 1.0000000 and stock's own SRC3 = T1 take, both "
+                "within 1 LSB; REC2 = A records A on both sides bit for bit; no brain.work records silence"),
     doc="Recorder SRC3 = MTRX: records a per-recorder sum of inputs, tracks, MAIN and CUE, chosen per recorder and stored with the project.",
     store=Store(STORE),
     settings=SETTINGS,
