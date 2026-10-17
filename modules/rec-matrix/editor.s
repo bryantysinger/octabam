@@ -331,9 +331,9 @@ rmx_on_draw:
 
 | The editor's window: title "REC BUF n"; a header of the sixteen sources in
 | trig order; under it a row per recorder (buffer 1 at the top), a box per
-| source, filled when selected; a marker left of the active track's row (8
-| rows fit 5 px apart, too close for row labels). y runs up from the bottom
-| of the surface.
+| source, filled when selected; the active track's row inverted (8 rows fit
+| 5 px apart, too close for row labels). y runs up from the bottom of the
+| surface.
 rmx_draw:
         link    %fp,#-32
         lea     -40(%sp),%sp
@@ -388,20 +388,6 @@ rmx_draw:
         move.l  %d3,%d0
         mulu.w  #ROW_PITCH,%d0
         sub.l   %d0,%d5                     | d5 = the row's box bottom
-        moveq   #0,%d0
-        move.b  (CUR_TRACK).l,%d0
-        cmp.l   %d3,%d0
-        bne.s   3f
-        pea     1                           | the active track's row: a marker at its left
-        move.l  %d5,%d0
-        add.l   #BOX-1,%d0
-        move.l  %d0,-(%sp)
-        pea     MARK_X+2
-        move.l  %d5,-(%sp)
-        pea     MARK_X
-        move.l  %a4,-(%sp)
-        jsr     (INVERT).l
-        lea     24(%sp),%sp
 3:      move.l  (%a2,%d3.l*4),%a0
         move.l  (%a0),%d7                   | d7 = the row's mask
         lea     rmx_trig_bit,%a5
@@ -444,7 +430,23 @@ rmx_draw:
         moveq   #16,%d0
         cmp.l   %d0,%d2
         blt     4b
-        addq.l  #1,%d3
+        moveq   #0,%d0
+        move.b  (CUR_TRACK).l,%d0
+        cmp.l   %d3,%d0
+        bne.s   6f
+        pea     -1                          | the active track's row inverted, as stock
+        move.l  %d5,%d0                     | marks the current row of a list: its boxes
+        add.l   #BOX-1,%d0                  | and the pixel row under them
+        move.l  %d0,-(%sp)
+        pea     BAND_X1
+        move.l  %d5,%d0
+        subq.l  #1,%d0
+        move.l  %d0,-(%sp)
+        pea     BAND_X0
+        move.l  %a4,-(%sp)
+        jsr     (INVERT).l
+        lea     24(%sp),%sp
+6:      addq.l  #1,%d3
         moveq   #8,%d0
         cmp.l   %d0,%d3
         blt     2b
@@ -474,7 +476,8 @@ rmx_hdr_xs:
         .equ    ROW1_BELOW_HDR, 7
         .equ    ROW_PITCH,      5
         .equ    BOX,            4
-        .equ    MARK_X,         3
+        .equ    BAND_X0,        5
+        .equ    BAND_X1,        121
 
 rmx_title_fmt:
         .asciz  "REC BUF %d"
