@@ -211,6 +211,32 @@ rmx_add_fold:
         move.l  (%sp)+,%d2
         rts
 
+| 0x4002fc00, a "jsr" detour: RECORDING SETUP 1's push of the stock SRC3
+| formatter 0x4002f15c (`move.l d4,(sp); pea pc(0x4002f15c)`), replayed with
+| src3_fmt pushed instead. d0 is dead at the site (rewritten at 0x4002fc16).
+        .global src3_screen
+src3_screen:
+        move.l  (%sp)+,%d0                  | the return address
+        move.l  %d4,(%sp)                   | displaced
+        pea     src3_fmt                    | in place of the stock formatter
+        move.l  %d0,-(%sp)
+        rts
+
+| fmt(buf, value): 11 -> "MTRX"; else the stock formatter (-, T1..T8, MAIN,
+| CUE; stock prints CUE for anything above 10).
+src3_fmt:
+        moveq   #SRC_MTRX+1,%d0             | the stored value (the runtime one is 10)
+        cmp.l   8(%sp),%d0
+        bne.s   .sf_stock
+        lea     mtrx_label,%a0
+        move.l  %a0,8(%sp)
+        jmp     (0x40013a08).l              | sprintf(buf, "MTRX")
+.sf_stock:
+        jmp     (0x4002f15c).l
+
+mtrx_label:
+        .asciz  "MTRX"
+
 | Proof-of-concept matrix: recorder 2 (index 1) = A + B (folded) + T1.
         .balign 4
         .global rmx_mask

@@ -9,8 +9,13 @@ stock that block as the SRC3 pointer (d5) at 0x40007648, so stock's SRC3
 gain and fades, INAB/INCD, the old-content path, the saturating sum and the
 pack all run unchanged. Mixing rules follow stock's INAB table (README.md).
 
-Proof of concept: the matrix is a constant (recorder 2 = A + B + T1), set by
-writing SRC3 = 10 into a fixture's Part; no page label, no storage, no UI.
+SRC3 is stored as 0 -, 1..8 T1..T8, 9 MAIN, 10 CUE; MTRX is stored as 11
+(the validator's clamp and the descriptor's count are widened for it) and
+reaches the select as 10. RECORDING SETUP 1 draws it MTRX (a second detour at
+the SRC3 formatter push, 0x4002fc00).
+
+Proof of concept: the matrix is a constant (recorder 2 = A + B + T1); no
+storage, no matrix editor.
 """
 from remix.schema import Category, Detour, Kind, Linked, Module, Poke, Proof
 
@@ -24,6 +29,9 @@ SRC3_COUNT = 0x400D3C74 + 0xD2 + 4 * 4                # descriptor entry 8, slot
 VALIDATOR_CMP = 0x40002CB2                             # moveq #10,d1 (SRC3 max)
 VALIDATOR_SET = 0x40002CB8                             # moveq #10,d3 (written over a larger value)
 
+SCREEN_SITE = 0x4002FC00
+SCREEN_STOCK = H("2e84" "487af558")                    # move.l d4,(sp); pea pc(0x4002f15c)
+
 MODULE = Module(
     name="rec-matrix", key="REC MATRIX", kind=Kind.CF_PATCH,
     category=Category.UTILITIES, author="bryantysinger", author_url="https://github.com/bryantysinger",
@@ -31,11 +39,13 @@ MODULE = Module(
     proof_note=("under the port, 17 Oct 2026, a 24-bit recording of 19,120 samples (recorder 2 = A + B + T1): "
                 "the input half equals 0.5(A+B) at gain 1.0000000 and the T1 half equals the take stock SRC3 = T1 records, "
                 "both within 1 LSB; not on hardware"),
-    doc="Recorder SRC3 = MTRX (10): records a per-recorder sum of inputs, tracks, MAIN and CUE.",
+    doc="Recorder SRC3 = MTRX: records a per-recorder sum of inputs, tracks, MAIN and CUE.",
     linked=(Linked("rmx", "modules/rec-matrix/rmx.s", dram=True),),
     detours=(Detour(SELECT_SITE, SELECT_STOCK, "rmx", "rmx_select",
                     "SRC3 select: 10 (MTRX) points the SRC3 source at the recorder's summed block",
-                    kind="jmp"),),
+                    kind="jmp"),
+             Detour(SCREEN_SITE, SCREEN_STOCK, "rmx", "src3_screen",
+                    "RECORDING SETUP 1: the SRC3 formatter push, MTRX drawn", kind="jsr"),),
     pokes=(
         Poke(SRC3_COUNT, (11).to_bytes(4, "big"), (12).to_bytes(4, "big"), "SRC3 count 11 -> 12 (MTRX)"),
         Poke(VALIDATOR_CMP, H("720a"), H("720b"), "part validator: SRC3 max 10 -> 11"),
