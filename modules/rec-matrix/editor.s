@@ -112,11 +112,10 @@ rmx_knob_e:
         beq.s   9f
         tst.l   rmx_editing
         bne.s   9f
-        moveq   #1,%d0
-        move.l  %d0,rmx_editing
-        pea     rmx_layer
-        jsr     (LAYER_ADD).l
-        addq.l  #4,%sp
+| The window first: opening it runs the close callback of every window of
+| level 2 or more the manager still lists, including this editor's last
+| one (freeing a window does not unlist it), so nothing of the editor may
+| be live yet; rmx_win_closed ignores a call with no window.
         pea     rmx_win_closed              | its own window over RECORDING SETUP:
         pea     2                           | level 2 leaves the level-1 setup window open
         clr.l   -(%sp)
@@ -126,6 +125,11 @@ rmx_knob_e:
         jsr     (WIN_NEW).l
         lea     24(%sp),%sp
         move.l  %d0,rmx_win
+        moveq   #1,%d0
+        move.l  %d0,rmx_editing
+        pea     rmx_layer
+        jsr     (LAYER_ADD).l
+        addq.l  #4,%sp
         bsr     rmx_draw
         bsr     rmx_leds
 9:      rts
@@ -158,9 +162,15 @@ rmx_key_close:
         bra     rmx_close
 
 | The window manager closed the editor's window (another window opened).
+| Called for this editor's current window, or for an earlier one still listed
+| (on the next window's opening): with no window open it does nothing, as
+| stock's setup close (0x4002ee88) does with no setup window.
 rmx_win_closed:
+        tst.l   rmx_win
+        beq.s   9f
         clr.l   rmx_win                     | already gone: not freed twice
         bra     rmx_close
+9:      rts
 
 | 0x4002ee88, a "jmp" detour: the setup window's close. The editor closes
 | first; then the displaced `move.l a2,-(sp); tst.l WINDOW`, whose flags
