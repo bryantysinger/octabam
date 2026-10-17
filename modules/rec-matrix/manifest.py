@@ -14,10 +14,18 @@ SRC3 is stored as 0 -, 1..8 T1..T8, 9 MAIN, 10 CUE; MTRX is stored as 11
 reaches the select as 10. RECORDING SETUP 1 draws it MTRX (a second detour at
 the SRC3 formatter push, 0x4002fc00).
 
-Proof of concept: the matrix is a constant (recorder 2 = A + B + T1); no
-storage, no matrix editor.
+The matrix: one 16-bit mask per recorder, eight PROJECT-scope Number
+settings (REC1..REC8, store octabam.rec-matrix) kept in the project's
+brain.work and loaded at each project load. The mixer reads a recorder's
+mask through rmx_mask_ptr (remix.inc): BRAIN's run-time value when the image
+carries BRAIN, else the constant default (0, silence). No matrix editor yet;
+BRAIN's SETTINGS list shows the eight values, and tools/hw/ot_brain.py writes
+them from a computer.
 """
-from remix.schema import Category, Detour, Kind, Linked, Module, Poke, Proof
+import os
+
+from remix.schema import (Apply, Category, Detour, Kind, Linked, Module, Number, Poke, Proof,
+                           Scope, Setting, Store)
 
 H = bytes.fromhex
 
@@ -32,15 +40,54 @@ VALIDATOR_SET = 0x40002CB8                             # moveq #10,d3 (written o
 SCREEN_SITE = 0x4002FC00
 SCREEN_STOCK = H("2e84" "487af558")                    # move.l d4,(sp); pea pc(0x4002f15c)
 
+STORE = "octabam.rec-matrix"
+
+# Mask bits: 0 A, 1 B, 2 C, 3 D, 4 AB, 5 CD, 6..13 T1..T8, 14 MAIN, 15 CUE.
+# Signed 16-bit (BRAIN's Number); bit 15 (CUE) reads as negative.
+SETTINGS = tuple(
+    Setting(r + 1, f"REC{r + 1}", Number(-0x8000, 0x7FFF), default=0,
+            scope=Scope.PROJECT, apply=Apply.LIVE,
+            doc=f"recorder {r + 1}'s MTRX sources, one bit each")
+    for r in range(8))
+
+
+def mask_inc(mods):
+    """rmx_mask_ptr: eight longs, recorder 1 first, each the address of that
+    recorder's mask as a long. With BRAIN in the image they are BRAIN's
+    value globals (remix.brain.value_symbol), read live; otherwise local
+    constants holding the defaults."""
+    from remix import brain, registry
+    remix = registry.remix(os.environ.get("REMIX")) if os.environ.get("REMIX") else None
+    live = {}
+    if remix is not None:
+        for r, s in brain.resolve(remix, mods):
+            if r.store_id == STORE:
+                live[r.key] = (r.runtime, int(r.value))
+    out = ["        .balign 4", "rmx_mask_ptr:"]
+    consts = []
+    for k in range(1, 9):
+        runtime, value = live.get(k, (False, 0))
+        if runtime:
+            out.append(f"        .long   {brain.value_symbol(STORE, k)}")
+        else:
+            out.append(f"        .long   rmx_mask_c{k}")
+            consts.append(f"rmx_mask_c{k}: .long {value}")
+    return "\n".join(out + consts) + "\n"
+
+
 MODULE = Module(
     name="rec-matrix", key="REC MATRIX", kind=Kind.CF_PATCH,
     category=Category.UTILITIES, author="bryantysinger", author_url="https://github.com/bryantysinger",
     proof=Proof.PORT,
-    proof_note=("under the port, 17 Oct 2026, a 24-bit recording of 19,120 samples (recorder 2 = A + B + T1): "
-                "the input half equals 0.5(A+B) at gain 1.0000000 and the T1 half equals the take stock SRC3 = T1 records, "
-                "both within 1 LSB; not on hardware"),
-    doc="Recorder SRC3 = MTRX: records a per-recorder sum of inputs, tracks, MAIN and CUE.",
-    linked=(Linked("rmx", "modules/rec-matrix/rmx.s", dram=True),),
+    proof_note=("hardcoded matrix on Bryan T's unit (BUILD 1, 17 Oct 2026): MTRX selected on T2, "
+                "A + B + T1 heard as expected. Under the port, 17 Oct 2026, 24-bit, 19,120 samples: REC2 "
+                "from brain.work = A + B + T1 records 0.5(A+B) at gain 1.0000000 and stock's own SRC3 = T1 "
+                "take, both within 1 LSB; REC2 = A records A on both sides bit for bit; no brain.work "
+                "records silence. The stored matrix is not yet run on hardware"),
+    doc="Recorder SRC3 = MTRX: records a per-recorder sum of inputs, tracks, MAIN and CUE, chosen per recorder and stored with the project.",
+    store=Store(STORE),
+    settings=SETTINGS,
+    linked=(Linked("rmx", "modules/rec-matrix/rmx.s", dram=True, include=mask_inc),),
     detours=(Detour(SELECT_SITE, SELECT_STOCK, "rmx", "rmx_select",
                     "SRC3 select: 10 (MTRX) points the SRC3 source at the recorder's summed block",
                     kind="jmp"),
