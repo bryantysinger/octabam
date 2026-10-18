@@ -175,6 +175,11 @@ Bryan T's MKII, images built from this module:
 - A ramp length in BRAIN > SETTINGS (card scope) instead of the constant
   `RAMP` in `rmx.s`. Planned.
 - MIDI control of the matrix.
+- MTRX as a TRIG mode, beside CHROMATIC, SLOTS, QUICK MUTE and DELAY
+  CTRL: the trigs would stay on the matrix while playing, without
+  RECORDING SETUP open. Not investigated; the mode list's names are at
+  `0x400b5376`, and SCALE QUANTIZER's hook of CHROMATIC's drawer
+  (`docs/contributing/TRAPS.md`) is the nearest prior work.
 - Not tried together with REC THRESHOLD or the other RECORDING SETUP
   modules. No hook site is shared with any module in the tree (18 Oct).
 
