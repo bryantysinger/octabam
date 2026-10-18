@@ -187,7 +187,7 @@ rmx_select:
 | pair's four), 8..15 T1..T8, 16 MAIN, 17 CUE (stereo).
         .equ    UNITY,  32768
         .equ    HALF,   16384
-        .equ    RAMP,   128                 | samples, about 2.9 ms
+        .equ    RAMP,   64                  | samples, about 1.5 ms
         .equ    STEP,   UNITY/RAMP
         .equ    NGAIN,  18
         .equ    GAP,    48                  | write-path calls, 16 a frame: three frames
