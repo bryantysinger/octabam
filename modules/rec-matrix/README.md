@@ -20,7 +20,8 @@ clicking. Needs BRAIN in the image (the matrix is kept in the project's
    selected. The active track's row is marked by its number at the left and
    a pointer at the right; the title reads REC BUF *n*.
 3. The trigs toggle the active row's sources, and their LEDs show its
-   selection:
+   selection in orange, a colour stock's trigs do not use, so the mode is
+   plain at a glance:
 
    | trig | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9–16 |
    |---|---|---|---|---|---|---|---|---|---|
@@ -146,7 +147,12 @@ Bryan T's MKII, images built from this module:
   sound-on-sound looping and work as intended: passes chained through as
   many as seven tracks (T1 sampling T7, T2 sampling T1, … T7 sampling T6),
   with the inputs, MAIN and CUE mixed in. The trig LEDs show the active
-  row in red and return to stock's display when the matrix closes.
+  row and return to stock's display when the matrix closes.
+- 18 Oct 2026, the trig LEDs' colours (a test build lighting each trig's
+  two LEDs at fixed levels, 0–15): the first LED is red, the second green.
+  15/0, 15/1 and 15/2 read red; 15/4 red-orange; 15/8 orange; 15/15 and
+  6/6 yellow; 0/15, 8/15, 4/15, 1/15 and 0/6 green; level 2 alone dim.
+  The editor lights a selected source 15/8, orange (BUILD 9).
 - 18 Oct 2026, BUILD 7 (128-sample ramp) and BUILD 8 (64): toggling
   sources mid-take no longer clicks; 64 kept.
 
