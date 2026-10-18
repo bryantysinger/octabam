@@ -101,12 +101,15 @@ MODULE = Module(
     name="rec-matrix", key="REC MATRIX", kind=Kind.CF_PATCH,
     category=Category.UTILITIES, author="bryantysinger", author_url="https://github.com/bryantysinger",
     proof=Proof.HARDWARE,
-    proof_note=("Bryan T's unit, 17 Oct 2026: BUILD 1 (hardcoded matrix) and BUILD 2 (REC2 from the "
-                "project's brain.work = A + B + T1): MTRX selected on T2 records T1 with A and B, as expected; "
-                "REC2 edited in BRAIN > SETTINGS is saved to brain.work and read back on reload. A brain.work "
-                "created on a Mac is not read (one the unit created and the Mac edited in place is). Under the "
-                "port, 24-bit, 19,120 samples: 0.5(A+B) at gain 1.0000000 and stock's own SRC3 = T1 take, both "
-                "within 1 LSB; REC2 = A records A on both sides bit for bit; no brain.work records silence"),
+    proof_note=("Bryan T's MKII. 17 Oct 2026: BUILD 1 (hardcoded matrix) and BUILD 2 (REC2 from the project's "
+                "brain.work = A + B + T1): MTRX on T2 records T1 with A and B; REC2 edited in BRAIN > SETTINGS is "
+                "saved to brain.work and read back on reload. 17 Oct: the matrix editor (knob E), after a fix for "
+                "a second opening losing its keys, and BUILD 6 (row number and pointer) used at length and working "
+                "as intended. 18 Oct: BUILD 7 (128-sample ramp) and BUILD 8 (64): toggling sources mid-take no "
+                "longer clicks. A brain.work created on a Mac is not read (one the unit created and the Mac edited "
+                "in place is). Under the port, 24-bit, 19,120 samples: 0.5(A+B) at gain 1.0000000 and stock's own "
+                "SRC3 = T1 take, within 2 LSB; REC2 = A records A on both sides bit for bit; a mid-take change "
+                "follows the Q15 ramp model exactly; no brain.work records silence"),
     doc="Recorder SRC3 = MTRX: records a per-recorder sum of inputs, tracks, MAIN and CUE, chosen per recorder and stored with the project.",
     store=Store(STORE),
     settings=SETTINGS,
