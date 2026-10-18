@@ -20,7 +20,7 @@ brain.work and loaded at each project load. The mixer reads a recorder's
 mask through rmx_mask_ptr (remix.inc): BRAIN's run-time value when the image
 carries BRAIN, else the constant default (0, silence).
 
-A change to the selection mid-take ramps over 128 samples (2.9 ms) per
+A change to the selection mid-take ramps over 64 samples (1.5 ms) per
 source and side, so toggling a source does not click; a pair's rules ramp
 too (A alone to AB crossfades A's right side into B). A new take starts at
 the current selection without a ramp: a third detour, in the write path's
