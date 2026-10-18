@@ -48,17 +48,32 @@ rmx_select:
 
 .Lmtrx:
         move.l  136(%sp),%d0                | recorder 0..7 (the routine's first argument)
+        move.l  144(%sp),%d4                | start sample
+        move.l  48(%sp),%d7                 | d7 = sample count (end - start)
+        lea     -8(%sp),%sp                 | a2 and d6 are live into MIX_CONT
+        movem.l %d6/%a2,(%sp)
         lea     rmx_mask_ptr,%a1
         move.l  (%a1,%d0.l*4),%a1
         move.l  (%a1),%d3
         and.l   #0xffff,%d3                 | d3 = this recorder's mask
+        lea     rmx_last,%a0                | a new take (this recorder not mixed
+        move.l  rmx_calls,%d1               | for GAP write-path calls) starts at
+        move.l  (%a0,%d0.l*4),%d2           | the current selection: no ramp from
+        move.l  %d1,(%a0,%d0.l*4)           | whatever was selected last time
+        sub.l   %d2,%d1
+        moveq   #0,%d5                      | d5 = snap the gains (rmx_gain)
+        cmp.l   #GAP,%d1
+        bls.s   0f
+        moveq   #1,%d5
+0:      moveq   #NGAIN*4,%d1
+        muls.l  %d0,%d1
+        lea     rmx_gains,%a5
+        add.l   %d1,%a5                     | a5 = this recorder's gains
         lsl.l   #7,%d0
         lea     rmx_buf,%a4
         add.l   %d0,%a4                     | a4 = this recorder's 16-sample block
-        move.l  144(%sp),%d4                | start sample
         lsl.l   #3,%d4                      | d4 = start * 8 (one stereo pair)
         add.l   %d4,%a4                     | a4 = this segment
-        move.l  48(%sp),%d7                 | d7 = sample count (end - start)
         tst.l   %d7
         ble.w   .Ldone
 
@@ -78,142 +93,235 @@ rmx_select:
 2:
 | ---- A / B: a2 = page + 0x80 + start*8, A at +0, B at +4 --------------------
         move.l  %a2,%a3
-        btst    #4,%d3
-        beq.s   .Lab_mono
-        bsr.w   rmx_add_stereo
-        bra.s   .Lcd
-.Lab_mono:
         move.l  %d3,%d0
         and.l   #3,%d0
-        beq.s   .Lcd
-        cmp.l   #3,%d0
-        bne.s   .Lab_one
-        bsr.w   rmx_add_fold
-        bra.s   .Lcd
-.Lab_one:
-        cmp.l   #1,%d0
-        beq.s   .Lab_a
-        addq.l  #4,%a3                      | B alone: the second long
-.Lab_a: bsr.w   rmx_add_mono
-
+        btst    #4,%d3
+        beq.s   3f
+        addq.l  #4,%d0
+3:      lsl.l   #4,%d0
+        lea     rmx_pair_tab,%a2
+        add.l   %d0,%a2
+        bsr.w   rmx_pair
 | ---- C / D: d6 = page + start*8, C at +0, D at +4 ---------------------------
-.Lcd:   move.l  %d6,%a3
-        btst    #5,%d3
-        beq.s   .Lcd_mono
-        bsr.w   rmx_add_stereo
-        bra.s   .Ltracks
-.Lcd_mono:
+        move.l  %d6,%a3
         move.l  %d3,%d0
         lsr.l   #2,%d0
         and.l   #3,%d0
-        beq.s   .Ltracks
-        cmp.l   #3,%d0
-        bne.s   .Lcd_one
-        bsr.w   rmx_add_fold
-        bra.s   .Ltracks
-.Lcd_one:
-        cmp.l   #1,%d0
-        beq.s   .Lcd_c
-        addq.l  #4,%a3
-.Lcd_c: bsr.w   rmx_add_mono
+        btst    #5,%d3
+        beq.s   4f
+        addq.l  #4,%d0
+4:      lsl.l   #4,%d0
+        lea     rmx_pair_tab,%a2
+        add.l   %d0,%a2
+        lea     16(%a5),%a5
+        bsr.w   rmx_pair
+        lea     -16(%a5),%a5
 
-| ---- T1..T8: 0x80003190 + bank*0x400 + k*0x80 + start*8 (stock's formula) ---
-.Ltracks:
+| ---- T1..T8: 0x80003190 + bank*0x400 + k*0x80 + start*8 (stock's formula),
+| then MAIN and CUE (0x80005e60 + start*8, +0x80): stereo, unity
         move.l  RDBK_BANK,%d0
         moveq   #10,%d1
         lsl.l   %d1,%d0
         add.l   #RDBK_BASE,%d0
         add.l   %d4,%d0
-        move.l  %d0,%a5
-        moveq   #6,%d2
-.Ltr:   btst    %d2,%d3
-        beq.s   3f
-        move.l  %a5,%a3
-        bsr.w   rmx_add_stereo
-3:      lea     0x80(%a5),%a5
+        move.l  %d0,%a2                     | a2 = T1's segment
+        moveq   #6,%d2                      | d2 = the mask bit
+        lea     32(%a5),%a0                 | a0 = T1's gain
+.Ltr:   move.l  %a2,%a3
+        moveq   #0,%d0
+        btst    %d2,%d3
+        beq.s   5f
+        move.l  #UNITY,%d0
+5:      move.l  %a4,%a1
+        moveq   #0,%d1                      | stereo
+        bsr.w   rmx_gain
+        lea     0x80(%a2),%a2
+        addq.l  #4,%a0
         addq.l  #1,%d2
         moveq   #14,%d0
         cmp.l   %d0,%d2
         blt.s   .Ltr
-
-| ---- MAIN, CUE --------------------------------------------------------------
-        btst    #14,%d3
-        beq.s   4f
         move.l  #MAINCUE,%d0
         add.l   %d4,%d0
-        move.l  %d0,%a3
-        bsr.w   rmx_add_stereo
-4:      btst    #15,%d3
-        beq.s   5f
-        move.l  #MAINCUE+0x80,%d0
-        add.l   %d4,%d0
-        move.l  %d0,%a3
-        bsr.w   rmx_add_stereo
-5:
+        move.l  %d0,%a2
+.Lmc:   move.l  %a2,%a3                     | d2 = 14 MAIN, 15 CUE; a0 runs on
+        moveq   #0,%d0
+        btst    %d2,%d3
+        beq.s   6f
+        move.l  #UNITY,%d0
+6:      move.l  %a4,%a1
+        moveq   #0,%d1
+        bsr.w   rmx_gain
+        lea     0x80(%a2),%a2
+        addq.l  #4,%a0
+        addq.l  #1,%d2
+        moveq   #16,%d0
+        cmp.l   %d0,%d2
+        blt.s   .Lmc
+
 | ---- saturate to 24 bits and put each back in the top of its long ----------
         move.l  %a4,%a1
         move.l  %d7,%d0
         add.l   %d0,%d0                     | two longs a sample
 .Lsat:  move.l  (%a1),%d1
         cmp.l   #0x007fffff,%d1
-        ble.s   6f
+        ble.s   7f
         move.l  #0x007fffff,%d1
-        bra.s   7f
-6:      cmp.l   #0xff800000,%d1
-        bge.s   7f
+        bra.s   8f
+7:      cmp.l   #0xff800000,%d1
+        bge.s   8f
         move.l  #0xff800000,%d1
-7:      lsl.l   #8,%d1
+8:      lsl.l   #8,%d1
         move.l  %d1,(%a1)+
         subq.l  #1,%d0
         bgt.s   .Lsat
 
-.Ldone: move.l  %a4,%d5                     | the SRC3 pointer, as stock leaves it
+.Ldone: movem.l (%sp),%d6/%a2
+        lea     8(%sp),%sp
+        move.l  %a4,%d5                     | the SRC3 pointer, as stock leaves it
         jmp     MIX_CONT
 
-| Helpers: a3 = source, a4 = segment, d7 = count. Clobber d0, d1, a1, a3.
-rmx_add_stereo:
+| Gains: one long per path per recorder, Q15 (UNITY = 1.0), stepped toward
+| the mask's target by STEP a sample, so a change ramps over RAMP samples
+| instead of jumping. Paths: 0..7 A>L A>R B>L B>R C>L C>R D>L D>R (an input
+| pair's four), 8..15 T1..T8, 16 MAIN, 17 CUE (stereo).
+        .equ    UNITY,  32768
+        .equ    HALF,   16384
+        .equ    RAMP,   128                 | samples, about 2.9 ms
+        .equ    STEP,   UNITY/RAMP
+        .equ    NGAIN,  18
+        .equ    GAP,    48                  | write-path calls, 16 a frame: three frames
+
+| An input pair's targets (A>L, A>R, B>L, B>R) by (pair bit, B, A), stock's
+| INAB rules: A alone or B alone to both sides, both folded at 0.5, the pair
+| A left and B right.
+        .balign 4
+rmx_pair_tab:
+        .long   0, 0, 0, 0
+        .long   UNITY, UNITY, 0, 0
+        .long   0, 0, UNITY, UNITY
+        .long   HALF, HALF, HALF, HALF
+        .long   UNITY, 0, 0, UNITY
+        .long   UNITY, 0, 0, UNITY
+        .long   UNITY, 0, 0, UNITY
+        .long   UNITY, 0, 0, UNITY
+
+| One input pair: a3 = its segment (first input at +0, second at +4),
+| a2 = its targets, a5 = its four gains, a4 = the output segment.
+rmx_pair:
+        move.l  %a5,%a0
+        moveq   #1,%d1                      | one channel to one side
         move.l  %a4,%a1
-        move.l  %d7,%d0
-1:      move.l  (%a3)+,%d1
-        asr.l   #8,%d1
-        add.l   %d1,(%a1)+
-        move.l  (%a3)+,%d1
-        asr.l   #8,%d1
-        add.l   %d1,(%a1)+
-        subq.l  #1,%d0
-        bgt.s   1b
+        move.l  (%a2),%d0
+        bsr.s   rmx_gain                    | A>L
+        addq.l  #4,%a0
+        moveq   #1,%d1
+        lea     4(%a4),%a1
+        move.l  4(%a2),%d0
+        bsr.s   rmx_gain                    | A>R
+        addq.l  #4,%a3
+        addq.l  #4,%a0
+        moveq   #1,%d1                      | one channel to one side
+        move.l  %a4,%a1
+        move.l  8(%a2),%d0
+        bsr.s   rmx_gain                    | B>L
+        addq.l  #4,%a0
+        moveq   #1,%d1
+        lea     4(%a4),%a1
+        move.l  12(%a2),%d0
+        bsr.s   rmx_gain                    | B>R
+        subq.l  #4,%a3
         rts
 
-| One channel of a pair (a3 at its long, stride 8) to both sides.
-rmx_add_mono:
-        move.l  %a4,%a1
-        move.l  %d7,%d0
-1:      move.l  (%a3),%d1
-        asr.l   #8,%d1
-        add.l   %d1,(%a1)+
-        add.l   %d1,(%a1)+
-        addq.l  #8,%a3
-        subq.l  #1,%d0
-        bgt.s   1b
+| rmx_gain: add a source into the output at a gain ramped toward a target.
+| a3 = source (stride 8), a1 = output (stride 8), a0 = the gain (updated),
+| d0 = target, d5 = nonzero to snap to the target, d1 = 0 stereo (+0 to +0, +4 to +4) or 1 one channel (+0 to
+| +0), d7 = count. Clobbers d0, d1, a1; keeps the rest.
+rmx_gain:
+        lea     -24(%sp),%sp
+        movem.l %d2-%d6/%a3,(%sp)
+        move.l  (%a0),%d2                   | d2 = the gain now
+        move.l  %d0,%d3                     | d3 = its target
+        tst.l   %d5
+        beq.s   0f
+        move.l  %d3,%d2                     | a new take: straight to the target
+0:
+        move.l  %d1,%d6                     | d6 = the mode
+        move.l  %d7,%d4                     | d4 = samples left
+        cmp.l   %d2,%d3
+        bne.s   .Lg_ramp
+        tst.l   %d3
+        beq.w   .Lg_out                     | off and staying off
+        cmp.l   #UNITY,%d3
+        bne.s   .Lg_ramp                    | a steady fraction: the general loop
+.Lg_unity:                                  | steady unity: no multiply
+        move.l  (%a3),%d0
+        asr.l   #8,%d0
+        add.l   %d0,(%a1)
+        tst.l   %d6
+        bne.s   1f
+        move.l  4(%a3),%d0
+        asr.l   #8,%d0
+        add.l   %d0,4(%a1)
+1:      addq.l  #8,%a3
+        addq.l  #8,%a1
+        subq.l  #1,%d4
+        bgt.s   .Lg_unity
+        bra.s   .Lg_out
+.Lg_ramp:
+        cmp.l   %d3,%d2                     | one step toward the target
+        beq.s   3f
+        blt.s   2f
+        sub.l   #STEP,%d2
+        cmp.l   %d3,%d2
+        bge.s   3f
+        move.l  %d3,%d2
+        bra.s   3f
+2:      add.l   #STEP,%d2
+        cmp.l   %d3,%d2
+        ble.s   3f
+        move.l  %d3,%d2
+3:      move.l  (%a3),%d0
+        bsr.s   rmx_scale
+        add.l   %d0,(%a1)
+        tst.l   %d6
+        bne.s   4f
+        move.l  4(%a3),%d0
+        bsr.s   rmx_scale
+        add.l   %d0,4(%a1)
+4:      addq.l  #8,%a3
+        addq.l  #8,%a1
+        subq.l  #1,%d4
+        bgt.s   .Lg_ramp
+.Lg_out:
+        move.l  %d2,(%a0)
+        movem.l (%sp),%d2-%d6/%a3
+        lea     24(%sp),%sp
         rts
 
-| Both channels of a pair folded to mono at 0.5 each, to both sides.
-rmx_add_fold:
-        move.l  %d2,-(%sp)
-        move.l  %a4,%a1
-        move.l  %d7,%d0
-1:      move.l  (%a3)+,%d1
-        asr.l   #8,%d1
-        move.l  (%a3)+,%d2
-        asr.l   #8,%d2
-        add.l   %d2,%d1
-        asr.l   #1,%d1
-        add.l   %d1,(%a1)+
-        add.l   %d1,(%a1)+
-        subq.l  #1,%d0
-        bgt.s   1b
-        move.l  (%sp)+,%d2
+| d0 = (d0's top 24 bits) * d2 / UNITY, in two partial products so neither
+| overflows. Clobbers d1, d5.
+rmx_scale:
+        asr.l   #8,%d0                      | s, 24 bits
+        move.l  %d0,%d5
+        asr.l   #8,%d5                      | its top 16 bits, signed
+        and.l   #0xff,%d0                   | its low 8
+        muls.l  %d2,%d5
+        muls.l  %d2,%d0
+        asr.l   #7,%d5
+        moveq   #15,%d1
+        asr.l   %d1,%d0
+        add.l   %d5,%d0
         rts
+
+| 0x400068f0, a "jmp" detour in the write path's prologue (every recorder,
+| both halves, every frame, recording or not): counts the calls, the clock
+| rmx_select measures gaps with. Replays `mvzb 0x100b14cf,d0`.
+        .global rmx_tick
+rmx_tick:
+        addq.l  #1,rmx_calls
+        mvz.b   (0x100b14cf).l,%d0
+        jmp     (0x400068f6).l
 
 | 0x4002fc00, a "jsr" detour: RECORDING SETUP 1's push of the stock SRC3
 | formatter 0x4002f15c (`move.l d4,(sp); pea pc(0x4002f15c)`), replayed with
@@ -248,3 +356,10 @@ mtrx_label:
         .global rmx_buf
 rmx_buf:
         .space  8 * 16 * 8                  | 8 recorders x 16 samples x L,R
+rmx_calls:
+        .space  4
+rmx_last:
+        .space  8 * 4                       | rmx_calls at each recorder's last mix
+        .global rmx_gains
+rmx_gains:
+        .space  8 * NGAIN * 4               | 8 recorders x 18 paths, Q15

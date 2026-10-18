@@ -20,6 +20,13 @@ brain.work and loaded at each project load. The mixer reads a recorder's
 mask through rmx_mask_ptr (remix.inc): BRAIN's run-time value when the image
 carries BRAIN, else the constant default (0, silence).
 
+A change to the selection mid-take ramps over 128 samples (2.9 ms) per
+source and side, so toggling a source does not click; a pair's rules ramp
+too (A alone to AB crossfades A's right side into B). A new take starts at
+the current selection without a ramp: a third detour, in the write path's
+prologue (0x400068f0), counts calls so the mixer can tell a take start
+from a running take.
+
 The editor (editor.s): knob E on RECORDING SETUP 1, with SRC3 on MTRX, opens
 a full-screen window of all eight recorders' rows. The trigs edit the active
 track's row (1 AB, 2 CD, 3 MAIN, 4 CUE, 5..8 A..D, 9..16 T1..T8; a pair and
@@ -36,6 +43,8 @@ H = bytes.fromhex
 
 SELECT_SITE = 0x400075DE
 SELECT_STOCK = H("7301" "7807" "b881")              # mvsb d1,d1; moveq #7,d4; cmpl d1,d4
+TICK_SITE = 0x400068F0
+TICK_STOCK = H("71b9100b14cf")                      # mvzb 0x100b14cf,d0 (the write path's prologue)
 
 # Stored SRC3: 0 -, 1..8 T1..T8, 9 MAIN, 10 CUE; MTRX is stored as 11.
 SRC3_COUNT = 0x400D3C74 + 0xD2 + 4 * 4                # descriptor entry 8, slot 4, u32
@@ -106,6 +115,9 @@ MODULE = Module(
             Linked("rmxed", "modules/rec-matrix/editor.s", dram=True)),
     detours=(Detour(SELECT_SITE, SELECT_STOCK, "rmx", "rmx_select",
                     "SRC3 select: 10 (MTRX) points the SRC3 source at the recorder's summed block",
+                    kind="jmp"),
+             Detour(TICK_SITE, TICK_STOCK, "rmx", "rmx_tick",
+                    "the write path's prologue: a call count, so a new take starts without a ramp",
                     kind="jmp"),
              Detour(SCREEN_SITE, SCREEN_STOCK, "rmx", "src3_screen",
                     "RECORDING SETUP 1: the SRC3 formatter push, MTRX drawn", kind="jsr"),
