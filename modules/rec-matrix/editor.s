@@ -45,6 +45,7 @@
         .equ    CLOSE_CONT, 0x4002ee90      | the setup close after `move.l a2,-(sp); tst.l WINDOW`
 
 | mask bits: 0 A, 1 B, 2 C, 3 D, 4 AB, 5 CD, 6..13 T1..T8, 14 MAIN, 15 CUE
+        .equ    GREEN_LEVEL, 8              | of 15; the unit: 15/8 orange, 15/4 red-orange
         .equ    M_A,  0x0001
         .equ    M_B,  0x0002
         .equ    M_C,  0x0004
@@ -261,17 +262,11 @@ rmx_leds:
         move.l  %d3,-(%sp)
         jsr     (LED_LEVEL).l
         addq.l  #8,%sp
-        pea     15
-        move.l  %d3,%d0
+        pea     GREEN_LEVEL                 | red full, green part way: orange,
+        move.l  %d3,%d0                     | a colour stock's trigs do not use
         addq.l  #1,%d0
         move.l  %d0,-(%sp)
         jsr     (LED_LEVEL).l
-        addq.l  #8,%sp
-        clr.l   -(%sp)                      | the second LED off
-        move.l  %d3,%d0
-        addq.l  #1,%d0
-        move.l  %d0,-(%sp)
-        jsr     (SET_LED).l
         addq.l  #8,%sp
         moveq   #0,%d0
         move.w  (%a2,%d2.l*2),%d0
@@ -280,7 +275,14 @@ rmx_leds:
         move.l  #0x7fffffff,%d0             | lit until the editor turns it off
 2:      move.l  %d0,-(%sp)
         move.l  %d3,-(%sp)
-        jsr     (SET_LED).l
+        jsr     (SET_LED).l                 | red
+        move.l  4(%sp),%d0                  | the same ticks
+        addq.l  #8,%sp
+        move.l  %d0,-(%sp)
+        move.l  %d3,%d0
+        addq.l  #1,%d0
+        move.l  %d0,-(%sp)
+        jsr     (SET_LED).l                 | green
         addq.l  #8,%sp
         addq.l  #1,%d2
         moveq   #16,%d0
