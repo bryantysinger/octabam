@@ -142,8 +142,11 @@ Bryan T's MKII, images built from this module:
   on reload.
 - 17 Oct 2026, the editor: a second opening of the matrix lost the track
   keys and NO, intermittently. Fixed (see "Notes"); the fixed build and
-  BUILD 6 (the row number and pointer) were used at length and work as
-  intended.
+  BUILD 6 (the row number and pointer) were used at length for
+  sound-on-sound looping and work as intended: passes chained through as
+  many as seven tracks (T1 sampling T7, T2 sampling T1, … T7 sampling T6),
+  with the inputs, MAIN and CUE mixed in. The trig LEDs show the active
+  row in red and return to stock's display when the matrix closes.
 - 18 Oct 2026, BUILD 7 (128-sample ramp) and BUILD 8 (64): toggling
   sources mid-take no longer clicks; 64 kept.
 
@@ -156,12 +159,11 @@ Bryan T's MKII, images built from this module:
 
 ## Open
 
-- Not confirmed explicitly on the unit: the trig LEDs' colour (the first
-  LED of each trig's pair is lit), the trig LEDs restored after the matrix
-  closes, and an MKI.
+- An MKI.
 - A `brain.work` created on a Mac is not read by the unit; one the unit
   created and the Mac edited in place is. The cause is not known (the
-  firmware's own file has the same 8.3 short name). Reported to BRAIN.
+  firmware's own file has the same 8.3 short name). To be raised with
+  BRAIN once BRAIN is more settled; it is still under active development.
 - Stock starts a take sourced from a track one frame earlier than one
   from MAIN, CUE or MTRX. Left as stock does it.
 - A ramp length in BRAIN > SETTINGS (card scope) instead of the constant
