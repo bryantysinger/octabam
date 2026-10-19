@@ -31,7 +31,11 @@ clicking. Needs BRAIN in the image (the matrix is kept in the project's
    Columns on the screen follow the same order: stereo sources, then the
    mono inputs, then the tracks.
 4. The **track keys** move to another recorder's row.
-5. **NO**, **knob E** or **CUE + MIX** closes the matrix. Opened from
+5. **SRC**, **AMP**, **LFO**, **FX1** or **FX2** closes the matrix and
+   RECORDING SETUP and goes to that page. (Stock leaves RECORDING SETUP
+   open over a page key; the matrix covers the whole screen, so the page
+   change would be hidden.)
+6. **NO**, **knob E** or **CUE + MIX** closes the matrix. Opened from
    RECORDING SETUP, it returns there (to SETUP 1); opened by CUE + MIX
    from another page, it returns to that page.
 
@@ -149,6 +153,9 @@ Under the ColdFire port (`ot_emu`), 17–18 Oct 2026, project MTRXTEST,
   opens over SETUP 1 and NO returns to SETUP 1; a second opening works;
   MIX alone still opens the MIXER. The MKI's layers point at the same
   CUE layer; the MKI itself not run.
+- **Page keys** (19 Oct 2026): AMP inside the matrix (opened by CUE +
+  MIX) lands on the AMP page, FX1 (opened by knob E) on the FX1 page,
+  with the matrix and the setup closed; the matrix opens again after.
 
 ## On the unit
 

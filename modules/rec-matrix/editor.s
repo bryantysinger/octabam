@@ -44,6 +44,7 @@
         .equ    LEDS_SITE,  0x40043fdc      | the trig-LED refresh: (track)
         .equ    CLOSE_CONT, 0x4002ee90      | the setup close after `move.l a2,-(sp); tst.l WINDOW`
         .equ    CLOSE_SITE, 0x4002ee88      | the setup close
+        .equ    PAGE_PRESS, 0x4005578c      | stock's SRC..FX2 page select: (code, 1)
         .equ    SETUP_KEY,  0x4002ff84      | FUNC + REC1/REC2: (0x2b + page); opens, switches or closes
 
 | mask bits: 0 A, 1 B, 2 C, 3 D, 4 AB, 5 CD, 6..13 T1..T8, 14 MAIN, 15 CUE
@@ -201,6 +202,24 @@ rmx_key_close:
         beq     rmx_close
         clr.l   rmx_shortcut
         jmp     (CLOSE_SITE).l
+
+| SRC, AMP, LFO, FX1 or FX2 inside the editor: (code, edge). Stock leaves
+| RECORDING SETUP open over a page key and changes the page behind it; the
+| matrix covers the whole screen, so that change would be invisible. The
+| matrix and the setup close (the setup's close runs rmx_close first), then
+| the page key's own press handler (the record's second, 0x4005578c, with
+| edge 1: the page byte, and stock's double-press check) selects the page.
+| The record's first handler (0x400322f0) is not called: with edge 3 it
+| opens the page's SETUP (under the port).
+rmx_page_key:
+        clr.l   rmx_shortcut
+        jsr     (CLOSE_SITE).l
+        move.l  4(%sp),%d0                  | the key
+        pea     1
+        move.l  %d0,-(%sp)
+        jsr     (PAGE_PRESS).l
+        addq.l  #8,%sp
+        rts
 
 | The window manager closed the editor's window (another window opened).
 | Called for this editor's current window, or for an earlier one still listed
@@ -609,6 +628,9 @@ rmx_keys:
         .endr
         key     0x32, rmx_key_close         | NO
         key     0x3c, rmx_key_close         | knob E's push
+        .irp    k, 0x22,0x23,0x24,0x25,0x26
+        key     \k, rmx_page_key            | SRC AMP LFO FX1 FX2
+        .endr
         .byte   0xff, 0
 
 | encoder records, 22 bytes: knob, 0, handler 0 (swallowed), 0...
