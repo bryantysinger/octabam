@@ -13,13 +13,14 @@ clicking. Needs BRAIN in the image (the matrix is kept in the project's
 
 ## Using it
 
-1. Hold **FUNC** and press **REC AB** (RECORDING SETUP 1). Turn **SRC3**
-   past CUE to **MTRX**.
-2. With SRC3 on MTRX, push **knob E**. Or, from any page, hold **CUE** and
-   press **MIX**, whatever the active track's SRC3. The matrix opens: one row per
-   recorder, one column per source, a filled box where a source is
-   selected. The active track's row is marked by its number at the left and
-   a pointer at the right; the title reads REC BUF *n*.
+1. Set a track's recorder to MTRX: hold **FUNC** and press **REC AB**
+   (RECORDING SETUP 1), and turn **SRC3** past CUE to **MTRX**.
+2. Open the matrix: from any page, hold **CUE** and press **MIX**. (On
+   RECORDING SETUP 1 with SRC3 on MTRX, pushing **knob E**, SRC3's knob,
+   opens it too.) The matrix opens over whatever track is active, on MTRX
+   or not: one row per recorder, one column per source, a filled box where
+   a source is selected. The active track's row is marked by its number at
+   the left and a pointer at the right; the title reads REC BUF *n*.
 3. The trigs toggle the active row's sources, and their LEDs show its
    selection in orange, a colour stock's trigs do not use, so the mode is
    plain at a glance:
@@ -35,16 +36,15 @@ clicking. Needs BRAIN in the image (the matrix is kept in the project's
    RECORDING SETUP and goes to that page. (Stock leaves RECORDING SETUP
    open over a page key; the matrix covers the whole screen, so the page
    change would be hidden.)
-6. **NO**, **knob E** or **CUE + MIX** closes the matrix. Opened from
-   RECORDING SETUP, it returns there (to SETUP 1); opened by CUE + MIX
-   from another page, it returns to that page.
+6. **CUE + MIX**, **NO** or **knob E** closes the matrix and returns to the
+   page it was opened from (RECORDING SETUP 1, if it was opened there).
 
 - Every edit is saved to the project's `brain.work` at once, as an edit in
   BRAIN > SETTINGS is. The matrix also shows there, as REC1–REC8 (one
   number per recorder; see "Storage").
 - MTRX on a track whose row is empty records silence.
-- With GRID RECORDING on, the trigs place recorder trigs as on stock; open
-  the matrix with knob E for the trigs to edit it.
+- With GRID RECORDING on, the trigs place recorder trigs as on stock until
+  the matrix is open; inside it they edit the matrix.
 - A Part saved with MTRX loads on stock 1.40C as SRC3 CUE.
 
 ### Mixing

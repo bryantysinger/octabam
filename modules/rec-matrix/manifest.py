@@ -27,13 +27,14 @@ the current selection without a ramp: a third detour, in the write path's
 prologue (0x400068f0), counts calls so the mixer can tell a take start
 from a running take.
 
-The editor (editor.s): knob E on RECORDING SETUP 1, with SRC3 on MTRX, opens
-a full-screen window of all eight recorders' rows. The trigs edit the active
-track's row (1 AB, 2 CD, 3 MAIN, 4 CUE, 5..8 A..D, 9..16 T1..T8; a pair and
-its inputs exclude each other, the newest press wins) and show it on their
-LEDs; track keys change the row; NO or knob E closes. CUE + MIX opens it
-from anywhere (over RECORDING SETUP 1, opened for it and closed with it). Each edit is saved to
-brain.work as a SETTINGS edit is.
+The editor (editor.s): CUE + MIX, from any page, opens a full-screen
+window of all eight recorders' rows over RECORDING SETUP 1 (opened for it
+and closed with it); knob E on RECORDING SETUP 1, with SRC3 on MTRX, opens
+it too. The trigs edit the active track's row (1 AB, 2 CD, 3 MAIN, 4 CUE,
+5..8 A..D, 9..16 T1..T8; a pair and its inputs exclude each other, the
+newest press wins) and show it on their LEDs; track keys change the row;
+a page key leaves for its page; CUE + MIX, NO or knob E closes. Each edit
+is saved to brain.work as a SETTINGS edit is.
 """
 import os
 
