@@ -43,6 +43,8 @@
         .equ    LEDS_CONT,  0x40043fe4      | the trig-LED refresh after its lea/movem
         .equ    LEDS_SITE,  0x40043fdc      | the trig-LED refresh: (track)
         .equ    CLOSE_CONT, 0x4002ee90      | the setup close after `move.l a2,-(sp); tst.l WINDOW`
+        .equ    CLOSE_SITE, 0x4002ee88      | the setup close
+        .equ    SETUP_KEY,  0x4002ff84      | FUNC + REC1/REC2: (0x2b + page); opens, switches or closes
 
 | mask bits: 0 A, 1 B, 2 C, 3 D, 4 AB, 5 CD, 6..13 T1..T8, 14 MAIN, 15 CUE
         .equ    GREEN_LEVEL, 8              | of 15; the unit: 15/8 orange, 15/4 red-orange
@@ -111,6 +113,39 @@ rmx_knob_e:
         bsr     rmx_is_mtrx
         tst.l   %d0
         beq.s   9f
+        clr.l   rmx_shortcut                | NO comes back to RECORDING SETUP
+        bra.s   rmx_open
+9:      rts
+
+| CUE + MIX (CUE's held layer, both models): the matrix from anywhere,
+| whatever the active track's SRC3. It opens RECORDING SETUP 1 under it as
+| FUNC + REC1 does (or turns an open SETUP 2 to SETUP 1); NO, knob E or
+| CUE + MIX again closes the matrix and, if this opened it, the setup.
+        .global rmx_cue_mix
+rmx_cue_mix:
+        tst.l   rmx_editing
+        bne.w   rmx_key_close
+        clr.l   rmx_shortcut
+        tst.l   (WINDOW).l
+        beq.s   1f
+        tst.l   (SETUP_PAGE).l
+        beq.s   rmx_open                    | already on SETUP 1
+        pea     0x2b                        | SETUP 2: stock's switch to SETUP 1
+        jsr     (SETUP_KEY).l
+        addq.l  #4,%sp
+        bra.s   rmx_open
+1:      pea     0x2b                        | closed: stock's FUNC + REC1
+        jsr     (SETUP_KEY).l
+        addq.l  #4,%sp
+        tst.l   (WINDOW).l
+        beq.s   9f
+        moveq   #1,%d0
+        move.l  %d0,rmx_shortcut
+        bra.s   rmx_open
+9:      rts
+
+| Opens the editor over an open RECORDING SETUP 1.
+rmx_open:
         tst.l   rmx_editing
         bne.s   9f
 | The window first: opening it runs the close callback of every window of
@@ -158,9 +193,14 @@ rmx_close:
         addq.l  #4,%sp
 9:      rts
 
-| NO or knob E inside the editor: (code, edge).
+| NO or knob E inside the editor, or CUE + MIX again: (code, edge). Opened
+| by CUE + MIX over a closed setup, the setup closes too (its close runs
+| rmx_close first, rmx_on_close).
 rmx_key_close:
-        bra     rmx_close
+        tst.l   rmx_shortcut
+        beq     rmx_close
+        clr.l   rmx_shortcut
+        jmp     (CLOSE_SITE).l
 
 | The window manager closed the editor's window (another window opened).
 | Called for this editor's current window, or for an earlier one still listed
@@ -587,5 +627,9 @@ rmx_encs:
         .balign 4
 rmx_editing:
         .long   0
+rmx_shortcut:
+        .long   0                           | 1: CUE + MIX opened the setup under the matrix
 rmx_win:
         .long   0
+
+        .include "remix.inc"                | rmx_cue_keys (manifest.py cue_keys_inc)

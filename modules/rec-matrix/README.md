@@ -15,7 +15,8 @@ clicking. Needs BRAIN in the image (the matrix is kept in the project's
 
 1. Hold **FUNC** and press **REC AB** (RECORDING SETUP 1). Turn **SRC3**
    past CUE to **MTRX**.
-2. With SRC3 on MTRX, push **knob E**. The matrix opens: one row per
+2. With SRC3 on MTRX, push **knob E**. Or, from any page, hold **CUE** and
+   press **MIX**, whatever the active track's SRC3. The matrix opens: one row per
    recorder, one column per source, a filled box where a source is
    selected. The active track's row is marked by its number at the left and
    a pointer at the right; the title reads REC BUF *n*.
@@ -30,7 +31,9 @@ clicking. Needs BRAIN in the image (the matrix is kept in the project's
    Columns on the screen follow the same order: stereo sources, then the
    mono inputs, then the tracks.
 4. The **track keys** move to another recorder's row.
-5. **NO** or **knob E** closes the matrix and returns to RECORDING SETUP 1.
+5. **NO**, **knob E** or **CUE + MIX** closes the matrix. Opened from
+   RECORDING SETUP, it returns there (to SETUP 1); opened by CUE + MIX
+   from another page, it returns to that page.
 
 - Every edit is saved to the project's `brain.work` at once, as an edit in
   BRAIN > SETTINGS is. The matrix also shows there, as REC1–REC8 (one
@@ -100,6 +103,14 @@ and `Detour` entries list the addresses.
   knob turns. The setup's redraw (`0x4002f2f8`) draws the matrix while it is
   open; the trig-LED refresh (`0x40043fdc`) shows the active row; the
   setup's close (`0x4002ee88`) closes the matrix first.
+- **CUE + MIX.** CUE's held key layer (`0x400bf2a0`, shared by the MKI's
+  and the MKII's key tables) has no MIX record in stock: with CUE held, MIX
+  opens the MIXER as alone. Its key list (`0x400bf122`) is repointed to a
+  copy, made from the stock image at build time, with a MIX record after
+  stock's. The handler opens RECORDING SETUP 1 through stock's FUNC + REC1
+  handler (`0x4002ff84`, which also turns an open SETUP 2 to SETUP 1),
+  then the matrix; if it opened the setup, closing the matrix closes it
+  too, through the setup's own close.
 
 ### Storage
 
@@ -132,6 +143,12 @@ Under the ColdFire port (`ot_emu`), 17–18 Oct 2026, project MTRXTEST,
   SRC3 on MTRX; the trigs toggle the active row with the pair exclusions;
   the track keys move the row; NO and knob E close it; each edit lands in
   `brain.work`. Three openings in a row behave the same (see "Notes").
+- **CUE + MIX** (19 Oct 2026, MKII): opens the matrix from the pattern
+  page, on a track whose SRC3 is not MTRX too; the trigs edit it; NO and
+  CUE + MIX again return to the pattern page; from an open SETUP 2 it
+  opens over SETUP 1 and NO returns to SETUP 1; a second opening works;
+  MIX alone still opens the MIXER. The MKI's layers point at the same
+  CUE layer; the MKI itself not run.
 
 ## On the unit
 
