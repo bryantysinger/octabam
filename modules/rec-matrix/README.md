@@ -71,8 +71,8 @@ ramp, however the selection changed between takes.
 
 ## How it works
 
-Two DRAM units (`rmx.s`, the mixer; `editor.s`, the matrix editor), seven
-detours, two key-layer entries and three pokes. The manifest's docstring
+Two DRAM units (`rmx.s`, the mixer; `editor.s`, the matrix editor), six
+detours, three repointed key-layer entries and three pokes. The manifest's docstring
 and `Detour` entries list the addresses.
 
 - **The mix.** The recorder write path `0x400068e4(track, page, start,
@@ -103,8 +103,11 @@ and `Detour` entries list the addresses.
 - **The editor.** Knob E's press field in RECORDING SETUP's key layers
   (MKII `0x400ba4d4`, MKI `0x400ba60c`, entry 9) points at `rmx_knob_e`,
   which opens a 128 × 64 window over the setup window and adds a key layer
-  of its own: the 16 trigs, NO and knob E, and null handlers for the six
-  knob turns. The setup's redraw (`0x4002f2f8`) draws the matrix while it is
+  of its own: the 16 trigs, NO, knob E and the five page keys, and null
+  handlers for the six knob turns. A page key closes the matrix and the
+  setup, then selects its page through the key's own stock handler
+  (`0x4005578c`, edge 1); the record's other handler (`0x400322f0`) is
+  not called, since with edge 3 it opens the page's SETUP (port). The setup's redraw (`0x4002f2f8`) draws the matrix while it is
   open; the trig-LED refresh (`0x40043fdc`) shows the active row; the
   setup's close (`0x4002ee88`) closes the matrix first.
 - **CUE + MIX.** CUE's held key layer (`0x400bf2a0`, shared by the MKI's
@@ -179,6 +182,9 @@ Bryan T's MKII, images built from this module:
   The editor lights a selected source 15/8, orange (BUILD 9).
 - 18 Oct 2026, BUILD 7 (128-sample ramp) and BUILD 8 (64): toggling
   sources mid-take no longer clicks; 64 kept.
+- 19 Oct 2026, BUILD 10 (CUE + MIX) and BUILD 11 (page keys): CUE + MIX
+  opens and closes the matrix from other pages, and a page key inside it
+  goes to that page; both work as intended.
 
 ## Inferred
 
@@ -199,11 +205,6 @@ Bryan T's MKII, images built from this module:
 - A ramp length in BRAIN > SETTINGS (card scope) instead of the constant
   `RAMP` in `rmx.s`. Planned.
 - MIDI control of the matrix.
-- MTRX as a TRIG mode, beside CHROMATIC, SLOTS, QUICK MUTE and DELAY
-  CTRL: the trigs would stay on the matrix while playing, without
-  RECORDING SETUP open. Not investigated; the mode list's names are at
-  `0x400b5376`, and SCALE QUANTIZER's hook of CHROMATIC's drawer
-  (`docs/contributing/TRAPS.md`) is the nearest prior work.
 - Not tried together with REC THRESHOLD or the other RECORDING SETUP
   modules. No hook site is shared with any module in the tree (18 Oct).
 
