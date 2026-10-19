@@ -31,7 +31,8 @@ The editor (editor.s): knob E on RECORDING SETUP 1, with SRC3 on MTRX, opens
 a full-screen window of all eight recorders' rows. The trigs edit the active
 track's row (1 AB, 2 CD, 3 MAIN, 4 CUE, 5..8 A..D, 9..16 T1..T8; a pair and
 its inputs exclude each other, the newest press wins) and show it on their
-LEDs; track keys change the row; NO or knob E closes. Each edit is saved to
+LEDs; track keys change the row; NO or knob E closes. CUE + MIX opens it
+from anywhere (over RECORDING SETUP 1, opened for it and closed with it). Each edit is saved to
 brain.work as a SETTINGS edit is.
 """
 import os
@@ -61,6 +62,12 @@ LEDS_SITE, LEDS_STOCK = 0x40043FDC, H("4fefffbc" "48d73c7c")    # lea -68(sp),sp
 CLOSE_SITE, CLOSE_STOCK = 0x4002EE88, H("2f0a" "4ab9460d10cc")  # move.l a2,-(sp); tst.l 0x460d10cc
 KNOB_E_MKII = 0x400BA4D4 + 9 * 0x1A + 2   # RECORDING SETUP's MKII key layer, knob E's press (0)
 KNOB_E_MKI = 0x400BA60C + 9 * 0x1A + 2    # the MKI layer's
+
+# CUE's held key layer (0x400bf2a0, the MKI's and the MKII's both): its key
+# list, repointed to a copy with a MIX record, CUE + MIX opening the matrix.
+CUE_LAYER_KEYS, CUE_KEYS = 0x400BF2A4, 0x400BF122
+KEY_RECORD = 0x1A
+MIX_KEY = 0x30
 
 STORE = "octabam.rec-matrix"
 
@@ -97,6 +104,27 @@ def mask_inc(mods):
     return "\n".join(out + consts) + "\n"
 
 
+def cue_keys_inc(mods=None):
+    """CUE's held layer's keys, copied from the user's stock image at build
+    time (the records up to the 0xff end, counted here; the pattern of
+    BRAIN's func_keys_inc), with a record for MIX (0x30) after them: CUE +
+    MIX opens the matrix (editor.s rmx_cue_mix). Stock's CUE layer has no
+    MIX record: with CUE held, MIX opens the MIXER as alone (port)."""
+    import pathlib
+    from remix import schema
+    stock = pathlib.Path(schema.__file__).resolve().parents[2] / "out/raw/section_3_MAIN_OS.bin"
+    img = stock.read_bytes()
+    n = 0
+    while img[CUE_KEYS - 0x40000400 + n * KEY_RECORD] != 0xff:
+        n += 1
+    return "\n".join([
+        "        .data", "        .balign 2", "        .globl  rmx_cue_keys", "rmx_cue_keys:",
+        f'        .incbin "{stock}", 0x{CUE_KEYS - 0x40000400:x}, {n * KEY_RECORD}',
+        f"        .byte   0x{MIX_KEY:02x}, 0",
+        "        .long   rmx_cue_mix, 0, 0, 0, 0, 0",
+        "        .byte   0xff, 0", "        .long   0, 0, 0, 0, 0, 0", ""])
+
+
 MODULE = Module(
     name="rec-matrix", key="REC MATRIX", kind=Kind.CF_PATCH,
     category=Category.UTILITIES, author="bryantysinger", author_url="https://github.com/bryantysinger",
@@ -115,7 +143,7 @@ MODULE = Module(
     settings=SETTINGS,
     requires_brain=True,
     linked=(Linked("rmx", "modules/rec-matrix/rmx.s", dram=True, include=mask_inc),
-            Linked("rmxed", "modules/rec-matrix/editor.s", dram=True)),
+            Linked("rmxed", "modules/rec-matrix/editor.s", dram=True, include=cue_keys_inc)),
     detours=(Detour(SELECT_SITE, SELECT_STOCK, "rmx", "rmx_select",
                     "SRC3 select: 10 (MTRX) points the SRC3 source at the recorder's summed block",
                     kind="jmp"),
@@ -133,7 +161,9 @@ MODULE = Module(
     symbol_refs=(SymbolRef(KNOB_E_MKII, 0, "rmxed", "rmx_knob_e",
                            "RECORDING SETUP (MKII layer): knob E's push opens the matrix editor"),
                  SymbolRef(KNOB_E_MKI, 0, "rmxed", "rmx_knob_e",
-                           "RECORDING SETUP (MKI layer): knob E's push opens the matrix editor"),),
+                           "RECORDING SETUP (MKI layer): knob E's push opens the matrix editor"),
+                 SymbolRef(CUE_LAYER_KEYS, CUE_KEYS, "rmxed", "rmx_cue_keys",
+                           "CUE's held layer (MKI and MKII): its keys plus MIX, CUE + MIX opens the matrix"),),
     pokes=(
         Poke(SRC3_COUNT, (11).to_bytes(4, "big"), (12).to_bytes(4, "big"), "SRC3 count 11 -> 12 (MTRX)"),
         Poke(VALIDATOR_CMP, H("720a"), H("720b"), "part validator: SRC3 max 10 -> 11"),
