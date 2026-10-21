@@ -89,6 +89,14 @@ path, so the harness's own gains cancel.
                   under -70 dBFS.
   MIX/GAIN/FDBK/  as SRR's: MIX and GAIN in RING, FDBK in SHIFT UP, AMPH in
   AMPH turns      RING on the R channel (AMPH leaves L alone); under -70 dBFS.
+  FDBK decays     sambanks/octabam#825: a 0.3 s burst (440 Hz, 0.125 FS), then
+                  silence, at FDBK 127, MIX 127, RANGE HIGH, in DOWN at FREQ 64
+                  and 72 and UP at 72: the tail 2.5-3.0 s after the input
+                  stops under -70 dBFS. Without the loop filter the Hilbert
+                  pair's 0-degree I/Q at DC (DOWN) and Nyquist (UP) self-
+                  oscillated there at the limiter's level (-4.1, -4.0 and -4.0
+                  dBFS); with it, -83.6, -84.5 and -80.9 (21 Oct 2026). Those
+                  are the Hilbert sections' limit cycle, also there at FDBK 0.
 
 Not covered: payload B (tracks 1-4) -- dsp_host renders one payload here;
 `rig_render` covers both, and the October port's A/B found T1 == T5.
@@ -469,6 +477,17 @@ for label, knob, ch, ctx in (("MIX, RING", "MIX", 0, dict(FREQ=64, RANGE=1, MODE
           f"turn {tl:.1f} dBFS, held {hl:.1f}")
 
 print()
+# ---- FDBK: the SHIFT loop always decays (#825) ---------------------------------
+BURST = int(0.3 * SR)
+burst = [s if i < BURST else 0 for i, s in enumerate(sine(3.3))]
+for mode, freq in ((1, 64), (1, 72), (2, 72)):
+    bL, bR = render(burst, MODE=mode, MIX=127, RANGE=1, FREQ=freq, FDBK=127)
+    a, b = BURST + int(2.5 * SR), BURST + int(3.0 * SR)
+    t = max(rms(bL, a, b), rms(bR, a, b))
+    td = 20 * math.log10(t / (1 << 23)) if t else -999.0
+    check(f"FDBK 127, {('', 'DOWN', 'UP')[mode]} FREQ {freq}: the tail decays under -70 dBFS",
+          td < -70, f"{td:.1f} dBFS 2.5-3.0 s after the input stops")
+
 if FAILS:
     print(f"{len(FAILS)} FAILED")
     sys.exit(1)

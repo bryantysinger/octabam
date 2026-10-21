@@ -59,12 +59,14 @@
 ;     $20/$12 the shelf's ap[n-1] and x[n-1], L    $38/$26 the same, R
 ;     $39/$3a aPrev L/R (chain A delayed)   $3b/$3c lastwet L/R (the feedback tap)
 ;     $37 the Hilbert chains' parity half, $40 or $60
+;     $1d/$1e/$1f/$2e the feedback loop filter's x[n-1], x[n-2], y[n-1],
+;     y[n-2], L; $2f/$30/$31/$3f the same, R (#825)
 ;   per block:
 ;     $21 range   $22 mode   $25 ptable base   $27 ring flag   $32 shift flag
 ;   per sample:
 ;     $2a m, $2b 1/(2m) -- BRR's step pair   $2c sin  $2d cos
 ;     $33 dry L   $34 dry R   $35 v L   $36 v R   $3d/$3e chain inputs L/R
-;   free: $14 $18 $1d-$1f $23 $24 $2e-$31 $3f $80-$83
+;   free: $14 $18 $23 $24 $80-$83
 ;   the four Hilbert chains: each section is an allpass in z^-2, so even and
 ;   odd samples run independent state. $40-$5f is one parity's half, $60-$7f
 ;   the other's, toggled each sample ($37); within a half, 16 sections x
@@ -638,20 +640,63 @@ lf_nomod:
         tst     a
         beq     lf_noshift
 
-; in = 0.5*dry + fdbk*lastwet, per channel. The halving is what keeps the
-; feedback loop inside the rail: |in| settles at 0.5/(1-fdbk), so fdbk < 0.5
-; is an ARITHMETIC cap, not a taste one. The x2 at the output undoes it.
-        move    x:(r7+$33),a            ; dry L
-        asr     #$1,a,a
-        move    x:(r7+$3b),x0           ; lastwet L
+; in = 0.5*dry + fdbk*fb, per channel, fb = lastwet through the loop filter
+; below. The x2 that forms the wet (after the B chains) is INSIDE the loop,
+; so the loop gain is 2*fdbk, not fdbk: 0.9 at the cap for any component the
+; Hilbert pair handles (sambanks/octabam#825; the earlier comment here had
+; |in| settling at 0.5/(1-fdbk), which left the 2 out).
+;
+; THE LOOP FILTER, (1 - z^-2)/(1 - R z^-2), R = 0.995: zeros at DC and at
+; Nyquist, corners near 18 Hz and fs/2 - 18 Hz, peak 2/(1+R) (+0.02 dB) at
+; fs/4. Every Hilbert section is exactly -1 at z = +-1, so both chains are +1
+; there and I/Q collapses to 0 degrees: DC in comes out as 2*D*(cos + sin),
+; a tone at the carrier step with sqrt(2) the amplitude, and DOWN brings that
+; tone back to DC phase-locked to the same carrier. The two-pass gain is
+; (2 fdbk)^2 sqrt(2) cos(phi), phi the chains' phase at the step: above 1
+; from fdbk 0.42 when phi lines up (FREQ about 60-72 in HIGH), and the loop
+; sustained at the limiter, -4 dBFS. UP does the same at Nyquist. The filter
+; removes the two frequencies the shifter cannot shift; it sits in the
+; feedback path only, so the wet itself is untouched.
+; State $1d/$1e x[n-1]/x[n-2], $1f/$2e y[n-1]/y[n-2] (L); $2f/$30, $31/$3f (R).
+        move    #>$7f5c29,y1            ; R = 0.995, both channels
+        move    x:(r7+$2e),x1           ; y[n-2] L
+        mpy     y1,x1,b                 ; R*y[n-2]
+        move    x:(r7+$3b),x0           ; x = lastwet L
+        add     x0,b
+        move    x:(r7+$1e),x1           ; x[n-2]
+        sub     x1,b                    ; y = x - x[n-2] + R*y[n-2]
+        move    x:(r7+$1d),x1
+        move    x1,x:(r7+$1e)           ; x[n-2] <- x[n-1]
+        move    x0,x:(r7+$1d)           ; x[n-1] <- x
+        move    x:(r7+$1f),x1
+        move    x1,x:(r7+$2e)           ; y[n-2] <- y[n-1]
+        move    b,x0                    ; fb L = y, limited
+        move    x0,x:(r7+$1f)           ; y[n-1] <- y
+
+        move    x:(r7+$3f),x1           ; y[n-2] R
+        mpy     y1,x1,b                 ; y1 = R still
+        move    x:(r7+$3c),x0           ; x = lastwet R
+        add     x0,b
+        move    x:(r7+$30),x1
+        sub     x1,b
+        move    x:(r7+$2f),x1
+        move    x1,x:(r7+$30)
+        move    x0,x:(r7+$2f)
+        move    x:(r7+$31),x1
+        move    x1,x:(r7+$3f)
+        move    b,x0                    ; fb R
+        move    x0,x:(r7+$31)
+
         move    x:(r7+$04),y1           ; fdbk, glided
-        mac     x0,y1,a
-        move    a,x:(r7+$3d)
         move    x:(r7+$34),a            ; dry R
         asr     #$1,a,a
-        move    x:(r7+$3c),x0           ; lastwet R
-        mac     x0,y1,a                 ; y1 = fdbk still
+        mac     x0,y1,a                 ; x0 = fb R
         move    a,x:(r7+$3e)
+        move    x:(r7+$33),a            ; dry L
+        asr     #$1,a,a
+        move    x:(r7+$1f),x0           ; fb L
+        mac     x0,y1,a
+        move    a,x:(r7+$3d)
 
 ; ---- the oscillator, ONCE for both channels ------------------------------
         move    x:(r7+$1c),a            ; phase (shared with the ring mod --

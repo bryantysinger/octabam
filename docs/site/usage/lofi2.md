@@ -21,7 +21,8 @@ AMPH. In Octabam Inserts only.
 - LPF 127 takes the shelf out of circuit.
 - How many fit: SHIFT costs more than RING. Up to four SHIFT instances per
   core (the eight tracks run on two cores); all eight tracks in RING, and
-  all eight in SHIFT, have run cleanly. An FX1 effect on the same track
+  all eight in SHIFT, have run cleanly (SHIFT at eight not yet re-run since
+  the October 21 feedback fix, which costs a little more). An FX1 effect on the same track
   takes from the same core's budget.
 
 ## Parameters
@@ -30,7 +31,7 @@ AMPH. In Octabam Inserts only.
 |---|---|---|---|
 | 1 | FREQ | 0..127 | modulator frequency, exponential over six octaves; sweeps are smooth |
 | 1 | MIX | 0..127 | modulator depth: crossfades the ring or shift against the dry |
-| 1 | FDBK / GAIN | 0..127 | one knob, renamed per MODE. SHIFT: FDBK, the feedback ladder. RING: GAIN on the ring level, 0 dB at 0, +11.9 dB at 127 |
+| 1 | FDBK / GAIN | 0..127 | one knob, renamed per MODE. SHIFT: FDBK, the feedback ladder, which always dies away when the input stops. RING: GAIN on the ring level, 0 dB at 0, +11.9 dB at 127 |
 | 1 | SRR | 0..127 | sample-rate reduction (a hold), stock LO-FI's rates: no reduction through 7, 8,018 Hz at 64, 3,564 Hz at 127 |
 | 1 | BRR | 0..127 | bit-depth reduction, stock LO-FI's curve: 1 bit at 0 through 3 bits at 16 to 2^20.8 at 127 |
 | 1 | LPF | 0..127 | high-shelf cut, -12 dB above a corner swept from 100 Hz at 0 to 16 kHz at 126; 127 takes it out of circuit |
