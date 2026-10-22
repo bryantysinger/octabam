@@ -908,7 +908,7 @@ def main():
              "remix-switch": (), "remix-switch-trace": (),   # REMIX SWITCH's park in dead vectors, no region words
              "usb-out-main-cue": (), "usb-out-main": (), "usb-midi": (), "stems": (),     # stock effects + ColdFire modules, no DSP words
              "stems-brain": (),   # STEM REC under PROJECT + BRAIN/REMIX SWITCH; no DSP words
-             "rec-threshold": (), "buffer-saver": (), "plocks-p2": (), "scenes-midisc": (), "kits": (),
+             "octa303": (), "rec-threshold": (), "buffer-saver": (), "plocks-p2": (), "scenes-midisc": (), "kits": (),
              "persistent-buffers": (),   # STORE + PERSISTENT BUFFERS on the stock effects, no DSP words
              "analog-bassdrum": ("SPRING REV",),
               "blackpyramids-303": ("SPRING REV",),   # its DSP voice in SPRING's words, as ANALOG BD's
@@ -917,7 +917,8 @@ def main():
              **{_k: () for _k in ("direct-jump-kyoti", "batch-bugfixes", "reload-from-project",
                                   "quantize-live-rec-toggle", "erase-empty-trigless-locks",
                                   "mute-modes", "kyoti-mute-jump", "kyoti-fixes", "rec-trig-mute",
-                                  "euclid-fill", "varispeed", "copy-project")},
+                                  "euclid-fill", "varispeed", "copy-project",
+                                  "cxosc", "cxosc-core")},  # CX OSC (+ CORE handoff); ColdFire, no DSP words
              # the twelve io remixes: the IN module's RX inject is placed in SPATIALIZER's words
              **{f"usb-io-{o}-{i}": ("SPATIALIZER",) for o in ("tracks", "tracks-main-cue", "main-cue", "main") for i in ("ab", "cd", "abcd")},
              "octatrick": ("SPATIALIZER",),   # USB's ABCD input inject, as in the io remixes
@@ -927,8 +928,11 @@ def main():
              "wave": ("SPRING REV", "DARK REV"),   # WAVE runs in their words
              "usb-out-tracks-main-cue": ("PLATE REV",),   # USB's inject is placed in its words (the remix lists 13)
              "transient": ("PLATE REV",),   # TRANSIENT runs in its words; the other 13 stay
+             "void": ("PLATE REV",),        # VOID SCRAPE runs in its words; the other 13 stay
              "lofi2": ("PLATE REV", "SPRING REV"),   # LOFI2's 1,372 words with its table; PLATE alone is 594
              "bbd": ("PLATE REV", "SPRING REV"),   # BBD's 1,112 words from PLATE's start, clear of the SPRING words DARK calls
+             "shatter": ("PLATE REV",),   # SHATTER runs in its words; the other 13 stay
+             "stuttr": ("PLATE REV",),   # STUTTR runs in its words; the other 13 stay
              "testgen": ("PLATE REV",),     # TESTGEN runs in its words; the other 13 stay
              "resonator": ("PLATE REV",),   # RESONATOR runs in its words; the other 13 stay
              "vocoder": ("PLATE REV", "DJ EQ"),   # VOCODER runs in PLATE's words; DJ EQ out so the tables sit in X

@@ -1,0 +1,42 @@
+A circuit-modelled Roland TB-303 voice on the ColdFire, one per track, as a
+machine of its own: **OCTA-303**. It needs no sample, gives up no stock
+effect, and its model is fitted to recordings of a real TB-303 (Din Sync's
+x0xb0x reference set). With the companion effect dEVILish on the track
+(a separate module) it plays Robin Whittle's Devil Fish modifications.
+
+## Access
+
+Double-tap the [TRACK] key to open the machine list, choose **OCTA-303**
+(below PICKUP), [YES]. [FUNC] + [SRC] opens the same list; on a track with a
+sample it shows the sample list first, and [LEFT] reaches the machines. A new
+OCTA-303 track starts at TUNE C3, CUT RES ENV DEC 64, ACC 0.
+
+![SRC SETUP with OCTA-303: WAVE, GATE, FINE, SLID, DRIV, ACCV.](../../img/octa303/setup.png)
+
+## Controls
+
+![OCTA-303 source controls: TUNE, CUT, RES, ENV, DEC, ACC.](../../img/octa303/source.png)
+
+| Page | Knob | What it does |
+|---|---|---|
+| SRC | TUNE | the note, C1–C5 by name |
+| SRC | CUT | cutoff, the 303's CUTOFF FREQ law |
+| SRC | RES | resonance |
+| SRC | ENV | env mod |
+| SRC | DEC | decay, ~0.13–2.4 s |
+| SRC | ACC | the ACCENT knob, applied on the steps with an ACC lock |
+| SETUP | WAVE | SAW, SQR, SAW+D, SQR+D (+D: a distortion pedal after the VCA) |
+| SETUP | GATE | OFF: the AMP page shapes the note; 303: the 303's own gate, 3.5 of 6 clocks, tied into a slide |
+| SETUP | FINE | fine tune, ±½ semitone |
+| SETUP | SLID | slide time (0 = the 303's) |
+| SETUP | DRIV | drive into the output's soft ceiling, up to +18 dB |
+| SETUP | ACCV | accent loudness (64 = the calibrated 303) |
+
+## Playing it
+
+- **Accent:** p-lock ACC on the steps to accent; the ACC knob sets how much.
+- **Slide:** a trigless trig or a trigless TUNE lock on the next step.
+- The chromatic keys play semitones. AMP, FX1, FX2, LFOs, scenes and
+  p-locks work as on any track.
+- Cannot share an image with ANALOG BD, BLACKPYRAMIDS_303 or SYNTH
+  MACHINE: they use the same firmware seams.

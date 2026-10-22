@@ -42,4 +42,6 @@ can see, ships its docs in the same PR. -->
 - [ ] No Elektron bytes in the diff (no image, slice, `.syx`, or firmware dump)
 - [ ] Submodule pin changes name the upstream commit and why
 - [ ] The module README says what was measured and what was inferred
+- [ ] No selectable configuration (instance count, tracks, parameters, remix combination) crashes or degrades the unit; the guard is named in the module README
+- [ ] This module does not duplicate the function of an accepted module; or the PR says which module it replaces, or what makes its method different
 - [ ] Generated docs are current: `make docs` then `make verify-docs` passes (CI refuses stale READMEs)

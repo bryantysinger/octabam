@@ -16,9 +16,10 @@ MODULE = Module(
     category=Category.SETTINGS,
     author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
-    proof=Proof.CHECK,
-    proof_note="verify_persistent_buffers: symbols + port save/load; author MKII "
-               "R2–R6 (17 Oct 2026): head is R6, path BUFFERS/RECn.wav (no !)",
+    proof=Proof.HARDWARE,
+    proof_note="verify_persistent_buffers port; author MKII R2–R6 (17 Oct 2026); "
+               "R7 PBUF R7.RMX (22 Oct 2026): short/long save UI immediate, 8 slots, "
+               "empty skip, load/reload, reopen+play, overwrite, save≡load play",
     doc="On project save, dump non-empty recorder buffers to BUFFERS/REC1.wav..REC8.wav "
         "(overwrite); on project load, restore them.",
     linked=(Linked("pbf", "modules/persistent-buffers/pbuf.s", dram=True),),

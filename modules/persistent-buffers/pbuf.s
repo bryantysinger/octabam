@@ -1,9 +1,13 @@
 | PERSISTENT BUFFERS -- project-folder recorder buffers (REC1.wav..REC8.wav).
 |
 | On pstore_pre: mkdir BUFFERS/, sync-write each non-empty recorder
-| (wav_write) to BUFFERS/RECn.wav, PATH it there, then stock slot load +
-| post-load so the control record / UI show the assignment.
-| On load*_post / preload_post: same PATH + slot load when the file exists.
+| (wav_write) to BUFFERS/RECn.wav, PATH it there, then stock flex
+| post-load (no re-load — audio is already in the buffer; a SLOT_LOAD
+| here re-read the WAV and the UI only updated when that finished).
+| On load*_post / preload_post: PATH + flex slot load + post-load.
+| Recorders are FLEX 128–135: use 0x40096548 / POST_LOAD(1, slot), not
+| the static loader 0x40093980 (STORAGE.md's static entry; stock's flex
+| caller at 0x40084b4a).
 | Folder name has no '!': SLOT_LOAD treats '!BUFFERS/…' as INVALID FILENAME
 | (PATH landed in project.work on R4/R5; UI stayed unassigned).
 |
@@ -16,8 +20,8 @@
 
         .set    F_OPEN,     0x40016864
         .set    F_CLOSE,    0x4001677c
-        .set    SLOT_LOAD,  0x40093980      | (slot, keep_trim) STORAGE.md section 2
-        .set    POST_LOAD,  0x40099148      | (0, slot)
+        .set    FLEX_LOAD,  0x40096548      | (slot, keep_trim) flex; recorders 128-135
+        .set    POST_LOAD,  0x40099148      | (1, slot) after a flex load (0x40084b62)
         .set    REARM,      0x40093468      | (-1) re-arm voices
         .set    REFRESH,    0x4009da20      | (-1) refresh
         .set    SPRINTF,    0x40013a08
@@ -29,6 +33,7 @@
         .set    CTL_BASE,   0x46c922c4
         .set    CTL_STRIDE, 44
         .set    CTL_LEN,    16
+        .set    CTL_NAME,   24
         .set    WAV_GUARD,  0x46105408
         .set    FS_MKDIR,   0x46c8240a      | -> mkdir(path); call through
         .set    MIN_FRAMES, 64
@@ -97,7 +102,7 @@ sv_have_dir:
         pea     FO
         jsr     F_CLOSE
         addql   #4,%sp
-        bsr.w   assign_slot
+        bsr.w   bind_path               | PATH + UI; no re-load
 sv_next:
         addql   #1,IDX
         moveq   #7,%d0
@@ -142,7 +147,7 @@ ld_loop:
         movel   #128,%d3
         addl    IDX,%d3
         movel   %d3,SLOT
-        bsr.w   assign_slot
+        bsr.w   load_slot
 ld_next:
         addql   #1,IDX
         moveq   #7,%d0
@@ -158,8 +163,26 @@ ld_next:
         lea     %sp@(40),%sp
         rts
 
-| PATH = RECn.wav, then stock slot load + post-load (binds ctl name / state).
-assign_slot:
+| PATH into flex settings, ctl name, flex post-load — no file re-read.
+| Same idea as BUFFER SAVER's mode-2 assign-to-self: the take is already
+| in the buffer; only the binding and UI need updating.
+bind_path:
+        bsr.w   set_path
+        bsr.w   set_ctl_name
+        bsr.w   flex_post
+        rts
+
+| PATH + flex load from card + post-load (project load / reload).
+load_slot:
+        bsr.w   set_path
+        clrl    %sp@-                   | keep_trim = 0
+        movel   SLOT,%sp@-
+        jsr     FLEX_LOAD
+        addql   #8,%sp
+        bsr.w   flex_post
+        rts
+
+set_path:
         movel   SLOT,%d3
         bsr.w   slot_settings
         moveq   #1,%d0
@@ -171,12 +194,27 @@ assign_slot:
         movel   %a1,%sp@-
         jsr     SPRINTF
         lea     %sp@(12),%sp
-        clrl    %sp@-                   | keep_trim = 0
+        rts
+
+| ctl+24 shows REC<n> so the slot list updates without a flex load.
+set_ctl_name:
+        movel   SLOT,%d3
+        bsr.w   slot_ctl
+        moveq   #1,%d0
+        addl    IDX,%d0
+        lea     FMT_NAME,%a0
+        lea     %a3@(CTL_NAME),%a1
+        movel   %d0,%sp@-
+        movel   %a0,%sp@-
+        movel   %a1,%sp@-
+        jsr     SPRINTF
+        lea     %sp@(12),%sp
+        rts
+
+| Stock flex caller: POST_LOAD(1, slot) then the batch re-arm/refresh.
+flex_post:
         movel   SLOT,%sp@-
-        jsr     SLOT_LOAD
-        addql   #8,%sp
-        movel   SLOT,%sp@-
-        clrl    %sp@-
+        pea     1
         jsr     POST_LOAD
         addql   #8,%sp
         rts
@@ -202,6 +240,7 @@ slot_ctl:
 FMT_DIR:  .asciz  "%s/BUFFERS"
 FMT_ABS:  .asciz  "%s/BUFFERS/REC%d.wav"
 FMT_REL:  .asciz  "BUFFERS/REC%d.wav"
+FMT_NAME: .asciz  "REC%d"
         .align  4
 
         .section .bss

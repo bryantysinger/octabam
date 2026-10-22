@@ -825,5 +825,85 @@
       "source": "emulator panel UART",
       "firmware_sha256": "3f208b1219b80976754360f3df0ddce569130aad207b4530da43ba17e21c7029"
     }
+  },
+  "octa303": {
+    "source": {
+      "image": "octa303/source.png",
+      "caption": "OCTA-303 source controls: TUNE, CUT, RES, ENV, DEC, ACC.",
+      "remix": "octa303",
+      "source": "emulator panel UART",
+      "firmware_sha256": "13c82691d05aee0a4329b5a5ded7ad126c31a5de26cef0c7ca650748e027f9af"
+    },
+    "setup": {
+      "image": "octa303/setup.png",
+      "caption": "SRC SETUP with OCTA-303: WAVE, GATE, FINE, SLID, DRIV, ACCV.",
+      "remix": "octa303",
+      "source": "emulator panel UART",
+      "firmware_sha256": "13c82691d05aee0a4329b5a5ded7ad126c31a5de26cef0c7ca650748e027f9af"
+    }
+  },
+  "shatter": {
+    "setup": {
+      "image": "shatter/setup.png",
+      "caption": "SHATTER: effect selection and setup parameters.",
+      "remix": "shatter",
+      "source": "emulator panel UART",
+      "firmware_sha256": "d656861d68141f0b039034c1dda14a915bec6e527150c6a0cb24b6cb593a3201"
+    },
+    "main": {
+      "image": "shatter/main.png",
+      "caption": "SHATTER: main parameter page.",
+      "remix": "shatter",
+      "source": "emulator panel UART",
+      "firmware_sha256": "d656861d68141f0b039034c1dda14a915bec6e527150c6a0cb24b6cb593a3201"
+    }
+  },
+  "void": {
+    "setup": {
+      "image": "void/setup.png",
+      "caption": "VOID: effect selection and setup parameters.",
+      "remix": "void",
+      "source": "emulator panel UART",
+      "firmware_sha256": "0057aee76367bd82548e35cc3b804a4f8a5a98d8f9f6272a3fe42a88081ffd0d"
+    },
+    "main": {
+      "image": "void/main.png",
+      "caption": "VOID: main parameter page.",
+      "remix": "void",
+      "source": "emulator panel UART",
+      "firmware_sha256": "0057aee76367bd82548e35cc3b804a4f8a5a98d8f9f6272a3fe42a88081ffd0d"
+    }
+  },
+  "stuttr": {
+    "setup": {
+      "image": "stuttr/setup.png",
+      "caption": "STUTTR: effect selection and setup parameters.",
+      "remix": "stuttr",
+      "source": "emulator panel UART",
+      "firmware_sha256": "fb63da46575a46a02b2e1e56a4995581dd7ffffa74ff982e00bb32b330476b89"
+    },
+    "main": {
+      "image": "stuttr/main.png",
+      "caption": "STUTTR: main parameter page.",
+      "remix": "stuttr",
+      "source": "emulator panel UART",
+      "firmware_sha256": "fb63da46575a46a02b2e1e56a4995581dd7ffffa74ff982e00bb32b330476b89"
+    }
+  },
+  "cxosc": {
+    "source": {
+      "image": "cxosc/source.png",
+      "caption": "CX OSC PLAYBACK: PTCH RATO INDX FOLD SYMM FDBK.",
+      "remix": "cxosc",
+      "source": "emulator panel UART",
+      "firmware_sha256": "47560f6033490386b25b9ff3feac5502b3de03dc70f9faaec7d17a463f249a99"
+    },
+    "setup": {
+      "image": "cxosc/setup.png",
+      "caption": "SRC SETUP: CX OSC selected in the machine list.",
+      "remix": "cxosc",
+      "source": "emulator panel UART",
+      "firmware_sha256": "47560f6033490386b25b9ff3feac5502b3de03dc70f9faaec7d17a463f249a99"
+    }
   }
 }

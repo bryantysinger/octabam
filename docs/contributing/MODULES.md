@@ -290,6 +290,7 @@ aliases the id to SEND, which takes the stock effect away from FX1 too.
 Free ids: `0x06 0x07 0x09 0x0a 0x0b 0x0e 0x0f 0x17 0x1a 0x1b 0x1d 0x1e
 0x1f`. EUCLID holds `0x1d` and LOFI2 `0x1f`; the selftest's placement
 probes build scratch fixtures on `0x1e`, so a module there fails them.
+STUTTR replaces MULTIBCOMP (`0x19`, stock null stub, not a free-pool id).
 
 The registry is the arbiter: `registry.modules()` refuses two modules on
 one id at import, whether or not any remix selects both. `make modules`

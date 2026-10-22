@@ -23,7 +23,7 @@ on. The four sections below carry the four modules' documentation.
 
 ## Settings
 
-The inject (`rx_inject.asm`, 39 words on payload A) is placed whenever IN could be on: a remix that fixes IN at OFF (a `Pin`, or no BRAIN) carries no DSP section. `octabam-core` pins IN OFF, because its 14 stock effects leave no donor region.
+The inject (`rx_inject.asm`, 29 words on payload A) is placed whenever IN could be on: a remix that fixes IN at OFF (a `Pin`, or no BRAIN) carries no DSP section. `octabam-core` pins IN OFF, because its 14 stock effects leave no donor region.
 
 Six NEXT_BOOT settings, early (`docs/proposals/BRAIN.md` 6.4: the CS1
 early block, read by cfgsel at the USB controller init, so they stand
@@ -1394,7 +1394,7 @@ So `IN_TARGET` alone does not set the latency. Two levers, both in
 - `in_ctrl_shim`, a detour on the EP0 stall store (`0x4001de6e`), answers
   vendor request `0x56` with the fifteen counters.
 
-**DSP** (`rx_inject.asm`, 39 words on payload A, one inject for every IN value):
+**DSP** (`rx_inject.asm`, 29 words on payload A, one inject for every IN value):
 - Placed by the build in the donor region like any effect, with no dispatch
   entry: P:`0x88`'s `move r2,x:>$204` becomes `jsr >inject`
   (`schema.DspHook`) and the inject replays it. The ledger refuses a second
@@ -1405,8 +1405,17 @@ So `IN_TARGET` alone does not set the latency. Two levers, both in
   reader of the block, the core 0 → core 1 handoff and the read-back the
   recorder takes included, runs after P:`0x88` in the frame, so one inject
   serves both cores and the recorder (`out/dsp/payload_A.asm`).
-- Every instruction form has a stock site in payload A, or ran on Bryan T's
-  unit in the four-channel inject; the source lists them.
+- Each sample is joined from its hi/lo halfwords with one `insert` and
+  stored with `(r1)+`, and one outer `do #2` runs both passes: 9
+  instructions a sample in the loop, 15 before (21 Oct 2026). Bit-exact
+  against the previous inject in the emulator over every IN value. On
+  Bryan T's MKII (21 Oct 2026, `usb-io-main-cue-abcd`, OCTABAM1 against
+  OCTABAM2 built from main), `tools/hw/usb_in_tones.py` reads the same on
+  both: each input at unity on its own side, the other side below -178 dB,
+  the rest within +-1.5 LSB. Both carry a DC offset on MAIN R (about -410
+  LSB, -86 dBFS; MAIN L under 10) while the host sends zeros: added after
+  the inject, source not read. The other forms have a stock site in payload A or
+  ran on Bryan T's unit; the source lists them.
 
 **USB CROSSBAR** is required: without it the controller's 16-byte RX FIFO
 loses packet tails under a busy project ([Crossbar](#crossbar)
@@ -1485,7 +1494,7 @@ counters through a host session and prints a verdict.
 
 | what | where |
 |---|---|
-| code | DRAM unit `usbaudio_in`; DSP section `rx_inject.asm`, payload A's donor region, 33 words (IN AB) |
+| code | DRAM unit `usbaudio_in`; DSP section `rx_inject.asm`, payload A's donor region, 29 words |
 | hooks | `0x4001e91c` bus reset and `0x4001e952` session end (usbaudio's shims, below), `0x4001dd0a` SET_INTERFACE (after usbaudio's), `0x40004bc0` frame transfer state 7, `0x4001de6e` EP0 stall store; DSP P:`0x88` (`DspHook`) |
 | ring | 1,024 × 8 B, the unit's data |
 | DMA memory | dTDs `0x80007c00` (128 B), packet buffers `0x80007c80` (384 B), EP0 reply `0x80007f80` (64 B): `Claims.sram` |

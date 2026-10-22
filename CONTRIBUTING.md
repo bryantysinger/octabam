@@ -109,6 +109,26 @@ with everyone.
 **`key` is API.** It appears in the build report, and tools parse the
 report. Renaming a key, or rewording a report line, is a breaking change.
 
+**A module may not crash or degrade the unit in any configuration the user
+can select.** A module that does is not accepted. Selectable
+configurations include the number of instances, the tracks they sit on,
+parameter ranges, and combinations with other modules in the same remix.
+A guard removes the configuration (a refused selection, a clamp, a bypass on
+overrun); documenting the failure does not. `DspSection.max_per_core` declares
+an instance ceiling for the cycle price and the unit does not enforce it, so
+it is not a guard. The module README names the guard and what it was
+measured against.
+
+**A new module may not duplicate the function of an accepted one.** Once a
+module is accepted, changes to that behaviour are enhancements and bugfixes
+to that module. A separate module doing similar things is not accepted. Two
+exceptions: a proposal to replace an abandoned or buggy module, where the PR
+says which module it replaces and why; and a module that does the job in a
+suitably different fashion, where the PR states what differs (the method,
+the sound, the cost, what it can do that the accepted one cannot) and the
+module README carries the measurement that shows it. Modules that overlap
+and cannot share an image declare a `conflicts` pair (see Etiquette).
+
 ## The oracle rule
 
 **A port is done when the author's build and this repo's build agree byte for byte.**

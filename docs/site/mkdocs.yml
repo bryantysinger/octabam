@@ -43,10 +43,13 @@ nav:
       - Resonator: reference/modules/resonator.md
       - Reverb Server: reference/modules/busverb.md
       - Send: reference/modules/send.md
+      - Shatter: reference/modules/shatter.md
       - Sidechain Compressor: reference/modules/sidechain-compressor.md
       - Spectrum: reference/modules/spectrum.md
+      - Stuttr: reference/modules/stuttr.md
       - Tape Echo: reference/modules/tapeecho.md
       - Transient: reference/modules/transient.md
+      - Void: reference/modules/void.md
       - Vocoder: reference/modules/vocoder.md
       - Wave: reference/modules/wave.md
   - Bus Setup:
@@ -62,6 +65,7 @@ nav:
       - Erase Empty Trigless Locks: reference/modules/erase-empty-trigless-locks.md
       - Euclid Fill: reference/modules/euclid-fill.md
       - Mute Modes: reference/modules/mute-modes.md
+      - OCTA-303: reference/modules/octa303.md
       - Page 2 Parameter Locks: reference/modules/plocks-p2.md
       - Quantize Live Rec Toggle: reference/modules/quantize-live-rec-toggle.md
       - Rec Threshold: reference/modules/rec-threshold.md
@@ -70,6 +74,7 @@ nav:
       - RLEN PLEN: reference/modules/rlen-plen.md
       - Scale Quantizer: reference/modules/quantizer.md
       - Stem Recording: reference/modules/stems.md
+      - Cx Osc: reference/modules/cxosc.md
       - Synth Machine: reference/modules/synth.md
       - Tempo Controls: reference/modules/tempo-bus.md
       - Tuner: reference/modules/tuner.md
