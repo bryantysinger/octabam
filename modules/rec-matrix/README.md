@@ -95,6 +95,15 @@ and `Detour` entries list the addresses.
   write path's prologue (`0x400068f0`) counts calls (16 a frame, every
   recorder, recording or not), and a recorder unmixed for more than 48 of
   them starts at its targets.
+- **The settled path.** Outside a ramp every gain sits on its target (0,
+  unity or the A+B fold's half), so a source's share is `s >> 8`, `s >> 9`
+  or nothing. `rmx_set` keeps, per recorder, the mask its gains settled on
+  (-1 while a ramp runs); while the mask matches, the mix skips the
+  per-path gain loop and runs one pass per selected source over the
+  segment: the first pass stores (no clear), the last adds and saturates
+  (no separate pass). A change runs the general per-path loop until every
+  gain reaches its target, then settles again; a new take snaps and starts
+  settled. Both paths give the same samples and gains to the bit.
 - **The value.** SRC3 is stored as 0 –, 1–8 T1–T8, 9 MAIN, 10 CUE; MTRX is
   stored as 11 and reaches the select as 10. The descriptor's SRC3 count
   goes 11 → 12, and the Part validator's SRC3 maximum (`0x40002cb2`,
@@ -129,8 +138,8 @@ signed, so a row with CUE selected reads negative in BRAIN > SETTINGS.
 ### Memory
 
 DRAM, in the octabam payload: `rmx_buf` 1,024 B, `rmx_gains` 576 B, the
-call counter and per-recorder stamps 36 B, plus the two units' code and
-tables.
+call counter and per-recorder stamps 36 B, the settled masks, ramp flag and
+pass list 132 B, plus the two units' code and tables.
 
 ## Measured
 
@@ -141,6 +150,21 @@ Under the ColdFire port (`ot_emu`), 17–18 Oct 2026, project MTRXTEST,
   read-back gain (0.98444, as stock SRC3 = T1 records it) plus 0.5(A + B)
   at gain 1.0000000, within 2 LSB over 19,120 samples. REC2 = A records A
   on both sides bit for bit. No `brain.work`: silence.
+- **The settled path** (24 Oct 2026). The mixer rewritten to skip the
+  per-path loop once the gains settle. In a ColdFire model (Unicorn) the
+  old and new `rmx_select` side by side over 120,000 random calls (masks
+  over all 16 bits, mid-take changes, new-take snaps, partial segments,
+  saturating levels): every output sample, gain and stamp equal. Per
+  recorder per frame, settled: AB + own track 1,938 → 758 instructions,
+  one track 1,634 → 408, A+B fold + track 3,058 → 834, all 16 sources
+  4,042 → 2,384; a ramp frame about the old cost. Under the port, 8 tracks
+  recording 12 s with three mid-take changes, the image as built against
+  the same image with the new routine: AB + own track and a chain
+  (T n from T n-1) record byte for byte the same; the whole ColdFire goes
+  30,587 → 26,988 and 30,351 → 25,770 instructions a frame. With wide
+  masks on all 8 rows the old mixer halted the port at stock's frame check
+  (`0x4000ab40`) or glitched 11 samples; the new one ran clean, and every
+  call logged before the halt matched.
 - **The ramps.** A switched off and back on mid-take (the mask poked from
   outside at two frames): the take follows the Q15 model exactly, a
   64-sample linear ramp down and up (also 128, before the length was
