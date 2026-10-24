@@ -697,6 +697,22 @@ class DspSection:
     # the chip cannot enter or leave one by a jump.
     pins: tuple[int, ...] = ()
     pin_split_label: str | None = None
+    # THE TAIL -- where a payload harvests NOTHING (every stock effect kept,
+    # so there is no donor region), place the section above the payload's
+    # code instead: from the first P word past its highest load record
+    # (payload A P:$1fdf, 33 words below the default map's 8K; payload B
+    # P:$1da0) in a load record of its OWN. No stock record covers that
+    # space, and growing the payload in place would move payload B
+    # (docs/contributing/PLACEMENT.md), so the build ships a copy of the
+    # payload with the record spliced in before its terminator as a
+    # PRE-BOOT payload of octabam's loader and pokes the DSP boot's upload
+    # pointer at it, the route tools/build/ab_image.py takes: stock bytes
+    # and payload B do not move. The copy costs a DRAM region in the
+    # platform arena (unpacked + packed) in the remixes that use it, and
+    # nothing in any other: a remix with a donor region places the section
+    # there, as before. Hooks (DspHook) are patched in place as for any
+    # section.
+    tail: bool = False
     # Per-payload text substitutions applied to the source before anything
     # else the build does to it: {"A": {"@SBASE@": "$33e00"}, "B":
     # {"@SBASE@": "$3be00"}}. dsp_asm has no equ and no expressions, so a
@@ -715,6 +731,9 @@ class DspSection:
         if self.max_per_core is not None and not 1 <= self.max_per_core <= 4:
             raise ValueError(f"{self.asm}: max_per_core {self.max_per_core} "
                              f"outside 1..4 (a core has four FX2 slots)")
+        if self.tail and (self.pins or self.ptable or self.ptable2):
+            raise ValueError(f"{self.asm}: tail places the section whole in a "
+                             f"record of its own; it takes no pins and no ptable")
         if self.ptable2 and not self.ptable:
             raise ValueError(f"{self.asm}: ptable2 without ptable -- the "
                              f"second block follows the first")

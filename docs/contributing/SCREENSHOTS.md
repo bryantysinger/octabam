@@ -57,9 +57,10 @@ Groups and what each captures, from the `shot(...)` calls:
 | `features` | `octabam-core` with REC THRESHOLD, EUCLID FILL, RND NAME and STEM REC added and REC TRIG MUTE removed (a scratch selection; THR and REC_TRIG_MUTE share a hook) | euclid-fill, rec-threshold, stems, rnd-name |
 | `inserts` | `octabam-inserts`, one effect per track | setup and main pages of SPECTRUM, CHARACTER, MODULATION, TRANSIENT, EUCLID, LOFI2, GATE VERB, DELAY |
 | `bus` | `octabam-bus` | fx2-lock, tempo-bus, load-meter, memory, usb, and the DELAY SERVER, SEND and REVERB SERVER pages |
-| `extras` | one test remix per module (character-txtr, testgen, sidechain-compressor, miniverb, tapeecho, vocoder, wave) | setup and main page of each |
+| `extras` | one test remix per module (character-txtr, testgen, sidechain-compressor, miniverb, tapeecho, vocoder, wave, distorx, devilish; also alone as `distorx`) | setup and main page of each |
 | `machines` | `analog-bassdrum`, `octatrick`, `blackpyramids-303`, `octa303`, `cxosc` | analog-bassdrum, synth, direct-jump, blackpyramids-303, octa303, cxosc |
 | `octa303` | `octa303` (test remix) | octa303 alone (its two pages), without re-capturing the other machines |
+| `morph` | `morph` (test remix) | morph: the window on T1 armed, then STEPS 8 and x 2 |
 | `midi-loopback` | `midi-loopback` | midi-loopback (EXT/INT/BOTH windows and CHAN indicators) |
 | `midi-scales` | `midi-scales` | midi-scales (OFF, Major, Dorian, Mixolydian) |
 | `probes` | `cfmeter` | CF METER |

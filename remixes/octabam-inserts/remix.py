@@ -17,14 +17,14 @@ CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "RECORDER LOOP FIX", "BATCH_BUGFIXES", "ERASE_EMPTY_TRIGLESS_LOCKS",
         "QUANTIZE_LIVE_REC_TOGGLE", "REC_TRIG_MUTE", "MUTE_MODES",
         "SCALE QUANTIZER", "TUNER", "DIRECT_JUMP_KYOTI", "RELOAD_FROM_PROJECT", "RLEN PLEN",
-        "ATA WRITE GUARD",
+        "ATA WRITE GUARD", "SEQUENCER EVENTS",
         "LOAD METER")
 INSERTS = ("TRANSIENT", "EUCLID")
 STATIONS = ("SPECTRUM", "CHARACTER", "MODULATION")
 
 REMIX = Remix(
     name="octabam-inserts",
-    family="mods", proof=Proof.HARDWARE, proof_note="cursory testing on Sam's MKII (owner report, 16 Oct 2026)",
+    family="mods", proof=Proof.HARDWARE, proof_note="EUCLID transport integration: scoped hardware checks ([PR #851](https://github.com/sambanks/octabam/pull/851))",
     doc="CORE + SPECTRUM, CHARACTER, MODULATION, TRANSIENT and EUCLID on FX1 and FX2, LOFI2 (FX2), the stock DELAY and GATE VERB on FX2.",
     modules=STATIONS + ("MODE DEFAULTS", "DELAY", "GATE VERB") + INSERTS + ("LOFI2",) + CORE,
     fallback="NONE",

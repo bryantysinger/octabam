@@ -18,6 +18,6 @@ A remix is a named selection of modules; `make image REMIX=<name> BUILD=<n>` bui
 |---|---|---|
 | [`cxosc-core`](cxosc-core/README.md) | CORE + REMIX SWITCH + CX OSC on the 14 stock effects. | `make check`: unit handoff: CORE + CX OSC; marker-less machine list, mono, stock LFOs |
 | [`octabam-core`](octabam-core/README.md) | The core ColdFire modules on the 14 stock effects, with LOFI AMF FIX. | on hardware: cursory testing on Sam's MKII (owner report, 16 Oct 2026) |
-| [`octabam-inserts`](octabam-inserts/README.md) | CORE + SPECTRUM, CHARACTER, MODULATION, TRANSIENT and EUCLID on FX1 and FX2, LOFI2 (FX2), the stock DELAY and GATE VERB on FX2. | on hardware: cursory testing on Sam's MKII (owner report, 16 Oct 2026) |
+| [`octabam-inserts`](octabam-inserts/README.md) | CORE + SPECTRUM, CHARACTER, MODULATION, TRANSIENT and EUCLID on FX1 and FX2, LOFI2 (FX2), the stock DELAY and GATE VERB on FX2. | on hardware: EUCLID transport integration: scoped hardware checks ([PR #851](https://github.com/sambanks/octabam/pull/851)) |
 
 Never share a built image: it contains Elektron's OS.

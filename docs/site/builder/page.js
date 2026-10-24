@@ -16,7 +16,9 @@ async function main() {
 
   const pick = el("select", { id: "ob-remix" },
     ...manifest.remixes.map((r) => el("option", { value: r.name, textContent: r.title })));
-  const file = el("input", { type: "file", id: "ob-file", accept: ".zip,.syx" });
+  const file = el("input", { type: "file", id: "ob-file", accept: ".zip,.syx", hidden: true });
+  const choose = el("button", { type: "button", id: "ob-choose", textContent: "Choose OS file" });
+  const chosen = el("span", { id: "ob-chosen", textContent: " No file chosen." });
   const go = el("button", { id: "ob-go", textContent: "Build", disabled: true });
   const status = el("p", { id: "ob-status", role: "status" });
   const links = el("p", { id: "ob-links" });
@@ -25,10 +27,15 @@ async function main() {
 
   root.replaceChildren(
     el("p", {}, el("label", { htmlFor: "ob-remix" }, "Remix: "), pick),
-    el("p", {}, el("label", { htmlFor: "ob-file" }, "Your OCTATRACK_OS1.40C_dist.zip: "), file),
+    el("p", {}, "Your OCTATRACK_OS1.40C_dist.zip or OCTATRACK_OS1.40C.syx:"),
+    el("p", {}, choose, chosen, file),
     el("p", {}, go), status, links, built);
 
-  file.addEventListener("change", () => { go.disabled = !file.files.length; });
+  choose.addEventListener("click", () => file.click());
+  file.addEventListener("change", () => {
+    go.disabled = !file.files.length;
+    chosen.textContent = ` ${file.files.length ? file.files[0].name : "No file chosen."}`;
+  });
 
   go.addEventListener("click", async () => {
     go.disabled = true;

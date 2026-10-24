@@ -48,3 +48,17 @@ from the chooser. In Octabam Inserts only.
 | Setup | ATK / EDGE / SLEW | per OUT mode: ENV attack, GATE edge smoothing, RAND transition |
 | Setup | OUT mode | ENV, GATE, RAND, LOOP |
 | Setup | MIX | dry/wet; 0 is an exact dry passthrough |
+
+SEQUENCER EVENTS coordinates PLAY/resume notifications with other selected modules. EUCLID retains its own phase-reset policy.
+
+## Hardware evidence
+
+Cursory testing on Sam's MKII (owner report, 16 Oct 2026).
+
+On radiohagen's MKII (`EUCL EVENTS 98`, owner report, 22 Oct 2026),
+start/resume/stop passed with one EUCLID instance, instances on several tracks
+and both FX slots on one track; ordinary and arpeggiated MIDI played and stopped
+normally. EUCLID uses only the transport callbacks.
+
+Ordinary and arpeggiated MIDI start/resume/stop also passed on optimized
+`EUCL EVENTS 99` the same day.

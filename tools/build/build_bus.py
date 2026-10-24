@@ -267,6 +267,37 @@ if REMIX.fallback in STOCK_DSP:
              f"(MenuEntry.stock_dsp), so it has no entry points to alias id 0 to")
 
 
+def _harvest_listed():
+    """The stock effects this remix lists, which keep their DSP code: the
+    modules plus FX1's chooser (every stock FX1 effect when the remix names
+    none). The DSP pass derives the donor region from it."""
+    return set(REMIX.modules) | set(
+        REMIX.fx1 or [k for k in stock_mod.p_spans("A")
+                      if _MODS[k].menu.fx2_id in stock_mod.fx1_ids()])
+
+
+# THE TAIL (schema.DspSection.tail): {payload: [module keys]} placed above
+# the payload's code in a load record of their own, which happens only
+# where nothing is harvested -- the case that refused to build before, so
+# no remix that built then moves a byte. DEV always harvests CHORUS.
+# Filled by _tail_plan() once DEV is known; TAIL_REGION names each
+# payload's DRAM region for the pre-boot copy (unpacked, then packed).
+TAIL_REGION = "dsp_tail_%s"
+TAIL_SLACK = 0x1000         # bytes over the payload's length, each half of the region
+
+
+def _tail_plan():
+    if DEV or stock_mod.region_of(stock_mod.harvested(_harvest_listed())):
+        return {}
+    plan = {}
+    for _k in CARRIED + HOOKED:
+        _d = _MODS[_k].dsp
+        if _d is not None and _d.tail:
+            for _tag in sorted(_d.payloads):
+                plan.setdefault(_tag, []).append(_k)
+    return plan
+
+
 # ---- P-relative field offsets (PARAM_PAGES.md section 5b) ------------------
 # The record's canonical base is P = E + 0x38 and it is 0x192 bytes long
 # MEASURED FROM P, so section 2's E-relative table is 0x38 high throughout.
@@ -537,6 +568,9 @@ _RT_SYM = re.compile(r"\b(" + "|".join(sorted(_RT_SYMS, key=len, reverse=True)) 
 # short-jump target, because that one-word form is the only jmp dsp_asm
 # encodes.
 PIN_BRIDGE = "$fab"
+# The top of P a tail section may reach (schema.DspSection.tail): the
+# default memory map's 8K, which stock runs (CHIP.md section 3, Fig 3-2).
+TAIL_CEILING = 0x2000
 
 # `mpy` that dsp_asm encodes as `mpysu` is the one mismatch the shipping
 # code carries on purpose: the second operand is non-negative at every site
@@ -1387,6 +1421,16 @@ def main():
     _sel = {_k: remix_modules()[_k] for _k in REMIX.modules}
     _regions = [(_r.symbol, _r.size, _r.align) for _k in REMIX.modules
                 for _r in getattr(remix_modules()[_k], "dram_regions", ())]
+    # The tail's pre-boot copy of each payload it grows: the unpacked upload
+    # and its packed stage, one region per payload, last in the stack.
+    _tail = _tail_plan()
+    for _tag, _va, _ln in PAYLOADS:
+        if _tag in _tail:
+            _regions.append((TAIL_REGION % _tag, 2 * (_ln + TAIL_SLACK), 16))
+    if _tail and not _dram:
+        sys.exit(f"{', '.join(sorted({k for v in _tail.values() for k in v}))}: "
+                 f"placed at the payload's tail, which rides octabam's loader, "
+                 f"and this remix links no DRAM platform")
     _fixed = [(f"{_k} {_r.label}", _r.at, _r.end) for _k in REMIX.modules
               for _r in getattr(remix_modules()[_k], "arena_reserves", ())]
     _incs = {_u.label: _u.include(_sel, REMIX) for _m, _u in _dram + _early if _u.include is not None}
@@ -1418,9 +1462,29 @@ def main():
         return platform_build.build(
             [(_m.key, _u) for _m, _u in _dram], [], pathlib.Path("out/platform"),
             reserve=reserve, defsyms=_d, unit_defs=_ud, includes=_incs,
-            regions=_regions, early=[_u for _m, _u in _early], fixed=_fixed, **kw)
+            regions=_regions, early=[_u for _m, _u in _early], fixed=_fixed,
+            preboot_slots=1 if _tail else 0, **kw)
 
     _FIT = ("does not fit its arena reserve", "past the reserve's ceiling", "above DRAM region")
+
+    def _relink(*args, **kw):
+        """The runtime linked again at the sized reserve, now with the descriptor
+        clones' bytes (or the pre-boot payloads) in it. The reserve was sized with
+        zeros where the clones go; their real bytes pack larger, and when that
+        crosses the ceiling (21 Oct 2026: 74 B over, OCTA303 + DEVILISH) this build
+        runs again with a page more. The arena pokes are already in `img`, so a
+        page cannot be added in place. A remix that fits never takes this path,
+        and its image is unchanged."""
+        try:
+            return platform_build.build(*args, **kw)
+        except SystemExit as _e:
+            _extra = int(os.environ.get("OCTABAM_RESERVE_EXTRA", "0")) + 1
+            if not any(_f in str(_e) for _f in _FIT) or _extra > 4:
+                raise
+            print(f"\nMEMORY: {_e}\n  the clones' bytes packed past the sized reserve: "
+                  f"building again with {_extra} page(s) more", flush=True)
+            os.execve(sys.executable, [sys.executable] + sys.argv,
+                      {**os.environ, "OCTABAM_RESERVE_EXTRA": str(_extra)})
     _reservations = []
     _reserve = None
     _pbase = arena.BASE
@@ -1428,6 +1492,9 @@ def main():
         _platform((arena.BASE, arena.MAX_RESERVE), arena.BASE + arena.MAX_RESERVE)
         _ptop = json.loads(pathlib.Path("out/platform", platform_build.LAYOUT).read_text())["top"]
         _ppages = platform_build.pages_needed(arena.BASE, _ptop, _regions, _fixed)
+        # pages a run of this build asked for when the clones' bytes packed past the
+        # ceiling (_relink below); 0 for every build that fits the first time
+        _ppages += int(os.environ.get("OCTABAM_RESERVE_EXTRA", "0"))
         for _try in range(4):
             _reserve = (arena.BASE, _ppages * arena.PAGE)
             _pbase = arena.BASE + _ppages * arena.PAGE
@@ -1468,8 +1535,9 @@ def main():
         print(f"  {'loader stage':24s}            {_lay['stage_end'] - _lay['stage']:>10,} B  "
               f"packed runtime, dead after the boot depack")
         for _rs, (_ra, _rn) in _lay.get("regions", {}).items():
-            _ro = next(_k for _k in REMIX.modules
-                       for _r in getattr(remix_modules()[_k], "dram_regions", ()) if _r.symbol == _rs)
+            _ro = next((_k for _k in REMIX.modules
+                        for _r in getattr(remix_modules()[_k], "dram_regions", ()) if _r.symbol == _rs),
+                       "(DSP tail)")    # the tail's pre-boot copy (TAIL_REGION)
             print(f"  {_ro + ' ' + _rs:24s}            {_rn:>10,} B  DramRegion at 0x{_ra:08x}")
         for _fl, _flo, _fhi in _fixed:
             print(f"  {_fl:24s}            {_fhi - _flo:>10,} B  ArenaReserve at 0x{_flo:08x}")
@@ -2346,6 +2414,7 @@ mkgo:""",
     _delay_lit_want = _want
 
     dev_delay = None            # (words) for the .mem dump append, DEV only
+    tail_records = {}           # {payload: [P start, words]}: the tail's record
     for tag, va, ln in PAYLOADS:
         pp = PP[tag]
         mods, _ = modules(bytes(img), va, ln)
@@ -2399,9 +2468,7 @@ mkgo:""",
         # remix does not want, and giving up its words is the same decision
         # -- see stock.harvested(). The largest contiguous run of them is the
         # region; the rest are simply unlisted and keep their code.
-        _listed = set(REMIX.modules) | set(
-            REMIX.fx1 or [k for k in stock_mod.p_spans("A")
-                          if _MODS[k].menu.fx2_id in stock_mod.fx1_ids()])
+        _listed = _harvest_listed()
         # ⚠️ IN ADDRESS ORDER. DEV's CHORUS sits BELOW the reverbs, and the
         # report lists the donors in this order -- appending it put CHORUS
         # last and changed every DEV case's report hash (refhash caught it).
@@ -2414,6 +2481,13 @@ mkgo:""",
             # ("taking CHORUS costs FX1 its chorus", the module docstring).
             | ({"CHORUS"} if DEV else set()),
             key=lambda k: stock_mod.p_spans(tag)[k][0])
+        _tail_here = [] if _harvest else [
+            k for k in CARRIED + HOOKED if _MODS[k].dsp is not None
+            and _MODS[k].dsp.tail and tag in _MODS[k].dsp.payloads]
+        if _tail_here != _tail.get(tag, []):
+            sys.exit(f"payload {tag}: the tail plan ({_tail.get(tag)}) and the "
+                     f"harvest ({_harvest}) disagree -- _tail_plan and this pass "
+                     f"derive the region differently")
         if not _harvest:
             # Nothing harvested is the honest default for a stock chooser --
             # every word belongs to a stock effect that is using it -- but a
@@ -2422,9 +2496,11 @@ mkgo:""",
             # out of stock's dead interrupt vectors (schema.DspSection.pins),
             # which is what lets an image that keeps every stock effect carry
             # REMIX SWITCH. Only sections that still want region words count.
+            # A TAIL section (schema.DspSection.tail) goes above the
+            # payload's code in a record of its own (_tail_plan).
             _need = [m for m in ([m for m in _SEL if m.dsp is not None]
                                  + [_MODS[k] for k in HOOKED])
-                     if not m.dsp.pins]
+                     if not m.dsp.pins and not m.dsp.tail]
             if _need:
                 sys.exit(f"payload {tag}: nothing is harvested, so there is "
                          f"nowhere to place "
@@ -3086,6 +3162,47 @@ hostquit:
                       f"  id 0x{NEW_IDS[name]:02x}  Y base 0x38000  "
                       f"(DEV: OUT OF REGION, code lives in the .mem dump)")
                 continue
+            # ---- THE TAIL: above the payload's code, a record of its own ----
+            # (schema.DspSection.tail) Only where nothing is harvested
+            # (_tail_plan). P from the first word past the payload's highest
+            # load record in internal P, which no record covers, to the
+            # default map's 8K
+            # (CHIP.md section 3). The words go in tail_records and reach the
+            # chip in a pre-boot copy of the payload (after this pass); the
+            # hooks are stock words and are patched in place.
+            if name in _tail.get(tag, ()):
+                # internal P only: payload A's boot loader and the shared
+                # window's code sit at P:$30000 and above (CHIP.md section 3)
+                _top = max(_a + _c for _sp_, _a, _c, _o in mods
+                           if _sp_ == 0 and _a < TAIL_CEILING)
+                _rec = tail_records.setdefault(tag, [_top, []])
+                _at = _rec[0] + len(_rec[1])
+                _w, _syms = assemble_syms(src, _at, label=name)
+                if _at + len(_w) > TAIL_CEILING:
+                    sys.exit(f"payload {tag}: {name} ({len(_w)} words at P:0x{_at:05x}) "
+                             f"passes P:0x{TAIL_CEILING:05x}, the default map's 8K of P")
+                for _sp_, _a, _c, _o in mods:
+                    if _sp_ == 0 and _a < _at + len(_w) and _at < _a + _c:
+                        sys.exit(f"payload {tag}: P:0x{_at:05x}+{len(_w)} overlaps the "
+                                 f"record at P:0x{_a:05x}+{_c}; the tail is not free")
+                _rec[1].extend(_w)
+                print(f"  {'TAIL':13} P:0x{_at:05x}..0x{_at + len(_w) - 1:05x} "
+                      f"({len(_w):4d} words)  {name}, a load record of its own "
+                      f"(pre-boot upload; nothing harvested)")
+                for _h in remix_modules()[name].dsp.hooks:
+                    if not _h.on(tag):
+                        continue
+                    _hs = _h.site_on(tag)
+                    _got = (rdw_p_at(_hs), rdw_p_at(_hs + 1))
+                    if _got != tuple(_h.stock):
+                        sys.exit(f"payload {tag}: {name}'s hook site P:0x{_hs:05x} holds "
+                                 f"{_got[0]:06x} {_got[1]:06x}, not stock "
+                                 f"{_h.stock[0]:06x} {_h.stock[1]:06x}; refusing")
+                    wrw_p_at(_hs, 0x0BF080)
+                    wrw_p_at(_hs + 1, _syms[_h.label])
+                    print(f"  {'HOOK':13} P:0x{_hs:05x} -> {name} {_h.label} "
+                          f"P:0x{_syms[_h.label]:05x}  {_h.note}")
+                continue
             # ---- FULLY PINNED: the dead interrupt vectors ----------------
             # A section whose pieces are all pinned (schema.DspSection.pins)
             # takes no words from the harvested region at all -- which is
@@ -3575,7 +3692,7 @@ hostquit:
             if not _nref:
                 sys.exit(f"{_n}: no reference to its clone was repointed")
             print(f"  {_n:14s} P=0x{_dmap[_ci]:08x}  {_nref} reference(s) repointed")
-        _pappend, _psyms2, _pgsyms2, _punits2, _ploader2, _boot, _pnames = platform_build.build(
+        _pappend, _psyms2, _pgsyms2, _punits2, _ploader2, _boot, _pnames = _relink(
             [(_m.key, _u) for _m, _u in _dram], [], pathlib.Path("out/platform"),
             reserve=_reserve, defsyms=_pdefs, unit_defs=_unit_defs,
             includes={_u.label: _u.include(_sel, REMIX) for _m, _u in _dram + _early if _u.include is not None},
@@ -3598,6 +3715,62 @@ hostquit:
     if len(_srcm) > 1:
         sys.exit(f"{' and '.join(_m.key for _m in _srcm)} are DSP source machines: each owns "
                  "the source seam and SPRING REV's code -- take one")
+    if _srcm and tail_records:
+        sys.exit(f"{_srcm[0].key} replaces both DSP uploads, and "
+                 f"{', '.join(sorted({k for v in _tail.values() for k in v}))} grows "
+                 f"payload {', '.join(sorted(tail_records))}'s at its tail -- take one")
+    _pres, _pwho = [], None
+    if tail_records:
+        # THE TAIL's upload (schema.DspSection.tail): a copy of the payload
+        # with one more P record before its terminator, shipped as a
+        # PRE-BOOT payload of octabam's loader into its DRAM region
+        # (TAIL_REGION, unpacked in the first half, packed in the second),
+        # and the DSP boot's upload pointer poked at it -- ANALOG BD's route
+        # (tools/build/ab_image.py), with the payload's own records.
+        # Stock bytes do not move and payload B does not move.
+        import ab_records
+        from remix import pack, platform_build
+        _lay = json.loads(pathlib.Path("out/platform", platform_build.LAYOUT).read_text())
+        _ptr = {"A": 0x40001E8E, "B": ab_records.B_POINTER}
+        print(f"\n=== DSP tail: a load record above the payload's code ===")
+        _tpokes = []
+        for _tag, _va, _ln in PAYLOADS:
+            if _tag not in tail_records:
+                continue
+            if (_va, _ln) != {"A": ab_records.PAYLOAD_A, "B": ab_records.PAYLOAD_B}[_tag]:
+                sys.exit(f"payload {_tag} at 0x{_va:08x}+{_ln} is not where ab_records "
+                         f"has it; the upload pointer's stock value would not match")
+            _start, _words = tail_records[_tag]
+            _recs, _term = ab_records.records(img, _va, _ln)
+            _p0 = _va - BASE
+            _raw = bytes(img[_p0:_term]) + ab_records.ot_record(0, _start, _words) + \
+                bytes(img[_term:_p0 + _ln])
+            _packed = pack.PACKED_MAGIC + len(_raw).to_bytes(4, "big") + \
+                pack.pack(_raw, platform_build.MAX_CANDIDATES)
+            _blob = platform_build.SIGNATURE + _packed
+            _reg = TAIL_REGION % _tag
+            _ra, _rn = _lay["regions"][_reg]
+            _half = _rn // 2
+            if len(_raw) > _half or len(_blob) > _half:
+                sys.exit(f"payload {_tag}'s tail upload ({len(_raw):,} B, packed "
+                         f"{len(_blob):,}) outgrows its region's halves ({_half:,} B)")
+            _pres.append(dict(name=f"dsp tail payload {_tag}", blob=_blob,
+                              stage=_ra + _half + ab_records.UNCACHED, dst=_ra + ab_records.UNCACHED,
+                              rawlen=len(_raw), rhash=platform_build.roll(_raw),
+                              region=_reg))
+            _tpokes.append((_ptr[_tag], _va.to_bytes(4, "big"),
+                            (_ra + ab_records.UNCACHED).to_bytes(4, "big"),
+                            f"DSP boot: payload {_tag}'s upload reads the tail copy"))
+            print(f"  payload {_tag}: P:0x{_start:05x}..0x{_start + len(_words) - 1:05x} "
+                  f"({len(_words)} words) as a record of its own; upload {len(_raw):,} B, "
+                  f"packed {len(_blob):,}, into {_reg} 0x{_ra:08x} ({_rn:,} B)")
+        for _aa, _aexp, _aw, _anote in _tpokes:
+            _got = bytes(img[_aa - BASE:_aa - BASE + len(_aexp)])
+            if _got != _aexp:
+                sys.exit(f"DSP tail: 0x{_aa:08x} holds {_got.hex()}, not stock {_aexp.hex()}")
+            img[_aa - BASE:_aa - BASE + len(_aw)] = _aw
+            print(f"    poke 0x{_aa:08x}: {_aexp.hex()} -> {_aw.hex()}  {_anote}")
+        _pwho = "DSP tail"
     if _srcm:
         import importlib.util
         from remix import platform_build
@@ -3614,6 +3787,7 @@ hostquit:
         _integ = importlib.util.module_from_spec(_spec)
         _spec.loader.exec_module(_integ)
         _pres, _apokes, _alog = _integ.integrate(img, IMG.read_bytes())
+        _pwho = _sm.key
         print(f"\n=== {_sm.key}: DSP source machine, both payloads ===")
         for _l in _alog:
             print(_l)
@@ -3623,19 +3797,21 @@ hostquit:
                 sys.exit(f"{_sm.key}: 0x{_aa:08x} holds {_got.hex()}, not stock {_aexp.hex()}")
             img[_aa - BASE:_aa - BASE + len(_aw)] = _aw
             print(f"    poke 0x{_aa:08x}: {_aexp.hex()} -> {_aw.hex()}  {_anote}")
-        if _pres:
-            # pre-boot payloads (ANALOG BD's grown uploads) ride the platform loader
-            _pappend, _psyms2, _pgsyms2, _punits2, _ploader2, _boot, _pnames = platform_build.build(
-                [(_m.key, _u) for _m, _u in _dram], [], pathlib.Path("out/platform"),
-                reserve=_reserve, defsyms=_pdefs, preboot=_pres, unit_defs=_unit_defs,
-                includes={_u.label: _u.include(_sel, REMIX) for _m, _u in _dram + _early if _u.include is not None},
-                regions=_regions,       # the same regions as the first link, or its symbols differ
-                patch=_rt_patch, early=[_u for _m, _u in _early], fixed=_fixed)
-            if (_psyms2, _pgsyms2, _punits2) != (_psyms, _pgsyms, _punits) \
-                    or _platform_at is None:
-                sys.exit(f"{_sm.key}: the platform runtime linked differently the second time")
-            _appends[_platform_at] = (
-                "octabam loader + payloads (" + ", ".join(_pnames) + ")", _pappend)
+    if _pres:
+        # pre-boot payloads (ANALOG BD's grown uploads, the DSP tail's copy)
+        # ride the platform loader
+        from remix import platform_build
+        _pappend, _psyms2, _pgsyms2, _punits2, _ploader2, _boot, _pnames = _relink(
+            [(_m.key, _u) for _m, _u in _dram], [], pathlib.Path("out/platform"),
+            reserve=_reserve, defsyms=_pdefs, preboot=_pres, unit_defs=_unit_defs,
+            includes={_u.label: _u.include(_sel, REMIX) for _m, _u in _dram + _early if _u.include is not None},
+            regions=_regions,       # the same regions as the first link, or its symbols differ
+            patch=_rt_patch, early=[_u for _m, _u in _early], fixed=_fixed)
+        if (_psyms2, _pgsyms2, _punits2) != (_psyms, _pgsyms, _punits) \
+                or _platform_at is None:
+            sys.exit(f"{_pwho}: the platform runtime linked differently the second time")
+        _appends[_platform_at] = (
+            "octabam loader + payloads (" + ", ".join(_pnames) + ")", _pappend)
 
     # ... and after everything is written but the appends.
     _kept = _keep.violations(img, BASE, [remix_modules()[k] for k in REMIX.modules])

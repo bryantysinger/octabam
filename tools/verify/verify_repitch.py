@@ -93,7 +93,10 @@ def build_project(src, dest, tstr, tsmode, bpm, ptch, rate, machine="flex"):
                  "[/SAMPLE]\r\n\r\n").encode()
         at = raw.find(b"[SAMPLE]")
         if at < 0:
-            sys.exit(f"verify_repitch: {pw} has no [SAMPLE] section to insert before")
+            # A clean one-sample project has no section left after replacing
+            # slot 1. Sample sections are also valid at the end of the file.
+            raw = raw.rstrip(b"\r\n") + b"\r\n\r\n"
+            at = len(raw)
         raw = raw[:at] + block + raw[at:]
         for key, val in ((rb"BANK", b"0"), (rb"PATTERN", b"0"), (rb"TRACK", b"0")):
             raw = re.sub(rb"\r\n" + key + rb"=\d+\r\n", b"\r\n" + key + b"=" + val + b"\r\n", raw, count=1)

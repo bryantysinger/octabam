@@ -80,14 +80,11 @@ flash needs neither command.
 
 ## Build and install
 
-Build this remix in the browser on [Build and Install](web-builder.md), or from
-source with:
+[Build and Install](web-builder.md) patches your copy of OS 1.40C into this
+remix in the browser and gives you the files to install.
 
-```bash
-make image REMIX=octabam-bus BUILD=91
-```
-
-After installation, SYSTEM STATUS → OS VERSION should read `OCTABAM91`.
+After installation, SYSTEM STATUS → OS VERSION shows `OCTABAM` and the build
+tag.
 For stock OS recovery, follow [Safety and recovery](safety.md).
 
 If the unit misbehaves, the failure register lists what has gone wrong and

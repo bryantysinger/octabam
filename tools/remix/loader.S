@@ -184,11 +184,14 @@ hashloop:
 | empty for a remix without one
         .include "early.inc"
 
-        .align  4
-table:
-        .include "table.inc"
 .ifdef PREBOOT
         .align  4
 pretable:
         .include "pretable.inc"
+.endif
+        .align  4
+table:
+        .include "table.inc"
+.ifdef PREBOOT
+        .include "preblobs.inc"
 .endif

@@ -62,6 +62,15 @@ Rotation and odd Euclidean lengths do not rotate the track swing grid. The
 
 Cursory testing on Sam's MKII (owner report, 16 Oct 2026).
 
+On radiohagen's MKII (`EUCL EVENTS 98`, owner report, 22 Oct 2026),
+start/resume/stop passed with one EUCLID instance, instances on several tracks
+and both FX slots on one track; ordinary and arpeggiated MIDI played and stopped
+normally.
+Ordinary and arpeggiated MIDI start/resume/stop also passed on optimized
+`EUCL EVENTS 99` the same day.
+EUCLID subscribes only to start/resume. Sample-accurate reset timing and multiple
+registered clients were not measured on the unit.
+
 ## Clock restart ordering
 
 `eu_clock_start` runs from the PLAY sites in task context; `eu_clock_update`
@@ -110,3 +119,5 @@ cutoff to avoid closing-sweep overshoots, but a held cutoff reuses the exact
 coefficient instead of paying for a 24-step divide on every sample. All DSP
 state is initialized and private to the instance; no audio buffer is
 allocated.
+
+EUCLID subscribes to SEQUENCER EVENTS for PLAY and resume. Its reset remains guarded against the frame ISR; other modules can register independently.

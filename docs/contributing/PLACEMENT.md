@@ -21,6 +21,7 @@ A DSP-side class exists for one kind of code (sanderlegit, PR #542):
 | class | declared as | where it lands | budget |
 |---|---|---|---|
 | **Pinned DSP section** | `DspSection(pins=(...), pin_split_label=...)` | fixed P addresses instead of the harvested effect region: the interrupt vectors stock leaves as `jmp *`. One address per piece, cut at one label with a one-word bridge jump, so a section can span two runs and cost the region nothing | ✅ read from the image: payload A 50 dead words (`$02..$0F`, `$1A..$1B`, `$1E..$3F`), payload B 58 (`$02..$0F`, `$14..$3F`) |
+| **Tail DSP section** | `DspSection(tail=True)` | where the payload harvests nothing: above the payload's code in internal P, in a load record of its own that a pre-boot copy of the payload carries (below) | payload A 33 words (`$1fdf..$1fff`), payload B 609 (`$1da0..$1fff`); costs a DRAM region of about twice the payload |
 
 Stock's unused vectors are self-jumps: an interrupt that fired there would
 spin the core in it for good, so stock never enables them.
@@ -40,15 +41,42 @@ fourteen effects and the park wholly in dead vectors booted from a switch,
 played, and switched away again, so the chip runs code in the
 exception-vector slots and takes the bridge jump between two runs.
 
-The top of P is free and unreachable. ✅ Measured 29 Sep 2026: the core's
-default map gives 8K words of P (`0x2000`); payload A's code ends at
-`0x01fdf` (33 words spare), payload B's at `0x01d9f` (609). Code is placed
-by rewriting words inside the payload's existing load records and no
-record covers that space; a new record grows payload A's blob, and payload
-B's begins on the byte A's ends, so it would shift B, the
-`FUN_40001b18(0x400f59ef)` call site and the boot copy. Stock's low P is
-full: A loads all 8,159 words in 66 records, B all 7,583 in 46, with no
-holes.
+The top of P is free. ✅ Measured 29 Sep 2026: the core's default map gives
+8K words of P (`0x2000`); payload A's code ends at `0x01fdf` (33 words
+spare, `0x01fdf..0x01fff`), payload B's at `0x01d9f` (609). Stock's low P
+is full: A loads all 8,159 words in 66 records, B all 7,583 in 46, with no
+holes. No record covers the spare words, and growing payload A's blob in
+place would shift B (it begins on the byte A's ends), the
+`FUN_40001b18(0x400f59ef)` call site, the boot copy and the immediates in
+the bootstrap-reprogram path at `0x40000450` (A's size `0x136cb` at
+`0x40000476` and `0x400004d4`, `79563` at `0x40000488`, B's address at
+`0x400004b0` and `0x40000500`; that path runs only when `0x3ffc` is below
+`0x400dea48`; Sam B, #854).
+
+**The tail** (`DspSection(tail=True)`, 22 Oct 2026) reaches it without
+moving anything. The normal boot hands the DSP loader only a pointer
+(`pea 0x400e2324; jsr 0x40001b18`, the pointer at `0x40001e8e`; B's at
+`0x40001ed4`), and the records end at the first space word above 2. Where
+a payload harvests nothing (every stock effect kept), the build assembles
+a tail section at the first word above the payload's internal-P records,
+splices one P record holding it in front of a COPY of the payload's
+terminator, ships the copy as a pre-boot payload of octabam's loader into
+a DRAM region of the platform arena (`dsp_tail_A`: the payload's length
+plus 4 KB, twice, unpacked then packed: 167,318 B, 28 pages for payload
+A), and pokes the pointer at it: the route ANALOG BD's builder
+(`tools/build/ab_image.py`) takes for its X record. Stock bytes and
+payload B stay where they are. A remix with a donor region places the
+section there instead, so no remix that built before moves a byte. USB's
+RX inject (29 words) is the one user; `remixes/test/usb-io-stock14`.
+✅ On an MKII, 22 Oct 2026 (Bryan T, OCTABAM4): the inject at
+`P:$1fdf..$1ffb` delivered the host's four channels as the donor-region
+inject does (`tools/hw/usb_in_tones.py`), so the chip runs code at the top
+of internal P and the DSP boots from the poked pointer's copy. Refhash: all
+24 configurations bit-identical with the change.
+Not covered: the reprogram path above uploads from its immediates, so if
+it ever ran it would load payload A without the tail record (ANALOG BD's
+uploads have the same exposure); and tools that read a payload from the
+image's own records (`dsp_modmap`) do not see the tail.
 
 The OS-image edits every class needs (a detour at a stock instruction, a
 poke, a grown table) are `Detour`, `Poke`, `TableGrow`, wired by symbol;

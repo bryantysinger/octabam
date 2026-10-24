@@ -277,6 +277,12 @@ def preboot_layout(layout, entries):
                  for sym, (a, n) in layout.get('regions', {}).items()]
     result = []
     for entry in entries:
+        # An entry that names its own DRAM region (`region`: the symbol, as
+        # the DSP tail's copy of a payload does) must lie wholly inside it,
+        # and is exempt from that region's claim and from nothing else.
+        own = entry.get('region')
+        if own is not None and own not in layout.get('regions', {}):
+            raise ValueError(f"pre-boot {entry['name']}: no DRAM region {own}")
         for role, length in (('dst', entry['rawlen']), ('stage', len(entry['blob']))):
             start = entry[role]
             if 0x48000000 <= start < 0x50000000:
@@ -285,7 +291,14 @@ def preboot_layout(layout, entries):
             name = entry['name'] + ' ' + role
             if length <= 0 or not layout['base'] <= start < end <= layout['ceiling']:
                 raise ValueError(f'pre-boot {name} lies outside the platform arena')
+            if own is not None:
+                lo, n = layout['regions'][own]
+                if not lo <= start < end <= lo + n:
+                    raise ValueError(f'pre-boot {name} ({start:#x}..{end:#x}) is not inside '
+                                     f'its DRAM region {own} ({lo:#x}..{lo + n:#x})')
             for other, lo, hi in occupied:
+                if other == f'DRAM region {own}':
+                    continue
                 if start < hi and lo < end:
                     raise ValueError(f'pre-boot {name} overlaps {other}: {start:#x}..{end:#x}')
             occupied.append((name, start, end))
@@ -294,7 +307,7 @@ def preboot_layout(layout, entries):
 
 
 def build(units, payloads, work: pathlib.Path, reserve=None, defsyms=None, preboot=(), includes=None,
-          unit_defs=None, regions=(), patch=None, early=(), fixed=()):
+          unit_defs=None, regions=(), patch=None, early=(), fixed=(), preboot_slots=0):
     """units: [(module key, Linked)] with dram=True, in link order.
     payloads: [dict(name, blob, stage, dst, rawlen, rhash, backup)] for
     payloads built elsewhere: `blob` = signature + GKA3 stream.
@@ -411,10 +424,22 @@ def build(units, payloads, work: pathlib.Path, reserve=None, defsyms=None, prebo
         (work / f"preblob{i}.bin").write_bytes(e["blob"])
         pre += [f"        .long preblob{i}, {len(e['blob'])}, 0x{roll(e['blob'][4:]):08x}, "
                 f"0x{e['stage']:08x}, 0x{e['dst']:08x}, {e['rawlen']}, 0x{e['rhash']:08x}, 0"]
+    # the entries go ahead of the runtime's blobs (loader.S), where the
+    # loader's 16-bit PC-relative `lea pretable` reaches them; the blobs follow
+    # the runtime's
+    preblobs = []
     for i in range(len(preboot)):
-        pre += [f"        .align 4", f"preblob{i}:", f"        .incbin \"preblob{i}.bin\""]
+        preblobs += [f"        .align 4", f"preblob{i}:", f"        .incbin \"preblob{i}.bin\""]
     if preboot:
         (work / "pretable.inc").write_text("\n".join(pre) + "\n")
+        (work / "preblobs.inc").write_text("\n".join(preblobs) + "\n")
+    elif preboot_slots:
+        # A link whose loader will be linked again with pre-boot payloads:
+        # the loader's code, and so the addresses of the loader units after
+        # it (REMIX SWITCH's osw_resume, osw_chain), are the final ones; the
+        # empty table is never run.
+        (work / "pretable.inc").write_text("        .long 0\n")
+        (work / "preblobs.inc").write_text("")
     # LOADER UNITS (schema.Linked.loader): their source, after their include
     # text, inline in the loader's one assembly -- `.include "remix.inc"`
     # is the include text itself here. Empty for every remix without one,
@@ -426,7 +451,7 @@ def build(units, payloads, work: pathlib.Path, reserve=None, defsyms=None, prebo
                 "        .text", "        .align  2"]
     (work / "early.inc").write_text("\n".join(ear) + "\n")
     o, e, b = work / "loader.o", work / "loader.elf", work / "append.bin"
-    _run(["m68k-elf-as", "-mcpu=5475", "-I", work, *(["--defsym", "PREBOOT=1"] if preboot else []),
+    _run(["m68k-elf-as", "-mcpu=5475", "-I", work, *(["--defsym", "PREBOOT=1"] if preboot or preboot_slots else []),
           "-o", o, ROOT / "tools/remix/loader.S"], work)
     _run(["m68k-elf-ld", f"-Ttext=0x{LOADER_AT:x}", "-o", e, o], work)
     _run(["m68k-elf-objcopy", "-O", "binary", e, b], work)

@@ -26,8 +26,17 @@ Markers as in `CHIP.md`: ✅ measured, 🟡 inferred.
    FUNC + SRC opens the same list, but on a FLEX or STATIC track with a sample it opens the sample
    list first: LEFT reaches the machines (the stock behaviour).
 2. Sequence it like any track. **Accent** = an ACC parameter lock. **Slide** = a trigless trig or a
-   trigless PTCH (TUNE) lock on the following step.
+   trigless lock (FUNC + TRIG) on the following step; since v7.1 it gets the note it slides from as
+   its TUNE lock the moment it is placed (the previous step with a trig or a trigless step: its TUNE
+   lock, or the Part's TUNE), so the slide ties into that note as on the TB-303. Turn TUNE with the
+   step held to slide somewhere else. A step that already has a TUNE lock keeps it.
 3. The CHROMATIC keys play semitones on an OCTA-303 track.
+4. **The TB-303's UP and DOWN** (v7.1): in GRID RECORDING, hold one or more trigs and press UP or
+   DOWN: each held step's TUNE goes an octave up or down (a step without a TUNE lock starts from
+   the Part's TUNE; a note past C1..C5 stays where it is), and the screen shows the note
+   (`C4 +OCT`). On every other track TRIG + UP / DOWN is stock (the sample-lock list).
+5. LFO SETUP names an OCTA-303 track's PLAYBACK destinations TUNE CUT RES ENV DEC ACC (v7.1; before,
+   FLEX's PTCH STRT LEN RATE RTRG RTIM: the modulation was right, the names were not).
 
 The older form still works and is unchanged: a FLEX track whose sample is named `TB303*.wav`
 (`TB303`, `TB303SQ`, `TB303D`, `TB303SQD`, any case) plays the same engine with neutral SETUP values.
@@ -107,11 +116,11 @@ Accent (v6.8, Din Sync set A5, peak / energy in the first 4–40 ms, relative to
 
 ### The code (✅)
 
-- `tools/octa303/sim/test_octa303.py`: 91/91 in a tree without `modules/devilish` (94/94 with it:
+- `tools/octa303/sim/test_octa303.py`: 108/108 with `modules/devilish` (v7.1; 92/92 before, 89/89 without it:
   three checks read dEVILish's manifest, one checks OCTA303's own `DEVIL_ID`). `octa303.s` executed
   from its source text in a ColdFire simulator equals the Python model `ref303.py` sample for sample:
-  both carriers, accents, slides, split frames, extreme knobs, Devil Fish on FX1/FX2, scenes and
-  crossfader, the gate state machine (fuzzed), the SETUP page, the machine registration helpers and
+  both carriers, accents, slides, split frames, extreme knobs, Devil Fish on FX1/FX2 (read from the DSP
+  voice record: locks, scenes and LFOs applied), the gate state machine (fuzzed), the SETUP page, the machine registration helpers and
   the validator wrapper.
 - No overflow: the VCA input is clamped from the tables so the product fits 32 bits (fuzzed
   over thousands of knob combinations).
@@ -129,6 +138,28 @@ but driving one engine call per case through the sequencer there would take hour
 simulator checks in seconds. Not done: `cfsim.py`'s output has not been compared bit for bit with
 the same calls under `ot_emu`; the port gate and the unit are what catch a simulator that reads an
 instruction differently from the chip.
+
+### v7.1 (23 Oct 2026): the sites, read from the user's 1.40C
+
+- ✅ The LFO PMTR formatter `0x4003bf64` (LFO page descriptor `0x400d37be`, slot 6's formatter)
+  takes a PLAYBACK destination's names from `PB_TABLE[the track's machine]`; the detour at
+  `0x4003bff0` hands it OCTA303's machine record on a signed track (Zac Kyoti's BLACKPYRAMIDS_303
+  hooks the same site for its own row, MT13: the two modules already conflict).
+- ✅ The held-trig layer's key table `0x400becda` sends UP and DOWN to `0x400434d8`, which opens
+  the sample-lock list for the first held step on a STATIC or FLEX track; the detour at its entry
+  takes the keys on an OCTA-303 track. The TUNE lock is written as the stock knob-lock writer
+  (`0x40050e60`) writes it: the bank blob and its battery-backed copy (`0x1001614e + …`), then
+  `bank + 0x9b332` and `0x100f8598`, `0x40027e00`, `0x4009da20(track)`.
+- ✅ The trig keys go through a dispatcher `0x40060b58(key, event)`: a press to `0x40050f20`
+  (FUNC + TRIG sets the trigless lock there: under the port, no write in `0x4005fb44` and the bit
+  already set at its entry), a release to `0x4005fb44`. The dispatcher's entry keeps the track's
+  trigless masks (+8 trigless trigs, +16 trigless locks) at a press; `0x4005fb44`'s tail before
+  `jmp 0x40027de4` (`0x40060b3e`) compares them, and a step that became trigless gets its note.
+- ✅ `test_octa303`: the three routines from their source text (octave up and down, the edges, the
+  toast's note, the battery-backed copy, the stock path on FLEX and MIDI tracks; the slide's note
+  from a trig, a slide, the Part, around the end of the pattern, a step already locked, no new step,
+  another track).
+- ✅ Under the port, `tools/octa303/port_o3keys.py` (the panel, a project, 23 Oct 2026): TRIG 1 + UP 64 → 76 and the toast `C4 +OCT`; FUNC + TRIG 2 a trigless lock with TUNE 76 at once; TRIG 3 + DOWN 64 → 52; a FLEX track's TRIG + UP opens the stock LOCK list and writes no lock; LFO SETUP shows `PB TUNE`.
 
 ### Under the port (✅, `ot_emu`, the user's OS 1.40 image, 19 Oct 2026)
 
@@ -151,6 +182,7 @@ instruction differently from the chip.
   power-cycled and reloaded with the machine and its SETUP values intact; GATE 303 by ear. A 7.5-minute recording (two OCTA-303 tracks, one with `devilish` and
   `distorx`, one with `devilish` and a filter, `distorx` on claps): peak −2.2 dBFS, level steady at
   about −17 dBFS RMS, no dropouts.
+- ✅ v7.1 on the author's MKI, image `O3V71` (BUILD A0, remix `octa303`), 23 Oct 2026, by ear and eye: held trig + UP / DOWN moves the note an octave (several held trigs at once; a note at C5 stays, no toast), `C4 +OCT` on the screen; FUNC + TRIG on the next step makes a slide that ties into the previous note, held and turned to another note it slides there, and + UP lifts it an octave; a FLEX track's TRIG + UP opens the sample list as before; LFO SETUP lists TUNE CUT RES ENV DEC ACC; the locks survive save, power-cycle and reload.
 - ✅ ACIDV71 (BUILD 88, same OCTA303), 20 Oct 2026: two OCTA-303 tracks with `devilish`, beside five
   `distorx` (one on T1): no clicks, no slow-downs, by ear.
 - Not measured: the ColdFire load (CF METER). The author has run three OCTA303 tracks for hours.
@@ -203,6 +235,5 @@ port: select and edit, unsign, the validator; needs `OT_PROJECT`), both in the m
 
 The manifest declares it in conflict with SYNTH MACHINE, ANALOG BD and BLACKPYRAMIDS_303 (the same
 machine row and FLEX seams); `make modules` shows the matrix. The Devil Fish knobs need the companion
-FX module `devilish`, proposed in its own PR after this one; without it every OCTA303 track is the
-plain 303. Passed in `make check REMIX=acidtrack` on the
+FX module [`devilish`](../devilish/README.md); without it every OCTA303 track is the plain 303. Passed in `make check REMIX=acidtrack` on the
 author's tree, 20 Oct 2026.

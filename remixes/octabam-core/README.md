@@ -20,7 +20,7 @@ remixes add effects to this set: [`octabam-inserts`](../octabam-inserts/README.m
 | | [CC MAP](../../modules/cc-map/README.md), [CC FEEDBACK](../../modules/cc-feedback/README.md) | CC onto page 2; knob changes out as CC |
 | | [DIRECT_JUMP_KYOTI](../../modules/direct-jump-kyoti/README.md), [RELOAD_FROM_PROJECT](../../modules/reload-from-project/README.md) | clock-locked direct jump; reload one track from the card |
 | | [SCALE QUANTIZER](../../modules/quantizer/README.md), [TUNER](../../modules/tuner/README.md) | scale quantizing on PTCH; a tuner window (UP + TEMPO) |
-| USB | [USB](../../modules/usb/README.md) | MIDI both ways; tracks, MAIN and CUE to a computer (TRACKS PRE, MAIN, CUE, MIDI on by default; settings in BRAIN) |
+| USB | [USB](../../modules/usb/README.md) | MIDI both ways; tracks, MAIN and CUE to a computer, and the computer's channels into inputs A-D (TRACKS PRE, MAIN, CUE, MIDI on, IN off by default; settings in BRAIN) |
 | recorder and fixes | [RECORDER LOOP FIX](../../modules/recorder-loop-fix/README.md), [RLEN PLEN](../../modules/rlen-plen/README.md) | the loop click; RLEN value PLEN |
 | | [BATCH_BUGFIXES](../../modules/batch-bugfixes/README.md), [ERASE_EMPTY_TRIGLESS_LOCKS](../../modules/erase-empty-trigless-locks/README.md), [QUANTIZE_LIVE_REC_TOGGLE](../../modules/quantize-live-rec-toggle/README.md), [REC_TRIG_MUTE](../../modules/rec-trig-mute/README.md), [MUTE_MODES](../../modules/mute-modes/README.md) | Zac-Kyoti's fixes and mute modes (MUTE_MODES runs from DRAM) |
 | | [ATA WRITE GUARD](../../modules/ata-write-guard/README.md) | keeps the first PIO card write and its bookkeeping atomic against the completion interrupt |
@@ -30,11 +30,11 @@ remixes add effects to this set: [`octabam-inserts`](../octabam-inserts/README.m
 | | stock | octabam-core |
 |---|---|---|
 | sample and recorder memory | 14,602 pages | 12,895 pages (the platform reserve) |
-| DSP words free | | 0: LOAD METER does not fit, so core has no LOAD view DSP rows |
+| DSP words free | | 0: LOAD METER does not fit, so core has no LOAD view DSP rows. USB IN's 29-word inject sits above payload A's code (`P:$1fdf`), in a load record of its own |
 
 ## Where it has run
 
-Cursory testing on an MKII (owner report, 16 Oct 2026). Port gates:
+Cursory testing on an MKII (owner report, 16 Oct 2026). USB IN in this remix has run under the port only; the same placement has run on Bryan T's MKII in [`usb-io-stock14`](../test/usb-io-stock14/README.md) (22 Oct 2026). Port gates:
 `make check REMIX=octabam-core` and the reach round.
 
 ## How to flash

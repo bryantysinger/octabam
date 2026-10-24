@@ -430,17 +430,17 @@
   "sidechain-compressor": {
     "main": {
       "image": "sidechain-compressor/main.png",
-      "caption": "Sidechain compressor: main parameter page.",
+      "caption": "SIDECHAIN_COMPRESSOR: main parameter page.",
       "remix": "sidechain-compressor",
       "source": "emulator panel UART",
-      "firmware_sha256": "4484abfc29d90904e459ed3fa22c352616987445899be108482a2a1af4e20611"
+      "firmware_sha256": "9af9e6e17ef3e436ea10e26651cf1933dc5f114e6118f821b02d80e3310a68ca"
     },
     "setup": {
       "image": "sidechain-compressor/setup.png",
-      "caption": "Sidechain compressor: effect selection and setup parameters.",
+      "caption": "SIDECHAIN_COMPRESSOR: effect selection and setup parameters.",
       "remix": "sidechain-compressor",
       "source": "emulator panel UART",
-      "firmware_sha256": "4484abfc29d90904e459ed3fa22c352616987445899be108482a2a1af4e20611"
+      "firmware_sha256": "9af9e6e17ef3e436ea10e26651cf1933dc5f114e6118f821b02d80e3310a68ca"
     }
   },
   "miniverb": {
@@ -768,14 +768,14 @@
       "caption": "SRC SETUP on a FLEX track: TSTR set to VARI.",
       "remix": "varispeed",
       "source": "emulator panel UART",
-      "firmware_sha256": "599149763f7d1d7011a7079466d234ba006a90068f31d882f54082c1e78ea4ff"
+      "firmware_sha256": "e40a4d78192435db0563cb518df8fb466101aeae8f5da46f6fcf088473af9014"
     },
     "quan": {
       "image": "varispeed/quan.png",
       "caption": "The SRC page of a VARI track: PTCH is QUAN, here 3/2.",
       "remix": "varispeed",
       "source": "emulator panel UART",
-      "firmware_sha256": "599149763f7d1d7011a7079466d234ba006a90068f31d882f54082c1e78ea4ff"
+      "firmware_sha256": "e40a4d78192435db0563cb518df8fb466101aeae8f5da46f6fcf088473af9014"
     }
   },
   "bbd": {
@@ -800,14 +800,14 @@
       "caption": "BLKPYRAMD source controls: PTCH, CUT, RES, ENV, DEC, ACC.",
       "remix": "blackpyramids-303",
       "source": "emulator panel UART",
-      "firmware_sha256": "eb922e1e66645072dea4b3f7c46b03e39f1d27933618e1d9b24aab724bac3bdb"
+      "firmware_sha256": "c0b6930092202f7910ce2be826182da04fdc735b56a04b42c965f758c9d5ef7d"
     },
     "setup": {
       "image": "blackpyramids-303/setup.png",
       "caption": "SRC SETUP with BLKPYRAMD: WAVE, TUNE, SLID, GATE, VOL.",
       "remix": "blackpyramids-303",
       "source": "emulator panel UART",
-      "firmware_sha256": "eb922e1e66645072dea4b3f7c46b03e39f1d27933618e1d9b24aab724bac3bdb"
+      "firmware_sha256": "c0b6930092202f7910ce2be826182da04fdc735b56a04b42c965f758c9d5ef7d"
     }
   },
   "resonator": {
@@ -824,6 +824,22 @@
       "remix": "resonator",
       "source": "emulator panel UART",
       "firmware_sha256": "3f208b1219b80976754360f3df0ddce569130aad207b4530da43ba17e21c7029"
+    }
+  },
+  "distorx": {
+    "setup": {
+      "image": "distorx/setup.png",
+      "caption": "DISTORX: effect selection and setup parameters.",
+      "remix": "distorx",
+      "source": "emulator panel UART",
+      "firmware_sha256": "35c12958d83d93f97b0f5d5e2b0ac0dd7ca828224eb0c3aebac5415e714c0c3e"
+    },
+    "main": {
+      "image": "distorx/main.png",
+      "caption": "DISTORX: main parameter page.",
+      "remix": "distorx",
+      "source": "emulator panel UART",
+      "firmware_sha256": "35c12958d83d93f97b0f5d5e2b0ac0dd7ca828224eb0c3aebac5415e714c0c3e"
     }
   },
   "octa303": {
@@ -904,6 +920,38 @@
       "remix": "cxosc",
       "source": "emulator panel UART",
       "firmware_sha256": "47560f6033490386b25b9ff3feac5502b3de03dc70f9faaec7d17a463f249a99"
+    }
+  },
+  "morph": {
+    "window": {
+      "image": "morph/window.png",
+      "caption": "T1 + UP: the MORPH window, T1 armed; STEPS, x and MODE on A, B and C.",
+      "remix": "morph",
+      "source": "emulator panel UART",
+      "firmware_sha256": "20a95c603255f608e4b4ff06e8811d4c985d6b95bd22982ae0a426ff5611f508"
+    },
+    "settings": {
+      "image": "morph/settings.png",
+      "caption": "STEPS 8 and x 2: a cycle of 16 steps.",
+      "remix": "morph",
+      "source": "emulator panel UART",
+      "firmware_sha256": "20a95c603255f608e4b4ff06e8811d4c985d6b95bd22982ae0a426ff5611f508"
+    }
+  },
+  "devilish": {
+    "setup": {
+      "image": "devilish/setup.png",
+      "caption": "DEVILISH: effect selection and setup parameters.",
+      "remix": "devilish",
+      "source": "emulator panel UART",
+      "firmware_sha256": "ed50ef7d8f6a5e5fad1e6726ab8c1a816d1a7e4ebb6ea947fa932daf8b00f13a"
+    },
+    "main": {
+      "image": "devilish/main.png",
+      "caption": "DEVILISH: main parameter page.",
+      "remix": "devilish",
+      "source": "emulator panel UART",
+      "firmware_sha256": "ed50ef7d8f6a5e5fad1e6726ab8c1a816d1a7e4ebb6ea947fa932daf8b00f13a"
     }
   }
 }

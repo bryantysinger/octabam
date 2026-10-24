@@ -1,7 +1,7 @@
 A circuit-modelled Roland TB-303 voice on the ColdFire, one per track, as a
 machine of its own: **OCTA-303**. It needs no sample, gives up no stock
 effect, and its model is fitted to recordings of a real TB-303 (Din Sync's
-x0xb0x reference set). With the companion effect dEVILish on the track
+x0xb0x reference set). With the companion effect [dEVILish](devilish.md) on the track
 (a separate module) it plays Robin Whittle's Devil Fish modifications.
 
 ## Access
@@ -35,7 +35,18 @@ OCTA-303 track starts at TUNE C3, CUT RES ENV DEC 64, ACC 0.
 ## Playing it
 
 - **Accent:** p-lock ACC on the steps to accent; the ACC knob sets how much.
-- **Slide:** a trigless trig or a trigless TUNE lock on the next step.
+- **Slide:** a trigless trig or a trigless lock ([FUNC] + [TRIG]) on the
+  next step. The moment it is placed it takes the note it slides from as its
+  TUNE lock (the previous step with a trig or a slide), so it ties into that
+  note as on the TB-303; hold the step and turn TUNE to slide somewhere else.
+  A step that already has a TUNE lock keeps it.
+- **Octave up / down** (the TB-303's UP and DOWN): in GRID RECORDING, hold
+  one or more trigs and press [UP] or [DOWN]. Each held step's TUNE moves an
+  octave (a step without its own note starts from the track's TUNE); a note
+  past C1–C5 stays where it is. The screen shows the note, e.g. `C4 +OCT`.
+  On other tracks [TRIG] + [UP] / [DOWN] works as stock (the sample list).
+- **LFOs:** LFO SETUP lists the destinations by OCTA-303's names (TUNE, CUT,
+  RES, ENV, DEC, ACC).
 - The chromatic keys play semitones. AMP, FX1, FX2, LFOs, scenes and
   p-locks work as on any track.
 - Cannot share an image with ANALOG BD, BLACKPYRAMIDS_303 or SYNTH

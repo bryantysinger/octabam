@@ -21,18 +21,11 @@ and [Octabam Bus](remix-bus.md) add effects to this set.
 
 ## Build and install
 
-[Build and Install](web-builder.md) builds this remix in the browser. To build
-from source instead:
-
-1. **Build.** Pick a build number; it becomes the OS version the unit shows.
-
-   ```bash
-   make image REMIX=octabam-core BUILD=91
-   ```
-
-2. **Back up the card.** KITS writes `kits.work` into each project it loads.
-3. Follow [Build and Install](web-builder.md#install-the-image) to install the image and confirm
-   that SYSTEM STATUS → OS VERSION reads `OCTABAM91`.
+1. **Back up the card.** KITS writes `kits.work` into each project it loads.
+2. [Build and Install](web-builder.md) patches your copy of OS 1.40C into this
+   remix in the browser and gives you the files to install.
+3. Follow [Install the image](web-builder.md#install-the-image) and confirm
+   that SYSTEM STATUS → OS VERSION shows `OCTABAM` and the build tag.
 4. To restore stock OS, follow [Safety and recovery](safety.md).
 
 If the unit misbehaves, the failure register lists what has gone wrong and

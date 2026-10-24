@@ -215,6 +215,7 @@ def _dsp():
                             # BRAIN), 10-21 are taken; the inject needs no
                             # trailing free words
         payloads=frozenset({"A"}),          # core 0 receives the ESAI
+        tail=True,          # every stock effect kept: P:$1fdf, a record of its own
         hooks=(DspHook(0x88, (0x627000, 0x000204), "inject",
                        "frame head: the RX block is written before any reader runs"),),
     )

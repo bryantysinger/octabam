@@ -38,7 +38,7 @@ def run(script, track=0, rig=None):
     for f, fr in enumerate(script):
         w, start_at, fname, alive = fr[:4]; df = fr[4] if len(fr) > 4 else None; fxslot = fr[5] if len(fr) > 5 else 1
         sq = fr[6] if len(fr) > 6 else None
-        rdf = fr[7] if len(fr) > 7 else df                            # v6.7.2: the knobs the 303 should hear
+        rdf = fr[7] if len(fr) > 7 else df                            # v7.1: the knobs the 303 should hear
         su = fr[8] if len(fr) > 8 else None                           # v7.0: the TB-303 machine's SETUP bytes
         sslot = 3 + (f % 2)                                          # the sample's FLEX slot
         rig.path(sslot, '/AUDIO/ACID/' + fname); rig.voice(track, alive, sslot)
@@ -107,43 +107,32 @@ for f in range(200):
     same &= R.render_call(st_a, w, f % 9 == 0, 0, 16, True, None) == R.render_call(st_b, w, f % 9 == 0, 0, 16, True, T.DF_NEUTRAL)
 check('devilish_neutral_is_absent', same)
 
-# v6.7.2: dEVILish's page 1 through the scenes and the crossfader (MIDI.md Appendix C), as the frame
-# builder morphs every effect's knobs on their way to the DSP
-from harness import scene_morph
+# v7.1: dEVILish's page 1 as the DSP gets it -- the voice record's halfwords (VREC + ping*0x200 +
+# 64*track, FX1 6-11 / FX2 12-17), where the frame builder has applied the locks, the scene morph and
+# the LFOs (LFO.md 5).  Knob = halfword >> 8, 0..127; the low byte is an LFO's fraction.
 _lane = (25, 0, 0, 64, 0, 50, 0, 0, 1, 0, 0, 0)
-def _pairs(slot, a, b):
-    p = [0xFF] * 64
-    for i in range(6):
-        if a[i] is not None: p[2 * (slot + i)] = a[i]
-        if b[i] is not None: p[2 * (slot + i) + 1] = b[i]
-    return p
-_A = (None, 127, 127, 0, None, 127); _B = (127, 0, None, 127, None, 3)
-_ok = []
-for fx, lslot in ((1, 18), (2, 24)):
-    for xf, ao, bo in ((0, 0, 0), (127, 0, 0), (64, 0, 0), (1, 0, 0), (126, 0, 0), (64, 1, 0), (64, 0, 1), (64, 1, 1)):
-        pr = _pairs(lslot, _A, _B)
-        if fx == 1: pr[2 * 24] = 0; pr[2 * 24 + 1] = 0      # FX2's slot locked: FX1 must not read it
-        rig = Rig(); rig.scene(0, pr, xf, ao, bo)
-        exp = scene_morph(_lane[:6], pr, lslot, xf, ao, bo) + _lane[6:]
-        sc = [(W(0, 60, 100, 90, 50, 127), 0, 'TB303.WAV', True, _lane, fx, None, exp)] + \
-             [(W(0, 60, 100, 90, 50, 0), None, 'TB303.WAV', True, _lane, fx, None, exp)] * (20 if FULL else 6)
-        A, B, mm = run(sc, rig=rig); _ok.append(mm is None)
-check('devilish_scene_morph_bit_exact', all(_ok), '%d/%d' % (sum(_ok), len(_ok)))
-_p = _pairs(18, _A, _B)
-check('scene_morph_endpoints', scene_morph(_lane[:6], _p, 18, 127) == (25, 127, 127, 0, 0, 127)
-      and scene_morph(_lane[:6], _p, 18, 0) == (127, 0, 0, 127, 0, 3)
-      and scene_morph(_lane[:6], _p, 18, 64) == (76, 64, 64, 63, 0, 65))
-check('scene_morph_no_locks_is_the_knob', all(scene_morph((k,) * 6, [0xFF] * 64, 18, xf) == (k,) * 6
-                                               for k in range(128) for xf in (0, 1, 63, 64, 126, 127)))
-_A2 = (127,) * 6; _B2 = (0,) * 6
+def _vr(fx, hws, ping=0, rounds=None):
+    rig = Rig(); rig.vrec(0, fx, hws, ping)
+    if fx == 1: rig.vrec(0, 2, (0x7f00,) * 6)                         # FX2's knobs: FX1 must not read them
+    else: rig.vrec(0, 1, (0x7f00,) * 6)
+    exp = tuple(min(max(h - 0x10000 if h & 0x8000 else h, 0) >> 8, 127) for h in hws) + _lane[6:]
+    sc = [(W(0, 60, 100, 90, 50, 127), 0, 'TB303.WAV', True, _lane, fx, None, exp)] + \
+         [(W(0, 60, 100, 90, 50, 0), None, 'TB303.WAV', True, _lane, fx, None, exp)] * (rounds or (20 if FULL else 6))
+    return run(sc, rig=rig)[2] is None
+_HW = ((0x7f00, 0x0000, 0x40fe, 0x22fe, 0x7fff, 0x0080),            # an LFO's dirty low bytes
+       (0x3200, 0x6400, 0x0100, 0x7e80, 0x1955, 0x00ff),
+       (0x8000, 0xff00, 0x7f00, 0x0000, 0x4000, 0x4000))             # below the floor: 0
+_ok = [_vr(fx, hw, ping) for fx in (1, 2) for hw in _HW for ping in (0, 1)]
+check('devilish_vrec_bit_exact', all(_ok), '%d/%d' % (sum(_ok), len(_ok)))
 rig = Rig(); rig.path(3, '/AUDIO/ACID/TB303.WAV'); rig.voice(0, True, 3); _l = []; st = R.Track()
-for xf in list(range(0, 128, 9)) + [127]:                          # the fader moving under a held note
-    rig.scene(0, _pairs(24, _A2, _B2), xf)
-    exp = scene_morph(_lane[:6], _pairs(24, _A2, _B2), 24, xf) + _lane[6:]
-    L, Rr = rig.call(0, W(0, 60, 100, 90, 50, 0), 0, 16, xf == 0, SILENCE, _lane, 2)
-    ref = R.render_call(st, W(0, 60, 100, 90, 50, 0), xf == 0, T.name_code('TB303.WAV') if xf == 0 else -1, 16, True, exp, last=True)
+for f in range(24):                                                # an LFO moving FM under a held note
+    hw = (25 << 8, ((f * 11) % 128) << 8 | (f * 37) & 0xFF, 0, 64 << 8, 0, 50 << 8)
+    rig.vrec(0, 2, hw, f % 2)
+    exp = tuple(h >> 8 for h in hw) + _lane[6:]
+    L, Rr = rig.call(0, W(0, 60, 100, 90, 50, 0), 0, 16, f == 0, SILENCE, _lane, 2)
+    ref = R.render_call(st, W(0, 60, 100, 90, 50, 0), f == 0, T.name_code('TB303.WAV') if f == 0 else -1, 16, True, exp, last=True)
     _l.append(L == ref)
-check('devilish_scene_fader_moving', all(_l), '%d/%d' % (sum(_l), len(_l)))
+check('devilish_lfo_moving', all(_l), '%d/%d' % (sum(_l), len(_l)))
 
 ex = []
 for fn in NAMES.values():
@@ -619,6 +608,118 @@ def mpage(signed, path='/AUDIO/KICK.WAV'):
     return c.d[0] - c.consts['o3_desc'] if c.d[0] != FLEX_P else 'stock', kept and bool(done)
 check('page_machine_gets_its_record', mpage(True) == (0x194, True) and mpage(True, '/AUDIO/TB303.WAV') == (0x194, True)
       and mpage(False) == ('stock', True) and mpage(False, '/AUDIO/TB303.WAV') == (0, True))
+def lfoname(signed, machine=1):
+    """o3_lfo_name at 0x4003bff0 in the LFO PMTR formatter: a0 = Part + 0x8eda2 + track, d1 = track."""
+    rig = Rig(); c = rig.cpu; m = c.mem
+    for i in range(0x192): m.w(FLEX_P + i, 'b', (i * 7 + 3) & 0xFF)
+    part, track = 2, 5; P = PP(part); m.w(P + 0x22 + track, 'b', machine)
+    for i, x in enumerate(b'TB\x01' if signed else b'\0\0\0'): m.w(P + 0x3c + 30 * track + i, 'b', x)
+    c.a[0] = P + 0x22 + track; c.d[1] = track; c.d[2] = 4; c.a[2] = 0x6602; c.a[4] = 0x6604
+    c.a[7] = STACK; out = []
+    c.hooks[0x4003c058] = lambda cpu: out.append(('rec', cpu.a[2]))
+    c.hooks[0x4003c054] = lambda cpu: out.append(('stock', cpu.a[0], cpu.d[0]))
+    c.call('o3_lfo_name')
+    kept = c.d[1] == track and c.d[2] == 4 and c.a[4] == 0x6604 and c.a[7] == STACK
+    return out[0] if out else None, kept
+_r, _k = lfoname(True)
+check('lfo_names_machine_record', _k and _r[0] == 'rec' and _r[1] == Rig().cpu.consts['o3_desc'] + 0x194, str(_r))
+check('lfo_names_flex_and_others_stock', lfoname(False) == (('stock', TABLE, 1), True)
+      and lfoname(False, machine=2) == (('stock', TABLE, 2), True), str((lfoname(False), lfoname(False, 2))))
+# ---- v7.1: held trig + UP / DOWN (o3_octave) and the automatic slide lock (o3_autoslide)
+LK = lambda pat, t, s: BANK + pat * 0x8ed8 + t * 0x91a + 0x59 + s * 32
+SH = lambda pat, t, s: 0x1001614e + pat * 0x8ed8 + t * 0x91a + 0x59 + s * 32
+def lrig(signed=True, midi=0, part=1, pat=3, track=2, base=64):
+    rig = Rig(); c = rig.cpu; m = c.mem
+    m.w(0x46c82456, 'l', BANK); m.w(0x100b14cf, 'b', part); m.w(0x100b14d0, 'b', pat)
+    m.w(0x100b14cc, 'b', track); m.w(0x80000012, 'l', midi)
+    P = PP(part); m.w(P + 0x22 + track, 'b', 1)
+    for i, x in enumerate(b'TB\x01' if signed else b'\0\0\0'): m.w(P + 0x3c + 30 * track + i, 'b', x)
+    m.w(BANK + part * 6322 + 0x8edb0 + 30 * track, 'b', base)       # the Part's TUNE
+    for s in range(64):
+        m.w(LK(pat, track, s), 'b', 0xff); m.w(SH(pat, track, s), 'b', 0xff)
+    return rig, c, m
+def octave(key, held, page=0, locks=None, **kw):
+    rig, c, m = lrig(**kw); pat, t = kw.get('pat', 3), kw.get('track', 2)
+    for s, v in (locks or {}).items(): m.w(LK(pat, t, s), 'b', v)
+    m.w(0x460d174a, 'w', held); m.w(0x460d174c, 'l', page)
+    toast, ev, out = [], [], []
+    c.hooks[0x4005a2b8] = lambda cpu: toast.append(cpu.mem.r(cpu.a[7], 'l'))
+    c.hooks[0x40027e00] = lambda cpu: ev.append('e00')
+    c.hooks[0x4009da20] = lambda cpu: ev.append(('da20', cpu.mem.r(cpu.a[7], 'l')))
+    c.hooks[0x40027de4] = lambda cpu: out.append(('tail', cpu.a[7]))
+    def _stock(cpu): out.append(('stock', cpu.a[7], cpu.mem.r(cpu.a[7], 'l'))); cpu.a[7] += 28
+    c.hooks[0x400434e0] = _stock
+    for r in range(2, 8): c.d[r] = 0x7700 + r
+    for r in range(2, 7): c.a[r] = 0x6600 + r
+    m.w(STACK - 4, 'l', 1); m.w(STACK - 8, 'l', key); c.a[7] = STACK - 8    # (key, event); call pushes the return
+    c.call('o3_octave')
+    kept = all(c.d[r] == 0x7700 + r for r in range(2, 8)) and all(c.a[r] == 0x6600 + r for r in range(2, 7))
+    lk = {s: m.r(LK(pat, t, s), 'b') for s in range(64) if m.r(LK(pat, t, s), 'b') != 0xff}
+    sh = {s: m.r(SH(pat, t, s), 'b') for s in range(64) if m.r(SH(pat, t, s), 'b') != 0xff}
+    edited = m.r(BANK + 0x9b332, 'l') == 1 and m.r(0x100f8598, 'l') == 1
+    return dict(locks=lk, shadow=sh, edited=edited, ev=ev, out=out, kept=kept, toast=toast, m=m)
+r = octave(0x33, 0b101, page=16, locks={18: 70})               # steps 16 (no lock) and 18 (70)
+_txt = ''
+if r['toast']:
+    _a, _b = r['toast'][0], b''
+    while r['m'].r(_a + len(_b), 'b'): _b += bytes([r['m'].r(_a + len(_b), 'b')])
+    _txt = _b.decode()
+check('octave_up_held_steps', r['locks'] == {16: 76, 18: 82} and r['shadow'] == r['locks'] and r['edited']
+      and r['ev'] == ['e00', ('da20', 2)] and r['out'] == [('tail', STACK - 12)] and r['kept'], str(r))
+check('octave_toast_names_the_note', _txt == 'F#4 +OCT', repr(_txt))
+r = octave(0x20, 0b1, locks={0: 45})                           # C#1 + a fifth: below C1 after an octave down
+check('octave_down_stops_at_c1', r['locks'] == {0: 45} and not r['edited'] and r['ev'] == [] and r['toast'] == []
+      and r['out'] == [('tail', STACK - 12)], str(r))
+r = octave(0x20, 0b10, locks={1: 64})
+check('octave_down', r['locks'] == {1: 52} and r['shadow'] == {1: 52}, str(r))
+for kw in (dict(signed=False), dict(midi=1)):
+    r = octave(0x33, 0b1, **kw)
+    check('octave_stock_elsewhere_%s' % ('flex' if 'signed' in kw else 'midi'), r['locks'] == {}
+          and r['out'] == [('stock', STACK - 12 - 28, 0x7702)], str(r))
+def slide(steps, kind=8, trigs=(), trigless=(), tlocks=(), locks=None, other_track=False, **kw):
+    """o3_trig_in, then the handler (here: set the trigless bits of `steps` at +kind), then o3_trig_out."""
+    rig, c, m = lrig(**kw); pat, t = kw.get('pat', 3), kw.get('track', 2)
+    rec = BANK + pat * 0x8ed8 + t * 0x91a
+    setb = lambda off, s: m.w(rec + off + 7 - s // 8, 'b', m.r(rec + off + 7 - s // 8, 'b') | (1 << (s % 8)))
+    for s in trigs: setb(0, s)
+    for s in trigless: setb(8, s)
+    for s in tlocks: setb(16, s)
+    for s, v in (locks or {}).items(): m.w(LK(pat, t, s), 'b', v)
+    back = []
+    def _in(cpu): back.append(('in', cpu.a[7], cpu.mem.r(cpu.a[7], 'l'))); cpu.a[7] += 12
+    def _out(cpu): back.append(('out', cpu.a[7])); cpu.a[7] -= 44
+    c.hooks[0x40060b60] = _in; c.hooks[0x40060b48] = _out
+    for r_ in range(2, 8): c.d[r_] = 0x7700 + r_
+    for r_ in range(2, 6): c.a[r_] = 0x6600 + r_
+    m.w(STACK - 8, 'l', 1); m.w(STACK - 4, 'l', 1)             # (key, event 1: a press)
+    c.a[7] = STACK - 8; c.call('o3_trig_in')
+    ok_in = back == [('in', STACK - 12 - 12, 0x7702)]
+    c.a[7] = STACK                                            # the handler's frame is gone again
+    for s in steps: setb(kind, s)
+    if other_track: m.w(0x100b14cc, 'b', t + 1)
+    # the exit: pea -1 below the saved registers (44 bytes: -1, d2-d7, a2-a5)
+    base = STACK - 48
+    m.w(base, 'l', 0xffffffff)
+    for i, v in enumerate([0x5502 + k for k in range(6)] + [0x4402 + k for k in range(4)]): m.w(base + 4 + 4 * i, 'l', v)
+    c.a[7] = base + 4; c.call('o3_trig_out')       # call's return address stands in the -1's slot
+    ok_out = back[-1] == ('out', base + 44) and [c.d[k] for k in range(2, 8)] == [0x5502 + k for k in range(6)] \
+        and [c.a[k] for k in range(2, 6)] == [0x4402 + k for k in range(4)]
+    lk = {s: m.r(LK(pat, t, s), 'b') for s in range(64) if m.r(LK(pat, t, s), 'b') != 0xff}
+    sh = {s: m.r(SH(pat, t, s), 'b') for s in range(64) if m.r(SH(pat, t, s), 'b') != 0xff}
+    return lk, sh, ok_in and ok_out
+# a trig with E (68) on step 20, a trigless trig placed on step 21: it ties into E
+check('slide_takes_the_previous_note', slide([21], trigs=[20], locks={20: 68}) == ({20: 68, 21: 68}, {21: 68}, True),
+      str(slide([21], trigs=[20], locks={20: 68})))
+check('slide_trigless_lock_too', slide([21], kind=16, trigs=[20], locks={20: 68}) == ({20: 68, 21: 68}, {21: 68}, True))
+check('slide_previous_trig_without_lock_is_the_part_tune', slide([21], trigs=[20], base=60) == ({21: 60}, {21: 60}, True))
+check('slide_chains_through_a_slide', slide([22], trigs=[20], trigless=[21], locks={20: 68, 21: 75})
+      == ({20: 68, 21: 75, 22: 75}, {22: 75}, True))
+check('slide_wraps_around', slide([0], trigs=[63], locks={63: 50}) == ({63: 50, 0: 50}, {0: 50}, True))
+check('slide_keeps_an_existing_lock', slide([21], trigs=[20], locks={20: 68, 21: 40}) == ({20: 68, 21: 40}, {}, True))
+check('slide_only_new_trigless_steps', slide([], trigs=[20], trigless=[21], locks={20: 68}) == ({20: 68}, {}, True))
+check('slide_stock_elsewhere', slide([21], trigs=[20], locks={20: 68}, signed=False) == ({20: 68}, {}, True)
+      and slide([21], trigs=[20], locks={20: 68}, midi=1) == ({20: 68}, {}, True)
+      and slide([21], trigs=[20], locks={20: 68}, other_track=True) == ({20: 68}, {}, True))
 def mchrom(signed, idx=0):
     rig = Rig(); c = rig.cpu; m = c.mem; part, track = 2, 3
     m.w(0x46c82456, 'l', BANK); m.w(0x100b14cf, 'b', part)

@@ -27,10 +27,10 @@ KIND_TABLE_FLEX = 0x400D6438             # the kind table's FLEX entry (kind 1)
 STOCK_RENDERER = 0x40004008              # its stock value, the sample renderer
 RESOLVER_HOOK = 0x40031ECE               # `move.l 0(a0,d0.l*4),d0; bra.s 0x40031ed6`
 RESOLVER_STOCK = H("20300c00" "6002")
-# dEVILish (modules/devilish, proposed in its own PR after this one) is a separate FX module; when a
+# dEVILish (modules/devilish) is a separate FX module; when a
 # remix carries it, OCTA303's unit learns its FX id through remix.inc, and without it DEVIL_ID is 0x100,
 # which no id byte equals: every 303 track is then the classic one.  0x10 is the id dEVILish claims
-# (PHASER's, with replaces); test_octa303 checks the two agree once modules/devilish exists.
+# (PHASER's, with replaces); test_octa303 checks the two agree.
 DEVIL_ID = 0x10
 
 
@@ -59,9 +59,10 @@ MODULE = Module(
          "TUNE (-24..+24 semitones: four octaves) CUT RES ENV DEC ACC; dEVILish on FX1/FX2 = the Devil Fish mods (Whittle). "
          "Accent = an ACC lock, slide = a trigless PTCH lock. v7.0: OCTA-303 is also its own machine (row 5 "
          "of the machine list, no sample needed) with a SETUP page WAVE GATE FINE SLID DRIV ACCV; "
-         "GATE 303 = the 303's own gate, 3.5 of the step's 6 clocks (Whittle)."),
+         "GATE 303 = the 303's own gate, 3.5 of the step's 6 clocks (Whittle). v7.1: held trig + UP / DOWN = "
+         "an octave, a new slide takes the note it slides from."),
     proof=Proof.HARDWARE,
-    proof_note=("v7.0 on the author's MKI, image ACIDV70 (BUILD 87, remix acidtrack), 19 Oct 2026: the OCTA-303 "
+    proof_note=("v7.1 on the author's MKI, image O3V71 (BUILD A0, remix octa303), 23 Oct 2026: held trig + UP / DOWN an octave (several trigs at once, C5 stays), FUNC + TRIG's slide tied into the previous note, then turned to another note and an octave up, a FLEX track's TRIG + UP stock, LFO SETUP's names, save / power-cycle / reload; v7.0 on the author's MKI, image ACIDV70 (BUILD 87, remix acidtrack), 19 Oct 2026: the OCTA-303 "
                 "machine chosen from the list, its SETUP page, save / power-cycle / reload, the 303 gate; "
                 "v6.3-v6.9 played for hours (two or three tracks, with dEVILish and DisTorX). The engine is "
                 "bit-exact against tools/octa303/ref303.py (test_octa303); the panel under the port in "
@@ -94,6 +95,17 @@ MODULE = Module(
                "point SRC SETUP at six machine names", kind="lea"),
         Detour(0x4003D718, H("41f9400a78c8"), "octa303", "o3_name_a",
                "main page name lookup for the signed TB-303 track"),
+        Detour(0x4003BFF0, H("711041f9400d5f38"), "octa303", "o3_lfo_name",
+               "LFO SETUP's destination names: an OCTA-303 track's PLAYBACK row from the machine's record"),
+        Detour(0x400434D8, H("4fefffe448d704fc"), "octa303", "o3_octave",
+               "held trig + UP / DOWN: on an OCTA-303 track the held steps' TUNE an octave up / down "
+               "(stock: the sample-lock list, which a track without samples has no use for)"),
+        Detour(0x40060B58, H("4feffff448d7001c"), "octa303", "o3_trig_in",
+               "trig-key dispatcher (key, event): at a press, an OCTA-303 track's trigless masks kept for "
+               "o3_trig_out"),
+        Detour(0x40060B3E, H("4cef3cfc00044fef002c"), "octa303", "o3_trig_out",
+               "trig-key handler tail: a new trigless trig or lock on an OCTA-303 track gets the TUNE "
+               "lock of the note it slides from"),
         Detour(0x4004C36A, H("41f9400a78c8"), "octa303", "o3_name_b",
                "second main page name lookup for the signed TB-303 track"),
         Detour(0x4003C980, H("71104fef0018"), "octa303", "o3_setup_row",
@@ -131,8 +143,9 @@ MODULE = Module(
         ("SYNTH MACHINE", "both own the FLEX renderer entry 0x400d6438, the PLAYBACK resolver "
                           "load 0x40031ece and the command-byte copy 0x4000c634"),
         ("ANALOG BD", "both own the FLEX renderer entry 0x400d6438 and machine row 5 (v7.0)"),
-        ("BLACKPYRAMIDS_303", "both are a TB-303 on machine row 5: 15 shared detour sites (the machine "
-                              "chooser, SRC SETUP, the Part validator 0x40002318 among them) and 7 shared "
+        ("BLACKPYRAMIDS_303", "both are a TB-303 on machine row 5: 16 shared detour sites (the machine "
+                              "chooser, SRC SETUP, the Part validator 0x40002318, the LFO PMTR names "
+                              "0x4003bff0 among them) and 7 shared "
                               "pokes (the chooser's row count, draw, highlight and persistence, SRC SETUP's "
                               "row count and name lookup, the FLEX renderer entry 0x400d6438)"),
     ),

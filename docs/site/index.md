@@ -8,6 +8,13 @@ audio and MIDI, and new effects. You pick a **remix**, build it in your
 browser from your own copy of OS 1.40C, and install it from a CF card or
 over MIDI. Octabam is unofficial community software; see [About](about.md).
 
+## Unofficial firmware
+
+Octabam is unofficial firmware, not made, endorsed or supported by Elektron.
+Installing it is generally safe and can be reverted by reinstalling stock OS
+([Safety and Recovery](safety.md)). Elektron is not responsible for any
+damage to your Octatrack.
+
 ## Get started
 
 1. [Choose a remix](choosing.md).
