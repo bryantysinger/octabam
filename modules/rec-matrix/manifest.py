@@ -81,7 +81,7 @@ SETTINGS = tuple(
     for r in range(8))
 
 
-def mask_inc(mods):
+def mask_inc(mods, remix=None):
     """rmx_mask_ptr: eight longs, recorder 1 first, each the address of that
     recorder's mask as a long. With BRAIN in the image they are BRAIN's
     value globals (remix.brain.value_symbol), read live; otherwise local
@@ -105,7 +105,7 @@ def mask_inc(mods):
     return "\n".join(out + consts) + "\n"
 
 
-def cue_keys_inc(mods=None):
+def cue_keys_inc(mods=None, remix=None):
     """CUE's held layer's keys, copied from the user's stock image at build
     time (the records up to the 0xff end, counted here; the pattern of
     BRAIN's func_keys_inc), with a record for MIX (0x30) after them: CUE +
