@@ -147,6 +147,8 @@ def main():
     ap.add_argument("--report", type=float, default=60, help="seconds between progress lines")
     ap.add_argument("--csv", default=None, help="write every click: index, seconds, latency samples, ms, corr")
     ap.add_argument("--label", default="")
+    ap.add_argument("--silence", action="store_true",
+                    help="send digital silence on every host channel (no clicks): the stream runs, only xruns and the unit counters are reported")
     a = ap.parse_args()
     if a.list:
         print(sd.query_devices())
@@ -156,7 +158,7 @@ def main():
     n_in, n_out = int(info["max_input_channels"]), int(info["max_output_channels"])
     if not 1 <= a.play_ch <= n_out or not 1 <= a.rec_ch <= n_in:
         sys.exit(f"{info['name']} has {n_out} outputs and {n_in} inputs")
-    s = Soak(n_out, n_in, a.play_ch, a.rec_ch, 10 ** (a.level / 20), 0)
+    s = Soak(n_out, n_in, a.play_ch, a.rec_ch, 0.0 if a.silence else 10 ** (a.level / 20), 0)
     try:
         lat_arg = float(a.latency)
     except ValueError:
@@ -199,6 +201,28 @@ def main():
         time.sleep(1.0)
         c_start = counters()
         t0 = time.monotonic()
+        if a.silence:
+            print("  silence: zeros on every host channel, no clicks")
+            c_last, last_poll, last_report = c_start, t0, t0
+            while time.monotonic() - t0 < a.minutes * 60:
+                now = time.monotonic()
+                if now - last_poll >= a.poll:
+                    c_last = counters() or c_last
+                    last_poll = now
+                if now - last_report >= a.report:
+                    bad = {kk: v for kk, v in deltas(c_start, c_last).items() if v}
+                    print(f"  {(now - t0) / 60:5.1f} min  host xruns in/out {s.xin}/{s.xout}"
+                          + (f"  counters {bad}" if bad else "  counters clean"))
+                    last_report = now
+                time.sleep(0.05)
+            c_end = counters()
+            d = deltas(c_start, c_end)
+            print(f"\nlabel {a.label or '-'}: {a.minutes:g} min of silence")
+            print(f"  host xruns: input overflow {s.xin}, output underflow {s.xout}")
+            print("  unit counters over the run: " + (", ".join(f"{kk} {v:+d}" for kk, v in d.items()) if d else "not read"))
+            clean = not s.xin and not s.xout and not any(d.values())
+            print(f"  verdict: {'CLEAN' if clean else 'NOT CLEAN'}")
+            return
         k, last_report, last_poll = 0, t0, t0
         c_last = c_start
         while True:
