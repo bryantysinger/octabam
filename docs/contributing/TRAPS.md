@@ -871,6 +871,50 @@ logs `r[:300]` — that truncation is display-only, the returned reply is
 full; a short line in the port log is not a short reply. Rule: a socket
 write loop that breaks on `n <= 0` truncates under load; poll POLLOUT.
 
+<a name="trap-window-zero"></a>
+
+### Window code above `0x37f00` is wiped at boot, and below `0x33da3` DARK REV can write it
+
+**Seen:** 26 Oct 2026, the first demand-loading `octabam` under the port: both DSP cores faulted
+at boot (`PC 0x80000 is outside P memory`, after a slide through zeros from the stub's first
+dispatch) with the reverb guards and LOAD METER's DSP half at `0x3bda3..0x3ff00`.
+
+**Cause:** payload B's boot zero loop clears `Y:0x37f00..0x3ffff` after the pre-boot upload
+(`dsp_ranges.STOCK_PATCHES`), so an uploaded record there is zeros when the frame loop reaches it.
+DARK REV on the slot at `0x30000` writes up to `0x33da2` (`stock.SLOT_EXTENT`), so words below
+`0x33da3` in that block are not safe either.
+
+**Fix and gate:** resident window code goes in `0x33da3..0x37eff` clear of the stock extents; the
+build refuses an uploaded window record above `0x37f00`. The two clear gaps are `0x33da3..0x33fff`
+and `0x37da3..0x37eff`.
+
+<a name="trap-host-mask"></a>
+
+### A host write at the frame interrupt's entry is lost on every other frame
+
+**Seen:** 26 Oct 2026, the demand loader's pump under the port: a block sent 100 halfwords a frame
+arrived in alternate chunks; sent only when `0x800000e0` is 0 it arrived whole.
+
+**Cause (🟡):** payload B's frame loop stores `0x3fff` or `0x5fff` into the host handlers' address
+masks (`p:$371`, `p:$380`) every frame from the bank word (`P:0x5f..0x72`). The lost chunks are
+not at `X:0..0x3fff` of either core. Sending to core A at the entry also stops the stock ping
+words alternating (core A's chain stalls); HC polling and a settle loop did not change it. A
+receives the stock `0x8c` frame command and B does not.
+
+**Fix and gate:** DLPUMP sends to core B on ping-0 frames only (`verify_dlload`). Whether the unit
+loses the same frames is open.
+
+<a name="trap-bra-back"></a>
+
+### `dsp_asm` does not assemble a backward `bra`, or `jmp` to a window address
+
+**Seen:** 26 Oct 2026: `bra proc` to an earlier label failed (`InvalidInstruction -- "bra -$51"`)
+and `jmp proc` at `P:0x33e2b` failed; the sizing pass then drifted.
+
+**Fix:** put trampolines before the code they enter so the branch is forward, or load the address
+into a register and `jmp (rN)`. Dispatch entries must keep `init < proc <= init + 256`
+(`send_probe.entry_points`).
+
 ## Traps on the ColdFire / DRAM side (the platform work, 9–10 Sep 2026)
 
 <a name="trap-watch-alias"></a>

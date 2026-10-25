@@ -618,6 +618,14 @@ def main():
         return [f"{t} key {hold:#x} down", f"{t + 200} key 0x2d down", f"{t + 230} key 0x2d up",
                 f"{t + 500} key {hold:#x} up"], t + 900
     FX1_REGIONS = ((0x8eea6, 6), (0x8f07e, 6))
+    # T1's FX1 is CHARACTER in the templates' project: the project's own bytes name an effect by id,
+    # and which one that is depends on the remix.
+    tcopy = OUT / "project_tpl"
+    shutil.rmtree(tcopy, ignore_errors=True)
+    shutil.copytree(copy, tcopy)
+    chm = mods["CHARACTER"]
+    ot_project.set_fx(tcopy, "fx1", 1, "CHARACTER", page=[p.default or 0 for p in chm.params[:6]],
+                      page2=[p.default or 0 for p in chm.params[6:12]], guard=False)
     def tpl_run(tag, picks, seed=None, part_at=None, pre=(0x32, 0x10, 0x25), hold=0x25, regions=FX1_REGIONS):
         lines, tt = [], 1500
         for c in pre:
@@ -632,7 +640,7 @@ def main():
         if seed is not None:
             (OUT / f"{tag}_seed.work").write_bytes(seed)
             roots = ["--root-file", f"{OUT / f'{tag}_seed.work'}:BRAIN/card.work"]
-        r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(copy), a.set_name, a.name,
+        r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(tcopy), a.set_name, a.name,
                             "--tree", str(OUT / f"tree_{tag}"), "--out", str(tc), *roots],
                            cwd=ROOT, capture_output=True, text=True)
         if r.returncode:

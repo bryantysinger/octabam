@@ -219,6 +219,8 @@ def check_image(name, img, pristine, fails):
                     continue
                 if got == nul and eff.key in _given_up:
                     continue               # its words were taken; see above
+                if eff.key in remix.window_guard and 0x30000 <= got < 0x40000:
+                    continue               # fronted by the demand loader's guard, which runs the stock code
                 fails.append(
                     f"{name}: payload {tag} dispatch[0x{eid:02x}] "
                     f"({eff.key}) is 0x{got:05x}, not stock's 0x{want:05x}"

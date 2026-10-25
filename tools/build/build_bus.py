@@ -143,6 +143,18 @@ _BOUND = remix_registry.bound(REMIX)
 # and both payloads' dispatch entries for its id point at it.
 WINDOW = dict(REMIX.window)
 WINDOW_KEYS = {_k.removesuffix(":B") for _k in WINDOW}   # modules with window code; "KEY:B" is payload B's own copy
+DEMAND = {_dk: _i for _i, _dk in enumerate(REMIX.window_demand)}      # key -> index k
+if len(DEMAND) > 4:
+    sys.exit(f"Remix.window_demand: {len(DEMAND)} effects; the entry table at x:$33da3 holds 4")
+for _dk in DEMAND:
+    if _dk not in WINDOW:
+        sys.exit(f"Remix.window_demand names {_dk!r}, which Remix.window does not place")
+GUARD = list(REMIX.window_guard)
+for _gk in GUARD:
+    if _gk not in stock_mod.SLOT_EXTENT or _gk not in REMIX.modules:
+        sys.exit(f"Remix.window_guard names {_gk!r}, which is not a stock buffered reverb the remix carries")
+if (DEMAND or GUARD) and not 0x30000 <= REMIX.window_loader < 0x40000:
+    sys.exit("Remix.window_demand / window_guard need Remix.window_loader: a P address in the shared window")
 for _wk, _wa in WINDOW.items():
     if _wk.removesuffix(":B") not in REMIX.modules:
         sys.exit(f"Remix.window names {_wk!r}, which the remix does not carry")
@@ -2459,6 +2471,79 @@ mkgo:""",
     dev_delay = None            # (words) for the .mem dump append, DEV only
     tail_records = {}           # {payload: [P start, words]}: the tail's record
     window_records = {}         # {module key: (P start, words)}: Remix.window's records, payload A's upload
+    demand_syms = {}            # {module key: (init, proc)}: entries of the Remix.window_demand records
+    guard_records = {}          # {"KEY:payload": addresses}: the wrappers of Remix.window_guard
+    loader_next = REMIX.window_loader    # where the next loader piece goes
+
+    def _loader_check(label, at, n):
+        """A loader piece must stay in the window, clear of every other owner and of the records so far."""
+        if at + n > 0x40000:
+            sys.exit(f"{label}: P:0x{at:05x}..0x{at + n:05x} runs past the shared window")
+        for _o in dsp_ranges.owners(remix_registry.selected(REMIX)):
+            if _o.domain == "shared" and _o.start < at + n and at < _o.end:
+                sys.exit(f"{label}: P:0x{at:05x}..0x{at + n:05x} overlaps {_o.owner}'s {_o.what}")
+        for _on, (_oa, _ow) in window_records.items():
+            if _oa < at + n and at < _oa + len(_ow):
+                sys.exit(f"{label} and {_on} overlap in the shared window")
+        if at < 0x30000 + min((_a for _k, _a in WINDOW.items() if _k.removesuffix(":B") not in DEMAND), default=0x40000) - 0x30000:
+            sys.exit(f"{label}: P:0x{at:05x} is below the lowest uploaded window word; payload A's boot zero loop "
+                     f"would wipe it")
+    stub_syms = {}
+    if DEMAND:
+        # one stub body for every demand effect; INIT[id] is `init`, PROCESS[id] a trampoline that names the entry
+        _tr = "".join(f"dls_p{k}:\n        move    #>${0x33DA3 + 8 * k:x},x0\n        move    x0,x:>$3f4c\n        bra     proc\n"
+                      for k in DEMAND.values())
+        _sw, stub_syms = assemble_syms(pathlib.Path("modules/dlcopy/dlstub.asm").read_text().replace("; TRAMPOLINES\n", _tr),
+                                       loader_next, label="demand stub")
+        _loader_check("demand stub", loader_next, len(_sw))
+        window_records["demand stub"] = (loader_next, list(_sw))
+        print(f"  demand stub   P:0x{loader_next:05x}..0x{loader_next + len(_sw):05x} ({len(_sw)} words)")
+        loader_next += len(_sw)
+    guard_syms = {}
+    if GUARD:
+        # One body (modules/dlcopy/dlwrap.asm) for both payloads, behind each payload's trampolines; the
+        # trampolines hold the stock entries, which differ between payloads, and point at the body.
+        def _rdx(tag, a):
+            _x = PP[tag]["xtab"] + a
+            buf, i = (_virt, _x - idspace.VIRT) if (_virt is not None and _x >= idspace.VIRT) else (img, _x - BASE)
+            return buf[i] | (buf[i + 1] << 8) | (buf[i + 2] << 16)
+
+        _body_src = pathlib.Path("modules/dlcopy/dlwrap.asm").read_text()
+
+        def _tramps(tag, body_init, body_proc):
+            out = []
+            for _n, _gk in enumerate(GUARD):
+                _gid = stock_mod.BY_KEY[_gk].menu.fx2_id
+                _gi, _gq = _rdx(tag, _gid * 3), _rdx(tag, (PROC_OFF + _gid) * 3)
+                _gx = stock_mod.SLOT_EXTENT[_gk] + 1
+                guard_records[f"{_gk}:{tag}"] = {"stock_init": _gi, "stock_proc": _gq, "extent": _gx}
+                out.append(f"dwi_{_n}:\n        move    #>${_gi:x},x0\n        move    x0,x:>$3fd1\n"
+                           f"        move    #>${_gx:x},x0\n        move    x0,x:>$3fd2\n"
+                           f"        move    #>${body_init:x},r2\n        jmp     (r2)\n"
+                           f"dwp_{_n}:\n        move    #>${_gq:x},x0\n        move    x0,x:>$3fd1\n"
+                           f"        move    #>${_gx:x},x0\n        move    x0,x:>$3fd2\n"
+                           f"        move    #>${_gi:x},x0\n        move    x0,x:>$3fd3\n"
+                           f"        move    #>${body_proc:x},r2\n        jmp     (r2)\n")
+            return "".join(out)
+
+        # the trampolines' length does not depend on the body's address (all immediates are 24-bit)
+        _la = len(assemble_syms(_tramps("A", 0x30000, 0x30000), loader_next, label="guard trampolines A")[0])
+        _lb = len(assemble_syms(_tramps("B", 0x30000, 0x30000), loader_next, label="guard trampolines B")[0])
+        _bat = loader_next + _la + _lb
+        _bw, _bs = assemble_syms(_body_src, _bat, label="reverb guard body")
+        _at = loader_next
+        for _tag, _ln in (("A", _la), ("B", _lb)):
+            _tw, guard_syms[_tag] = assemble_syms(_tramps(_tag, _bs["init"], _bs["proc"]), _at, label=f"guard trampolines {_tag}")
+            _loader_check(f"reverb guard trampolines {_tag}", _at, len(_tw))
+            window_records[f"guard {_tag}"] = (_at, list(_tw))
+            for _n, _gk in enumerate(GUARD):
+                guard_records[f"{_gk}:{_tag}"].update(init=guard_syms[_tag][f"dwi_{_n}"], proc=guard_syms[_tag][f"dwp_{_n}"])
+            _at += _ln
+        _loader_check("reverb guard body", _bat, len(_bw))
+        window_records["guard body"] = (_bat, list(_bw))
+        print(f"  reverb guard  trampolines P:0x{loader_next:05x}..0x{_bat:05x} (A {_la}, B {_lb} words), body P:0x{_bat:05x}..0x{_bat + len(_bw):05x} ({len(_bw)} words)")
+        loader_next = _bat + len(_bw)
+    pathlib.Path("out/dsp/demand_records.json").unlink(missing_ok=True)   # DLPUMP's table reads it after this stage
     for tag, va, ln in PAYLOADS:
         pp = PP[tag]
         mods, _ = modules(bytes(img), va, ln)
@@ -2503,7 +2588,8 @@ mkgo:""",
             # lowest window address, which leaves the words above it, and the same number at
             # the end of Y:0x4000..0xBFFF, unzeroed on core 0. Payload B's loop (widened above)
             # clears 0x37F00 up, so the mailbox and the tail of A's half stay zeroed.
-            _zn = min(WINDOW.values()) - 0x30000
+            # (a Remix.window_demand effect is not uploaded, so its address does not stop the loop)
+            _zn = min(_a for _k, _a in WINDOW.items() if _k.removesuffix(":B") not in DEMAND) - 0x30000
             _zl = 0x30000 + _zn
             from remix import dsp_ranges as _dr2
             for _o in _dr2.owners(remix_registry.selected(REMIX)):
@@ -3160,6 +3246,11 @@ hostquit:
                 sys.exit(f"XTABLE: {name} has a table but no p:( read of it")
             return "\n".join(out), n
 
+        for _n, _gk in enumerate(GUARD):
+            # the stock reverbs kept off loaded code: their ids' entries point at this payload's trampolines
+            _gid = stock_mod.BY_KEY[_gk].menu.fx2_id
+            wrw_p(pp["xtab"] + _gid * 3, guard_syms[tag][f"dwi_{_n}"])
+            wrw_p(pp["xtab"] + (PROC_OFF + _gid) * 3, guard_syms[tag][f"dwp_{_n}"])
         for name, src in plan:
             if name in WINDOW_KEYS and (name in WINDOW or tag == "B"):
                 # ---- IN THE SHARED WINDOW (schema.Remix.window): assembled once at its
@@ -3206,6 +3297,7 @@ hostquit:
                         if _oa < _wa + len(_ww) and _wa < _oa + len(_ow):
                             sys.exit(f"{name} and {_on} overlap in the shared window")
                     window_records[_wk] = (_wa, _ww)
+                    demand_syms[_wk] = (_wsyms.get("init"), _wsyms.get("proc"))
                 for _h in _wd.hooks:
                     # the two stock words become `jsr >label`, a 24-bit address (schema.DspHook)
                     if not _h.on(tag):
@@ -3228,6 +3320,9 @@ hostquit:
                 init_a, proc_a = _wsyms.get("init"), _wsyms.get("proc")
                 if init_a is None or proc_a is None:
                     sys.exit(f"payload {tag}: {name} has no init/proc labels")
+                if name in DEMAND:
+                    # the id's dispatch entries point at the stub; the real code is loaded on demand
+                    init_a, proc_a = stub_syms["init"], stub_syms[f"dls_p{DEMAND[name]}"]
                 wrw_p(pp["xtab"] + NEW_IDS[name] * 3, init_a)
                 wrw_p(pp["xtab"] + (PROC_OFF + NEW_IDS[name]) * 3, proc_a)
                 if name == REMIX.fallback:
@@ -3875,6 +3970,26 @@ hostquit:
                  f"payload {', '.join(sorted(set(tail_records) | ({'A'} if window_records else set())))}'s -- take one")
     # The window's records are not in the OS image's payload: tools/build/dsp_modmap.py's memory
     # dumps (every gate that runs an effect in dsp_host) read them from here and append them.
+    # Remix.window_demand records are loaded at run time by the ColdFire, not uploaded at boot.
+    demand_records = {k: window_records.pop(k) for k in list(window_records) if k in DEMAND}
+    _df = pathlib.Path("out/dsp/demand_records.json")
+    if demand_records:
+        _df.parent.mkdir(parents=True, exist_ok=True)
+        _df.write_text(json.dumps({k: {"addr": a, "words": list(w), "init": demand_syms[k][0],
+                                       "proc": demand_syms[k][1], "id": NEW_IDS[k]}
+                                   for k, (a, w) in demand_records.items()}))
+    else:
+        _df.unlink(missing_ok=True)
+    _gf = pathlib.Path("out/dsp/guard_records.json")
+    if guard_records:
+        _gf.parent.mkdir(parents=True, exist_ok=True)
+        _gf.write_text(json.dumps(guard_records))
+    else:
+        _gf.unlink(missing_ok=True)
+    for _wk, (_wa, _ww) in window_records.items():
+        if _wa + len(_ww) > 0x37F00:
+            sys.exit(f"{_wk}: P:0x{_wa:05x}..0x{_wa + len(_ww):05x} is uploaded above 0x37f00, where payload B's boot "
+                     f"zero loop clears the window after the upload (docs/contributing/TRAPS.md, trap-window-zero)")
     _wf = pathlib.Path("out/dsp/window_records.json")
     if window_records:
         _wf.parent.mkdir(parents=True, exist_ok=True)

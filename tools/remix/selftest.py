@@ -991,6 +991,7 @@ def main():
              "pext-probe": ("EQUALIZER", "PLATE REV", "SPRING REV"),   # the probe takes EQUALIZER's id and the two reverbs' words
              "window-mod": ("CHORUS", "PLATE REV", "SPRING REV", "DARK REV"), "window-ctl": ("CHORUS", "PLATE REV", "SPRING REV", "DARK REV"),   # MODULATION takes CHORUS's id; the reverbs' words hold LOAD METER and CORE
              "octabam": (),   # all 14 stock effects stay; ours and LOAD METER run from the window
+             "dlspike": (),   # all 14 stock effects stay; MODULATION is loaded on demand
              "stock-meter-a": ("PHASER",), "stock-meter-b": ("SPATIALIZER",),   # LOAD METER's DSP half in the given-up effect's words
              "sos-capture": ("SPATIALIZER",),   # usb-io-tracks-ab + the recorder fixes
              "cfmeter": ("DARK REV",), "cfmeter-port": ("DARK REV",), "cfmeter-post": ("DARK REV",), "cfmeter-tracks": ("DARK REV",),   # the readout insert's words

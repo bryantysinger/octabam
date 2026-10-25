@@ -131,6 +131,13 @@ def dumpmem(img, args):
         if wf.exists():
             import json
             win = [(a, w) for a, w in json.loads(wf.read_text()).values()]
+        # Remix.window_demand records are not uploaded at boot, but a gate renders the effect
+        # directly as its reference, so the dump carries them; a gate that needs the code absent
+        # removes the record (tools/verify/verify_dlstub.py).
+        df = pathlib.Path("out/dsp/demand_records.json")
+        if df.exists():
+            import json
+            win += [(r["addr"], r["words"]) for r in json.loads(df.read_text()).values()]
         with open(out, "wb") as fh:
             for sp, addr, cnt, data in mods:
                 fh.write(struct.pack("<BII", sp, addr, cnt))

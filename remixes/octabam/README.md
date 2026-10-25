@@ -2,15 +2,23 @@
 
 A remix of Octatrack OS 1.40C, built from your own copy of it, that adds the
 core modules (below) to all 14 stock effects and adds SPECTRUM, CHARACTER,
-MODULATION, TRANSIENT and GATE VERB. It has no bus and no SEND. See
-[Where it has run](#where-it-has-run).
+MODULATION and TRANSIENT, which are copied into the DSP when a track uses them. It
+has no bus and no SEND. See [Where it has run](#where-it-has-run).
 
 ## The effects
 
-All 14 stock effects stay in the menus. SPECTRUM, CHARACTER, MODULATION and
-TRANSIENT are on FX1 and FX2; GATE VERB is on FX2. Their DSP code runs from the
-shared P window (`P:0x30000..0x3ffff`) beside the stock effects, one copy
-each for both cores, on free effect ids.
+All 14 stock effects stay in the menus and run as stock. SPECTRUM, CHARACTER,
+MODULATION and TRANSIENT are on FX1 and FX2. Their DSP code is not in the image's
+upload: while a track uses one, the ColdFire copies it into the shared P window
+(`P:0x30000..0x3ffff`), at offset `0x1000` of one of the four FX2 buffer slots, and
+withdraws it when no track does. Until it arrives, about 25 ms, the effect passes
+the audio through. Stock PLATE REV, DARK REV and SPRING REV are fronted by a guard
+that runs them only while their buffer does not cover loaded code. A block is held by whoever has it first. Choosing one of
+the four effects on a chooser is refused, with a toast, while the FX2 slot that shares
+its memory is on a stock reverb, and choosing a stock reverb on that slot is refused while
+the effect is loaded. A song that sets both by another route leaves the reverb or the
+effect dry, and says which at the next page key. The design and what has been measured:
+[`DEMAND_LOAD.md`](../../docs/proposals/DEMAND_LOAD.md).
 
 | effect | FX1 | FX2 | id | what it is | module |
 |---|---|---|---|---|---|
@@ -18,7 +26,6 @@ each for both cores, on free effect ids.
 | CHARACTER | ✓ | ✓ | 0x17 | fold, saturation, tilt, compressor, width | [`character`](../../modules/character/README.md) |
 | MODULATION | ✓ | ✓ | 0x0e | Juno, Dimension, flanger, phaser, comb | [`modulation`](../../modules/modulation/README.md) |
 | TRANSIENT | ✓ | ✓ | 0x0a | transient shaper (Ignorato) | [`transient`](../../modules/transient/README.md) |
-| GATE VERB | | ✓ | 0x1a | gated plate reverb (the reverb stage of Mutable Instruments Clouds plus a gate) | [`gateverb`](../../modules/gateverb/README.md) |
 
 The stations have their `SLOTS` build setting at `FX1+FX2`. CHARACTER's KEY = T1
 needs a BusDelay host, so here it keys on the track's own input. A MODE
@@ -35,6 +42,7 @@ The same set is in [`octabam-bus`](../octabam-bus/README.md), with LOFI AMF FIX
 | platform | [BRAIN](../../modules/brain/README.md) | card-wide settings, defaults and templates, remix switch, TOOLS (MIDI monitor, LOAD) |
 | | [STORE](../../modules/store/README.md) | the save, load, copy and Part sites KITS and PLOCKS P2 share |
 | | [LOAD METER](../../modules/load-meter/README.md) | the frame interrupt's and each DSP core's busy time, for BRAIN's LOAD view; its DSP half runs from the window |
+| demand loader | [DLPUMP](../../modules/dlpump/README.md), [DLCOPY](../../modules/dlcopy/README.md) | the ColdFire half that watches the tracks and sends the code; the DSP half that copies it into the window |
 | sequencing | [KITS](../../modules/kits/README.md) | 255 Kits per project; each pattern plays its Kit |
 | | [MIDI SCENES](../../modules/midi-scenes/README.md) | scene locks for MIDI tracks |
 | | [SCENES P2](../../modules/scenes-p2/README.md), [PLOCKS P2](../../modules/plocks-p2/README.md) | scene locks and parameter locks on FX page 2 |
@@ -48,8 +56,7 @@ The same set is in [`octabam-bus`](../octabam-bus/README.md), with LOFI AMF FIX
 
 ## Where it has run
 
-Port gates only: `make check REMIX=octabam`. The window's wait-state cost and the
-effects running from the window have not been measured on a unit.
+Port gates only: `make check REMIX=octabam`, which loads, withdraws and runs each of the four effects on both cores. Nothing of the loader has run on a unit: the host write to the DSP, copying code into the window and running it from there, the window's wait-state cost, and the stock effects' buffer extents at other settings are open.
 
 ## How to flash
 
