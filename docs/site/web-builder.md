@@ -1,7 +1,7 @@
 # Build and Install
 
-Builds one of the three official remixes ([octabam-core](remix-core.md),
-[octabam-inserts](remix-inserts.md), [octabam-bus](remix-bus.md)) from your
+Builds one of the two official remixes ([octabam](remix-octabam.md),
+[octabam-bus](remix-bus.md)) from your
 own copy of Octatrack OS 1.40C, in this browser tab. The OS file is read
 locally and nothing is uploaded.
 

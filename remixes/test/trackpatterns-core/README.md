@@ -1,11 +1,11 @@
-# `trackpatterns-core` -- TRACK PATTERNS on octabam-core
+# `trackpatterns-core` -- TRACK PATTERNS on the core modules
 
-TRACK PATTERNS with every module of `octabam-core` (KITS, DIRECT_JUMP_KYOTI, RELOAD_FROM_PROJECT, BRAIN, STORE, PLOCKS P2 and the rest) and the 14 stock effects, for running the module beside the modules that share its handlers.
+TRACK PATTERNS with every core module (KITS, DIRECT_JUMP_KYOTI, RELOAD_FROM_PROJECT, BRAIN, STORE, PLOCKS P2 and the rest) and the 14 stock effects, for running the module beside the modules that share its handlers.
 
 ## What is in it
 
 - **TRACK PATTERNS** -- [`modules/trackpatterns/README.md`](../../../modules/trackpatterns/README.md).
-- the `octabam-core` selection ([`remixes/octabam-core/README.md`](../../octabam-core/README.md)), with its USB and MUTE_MODES settings.
+- the core module selection of [`octabam`](../../octabam/README.md) without LOAD METER, SEQUENCER EVENTS and its effects, with its USB and MUTE_MODES settings.
 
 ## Status
 

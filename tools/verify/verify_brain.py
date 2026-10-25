@@ -136,6 +136,12 @@ def main():
         if f.is_file() and f.suffix.lower() == ".work":
             shutil.copy2(f, copy / f.name)
 
+    # T2's FX1 is SPECTRUM, so the FX1 chooser opens on its row and one DOWN lands CHARACTER. The
+    # project's own bytes name an effect by id, and which one that is depends on the remix.
+    import ot_project
+    spm = mods["SPECTRUM"]
+    ot_project.set_fx(copy, "fx1", 2, "SPECTRUM", page=[p.default or 0 for p in spm.params[:6]],
+                      page2=[p.default or 0 for p in spm.params[6:12]], guard=False)
     delay, character = mods["DELAY"], mods["CHARACTER"]
     want = {"DELAY": {"TIME": 52, "FB": 5, "X": 1, "TAPE": 0}, "CHARACTER": {"DRV": 9, "MIX": 77}}
     work = ot_brain.set_default(None, delay, want["DELAY"])
@@ -244,8 +250,8 @@ def main():
 
         fx2, d2, got2 = landed("fx2")
         fx1, d1, got1 = landed("fx1")
-        check(f"{name}: the selects land DELAY (0x08) and CHARACTER (0x1c)  0x{fx2:02x} 0x{fx1:02x}",
-              (fx2, fx1) == (0x08, 0x1c))
+        check(f"{name}: the selects land DELAY (0x08) and CHARACTER (0x{character.menu.fx2_id:02x})  0x{fx2:02x} 0x{fx1:02x}",
+              (fx2, fx1) == (0x08, character.menu.fx2_id))
         check(f"{name}: the brain ran at the load ({counts['loads']} call(s))", counts["loads"] >= 1)
 
         def expect(defaults, m, values):

@@ -105,6 +105,7 @@ nav:
       - Copy Project: reference/modules/copy-project.md
       - Random Naming: reference/modules/rnd-name.md
       - Remix Switch: reference/modules/remix-switch.md
+      - Scope: reference/modules/scope.md
   - Fixes:
       - ATA Write Guard: reference/modules/ata-write-guard.md
       - Batch Bugfixes: reference/modules/batch-bugfixes.md
@@ -115,11 +116,11 @@ nav:
       - CF Meter: reference/modules/cfmeter.md
       - CF Meter Idle: reference/modules/cfmeter-idle.md
       - Load Meter: reference/modules/load-meter.md
+      - Pext Probe: reference/modules/pextprobe.md
       - Testgen: reference/modules/testgen.md
       - Wave Load: reference/modules/waveload.md
   - Remix Reference:
-      - Octabam Core: remix-core.md
-      - Octabam Inserts: remix-inserts.md
+      - Octabam: remix-octabam.md
       - Octabam Bus: remix-bus.md
       - Create a Remix: own-remix.md
   - Help:

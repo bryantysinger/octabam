@@ -217,7 +217,8 @@ second cross-core channel exists, the ICC (section 1.4.14): each core can raise
 an interrupt in the other, with write-data and poll-data registers.
 
 Per-core P/X/Y extents are configurable via OMR, and stock runs the
-default map ✅ (Ch. 3):
+default map ✅ (Ch. 3; confirmed on the unit 25 Oct 2026: P above `0x1fff`
+holds no written word on either core, `modules/pextprobe`):
 
 | map | MS | MSW1 | MSW0 | Program | X | Y |
 |---|---|---|---|---|---|---|

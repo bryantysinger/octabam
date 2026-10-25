@@ -14,7 +14,7 @@ carries one module for its gates).
 `make modules` lists them, with the compatibility matrix; `make remix`
 composes one. `docs/contributing/MODULES.md` is the contributor guide and
 `CONTRIBUTING.md` the contract. The build refuses to start when two selected
-modules claim the same FX2 id, cave, hook or detour span, poke, table or
+modules claim the same cave, hook or detour span, poke, table or
 symbol ref, runtime write, kept stock bytes, grown stock table,
 core-private Y word, per-core FX2 buffer region or DSP data range
 (`Claims.dsp_ranges`), or declare each other a conflict — by name.
@@ -153,6 +153,7 @@ moment it costs real work, and add its line here.
 - [A dump can resolve a dispatch entry for an effect it does not contain](docs/contributing/TRAPS.md#trap-dump-alias) — `SPEC=1` aliases the absent server to SEND; check which code the entry points at before believing negatives.
 - [Payload A's half of the shared window is fully owned](docs/contributing/TRAPS.md#trap-shared-window) — no delay lines below `0x38000`.
 - [An FX2 id is also an FX1 id](docs/contributing/TRAPS.md#trap-fx2-id) — schema refuses stock ids; a client keys its slot on r7, never X:$213.
+- [A module's id is the remix's, not the manifest's](docs/contributing/TRAPS.md#trap-module-id) — `registry.bound(remix)` for ids, `idspace` for the FX2 table and dispatch addresses; a 64-id image moves both.
 - [`dsp_host`'s default audio block sits in stock scratch](docs/contributing/TRAPS.md#trap-audio-block) — `-audio 0` for a stock render.
 - [An absolute stock-table address is right in A and 13 words off in B](docs/contributing/TRAPS.md#trap-stock-tables) — declare table addresses; audit both payloads.
 - [A knob word under an LFO has non-zero low bits](docs/contributing/TRAPS.md#trap-lfo-word) — mask with `and #>$7f0000`; store from `a1`/`b1`.
@@ -190,6 +191,8 @@ moment it costs real work, and add its line here.
 - [A forked port shares its DSP memory with its siblings](docs/contributing/TRAPS.md#trap-fork-shm) — `unshareRanges`; new shared maps need the same.
 - [The port ran under Rosetta and nothing said so](docs/contributing/TRAPS.md#trap-rosetta) — `file out/emu/ot_emu` is the check.
 - [The report is API and prints paths](docs/contributing/TRAPS.md#trap-report-api) — re-save refhash only after the artifacts are shown identical.
+- [A frame count past $7fffff reaches `move a,n1` with A2 stale; the unit's frame interrupt stopped 50.7 min after power-up](docs/contributing/TRAPS.md#trap-frame-count) — keep the count below bit 23; preset it to test (`LM_FRAME0`).
+- [An EP0 reply is DMA'd from memory the cache may not have written; a 64-multiple reply breaks the next request](docs/contributing/TRAPS.md#trap-ep0-dma) — copy through `+UNCACHED`; never answer a multiple of 64 bytes.
 - [Same-named labels across units resolve by nm table order](docs/contributing/TRAPS.md#trap-nm-order) — per-unit tables; a ref naming a symbol its unit does not define is refused.
 - [`moveml %sp@` is the mode-2 form and stores at sp unchanged](docs/contributing/TRAPS.md#trap-movem-sp) — the lea-framed save/restore idiom, or `%sp@-`/`%sp@+`.
 - [cfgsel served one MAIN and one CUE short of the declared nch](docs/contributing/TRAPS.md#trap-cfgsel-nch) — 16 × TRACKS + 2 × (MAIN + CUE + MASTER); every consumer agrees on usb_nch.

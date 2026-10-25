@@ -1,4 +1,4 @@
-"""TRACK PATTERNS on octabam-core: the core ColdFire modules (KITS and
+"""TRACK PATTERNS on the core modules: the core ColdFire modules (KITS and
 DIRECT_JUMP_KYOTI among them) and the 14 stock effects, for running the
 module beside the modules it shares handlers with."""
 
@@ -17,7 +17,7 @@ REMIX = Remix(
     name="trackpatterns-core",
     family="mods", proof=Proof.HARDWARE,
     proof_note="MKII, OCTABAM8, 22 Oct 2026: gesture on T1 and M1, global change, save and power cycle passed (contributor's report)",
-    doc="TRACK PATTERNS on octabam-core (KITS, DIRECT_JUMP_KYOTI and the other core modules).",
+    doc="TRACK PATTERNS on the core modules (KITS, DIRECT_JUMP_KYOTI and the other core modules).",
     modules=("TRACK PATTERNS",) + CORE + ("LOFI AMF FIX",) + STOCK14,
     fallback="NONE",
     settings={("octabam.usb", "TRACKS"): "PRE", ("octabam.usb", "MAIN"): 1,
