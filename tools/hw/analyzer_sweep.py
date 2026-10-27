@@ -19,7 +19,9 @@ and LONG ON (4 s, loop on, a 2 s bar retriggers it before it reaches its end). F
 name them (set k, track t: slot 8k + t), TSTR off in every slot (TSMODE=0; the track's TSTR stays AUTO), 120 BPM,
 trim records in markers.work. Bank A is FLEX, bank B STATIC: in each, part k plays set k on all eight tracks, and
 pattern 4k + j (j = 0..3) is that part with a trig on step 1 of the first 1, 2, 4 or 8 tracks (LEN 16, 1X: a 2 s bar).
-Pattern 13 of bank A has no trigs: BASE. A program change on --pc-channel (default 1) selects a pattern: 16 x bank +
+Pattern 13 of bank A has no trigs: BASE. Bank C is sound-on-sound: track t a FLEX machine on its own recorder
+buffer, PLAY + REC1 + REC2 + REC3 on step 1, INAB A B, INCD C D, SRC3 the track itself, RLEN 16, LOOP off, TSTR
+off on the buffers; pattern j plays the first 1, 2, 4 or 8 tracks (REC SOS xN; --only REC selects them). A program change on --pc-channel (default 1) selects a pattern: 16 x bank +
 pattern. The project's MIDI settings are ot_matrix.py's (clock, transport and program change receive on), so `run`
 sends the clock itself.
 
@@ -54,6 +56,13 @@ SETS = (("LONG OFF", 4.0, 0), ("SHORT ON", 1.0, 1), ("LONG ON", 4.0, 1))    # na
 NS = (1, 2, 4, 8)
 MACHINES = (("FLEX", 1), ("STATIC", 0))          # name, machine type (ot_project.SLOT_KIND)
 BASE_PATTERN = 12                                # bank A pattern 13
+# bank C: sound-on-sound recorder loops (sos_capture.py's shape): track t is a FLEX machine on its own recorder
+# buffer R(t+1) (FLEX slot 129 + t), with PLAY + REC1 + REC2 + REC3 on step 1; INAB A B, INCD C D, SRC3 the track
+# itself, RLEN 16, LOOP off, TSTR off on the buffer. Pattern j of bank C: the first NS[j] tracks.
+REC_BANK = 2
+REC_SETUP_OFF, REC_FIELDS = 0x60b, ("INAB", "INCD", "RLEN", "TRIG", "SRC3", "LOOP")   # ot_project.REC_FIELDS
+MASK_PLAY, MASK_REC1, MASK_REC2, MASK_REC3 = 0x00, 0x20, 0x28, 0x30                  # sos_capture.py
+REC_SETUP = {"INAB": 1, "INCD": 1, "RLEN": 15, "LOOP": 0}                            # A B, C D, 16 steps (raw), off
 PLAN_FILE = "OCTABAM_ANALYZER.json"
 
 # bank file layout (ot_project.py, ot_bank.py)
@@ -83,6 +92,9 @@ def conditions():
                 pat = 4 * k + j
                 out.append({"name": f"{mname} {sname} x{n}", "machine": mname, "set": sname, "n": n,
                             "bank": b, "pattern": pat, "program": 16 * b + pat})
+    for j, n in enumerate(NS):
+        out.append({"name": f"REC SOS x{n}", "machine": "REC", "set": "SOS", "n": n,
+                    "bank": REC_BANK, "pattern": j, "program": 16 * REC_BANK + j})
     return out
 
 
@@ -135,7 +147,15 @@ def write_project_text(dest, lengths):
         at = raw.find(b"[SAMPLE]")
         if at < 0:
             sys.exit(f"{path}: no [SAMPLE] section")
-        path.write_bytes(raw[:at] + sample_blocks(lengths) + raw[at:])
+        raw = raw[:at] + sample_blocks(lengths) + raw[at:]
+
+        def rec_attrs(m):
+            b = re.sub(rb"TSMODE=\d+", b"TSMODE=0", m.group(0))
+            return re.sub(rb"LOOPMODE=\d+", b"LOOPMODE=0", b)
+        raw, k = re.subn(rb"\[SAMPLE\]\r?\nTYPE=FLEX\r?\nSLOT=(129|13[0-6])\r?\n.*?\[/SAMPLE\]", rec_attrs, raw, flags=re.S)
+        if k != 8:
+            sys.exit(f"{path}: {k} recorder sample blocks (FLEX 129-136), want 8")
+        path.write_bytes(raw)
     import ot_matrix as M
     settings = M.test_settings(1)
     settings["TEMPOx24"] = BPM * 24
@@ -183,7 +203,7 @@ def write_banks(dest):
                 tail = PTRN0 + pat * PTRN_FSTRIDE + PTRN_FSTRIDE - 11
                 data[tail + 2], data[tail + 3] = 16, 2      # LEN 16, 1X
             for c in conditions():
-                if c["bank"] != b or c["name"] == "BASE":
+                if c["bank"] != b or c["name"] == "BASE" or c["machine"] == "REC":
                     continue
                 pat, k = c["pattern"], SETS.index(next(s for s in SETS if s[0] == c["set"]))
                 data[PTRN0 + pat * PTRN_FSTRIDE + PTRN_FSTRIDE - 5] = k     # the part it plays
@@ -195,12 +215,60 @@ def write_banks(dest):
             path.write_bytes(bytes(data))
 
 
+def write_rec_bank(dest):
+    for suffix in ("work", "strd"):
+        path = dest / f"bank{REC_BANK + 1:02d}.{suffix}"
+        if not path.exists():
+            continue
+        data = bytearray(path.read_bytes())
+        for p in (0, 4):                                    # part 1 and its saved copy
+            base = PART_BASE + p * PART_STRIDE
+            for t in range(8):
+                data[base + MTYPE_OFF + t] = 1              # FLEX
+                data[base + SLOT_OFF + t * 5 + 1] = 128 + t  # on recorder buffer R(t+1)
+                rs = base + REC_SETUP_OFF + t * 12
+                for f, v in REC_SETUP.items():
+                    data[rs + REC_FIELDS.index(f)] = v
+                data[rs + REC_FIELDS.index("SRC3")] = t + 1  # the track itself (- T1..T8 MAIN CUE)
+        for pat in range(16):
+            for t in range(8):
+                off = trac_off(pat, t)
+                data[off:off + 64] = bytes(64)
+                data[off + 0x50], data[off + 0x51] = 16, 2
+            tail = PTRN0 + pat * PTRN_FSTRIDE + PTRN_FSTRIDE - 11
+            data[tail + 2], data[tail + 3] = 16, 2
+        for c in conditions():
+            if c["bank"] != REC_BANK:
+                continue
+            data[PTRN0 + c["pattern"] * PTRN_FSTRIDE + PTRN_FSTRIDE - 5] = 0
+            for t in range(c["n"]):
+                for mask in (MASK_PLAY, MASK_REC1, MASK_REC2, MASK_REC3):
+                    data[trac_off(c["pattern"], t) + mask + 7] |= 1
+        data[-2:] = (sum(data[0x10:-2]) & 0xFFFF).to_bytes(2, "big")
+        path.write_bytes(bytes(data))
+
+
+def check_rec_bank(dest):
+    data = (dest / f"bank{REC_BANK + 1:02d}.work").read_bytes()
+    for c in conditions():
+        if c["bank"] != REC_BANK:
+            continue
+        for mask in (MASK_PLAY, MASK_REC1, MASK_REC2, MASK_REC3):
+            on = [t for t in range(8) if data[trac_off(c["pattern"], t) + mask + 7] & 1]
+            assert on == list(range(c["n"])), (c["name"], hex(mask), on)
+    base = PART_BASE
+    for t in range(8):
+        assert data[base + MTYPE_OFF + t] == 1 and data[base + SLOT_OFF + t * 5 + 1] == 128 + t
+        assert data[base + REC_SETUP_OFF + t * 12 + REC_FIELDS.index("SRC3")] == t + 1
+    assert (sum(data[0x10:-2]) & 0xFFFF) == int.from_bytes(data[-2:], "big"), "bank checksum"
+
+
 def check_banks(dest):
     """Read the project back: each condition's pattern names its part and trigs exactly its tracks."""
     for b, (_mname, mtype) in enumerate(MACHINES):
         data = (dest / f"bank{b + 1:02d}.work").read_bytes()
         for c in conditions():
-            if c["bank"] != b:
+            if c["bank"] != b or c["machine"] == "REC":
                 continue
             pat = c["pattern"]
             trigs = [t for t in range(8) if data[trac_off(pat, t) + 7] & 1]
@@ -230,7 +298,9 @@ def cmd_proj(a):
     changed = write_project_text(dest, lengths)
     write_markers(dest, lengths)
     write_banks(dest)
+    write_rec_bank(dest)
     check_banks(dest)
+    check_rec_bank(dest)
     plan = {"bpm": BPM, "pc_channel": 1, "sets": [list(s) for s in SETS], "conditions": conditions(),
             "settings_changed": changed}
     (dest / PLAN_FILE).write_text(json.dumps(plan, indent=1))
@@ -239,7 +309,7 @@ def cmd_proj(a):
 
 def cmd_plan(_a):
     for c in conditions():
-        print(f"PC {c['program']:3d}  bank {'AB'[c['bank']]} pattern {c['pattern'] + 1:2d}  {c['name']}")
+        print(f"PC {c['program']:3d}  bank {'ABC'[c['bank']]} pattern {c['pattern'] + 1:2d}  {c['name']}")
 
 
 def select(conds, only):
