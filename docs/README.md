@@ -48,7 +48,7 @@ is the silicon and the cycle budget, [DSP.md](firmware/DSP.md) the audio
 DSP, and the rest one subsystem each (kernel, tables, parameter pages,
 menus, panel, MIDI, LFO, level law, recorder, sample save, storage,
 the MIDI tracks' setup record, writers, outgoing MIDI and CTRL labels in [MIDI_TRACKS.md](firmware/MIDI_TRACKS.md), Parts and pattern changes in [PARTS.md](firmware/PARTS.md), step locks, the ColdFire delay routine in [COLDFIRE_DELAY.md](firmware/COLDFIRE_DELAY.md),
-REPITCH in [REPITCH.md](firmware/REPITCH.md)).
+REPITCH in [REPITCH.md](firmware/REPITCH.md), the ColdFire's time by task on a unit in [CF_BUDGET.md](firmware/CF_BUDGET.md)).
 
 ## Proposals
 
