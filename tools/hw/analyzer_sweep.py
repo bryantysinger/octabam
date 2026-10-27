@@ -21,7 +21,9 @@ trim records in markers.work. Bank A is FLEX, bank B STATIC: in each, part k pla
 pattern 4k + j (j = 0..3) is that part with a trig on step 1 of the first 1, 2, 4 or 8 tracks (LEN 16, 1X: a 2 s bar).
 Pattern 13 of bank A has no trigs: BASE. Bank C is sound-on-sound: track t a FLEX machine on its own recorder
 buffer, PLAY + REC1 + REC2 + REC3 on step 1, INAB A B, INCD C D, SRC3 the track itself, RLEN 16, LOOP off, TSTR
-off on the buffers; pattern j plays the first 1, 2, 4 or 8 tracks (REC SOS xN; --only REC selects them). A program change on --pc-channel (default 1) selects a pattern: 16 x bank +
+off on the buffers; pattern j plays the first 1, 2, 4 or 8 tracks (REC SOS xN; --only REC selects them).
+Bank D is bank C's setup with the trigs split, at 4 and 8 tracks: PLAY ONLY, PLAY+SRC3 (REC3), PLAY+INPUTS (REC1 +
+REC2) and NO PLAY (all three recorder trigs, no PLAY): what in SOS pays, and whether it is the inputs. A program change on --pc-channel (default 1) selects a pattern: 16 x bank +
 pattern. The project's MIDI settings are ot_matrix.py's (clock, transport and program change receive on), so `run`
 sends the clock itself.
 
@@ -65,6 +67,13 @@ REC_BANK = 2
 REC_SETUP_OFF, REC_FIELDS = 0x60b, ("INAB", "INCD", "RLEN", "TRIG", "SRC3", "LOOP")   # ot_project.REC_FIELDS
 MASK_PLAY, MASK_REC1, MASK_REC2, MASK_REC3 = 0x00, 0x20, 0x28, 0x30                  # sos_capture.py
 REC_SETUP = {"INAB": 1, "INCD": 1, "RLEN": 15, "LOOP": 0}                            # A B, C D, 16 steps (raw), off
+# bank D: the same tracks, the recorder trigs split, to tell what in SOS pays: (name, masks), at 4 and 8 tracks
+SPLIT_BANK = 3
+SPLITS = (("PLAY ONLY", (MASK_PLAY,)),
+          ("PLAY+SRC3", (MASK_PLAY, MASK_REC3)),
+          ("PLAY+INPUTS", (MASK_PLAY, MASK_REC1, MASK_REC2)),
+          ("NO PLAY", (MASK_REC1, MASK_REC2, MASK_REC3)))
+SPLIT_NS = (4, 8)
 PLAN_FILE = "OCTABAM_ANALYZER.json"
 
 # bank file layout (ot_project.py, ot_bank.py)
@@ -97,6 +106,11 @@ def conditions():
     for j, n in enumerate(NS):
         out.append({"name": f"REC SOS x{n}", "machine": "REC", "set": "SOS", "n": n,
                     "bank": REC_BANK, "pattern": j, "program": 16 * REC_BANK + j})
+    for k, (sname, _masks) in enumerate(SPLITS):
+        for j, n in enumerate(SPLIT_NS):
+            pat = 2 * k + j
+            out.append({"name": f"REC {sname} x{n}", "machine": "REC", "set": sname, "n": n,
+                        "bank": SPLIT_BANK, "pattern": pat, "program": 16 * SPLIT_BANK + pat})
     return out
 
 
@@ -217,9 +231,9 @@ def write_banks(dest):
             path.write_bytes(bytes(data))
 
 
-def write_rec_bank(dest):
+def write_rec_bank(dest, bank=REC_BANK):
     for suffix in ("work", "strd"):
-        path = dest / f"bank{REC_BANK + 1:02d}.{suffix}"
+        path = dest / f"bank{bank + 1:02d}.{suffix}"
         if not path.exists():
             continue
         data = bytearray(path.read_bytes())
@@ -240,24 +254,31 @@ def write_rec_bank(dest):
             tail = PTRN0 + pat * PTRN_FSTRIDE + PTRN_FSTRIDE - 11
             data[tail + 2], data[tail + 3] = 16, 2
         for c in conditions():
-            if c["bank"] != REC_BANK:
+            if c["bank"] != bank:
                 continue
             data[PTRN0 + c["pattern"] * PTRN_FSTRIDE + PTRN_FSTRIDE - 5] = 0
             for t in range(c["n"]):
-                for mask in (MASK_PLAY, MASK_REC1, MASK_REC2, MASK_REC3):
+                for mask in masks_of(c):
                     data[trac_off(c["pattern"], t) + mask + 7] |= 1
         data[-2:] = (sum(data[0x10:-2]) & 0xFFFF).to_bytes(2, "big")
         path.write_bytes(bytes(data))
 
 
-def check_rec_bank(dest):
-    data = (dest / f"bank{REC_BANK + 1:02d}.work").read_bytes()
+def masks_of(c):
+    if c["set"] == "SOS":
+        return (MASK_PLAY, MASK_REC1, MASK_REC2, MASK_REC3)
+    return dict(SPLITS)[c["set"]]
+
+
+def check_rec_bank(dest, bank=REC_BANK):
+    data = (dest / f"bank{bank + 1:02d}.work").read_bytes()
     for c in conditions():
-        if c["bank"] != REC_BANK:
+        if c["bank"] != bank:
             continue
         for mask in (MASK_PLAY, MASK_REC1, MASK_REC2, MASK_REC3):
             on = [t for t in range(8) if data[trac_off(c["pattern"], t) + mask + 7] & 1]
-            assert on == list(range(c["n"])), (c["name"], hex(mask), on)
+            want = list(range(c["n"])) if mask in masks_of(c) else []
+            assert on == want, (c["name"], hex(mask), on)
     base = PART_BASE
     for t in range(8):
         assert data[base + MTYPE_OFF + t] == 1 and data[base + SLOT_OFF + t * 5 + 1] == 128 + t
@@ -301,8 +322,10 @@ def cmd_proj(a):
     write_markers(dest, lengths)
     write_banks(dest)
     write_rec_bank(dest)
+    write_rec_bank(dest, SPLIT_BANK)
     check_banks(dest)
     check_rec_bank(dest)
+    check_rec_bank(dest, SPLIT_BANK)
     plan = {"bpm": BPM, "pc_channel": 1, "sets": [list(s) for s in SETS], "conditions": conditions(),
             "settings_changed": changed}
     (dest / PLAN_FILE).write_text(json.dumps(plan, indent=1))
@@ -311,7 +334,7 @@ def cmd_proj(a):
 
 def cmd_plan(_a):
     for c in conditions():
-        print(f"PC {c['program']:3d}  bank {'ABC'[c['bank']]} pattern {c['pattern'] + 1:2d}  {c['name']}")
+        print(f"PC {c['program']:3d}  bank {'ABCD'[c['bank']]} pattern {c['pattern'] + 1:2d}  {c['name']}")
 
 
 def select(conds, only):
