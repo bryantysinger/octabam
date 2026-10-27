@@ -142,6 +142,17 @@ fp_s6:
         move.l  %d0,56(%a0)
         move.l  fp_sd5,%d0
         move.l  %d0,60(%a0)
+        moveq   #0,%d2                          | the USB timers (usbaudio.s usb_tm), taken and cleared
+3:      lea     usb_tm,%a0
+        move.l  (%a0,%d2.l*4),%d0
+        clr.l   (%a0,%d2.l*4)
+        lea     fp_stats+64,%a0
+        move.l  %d0,(%a0,%d2.l*4)
+        addq.l  #1,%d2
+        moveq   #4,%d0
+        cmp.l   %d2,%d0
+        bne.s   3b
+        lea     fp_stats,%a0
         clr.l   fp_frames
         clr.l   fp_alt
         clr.l   fp_xin
@@ -224,9 +235,10 @@ fp_x6x:
         .balign 4
         .globl  fp_stats, FP_STATS
 | seq, window, frames, alt, sec0..sec5, xfer_in_frame, xfer_all, xfer_count,
-| spin_hostcmd, spin_dma3, spin_dma5 (timer 3 counts, sums over the window)
+| spin_hostcmd, spin_dma3, spin_dma5, usb_out_shim, usb_producer, usb_in_frame,
+| usb_in_build, 4 spare (timer 3 counts, sums over the window)
 FP_STATS:
-fp_stats: .space 64
+fp_stats: .space 96
 fp_acc:   .space 4*NSEC
 fp_last:  .long 0
 fp_nest:  .long 0

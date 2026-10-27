@@ -985,6 +985,8 @@ audio_ep3_flush:
 
     .global audio_frame_shim
 audio_frame_shim:
+    movel   0xfc07c00c,%d0          | USB timers (usb_tm): DMA timer 3 at the shim's entry
+    movel   %d0,usb_tm_t0
     | The producer runs only while the host asks for the stream (usbaudio_alt,
     | the SET_INTERFACE request, so from the block after it). His build idled
     | until alt 1 and had 127 underruns at startup on hardware, which is why
@@ -1024,12 +1026,17 @@ audio_frame_shim:
     clrb    aud_closed
     bsr     audio_cushion_zero
 .Lproduce_go:
+    movel   0xfc07c00c,%d0
+    movel   %d0,usb_tm_t1
     bsr     producer_usb            | the composable producer (the six bytes
                                     | decide what each frame holds)
     | ---- EP3, owned by this context alone ---------------------------------
     | usbaudio_alt is what the host asked for (SET_INTERFACE); aud_running is
     | what EP3 currently is. Bring it up or down when they differ, and when
     | it is up the block clock IS the send clock: top the queue up now.
+    movel   0xfc07c00c,%d0          | the producer's time
+    subl    usb_tm_t1,%d0
+    addl    %d0,usb_tm+4
 .Lep3:
     mvzb    usbaudio_alt,%d0
     mvzb    aud_running,%d1
@@ -1047,7 +1054,10 @@ audio_frame_shim:
     beqs    9f                      | nobody listening: nothing to send
 .Lep3_kick:
     bsr     usbaudio_kick
-9:  clrl    0x46104d4e              | displaced
+9:  movel   0xfc07c00c,%d0          | the whole shim's time: producer, EP3, packet builds
+    subl    usb_tm_t0,%d0
+    addl    %d0,usb_tm
+    clrl    0x46104d4e              | displaced
     jmp     0x4000d9a6
 
 | The AUD_TARGET ring slots behind the producer, zeroed: the stream's first
@@ -1895,7 +1905,7 @@ audio_ctrl_shim:
     | block wValue low names: 0 lm_stats (5 longs), 1 lm_dsp (12), 2 lm_ot
     | (16 slots of {last, sum, count, max}), 3 DLPUMP's counters (16 longs, modules/dlpump), 4 BRAIN's task
     | ledger brain_ts (12 x {TCB, DMA timer 3 counts charged to that task}, running totals that wrap;
-    | modules/brain hooks.s, tools/hw/task_meter.py), 5 FRAME PROFILE's window (16 longs), from byte wIndex low on. Each
+    | modules/brain hooks.s, tools/hw/task_meter.py), 5 FRAME PROFILE's window (24 longs), from byte wIndex low on. Each
     | LM_* (and brain_ts) is 0 without that module, and a request for a block it does not
     | have STALLs as stock does.
     |
@@ -1935,7 +1945,7 @@ audio_ctrl_shim:
     movel   #brain_ts,%d3
     cmpil   #4,%d0
     beqs    3f
-    moveq   #64,%d1                 | block 5: FRAME PROFILE's window (16 longs, modules/frame-profile)
+    moveq   #96,%d1                 | block 5: FRAME PROFILE's window (24 longs, modules/frame-profile)
     movel   #FP_STATS,%d3
     cmpil   #5,%d0
     bne     9f
@@ -2105,6 +2115,15 @@ uac2_clock_valid: .byte 0x01
     .global usbaudio_reprimes, usbaudio_minfill, usbaudio_maxfill, usbaudio_anchor
 | The fifteen longs from usbaudio_consumed to aud_produced are what the
 | vendor request 0xc0/0x55 returns, in this order.
+| USB timers, DMA timer 3 counts summed since FRAME PROFILE last took them
+| (modules/frame-profile; nothing else reads or clears them): the frame
+| shim (OUT: producer, EP3, packet builds), the producer alone, USB IN's
+| per-frame work in state 7, and in_build alone.
+    .globl  usb_tm
+    .balign 4
+usb_tm:            .long 0, 0, 0, 0
+usb_tm_t0:         .long 0
+usb_tm_t1:         .long 0
 usbaudio_consumed: .long 0          | frames pulled from the ring
 usbaudio_acc:      .long 0          | frames-per-packet accumulator (x1000)
 usbaudio_overruns: .long 0

@@ -367,6 +367,15 @@ class UsbInStream:
             self.phase += frames
         self.stream = sd.OutputStream(device=idx[0], channels=self.ch, samplerate=FS, dtype="float32", callback=cb)
         self.stream.start()
+        # the unit's own output, opened on purpose (as a host app has it in use): USB OUT's producer runs only
+        # while the host takes that stream. The audio is discarded.
+        ins = [i for i, d in enumerate(devs) if device.lower() in d["name"].lower() and d["max_input_channels"] >= 2]
+        self.in_ch = devs[ins[0]]["max_input_channels"] if ins else 0
+        self.istream = None
+        if ins:
+            self.istream = sd.InputStream(device=ins[0], channels=self.in_ch, samplerate=FS, dtype="float32",
+                                          callback=lambda *_a: None)
+            self.istream.start()
 
     @staticmethod
     def pkts(dev):
@@ -386,9 +395,11 @@ class UsbInStream:
 
     def close(self):
         self.stream.stop(); self.stream.close()
+        if self.istream:
+            self.istream.stop(); self.istream.close()
 
 
-USB_KEYS = {True: ("err", "bad", "underruns", "overruns"), False: ("underruns", "overruns", "bankdup")}
+USB_KEYS = {True: ("err", "bad", "underruns", "overruns"), False: ("consumed", "underruns", "overruns", "bankdup")}
 
 
 def usb_snapshot(dev):
@@ -430,7 +441,8 @@ def cmd_run(a):
     if a.usb_in:
         usb_in = UsbInStream(a.usb_in)
         print(f"USB IN: {usb_in.ch} channels of 997 Hz into {usb_in.name!r}, "
-              f"{usb_in.check(unit.dev):.0f} packets a second at the unit")
+              f"{usb_in.check(unit.dev):.0f} packets a second at the unit; "
+              f"USB OUT: {usb_in.in_ch} channels taken from the unit")
     clock = L.Clock(plan["bpm"], a.midi)
     rng = random.Random(a.seed)
     fields = ["label", "rep", "condition", "machine", "set", "n", "program", "usb_in_pkts_per_s"] + USB_FIELDS
@@ -497,7 +509,8 @@ def cmd_report(a):
         print(f"| {label} | {cond} | {len(rs)} | {ms([r['TASK 98A5C'] for r in rs])} | {ms([r['IDLE'] for r in rs])} "
               f"| {ms([r['FRAME IRQ'] for r in rs])} |")
     cols = [c for c in ("frame", "head", "calls", "prep", "recorder", "voices", "mix", "xfer in frame", "rest",
-                        "wait hostcmd", "wait dma3", "wait dma5") if any(r.get(f"us {c}") for r in rows)]
+                        "wait hostcmd", "wait dma3", "wait dma5", "usb out shim", "usb producer", "usb in frame",
+                        "usb in build") if any(r.get(f"us {c}") for r in rows)]
     if cols:
         print("\nFRAME PROFILE, microseconds a frame (362.8 us is the whole frame):\n")
         print("| label | condition | " + " | ".join(cols) + " | DSP0 | DSP1 | usb in err |")

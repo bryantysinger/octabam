@@ -212,11 +212,16 @@ in_ctrl_shim:
 in_state7_shim:
     tstb    in_busy
     bnes    .Ls7_second
+    movel   0xfc07c00c,%d0          | USB timers (usb_tm, usbaudio.s): in_frame's time
+    movel   %d0,in_tm_t0
     lea     %sp@(-40),%sp
     moveml  %d2-%d7/%a2-%a5,%sp@
     bsr     in_frame
     moveml  %sp@,%d2-%d7/%a2-%a5
     lea     %sp@(40),%sp
+    movel   0xfc07c00c,%d0
+    subl    in_tm_t0,%d0
+    addl    %d0,usb_tm+8
     tstb    in_running
     bnes    .Ls7_send
     mvzb    in_zero_sent,%d0
@@ -642,6 +647,14 @@ in_selfheal:
 | and on an underrun (which refills the cushion), silence: both flags 0 and
 | the jacks come through.
 in_build:
+    movel   0xfc07c00c,%d0          | in_build's time (usb_tm+12)
+    movel   %d0,in_tm_t1
+    bsr     in_build_body
+    movel   0xfc07c00c,%d0
+    subl    in_tm_t1,%d0
+    addl    %d0,usb_tm+12
+    rts
+in_build_body:
     moveal  #(in_tx+UNCACHED),%a1
     movel   in_produced,%d0
     subl    in_consumed,%d0         | fill
@@ -756,6 +769,8 @@ in_err:       .long 0               | completions with a dTD error bit
 in_partial:   .long 0               | completions that were not whole frames
 
 qh_in:        .long 0
+in_tm_t0:     .long 0
+in_tm_t1:     .long 0
 in_ring:      .space IN_FRAMES*16     | 16 B a frame (the ABCD maximum); a 2-ch
                                       | frame uses the first 8 of its slot
     .global in_alt                  | usbaudio.s answers GET_INTERFACE on the IN interface from it

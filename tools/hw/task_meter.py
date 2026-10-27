@@ -36,7 +36,7 @@ CF_HZ = 132e6
 LEDGER_BLOCK, LEDGER_BYTES = 4, 96
 STATS_BLOCK, STATS_BYTES = 0, 20
 DSP_BLOCK, DSP_BYTES = 1, 48
-FP_BLOCK, FP_BYTES = 5, 64
+FP_BLOCK, FP_BYTES = 5, 96
 FRAME_US = 16 / 44100 * 1e6                      # 362.8 us
 # FRAME PROFILE's sections (modules/frame-profile/profile.s), in order
 SECTIONS = ("head", "calls", "prep", "recorder", "voices", "mix")
@@ -69,10 +69,11 @@ def decode_stats(raw):
 
 
 def decode_fp(raw):
-    """FRAME PROFILE's window (modules/frame-profile profile.s): 16 longs, timer 3 counts."""
-    w = struct.unpack(">16I", raw)
+    """FRAME PROFILE's window (modules/frame-profile profile.s): 24 longs, timer 3 counts."""
+    w = struct.unpack(">24I", raw)
     return {"seq": w[0], "window": w[1], "frames": w[2], "alt": w[3], "sec": list(w[4:10]),
-            "xin": w[10], "xall": w[11], "xcnt": w[12], "shc": w[13], "sd3": w[14], "sd5": w[15]}
+            "xin": w[10], "xall": w[11], "xcnt": w[12], "shc": w[13], "sd3": w[14], "sd5": w[15],
+            "uout": w[16], "uprod": w[17], "uin": w[18], "ubuild": w[19]}
 
 
 class Unit:
@@ -186,6 +187,10 @@ class Accumulator:
             secs = f["window"] / CF_HZ if f["window"] else None
             prof["xfer per s"] = f["xcnt"] / secs if secs else None
             prof["xfer us each"] = f["xall"] / f["xcnt"] / CF_HZ * 1e6 if f["xcnt"] else None
+            prof["usb out shim"] = us(f["uout"])        # producer + EP3 + packet builds (frame end)
+            prof["usb producer"] = us(f["uprod"])
+            prof["usb in frame"] = us(f["uin"])         # in_frame, inside the level-6 handler
+            prof["usb in build"] = us(f["ubuild"])
             prof["alt frames"] = f["alt"]
             prof["frames"] = f["frames"]
             out["profile"] = prof
@@ -217,7 +222,8 @@ def fmt(res, top=None):
     p = res.get("profile")
     if p:
         line += ("\n  frame us: " + "  ".join(f"{n} {p[n]:6.1f}" for n in
-                 ("frame",) + SECTIONS + ("xfer in frame", "rest", "wait hostcmd", "wait dma3", "wait dma5")
+                 ("frame",) + SECTIONS + ("xfer in frame", "rest", "wait hostcmd", "wait dma3", "wait dma5",
+                                          "usb out shim", "usb producer", "usb in frame", "usb in build")
                  if p.get(n) is not None))
     d = res.get("dsp")
     if d and d[0] is not None:
@@ -226,7 +232,8 @@ def fmt(res, top=None):
 
 
 PROFILE_FIELDS = (["frame"] + list(SECTIONS) + ["xfer in frame", "rest", "wait hostcmd", "wait dma3", "wait dma5",
-                  "xfer per s", "xfer us each", "alt frames", "frames"])
+                  "xfer per s", "xfer us each", "usb out shim", "usb producer", "usb in frame", "usb in build",
+                  "alt frames", "frames"])
 CSV_FIELDS = (["time", "label", "seconds", "polls", "FRAME IRQ"] + NAMES + [f"raw {n}" for n in NAMES]
               + [f"us {n}" for n in PROFILE_FIELDS] + ["DSP0 busy", "DSP1 busy"])
 
@@ -280,12 +287,14 @@ def selftest():
         raise AssertionError("a wrong TCB was accepted")
     except ValueError:
         pass
-    fpw = lambda seq: struct.pack(">16I", seq, 66000000, 1378, 0, *[13200] * 6, 1320, 2640, 2756, 660, 0, 0)
+    fpw = lambda seq: struct.pack(">24I", seq, 66000000, 1378, 0, *[13200] * 6, 1320, 2640, 2756, 660, 0, 0,
+                                  1320, 660, 1320, 660, 0, 0, 0, 0)
     acc = Accumulator()
     acc.add(ledger(base), {"seq": 1, "window": 66000000, "sum": 1378 * 26400, "count": 1378, "longest": 1}, decode_fp(fpw(1)))
     acc.add(ledger(base), {"seq": 2, "window": 66000000, "sum": 1378 * 26400, "count": 1378, "longest": 1}, decode_fp(fpw(2)))
     p = acc.result()["profile"]
     assert abs(p["head"] - 13200 / 1378 / CF_HZ * 1e6) < 1e-9, p
+    assert abs(p["usb producer"] - 660 / 1378 / CF_HZ * 1e6) < 1e-9, p
     assert abs(p["frame"] - 200.0) < 1e-9 and abs(p["rest"] - (200.0 - 6 * p["head"] - p["xfer in frame"])) < 1e-9, p
     print("task_meter selftest: ok")
 
