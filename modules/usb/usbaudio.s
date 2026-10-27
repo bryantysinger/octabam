@@ -1893,8 +1893,10 @@ audio_ctrl_shim:
     bra     .Lctrl_send
     | 0xc0/0x57 reads LOAD METER's published figures (modules/load-meter), the
     | block wValue low names: 0 lm_stats (5 longs), 1 lm_dsp (12), 2 lm_ot
-    | (16 slots of {last, sum, count, max}), 3 DLPUMP's counters (16 longs, modules/dlpump), from byte wIndex low on. Each
-    | LM_* is 0 without that module, and a request for a block it does not
+    | (16 slots of {last, sum, count, max}), 3 DLPUMP's counters (16 longs, modules/dlpump), 4 BRAIN's task
+    | ledger brain_ts (12 x {TCB, DMA timer 3 counts charged to that task}, running totals that wrap;
+    | modules/brain hooks.s, tools/hw/task_meter.py), from byte wIndex low on. Each
+    | LM_* (and brain_ts) is 0 without that module, and a request for a block it does not
     | have STALLs as stock does.
     |
     | Two things measured on a unit (24 Oct 2026) shape it. The controller's
@@ -1928,6 +1930,10 @@ audio_ctrl_shim:
     moveq   #64,%d1                 | block 3: DLPUMP's counters (16 longs)
     movel   #DL_DIAG,%d3
     cmpil   #3,%d0
+    beqs    3f
+    moveq   #96,%d1                 | block 4: BRAIN's task ledger, brain_ts (12 x {TCB, counts})
+    movel   #brain_ts,%d3
+    cmpil   #4,%d0
     bne     9f
 3:  tstl    %d3
     beq     9f                      | the remix has no LOAD METER (or, for block 3, no DLPUMP)
