@@ -28,7 +28,9 @@ sends the clock itself.
 A RUN. Per condition, in a shuffled order per repetition (--seed): STOP twice (the voices end), the program change,
 START, --settle seconds, then --secs of task_meter polling; one CSV row per condition and repetition in
 out/hw/analyzer/LABEL.csv (task shares, FRAME IRQ when LOAD METER is in the image, and the condition's fields).
-`report` prints a table: per condition, the mean and spread of TASK 98A5C and IDLE over the repetitions. Run the same
+--usb-in DEVICE streams a sine into the unit's USB input for the whole run and checks, per row, that the IN
+packets moved (the column usb_in_pkts_per_s); without it, USB IN may still be ON and idle if the card says so
+(usb_counters.py --in tells which). `report` prints a table: per condition, the mean and spread of TASK 98A5C and IDLE over the repetitions. Run the same
 sweep on the image without and with the stretch gate to get what the gate frees.
 
 What it cannot see: interrupts other than the frame interrupt stay inside the task they hit (as on BRAIN's screen);
@@ -319,6 +321,50 @@ def select(conds, only):
     return [c for c in conds if c["name"] == "BASE" or all(w in c["name"].upper() for w in words)]
 
 
+class UsbInStream:
+    """A steady signal into the unit's USB audio input for the whole run (sounddevice, as sos_capture.py plays its
+    signal): a 997 Hz sine at -20 dBFS on every channel the device takes. `check` reads the audio-in counters
+    (vendor request 0xc0/0x56, tools/hw/usb_counters.py) twice and refuses a run whose OUT packets are not moving."""
+
+    def __init__(self, device):
+        import numpy as np
+        import sounddevice as sd
+        devs = sd.query_devices()
+        idx = [i for i, d in enumerate(devs) if device.lower() in d["name"].lower() and d["max_output_channels"] >= 2]
+        if len(idx) != 1:
+            sys.exit(f"{len(idx)} output devices match {device!r}: "
+                     + ", ".join(f"{d['name']!r} out={d['max_output_channels']}" for d in devs))
+        self.name, self.ch = devs[idx[0]]["name"], devs[idx[0]]["max_output_channels"]
+        self.phase = 0
+        amp, w = 10 ** (-20 / 20), 2 * math.pi * 997 / FS
+
+        def cb(outdata, frames, _t, _status):
+            n = np.arange(self.phase, self.phase + frames)
+            outdata[:] = (amp * np.sin(w * n)).astype(np.float32)[:, None]
+            self.phase += frames
+        self.stream = sd.OutputStream(device=idx[0], channels=self.ch, samplerate=FS, dtype="float32", callback=cb)
+        self.stream.start()
+
+    @staticmethod
+    def pkts(dev):
+        import usb_counters as C
+        return C.read(dev, host_in=True)["pkts"]
+
+    def check(self, dev, wait=1.0):
+        try:
+            a = self.pkts(dev); time.sleep(wait); b = self.pkts(dev)
+        except Exception as e:  # noqa: BLE001
+            sys.exit(f"the audio-in counters failed ({e}): USB IN is off in this image or on the card")
+        rate = (b - a) / wait
+        if rate < 100:
+            sys.exit(f"USB IN takes {rate:.0f} packets a second from {self.name!r} (several thousand when streaming); "
+                     "check the device and that USB IN is on")
+        return rate
+
+    def close(self):
+        self.stream.stop(); self.stream.close()
+
+
 def cmd_run(a):
     import ot_ladder as L
     import task_meter as T
@@ -329,9 +375,14 @@ def cmd_run(a):
     path = out / f"{a.label}.csv"
     unit = T.Unit()
     unit.ledger()                                   # fails here, before any MIDI, on an image without block 4
+    usb_in = None
+    if a.usb_in:
+        usb_in = UsbInStream(a.usb_in)
+        print(f"USB IN: {usb_in.ch} channels of 997 Hz into {usb_in.name!r}, "
+              f"{usb_in.check(unit.dev):.0f} packets a second at the unit")
     clock = L.Clock(plan["bpm"], a.midi)
     rng = random.Random(a.seed)
-    fields = ["label", "rep", "condition", "machine", "set", "n", "program"]
+    fields = ["label", "rep", "condition", "machine", "set", "n", "program", "usb_in_pkts_per_s"]
     try:
         for rep in range(1, a.reps + 1):
             order = conds[:]
@@ -341,8 +392,13 @@ def cmd_run(a):
                 clock.pc(plan["pc_channel"], c["program"]); time.sleep(0.8)
                 clock.start()
                 time.sleep(a.settle)
+                p0 = usb_in.pkts(unit.dev) if usb_in else None
                 res = T.measure(unit, a.secs, a.interval)
-                row = dict(zip(fields, (a.label, rep, c["name"], c["machine"], c["set"], c["n"], c["program"])))
+                rate = (usb_in.pkts(unit.dev) - p0) / res["seconds"] if usb_in else ""
+                if usb_in and rate < 100:
+                    sys.exit(f"USB IN stopped during {c['name']} ({rate:.0f} packets a second); the row is not written")
+                row = dict(zip(fields, (a.label, rep, c["name"], c["machine"], c["set"], c["n"], c["program"],
+                                        "" if rate == "" else f"{rate:.0f}")))
                 row.update(T.csv_row(res, a.label))
                 new = not path.exists()
                 with path.open("a", newline="") as f:
@@ -356,6 +412,8 @@ def cmd_run(a):
     finally:
         clock.stop(); time.sleep(0.2); clock.stop()
         clock.close()
+        if usb_in:
+            usb_in.close()
     print(f"wrote {path}")
 
 
@@ -412,6 +470,9 @@ def main():
     p.add_argument("--secs", type=float, default=10.0); p.add_argument("--settle", type=float, default=3.0)
     p.add_argument("--interval", type=float, default=0.25); p.add_argument("--only", default="")
     p.add_argument("--seed", type=int, default=1)
+    p.add_argument("--usb-in", default="", metavar="DEVICE",
+                   help="stream a 997 Hz sine into the unit's USB input (an output device whose name contains DEVICE, "
+                        "e.g. Octatrack) for the whole run; every row checks the IN packets kept moving")
     p = sub.add_parser("report"); p.add_argument("csv", nargs="+")
     p = sub.add_parser("port-midi"); p.add_argument("dest"); p.add_argument("out")
     p.add_argument("--secs", type=float, default=4.0); p.add_argument("--only", default="")
