@@ -388,6 +388,34 @@ class UsbInStream:
         self.stream.stop(); self.stream.close()
 
 
+USB_KEYS = {True: ("err", "bad", "underruns", "overruns"), False: ("underruns", "overruns", "bankdup")}
+
+
+def usb_snapshot(dev):
+    """The audio-in (0x56) and audio-out (0x55) counters, or None for a side the image does not run."""
+    import usb_counters as C
+    out = {}
+    for host_in in (True, False):
+        try:
+            out[host_in] = C.read(dev, host_in=host_in)
+        except Exception:  # noqa: BLE001 -- a STALL: that direction is off
+            out[host_in] = None
+    return out
+
+
+def usb_delta(a, b):
+    row = {}
+    for host_in, keys in USB_KEYS.items():
+        side = "in" if host_in else "out"
+        for k in keys:
+            row[f"usb {side} {k}"] = (str((b[host_in][k] - a[host_in][k]) % (1 << 32))
+                                      if a.get(host_in) and b.get(host_in) else "")
+    return row
+
+
+USB_FIELDS = [f"usb {'in' if h else 'out'} {k}" for h, ks in USB_KEYS.items() for k in ks]
+
+
 def cmd_run(a):
     import ot_ladder as L
     import task_meter as T
@@ -405,7 +433,7 @@ def cmd_run(a):
               f"{usb_in.check(unit.dev):.0f} packets a second at the unit")
     clock = L.Clock(plan["bpm"], a.midi)
     rng = random.Random(a.seed)
-    fields = ["label", "rep", "condition", "machine", "set", "n", "program", "usb_in_pkts_per_s"]
+    fields = ["label", "rep", "condition", "machine", "set", "n", "program", "usb_in_pkts_per_s"] + USB_FIELDS
     try:
         for rep in range(1, a.reps + 1):
             order = conds[:]
@@ -416,13 +444,16 @@ def cmd_run(a):
                 clock.start()
                 time.sleep(a.settle)
                 p0 = usb_in.pkts(unit.dev) if usb_in else None
+                u0 = usb_snapshot(unit.dev)
                 res = T.measure(unit, a.secs, a.interval)
+                u1 = usb_snapshot(unit.dev)
                 rate = (usb_in.pkts(unit.dev) - p0) / res["seconds"] if usb_in else ""
                 if usb_in and rate < 100:
                     sys.exit(f"USB IN stopped during {c['name']} ({rate:.0f} packets a second); the row is not written")
                 row = dict(zip(fields, (a.label, rep, c["name"], c["machine"], c["set"], c["n"], c["program"],
                                         "" if rate == "" else f"{rate:.0f}")))
                 row.update(T.csv_row(res, a.label))
+                row.update(usb_delta(u0, u1))
                 new = not path.exists()
                 with path.open("a", newline="") as f:
                     w = csv.DictWriter(f, fieldnames=fields + [k for k in T.CSV_FIELDS if k != "label"],
@@ -430,8 +461,11 @@ def cmd_run(a):
                     if new:
                         w.writeheader()
                     w.writerow(row)
+                prof = res.get("profile")
+                extra = (f"  frame {prof['frame']:5.1f} us: rec {prof['recorder']:5.1f} voices {prof['voices']:5.1f} "
+                         f"hostcmd {prof['wait hostcmd']:5.1f}" if prof and prof.get("frame") else "")
                 print(f"rep {rep} {c['name']:22s} 98A5C {100 * res['share']['TASK 98A5C']:5.1f}%  "
-                      f"IDLE {100 * res['share']['IDLE']:5.1f}%", flush=True)
+                      f"IDLE {100 * res['share']['IDLE']:5.1f}%{extra}", flush=True)
     finally:
         clock.stop(); time.sleep(0.2); clock.stop()
         clock.close()
@@ -462,6 +496,21 @@ def cmd_report(a):
         rs = [r for r in rows if r["label"] == label and r["condition"] == cond]
         print(f"| {label} | {cond} | {len(rs)} | {ms([r['TASK 98A5C'] for r in rs])} | {ms([r['IDLE'] for r in rs])} "
               f"| {ms([r['FRAME IRQ'] for r in rs])} |")
+    cols = [c for c in ("frame", "head", "calls", "prep", "recorder", "voices", "mix", "xfer in frame", "rest",
+                        "wait hostcmd", "wait dma3", "wait dma5") if any(r.get(f"us {c}") for r in rows)]
+    if cols:
+        print("\nFRAME PROFILE, microseconds a frame (362.8 us is the whole frame):\n")
+        print("| label | condition | " + " | ".join(cols) + " | DSP0 | DSP1 | usb in err |")
+        print("|---|---|" + "---|" * (len(cols) + 3))
+
+        def mean(vals, scale=1.0):
+            v = [scale * float(x) for x in vals if x not in ("", None)]
+            return f"{statistics.mean(v):.1f}" if v else "-"
+        for label, cond in keys:
+            rs = [r for r in rows if r["label"] == label and r["condition"] == cond]
+            print(f"| {label} | {cond} | " + " | ".join(mean([r.get(f'us {c}') for r in rs]) for c in cols)
+                  + f" | {mean([r.get('DSP0 busy') for r in rs], 100)} | {mean([r.get('DSP1 busy') for r in rs], 100)}"
+                  + f" | {mean([r.get('usb in err') for r in rs])} |")
 
 
 def cmd_port_midi(a):

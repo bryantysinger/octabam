@@ -116,7 +116,7 @@ LINKED = (
     Linked("usbaudio", f"{SOURCE}/usbaudio.s", cpu="5475", dram=True,
            include=audio_inc, boot_mutable=(("usb_trk", 40),),
            defsyms=(("LM_STATS", 0), ("LM_DSP", 0), ("LM_OT", 0), ("DL_DIAG", 0),
-                    ("brain_ts", 0))),   # LOAD METER's, DLPUMP's and BRAIN's blocks, 0 without them
+                    ("brain_ts", 0), ("FP_STATS", 0))),   # LOAD METER's, DLPUMP's and BRAIN's blocks, 0 without them
     Linked("usbcrossbar", f"{SOURCE}/usbcrossbar.s", cpu="5475", dram=True),
     Linked("usbaudio_in", f"{SOURCE}/usbaudio_in.s", cpu="5475", dram=True),
 )

@@ -1895,7 +1895,7 @@ audio_ctrl_shim:
     | block wValue low names: 0 lm_stats (5 longs), 1 lm_dsp (12), 2 lm_ot
     | (16 slots of {last, sum, count, max}), 3 DLPUMP's counters (16 longs, modules/dlpump), 4 BRAIN's task
     | ledger brain_ts (12 x {TCB, DMA timer 3 counts charged to that task}, running totals that wrap;
-    | modules/brain hooks.s, tools/hw/task_meter.py), from byte wIndex low on. Each
+    | modules/brain hooks.s, tools/hw/task_meter.py), 5 FRAME PROFILE's window (16 longs), from byte wIndex low on. Each
     | LM_* (and brain_ts) is 0 without that module, and a request for a block it does not
     | have STALLs as stock does.
     |
@@ -1934,6 +1934,10 @@ audio_ctrl_shim:
     moveq   #96,%d1                 | block 4: BRAIN's task ledger, brain_ts (12 x {TCB, counts})
     movel   #brain_ts,%d3
     cmpil   #4,%d0
+    beqs    3f
+    moveq   #64,%d1                 | block 5: FRAME PROFILE's window (16 longs, modules/frame-profile)
+    movel   #FP_STATS,%d3
+    cmpil   #5,%d0
     bne     9f
 3:  tstl    %d3
     beq     9f                      | the remix has no LOAD METER (or, for block 3, no DLPUMP)
