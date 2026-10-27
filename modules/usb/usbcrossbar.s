@@ -27,9 +27,12 @@
 .set XBS_CRS2,    0xfc004210
 .set XBS_PRS4,    0xfc004400        | slave 4: the SRAM backdoor
 .set XBS_CRS4,    0xfc004410
-.set PRS_USB1ST,  0x60504321        | M6 USB 0, M0 core 1, M1 eDMA 2, M2 3, M3 4, M5 5, M7 6
-                                    | (stock 0x65403210: USB at level 6 of 7)
-.set CRS_FIXED,   0x00000010        | ARB fixed, park on the last master (stock 0x110: round robin)
+| TEST ONLY (xbar-rr, 27 Oct 2026): the stock arbitration on both slaves, BCR
+| burst left on, to measure what the USB-first fixed priority costs the frame
+| interrupt with recorder loops (docs/firmware/CF_BUDGET.md section 5).
+| BCR on with round robin lost 5-11 isochronous OUT packets a minute (26 Sep 2026).
+.set PRS_USB1ST,  0x65403210        | stock: USB at level 6 of 7
+.set CRS_FIXED,   0x00000110        | stock: round robin, park on the last master
 .set USBINIT_REJOIN, 0x4001e036
 
     .text
@@ -45,7 +48,7 @@ crossbar_init_shim:
     movel   #PRS_USB1ST,%d0
     movel   %d0,XBS_PRS2
     movel   %d0,XBS_PRS4
-    moveq   #CRS_FIXED,%d0
+    movel   #CRS_FIXED,%d0
     movel   %d0,XBS_CRS2
     movel   %d0,XBS_CRS4
     movel   #0x08000000,%d0         | displaced
