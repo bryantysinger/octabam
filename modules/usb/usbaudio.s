@@ -187,6 +187,7 @@
 | Four queue slots, so the host always finds a packet waiting: four packets
 | cover 1 ms of polls. The frame ISR (every 363 us) is the only context that
 | queues, so the queue must outlast one block plus that interrupt's latency.
+.set SRAM_ODTDS,   0x800079c0   | EP3 IN's NSLOT dTDs in on-chip SRAM (128 B, 32-aligned; Claims.sram)
 .set NSLOT,        4            | power of two: slot arithmetic is a mask
 .set UNCACHED,     0x08000000   | + an SDRAM address = the same memory,
                                 | cache-inhibited (PLACEMENT.md)
@@ -450,7 +451,8 @@ usbaudio_kick:
     bnes    3f
     moveq   #2,%d0                  | the bring-up's packets are queued
     moveb   %d0,aud_await
-3:
+3:  movel   0xfc07c00c,%d0          | usb_tm+24: the self-heal
+    movel   %d0,usb_tm_t2
     | Self-heal. The add-dTD tripwire (audio_pkt_build) is the documented
     | way to append to a running queue, and its hazard window is reported by
     | the hardware clearing ATDTW. Should anything ever leave an ACTIVE dTD
@@ -462,21 +464,24 @@ usbaudio_kick:
     movel   EPPRIME,%d1
     orl     %d1,%d0
     andil   #EP3IN_BIT,%d0
-    bnes    9f                      | primed or priming: running
+    bnes    8f                      | primed or priming: running
     mvzb    aud_tail,%d2            | oldest first: fill order from the tail
     bsr     audio_oldest
     tstl    %d0
-    beqs    9f                      | nothing queued: idle is correct
+    beqs    8f                      | nothing queued: idle is correct
     bsr     audio_prime             | %a4 = head dTD
     addql   #1,usbaudio_reprimes
+8:  movel   0xfc07c00c,%d0
+    subl    usb_tm_t2,%d0
+    addl    %d0,usb_tm+24
 9:  rts
 
-| %d0 = slot index (taken mod NSLOT) -> %a0 = its dTD, through the uncached
-| alias. Clobbers d0.
+| %d0 = slot index (taken mod NSLOT) -> %a0 = its dTD, in on-chip SRAM.
+| Clobbers d0.
 audio_dtd_of:
     andil   #NSLOT-1,%d0
     lsll    #5,%d0
-    moveal  #(aud_dtds+UNCACHED),%a0
+    moveal  #SRAM_ODTDS,%a0
     addal   %d0,%a0
     rts
 
@@ -591,6 +596,8 @@ audio_pkt_build:
     | runs (up to its end, then from its start), with no per-frame index
     | masking. High speed copies the checked fields of each 88-byte slot
     | (audio_copy); full speed reads the 8-byte sum ring.
+    movel   0xfc07c00c,%d0          | usb_tm+16: the copy
+    movel   %d0,usb_tm_t2
     movel   %a6,%d0
     lsll    #8,%d0
     lsll    #2,%d0                  | slot * 1024
@@ -640,6 +647,11 @@ audio_pkt_build:
     movel   %a5,%d0
     bsr     audio_copy_sum
 .Lcopied:
+    movel   0xfc07c00c,%d0
+    movel   %d0,%d1
+    subl    usb_tm_t2,%d0
+    addl    %d0,usb_tm+16
+    movel   %d1,usb_tm_t2           | usb_tm+20: the dTD and its queueing, from here
     movel   usbaudio_lastn,%d4      | n again (the copy clobbered it)
     addl    %d4,usbaudio_consumed
     movel   %d4,%d6
@@ -713,6 +725,10 @@ audio_pkt_build:
 .Lenq_prime:
     bsr     audio_prime
 .Lenq_done:
+    movel   0xfc07c00c,%d0
+    subl    usb_tm_t2,%d0
+    addl    %d0,usb_tm+20
+    addql   #1,usb_tm+28            | packets queued
     movel   %a6,%d0
     addql   #1,%d0
     andil   #NSLOT-1,%d0
@@ -775,12 +791,12 @@ audio_copy_sum:
 | start filling at slot 0. Written through the uncached alias, so no cpushl.
 | Clobbers d0/d1/a1.
 audio_dtds_clear:
-    moveal  #(aud_dtds+UNCACHED),%a1
+    moveal  #SRAM_ODTDS,%a1
     moveq   #NSLOT*8-1,%d1
 1:  clrl    %a1@+
     subql   #1,%d1
     bpls    1b
-    moveal  #(aud_dtds+UNCACHED),%a1
+    moveal  #SRAM_ODTDS,%a1
     moveq   #1,%d0
     moveq   #NSLOT-1,%d1
 2:  movel   %d0,%a1@                | next = terminate
@@ -2118,12 +2134,15 @@ uac2_clock_valid: .byte 0x01
 | USB timers, DMA timer 3 counts summed since FRAME PROFILE last took them
 | (modules/frame-profile; nothing else reads or clears them): the frame
 | shim (OUT: producer, EP3, packet builds), the producer alone, USB IN's
-| per-frame work in state 7, and in_build alone.
+| per-frame work in state 7, in_build alone, then inside the OUT packet
+| builds: the copy, the dTD and its queueing, the self-heal, and a count of
+| packets queued (not a time).
     .globl  usb_tm
     .balign 4
-usb_tm:            .long 0, 0, 0, 0
+usb_tm:            .long 0, 0, 0, 0, 0, 0, 0, 0
 usb_tm_t0:         .long 0
 usb_tm_t1:         .long 0
+usb_tm_t2:         .long 0
 usbaudio_consumed: .long 0          | frames pulled from the ring
 usbaudio_acc:      .long 0          | frames-per-packet accumulator (x1000)
 usbaudio_overruns: .long 0
@@ -2212,8 +2231,10 @@ post_xlv:          POST_XLV_TABLE
 | cached addresses, so nothing allocates a cache line for them (inferred
 | from the access paths, not measured). dTDs are
 | 32-byte aligned (the dQH and dTD next pointers keep bits 31:5 only).
+| The dTDs are in on-chip SRAM (SRAM_ODTDS) since 27 Oct 2026, as USB IN's
+| are: the controller reaches SRAM through the backdoor and it is not cached,
+| and a CPU access there does not wait for the SDRAM.
     .balign 32
-aud_dtds:          .space NSLOT*32               | EP3 IN dTDs, one per queue slot
 aud_bufs:          .space NSLOT*PKT_BUF          | their packets (<= 960 B, one stride per slot)
 
     .balign 4

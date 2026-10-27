@@ -73,7 +73,8 @@ def decode_fp(raw):
     w = struct.unpack(">24I", raw)
     return {"seq": w[0], "window": w[1], "frames": w[2], "alt": w[3], "sec": list(w[4:10]),
             "xin": w[10], "xall": w[11], "xcnt": w[12], "shc": w[13], "sd3": w[14], "sd5": w[15],
-            "uout": w[16], "uprod": w[17], "uin": w[18], "ubuild": w[19]}
+            "uout": w[16], "uprod": w[17], "uin": w[18], "ubuild": w[19],
+            "ucopy": w[20], "uenq": w[21], "uheal": w[22], "upkts": w[23]}
 
 
 class Unit:
@@ -191,6 +192,10 @@ class Accumulator:
             prof["usb producer"] = us(f["uprod"])
             prof["usb in frame"] = us(f["uin"])         # in_frame, inside the level-6 handler
             prof["usb in build"] = us(f["ubuild"])
+            prof["usb out copy"] = us(f["ucopy"])        # the ring -> packet copy (audio_pkt_build)
+            prof["usb out enqueue"] = us(f["uenq"])      # the dTD, the add-dTD tripwire, the prime
+            prof["usb out heal"] = us(f["uheal"])        # usbaudio_kick's self-heal
+            prof["usb out pkts"] = f["upkts"] / f["frames"]   # packets queued a frame (0 on images before BUILD 35)
             prof["alt frames"] = f["alt"]
             prof["frames"] = f["frames"]
             out["profile"] = prof
@@ -223,7 +228,8 @@ def fmt(res, top=None):
     if p:
         line += ("\n  frame us: " + "  ".join(f"{n} {p[n]:6.1f}" for n in
                  ("frame",) + SECTIONS + ("xfer in frame", "rest", "wait hostcmd", "wait dma3", "wait dma5",
-                                          "usb out shim", "usb producer", "usb in frame", "usb in build")
+                                          "usb out shim", "usb producer", "usb in frame", "usb in build",
+                                          "usb out copy", "usb out enqueue", "usb out heal", "usb out pkts")
                  if p.get(n) is not None))
     d = res.get("dsp")
     if d and d[0] is not None:
@@ -233,6 +239,7 @@ def fmt(res, top=None):
 
 PROFILE_FIELDS = (["frame"] + list(SECTIONS) + ["xfer in frame", "rest", "wait hostcmd", "wait dma3", "wait dma5",
                   "xfer per s", "xfer us each", "usb out shim", "usb producer", "usb in frame", "usb in build",
+                  "usb out copy", "usb out enqueue", "usb out heal", "usb out pkts",
                   "alt frames", "frames"])
 CSV_FIELDS = (["time", "label", "seconds", "polls", "FRAME IRQ"] + NAMES + [f"raw {n}" for n in NAMES]
               + [f"us {n}" for n in PROFILE_FIELDS] + ["DSP0 busy", "DSP1 busy"])

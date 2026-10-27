@@ -102,6 +102,11 @@ def replies(b, n):
     return out
 
 
+# The host-port block for the DSP (in_build's output): on-chip SRAM since 27 Oct 2026,
+# a .set in the source, not a symbol (it was in_tx, in SDRAM, before).
+SRAM_TX = int(re.search(r"^\.set SRAM_TX,\s+(0x[0-9a-fA-F]+)", (ROOT / "modules/usb/usbaudio_in.s").read_text(), re.M).group(1), 16)
+
+
 def vendor(b):
     """The audio-in counters over the vendor request (0xc0/0x56)."""
     raw = b.ctrl_in(0xc0, 0x56, 0, 0, 4 * len(COUNTERS))
@@ -117,7 +122,7 @@ def run(tag, sym, packets, close_first, in_frame, as_, ii, reset=False, unplug=F
     dump.mkdir(parents=True, exist_ok=True)
     peek = "0:X:8100,576;0:X:202,1"
     mem = (f"{sym['in_counters']:#x},{4 * len(COUNTERS)}={dump}/counters.bin;"
-           f"{sym['in_tx']:#x},4={dump}/tx.bin;0x80005660,2048={dump}/ring.bin;"
+           f"{SRAM_TX:#x},4={dump}/tx.bin;0x80005660,2048={dump}/ring.bin;"
            f"{sym['in_alt']:#x},1={dump}/in_alt.bin;{sym['in_running']:#x},1={dump}/in_running.bin;"
            f"{sym['usbaudio_alt']:#x},1={dump}/aud_alt.bin;{sym['aud_running']:#x},1={dump}/aud_running.bin")
     with open(log, "w") as lf:

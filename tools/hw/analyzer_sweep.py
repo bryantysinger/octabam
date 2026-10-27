@@ -510,7 +510,7 @@ def cmd_report(a):
               f"| {ms([r['FRAME IRQ'] for r in rs])} |")
     cols = [c for c in ("frame", "head", "calls", "prep", "recorder", "voices", "mix", "xfer in frame", "rest",
                         "wait hostcmd", "wait dma3", "wait dma5", "usb out shim", "usb producer", "usb in frame",
-                        "usb in build") if any(r.get(f"us {c}") for r in rows)]
+                        "usb in build", "usb out copy", "usb out enqueue", "usb out heal", "usb out pkts") if any(r.get(f"us {c}") for r in rows)]
     if cols:
         print("\nFRAME PROFILE, microseconds a frame (362.8 us is the whole frame):\n")
         print("| label | condition | " + " | ".join(cols) + " | DSP0 | DSP1 | usb in err |")

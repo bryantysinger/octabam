@@ -149,7 +149,7 @@ fp_s6:
         lea     fp_stats+64,%a0
         move.l  %d0,(%a0,%d2.l*4)
         addq.l  #1,%d2
-        moveq   #4,%d0
+        moveq   #8,%d0
         cmp.l   %d2,%d0
         bne.s   3b
         lea     fp_stats,%a0
@@ -236,7 +236,8 @@ fp_x6x:
         .globl  fp_stats, FP_STATS
 | seq, window, frames, alt, sec0..sec5, xfer_in_frame, xfer_all, xfer_count,
 | spin_hostcmd, spin_dma3, spin_dma5, usb_out_shim, usb_producer, usb_in_frame,
-| usb_in_build, 4 spare (timer 3 counts, sums over the window)
+| usb_in_build, usb_out_copy, usb_out_enqueue, usb_out_heal (timer 3 counts,
+| sums over the window), usb_out_pkts (packets queued, a count)
 FP_STATS:
 fp_stats: .space 96
 fp_acc:   .space 4*NSEC
