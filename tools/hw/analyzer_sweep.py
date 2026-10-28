@@ -486,6 +486,33 @@ def cmd_run(a):
     print(f"wrote {path}")
 
 
+def cmd_watch(a):
+    """One condition held for --secs, every FRAME PROFILE window logged (task_meter.windows): the OUT spike's period."""
+    import ot_ladder as L
+    import task_meter as T
+    plan = json.loads((pathlib.Path(a.dest) / PLAN_FILE).read_text())
+    conds = [c for c in plan["conditions"] if c["name"] == a.condition]
+    if len(conds) != 1:
+        sys.exit(f"no condition named {a.condition!r}: " + ", ".join(c["name"] for c in plan["conditions"]))
+    out = pathlib.Path("out/hw/analyzer"); out.mkdir(parents=True, exist_ok=True)
+    unit = T.Unit()
+    unit.ledger()
+    usb_in = UsbInStream(a.usb_in) if a.usb_in else None
+    if usb_in:
+        print(f"USB IN: {usb_in.check(unit.dev):.0f} packets a second at the unit; USB OUT taken from the unit")
+    clock = L.Clock(plan["bpm"], a.midi)
+    try:
+        clock.stop(); time.sleep(0.2); clock.stop(); time.sleep(0.5)
+        clock.pc(plan["pc_channel"], conds[0]["program"]); time.sleep(0.8)
+        clock.start(); time.sleep(a.settle)
+        T.windows(unit, a.secs, str(out / f"{a.label}_windows.csv"))
+    finally:
+        clock.stop(); time.sleep(0.2); clock.stop()
+        clock.close()
+        if usb_in:
+            usb_in.close()
+
+
 def cmd_report(a):
     rows = []
     for p in a.csv:
@@ -558,11 +585,14 @@ def main():
     p.add_argument("--usb-in", default="", metavar="DEVICE",
                    help="stream a 997 Hz sine into the unit's USB input (an output device whose name contains DEVICE, "
                         "e.g. Octatrack) for the whole run; every row checks the IN packets kept moving")
+    p = sub.add_parser("watch"); p.add_argument("dest"); p.add_argument("label"); p.add_argument("condition")
+    p.add_argument("--midi", default="Octatrack"); p.add_argument("--secs", type=float, default=300.0)
+    p.add_argument("--settle", type=float, default=3.0); p.add_argument("--usb-in", default="", metavar="DEVICE")
     p = sub.add_parser("report"); p.add_argument("csv", nargs="+")
     p = sub.add_parser("port-midi"); p.add_argument("dest"); p.add_argument("out")
     p.add_argument("--secs", type=float, default=4.0); p.add_argument("--only", default="")
     a = ap.parse_args()
-    {"plan": cmd_plan, "proj": cmd_proj, "run": cmd_run, "report": cmd_report, "port-midi": cmd_port_midi}[a.cmd](a)
+    {"plan": cmd_plan, "proj": cmd_proj, "run": cmd_run, "report": cmd_report, "watch": cmd_watch, "port-midi": cmd_port_midi}[a.cmd](a)
 
 
 if __name__ == "__main__":

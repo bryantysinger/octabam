@@ -215,6 +215,48 @@ def measure(unit, secs, interval=0.25):
             return acc.result()
 
 
+WIN_FIELDS = ("t", "frames", "frame", "longest") + SECTIONS + ("xfer in frame", "usb out shim", "usb producer",
+                                                            "usb out copy", "usb out enqueue", "usb in frame", "usb in build")
+
+
+def windows(unit, secs, path, factor=2.0):
+    """Every FRAME PROFILE window (0.5 s) for `secs` seconds, one CSV row each, in us a frame.
+    Prints a line whenever the OUT copy runs over `factor` x its running median (a spike),
+    then the spikes' times and the gaps between them."""
+    us = lambda c, n: c / n / CF_HZ * 1e6
+    t0 = time.monotonic(); seq = None; lm_seq = None; longest = None; rows = []; spikes = []
+    with open(path, "w", newline="") as fh:
+        w = csv.writer(fh); w.writerow(WIN_FIELDS)
+        while time.monotonic() - t0 < secs:
+            st = unit.stats()
+            if st and st["seq"] != lm_seq:
+                lm_seq = st["seq"]; longest = st["longest"] / CF_HZ * 1e6
+            f = unit.fp()
+            if f is None:
+                sys.exit("no FRAME PROFILE in this image (block 5)")
+            if f["seq"] != seq and f["frames"]:
+                first = seq is None; seq = f["seq"]
+                if first:
+                    continue                                   # the window open at the start
+                n = f["frames"]; t = time.monotonic() - t0
+                sec = [us(c, n) for c in f["sec"]]
+                frame = (us(st["sum"], st["count"]) if st and st["count"] else None)
+                row = [round(t, 2), n, frame and round(frame, 1), longest and round(longest, 1)] + \
+                      [round(v, 1) for v in sec] + [round(us(f[k], n), 1) for k in
+                                                    ("xin", "uout", "uprod", "ucopy", "uenq", "uin", "ubuild")]
+                w.writerow(row); fh.flush(); rows.append(row)
+                copy = us(f["ucopy"], n); hist = sorted(r[-4] for r in rows[-120:])
+                med = hist[len(hist) // 2]
+                if len(rows) > 10 and copy > factor * med:
+                    spikes.append(t)
+                    print(f"{t:7.1f} s  spike: copy {copy:5.1f} us (median {med:4.1f}), OUT shim {us(f['uout'], n):5.1f}, "
+                          f"producer {us(f['uprod'], n):5.1f}, longest frame {longest or 0:5.1f}", flush=True)
+            time.sleep(0.1)
+    print(f"{len(rows)} windows to {path}; {len(spikes)} spike window(s)")
+    if len(spikes) > 1:
+        print("gaps between spikes (s): " + ", ".join(f"{b - a:.1f}" for a, b in zip(spikes, spikes[1:])))
+
+
 def fmt(res, top=None):
     order = sorted(NAMES, key=lambda n: -res["share"][n])
     parts = []
@@ -314,6 +356,7 @@ def main():
     ap.add_argument("--csv", help="append the measurement to this CSV")
     ap.add_argument("--label", default="", help="the CSV row's label")
     ap.add_argument("--selftest", action="store_true", help="check the arithmetic, no unit needed")
+    ap.add_argument("--windows", metavar="CSV", help="log every FRAME PROFILE window (0.5 s) for --for seconds to CSV, flagging OUT copy spikes")
     a = ap.parse_args()
     if a.selftest:
         return selftest()
@@ -326,6 +369,8 @@ def main():
         unit.ledger()
     except Exception as e:  # noqa: BLE001
         sys.exit(f"block 4 failed: {e} (a STALL means the image has no BRAIN, no USB, or a USB module without block 4)")
+    if a.windows:
+        return windows(unit, a.secs, a.windows)
     if a.watch:
         while True:
             print(fmt(measure(unit, a.watch, a.interval), top=6), flush=True)
