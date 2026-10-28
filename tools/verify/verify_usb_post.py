@@ -66,7 +66,10 @@ MASTER_ON = 0x80000034                 # MASTER TRACK
 MAIN_LEVEL = 0x80000035
 AUDIO_CC_IN = 0x80000049
 LEVEL_START = 80                       # (80/128)^2: eight tones at -12 dBFS sum under full scale
-SLOT = 88                              # usbaudio.s SLOT_BYTES: tracks 64, MAIN, CUE, MASTER
+UNCACHED = 0x08000000                  # the producer writes the ring through the alias (usbaudio.s)
+SLOT = 88                              # the ring's frame stride: the stream's frame bytes (usbaudio.s
+                                       # usb_frame_bytes, since 27 Oct 2026), set in main() from the
+                                       # settings the session boots: 64 (tracks) + 8 a checked pair
 
 
 class Emu:
@@ -162,7 +165,7 @@ def session(sym, card, events, total_ms, workdir, tag, cs1, master=False):
         e.cmd("key 0x25 0")
         e.cmd("run 400")
         for a, n in [(PING, 4), (PREV, 4), (ARENA, ARENA_LEN), (SNAP, SNAP_LEN), (MAINB, 0x80),
-                     (sym["aud_ring"], 1024 * SLOT), (sym["post_state"], 96)]:
+                     (sym["aud_ring"] + UNCACHED, 1024 * SLOT), (sym["post_state"], 96)]:
             e.cmd(f"watchmem {a:#x} {n}")
         t = 0
         for ms, fn in sorted(events, key=lambda x: x[0]) + [(total_ms, None)]:
@@ -181,7 +184,8 @@ def frames_of(rows, sym):
     """Group the writes into ColdFire frames (a frame starts at frame_isr's ping
     write). The read-back block the producer read in frame F is reassembled from
     the arena writes as they stood when its first ring write landed."""
-    ring0, ring1 = sym["aud_ring"], sym["aud_ring"] + 1024 * SLOT
+    ring0 = sym["aud_ring"] + UNCACHED
+    ring1 = ring0 + 1024 * SLOT
     st0 = sym["post_state"]
     arena = bytearray(ARENA_LEN)
     prev = None
@@ -380,6 +384,9 @@ def main():
         return 0
     cs1 = work / "cs1_post.bin"
     cs1.write_bytes(cs1_block(base, early, resolved, {"TRACKS": 2}))
+    global SLOT
+    val = {r.name: r.value for r in resolved.values() if r.store_id == "octabam.usb"}
+    SLOT = 64 + 8 * sum(1 for k in ("MAIN", "CUE", "MASTER") if val.get(k))
     xlv = xlv_table_from_elf(sym)
     if len(xlv) != 256 or xlv[254] < 0x7f0000:
         print(f"  [FAIL] verify_usb_post: post_xlv not read back from {ELF}")

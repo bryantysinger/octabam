@@ -32,10 +32,14 @@
 |
 | The defaults (TRACKS PRE, MAIN, CUE, MIDI) are the released image's
 | TRACKS MAIN CUE stream. Every combination lives in every image: one
-| composable producer writes the checked fields of one 88-byte slot per
-| frame in the ring (tracks 16 x (L,R), then MAIN, CUE, MASTER -- 4 B each,
-| 24 bits little-endian), and the packet builder copies the checked fields
-| of each slot (audio_copy). The full-speed stream is the 8-byte stereo sum
+| composable producer writes each frame in the stream's own layout into the
+| ring (the checked fields only, in wire order: tracks 16 x (L,R), then
+| MAIN, CUE, MASTER -- 4 B each, 24 bits little-endian), through the
+| uncached alias, and each high-speed packet's dTD points into the ring:
+| nothing is copied (since 27 Oct 2026; until then the ring held 88-byte
+| slots and the packet builder copied the checked fields into packet
+| buffers, 5.9 us a frame at OUT MAIN CUE on Bryan T's MKII, FRAME
+| PROFILE). The full-speed stream is the 8-byte stereo sum
 | (aud_sum) in every combination -- sum priority tracks > MAIN > CUE >
 | MASTER -- 44/45 frames a packet; the high-speed packet is 11/12 frames x
 | the combination's frame bytes at bInterval 2 (250 us), except the
@@ -48,9 +52,6 @@
 .set TRK_OFF,   0
 .set TRK_PRE,   1
 .set TRK_POST,  2
-.set SLOT_MAIN,   64
-.set SLOT_CUE,    72
-.set SLOT_MASTER, 80
 .set EARLY_MAGIC,    0xea           | the CS1 early block's magic (brain.c)
 .set SUM_SHIFT,      8              | 32-bit read-back -> 24-bit units for the sum
 .set UAC2_CLOCK_ID,  0x10
@@ -141,24 +142,12 @@
 .set MASTER_TRACK_ON,        0x80000034
 .set CUE_MASTER_LAG_BLOCKS,  2
 
-| x -> x * SLOT_BYTES (88) in place; \t is scratch.
-.macro MUL_SLOT r, t
-    movel   \r,\t
-    lsll    #6,\r                  | x * 64
-    lsll    #4,\t                  | x * 16
-    addl    \t,\r                  | x * 80
-    lsrl    #1,\t                  | x * 8
-    addl    \t,\r                  | x * 88
-.endm
-
 | ---- frame geometry --------------------------------------------------------
-| The producer fills TWO rings per frame: an 88-byte slot (tracks 1-8 L/R
-| first, then MAIN L/R, CUE L/R, MASTER L/R -- 4-byte little-endian
-| subslots carrying 24 bits) for the HIGH SPEED stream, and an 8-byte
-| stereo sum for FULL SPEED. Both are indexed by the same frame count, so
-| the wrap arithmetic has one form. The checked fields are written; the
-| packet builder copies the same fields (audio_copy), so the ring, the
-| cursor arithmetic and the copies have one shape for every combination.
+| The producer fills TWO rings per frame: the stream's frame, usb_frame_bytes
+| of the checked fields in wire order (tracks 1-8 L/R first, then MAIN L/R,
+| CUE L/R, MASTER L/R -- 4-byte little-endian subslots carrying 24 bits),
+| for the HIGH SPEED stream, and an 8-byte stereo sum for FULL SPEED. Both
+| are indexed by the same frame count, so the wrap arithmetic has one form.
 |
 | A sample is the read-back word with its low byte cleared: the arena's
 | full scale is 2^31, so the subslot's 24 valid bits are its top 24.
@@ -173,7 +162,8 @@
 | frame, under the 1,023 B cap. UAC1 cannot poll faster than 1 ms even at
 | high speed (Apple TN3190: bInterval must be 4); this is why the
 | descriptors are UAC2.
-.set SLOT_BYTES,   88           | ring slot, every combination (see the header)
+.set SLOT_BYTES,   88           | the largest frame (22 ch): the ring's size per frame
+.set AUD_SPILL,    12           | frames past the ring's end a wrapping packet runs into (the HS cap)
 .set SUM_BYTES,    8            | sum slot: (L,R) x 4 B
 .set PKT_MAX_FS,   45*SUM_BYTES | 360: the largest 1 ms packet
 .set PKT_BUF,      960          | packet buffer stride (>= the HS cap, 12*80)
@@ -188,14 +178,33 @@
 | cover 1 ms of polls. The frame ISR (every 363 us) is the only context that
 | queues, so the queue must outlast one block plus that interrupt's latency.
 .set SRAM_ODTDS,   0x800079c0   | EP3 IN's NSLOT dTDs in on-chip SRAM (128 B, 32-aligned; Claims.sram)
+| The producer's per-frame state, in on-chip SRAM (Claims.sram): a frame's
+| reads and writes of it never miss the cache or wait for the SDRAM. The
+| MAIN, CUE and MASTER write pointers (through the alias), advanced a frame
+| at a time; frame bytes less the tracks' 64 when checked; this frame's
+| MAIN/CUE pairs (MAIN_CUE_BASE + f * 8); the block's end.
+.set PROD_SRAM,    0x80007a40   | 32 B (Claims.sram)
+.set prod_pm,      PROD_SRAM
+.set prod_pc,      PROD_SRAM+4
+.set prod_px,      PROD_SRAM+8
+.set prod_skip,    PROD_SRAM+12
+.set prod_src,     PROD_SRAM+16
+.set prod_end,     PROD_SRAM+20
+| the producer's d6: the block's checked boxes
+.set PF_PRE,       0
+.set PF_POST,      1
+.set PF_MAIN,      2
+.set PF_CUE,       3
+.set PF_MASTER,    4
 .set NSLOT,        4            | power of two: slot arithmetic is a mask
 .set UNCACHED,     0x08000000   | + an SDRAM address = the same memory,
                                 | cache-inhibited (PLACEMENT.md)
 
 | The rings live in the unit's data and are zeroed by the loader. 1024
-| frames = 23 ms of buffer. Only the CPU reads the rings, through their
-| cached addresses (the USB controller reads the packet buffers), so the
-| rings need no cache maintenance.
+| frames = 23 ms of buffer. The sum ring is the CPU's alone, through its
+| cached address; the high-speed ring is read by the controller and touched
+| by the CPU only through the uncached alias, so neither needs cache
+| maintenance.
 .set AUD_FRAMES,   1024
 .set AUD_TARGET,   64           | ring fill the stream starts at and the servo
                                     | holds: ~1.5 ms (512 before the proportional
@@ -590,23 +599,18 @@ audio_pkt_build:
     movel   %d6,usbaudio_acc
     movel   %d4,usbaudio_lastn
     movel   %d2,usbaudio_lastfill
-    | ---- copy n frames into this slot's buffer -----------------------------
-    | a3 = the buffer (aud_bufs + slot * PKT_BUF, through the uncached
-    | alias), a1 = write cursor. The ring is copied in at most two straight
-    | runs (up to its end, then from its start), with no per-frame index
-    | masking. High speed copies the checked fields of each 88-byte slot
-    | (audio_copy); full speed reads the 8-byte sum ring.
-    movel   0xfc07c00c,%d0          | usb_tm+16: the copy
+    | ---- the packet's bytes ------------------------------------------------
+    | High speed: the packet IS the ring. The producer writes each frame in
+    | the stream's own layout (usb_frame_bytes a frame, the checked fields in
+    | wire order) through the uncached alias, so the dTD points at the n
+    | frames from the cursor and nothing is copied. A packet that runs past
+    | the ring's last frame continues into the spill (AUD_SPILL frames past
+    | it): the frames from the ring's start are copied there first, about
+    | one packet in 93. Full speed copies the 8-byte sum ring into this
+    | slot's buffer (aud_bufs + slot * PKT_BUF), in at most two straight runs.
+    | a3 = the packet's first byte, through the uncached alias.
+    movel   0xfc07c00c,%d0          | usb_tm+16: the packet's bytes (the FS copy, the HS spill)
     movel   %d0,usb_tm_t2
-    movel   %a6,%d0
-    lsll    #8,%d0
-    lsll    #2,%d0                  | slot * 1024
-    movel   %a6,%d1
-    lsll    #6,%d1                  | slot * 64
-    subl    %d1,%d0                 | slot * 960 = slot * PKT_BUF
-    moveal  #(aud_bufs+UNCACHED),%a3
-    addal   %d0,%a3
-    moveal  %a3,%a1
     movel   %d4,%d3                 | d3 = n
     movel   usbaudio_consumed,%d1
     andil   #AUD_FRAMES-1,%d1       | ring index of the first frame
@@ -614,23 +618,34 @@ audio_pkt_build:
     subl    %d1,%d0                 | d0 = frames before the ring wraps (>= 1)
     tstb    aud_hs
     beqs    .Lcopy_fs
-    lea     aud_ring,%a2
-    MUL_SLOT %d1, %d2               | d2 is dead here (lastfill is stored)
-    addal   %d1,%a2                 | a2 = the first frame's slot
+    movel   usb_frame_bytes,%d2
+    mulu.l  %d2,%d1
+    moveal  #(aud_ring+UNCACHED),%a3
+    addal   %d1,%a3                 | a3 = the first frame, in the ring
     cmpl    %d0,%d3
-    bhis    .Lhs_wrap               | n > frames to the end: two runs
-    movel   %d3,%d0
-    bsr     audio_copy
-    bras    .Lcopied
-.Lhs_wrap:
-    subl    %d0,%d3
-    moveal  %d3,%a5                 | a5 = frames in the second run
-    bsr     audio_copy
-    lea     aud_ring,%a2
-    movel   %a5,%d0
-    bsr     audio_copy
+    bls     .Lcopied                | within the ring: nothing to move
+    subl    %d0,%d3                 | frames past the end
+    mulu.l  %d2,%d3
+    lsrl    #2,%d3                  | their longs (a frame is a multiple of 8 B)
+    moveal  #(aud_ring+UNCACHED),%a2
+    movel   %d2,%d1
+    lsll    #8,%d1
+    lsll    #2,%d1                  | AUD_FRAMES * frame bytes: the spill
+    lea     %a2@(0,%d1:l),%a1
+1:  movel   %a2@+,%a1@+
+    subql   #1,%d3
+    bnes    1b
     bras    .Lcopied
 .Lcopy_fs:
+    movel   %a6,%d2
+    lsll    #8,%d2
+    lsll    #2,%d2                  | slot * 1024
+    movel   %a6,%d5
+    lsll    #6,%d5                  | slot * 64
+    subl    %d5,%d2                 | slot * 960 = slot * PKT_BUF
+    moveal  #(aud_bufs+UNCACHED),%a3
+    addal   %d2,%a3
+    moveal  %a3,%a1
     lea     aud_sum,%a2
     lsll    #3,%d1
     addal   %d1,%a2
@@ -662,9 +677,10 @@ audio_pkt_build:
     bras    6f
 5:  lsll    #3,%d6                  | nbytes = n * 8
 6:  | ---- the dTD: buffer pointers first, the ACTIVE token LAST -------------
-    | The dTD and the buffer are written through the uncached alias, so these
-    | stores reach memory in program order: the controller cannot see an
-    | ACTIVE token over a half-built descriptor or a half-copied buffer.
+    | The packet's bytes were written through the uncached alias (precise
+    | stores, each complete before the next instruction) and the dTD is in
+    | on-chip SRAM, written in program order: the controller cannot see an
+    | ACTIVE token over a half-built descriptor or a half-written packet.
     moveq   #1,%d1
     movel   %d1,%a0@                | next = terminate
     movel   %a3,%a0@(8)             | buffer page 0
@@ -737,45 +753,6 @@ audio_pkt_build:
     rts
 .Lpb_none:
     moveq   #0,%d0
-    rts
-
-| ---- the ring copy: the checked fields of 88-byte slots, wire order --------
-| Copy d0 (>= 1) frames from %a2 to %a1, both advanced: TRACKS (64 B, when
-| checked), then MAIN, CUE, MASTER (8 B each, when checked) — slot order,
-| so the packet is exactly what the host was told. Clobbers d0-d1.
-audio_copy:
-1:  tstb    usb_trk
-    beqs    2f
-    moveml  %a2@,%d1-%d4
-    moveml  %d1-%d4,%a1@
-    moveml  %a2@(16),%d1-%d4
-    moveml  %d1-%d4,%a1@(16)
-    moveml  %a2@(32),%d1-%d4
-    moveml  %d1-%d4,%a1@(32)
-    moveml  %a2@(48),%d1-%d4
-    moveml  %d1-%d4,%a1@(48)
-    lea     %a1@(64),%a1
-2:  tstb    usb_main
-    beqs    3f
-    movel   %a2@(SLOT_MAIN),%d1
-    movel   %d1,%a1@+
-    movel   %a2@(SLOT_MAIN+4),%d1
-    movel   %d1,%a1@+
-3:  tstb    usb_cue
-    beqs    4f
-    movel   %a2@(SLOT_CUE),%d1
-    movel   %d1,%a1@+
-    movel   %a2@(SLOT_CUE+4),%d1
-    movel   %d1,%a1@+
-4:  tstb    usb_master
-    beqs    5f
-    movel   %a2@(SLOT_MASTER),%d1
-    movel   %d1,%a1@+
-    movel   %a2@(SLOT_MASTER+4),%d1
-    movel   %d1,%a1@+
-5:  lea     %a2@(SLOT_BYTES),%a2
-    subql   #1,%d0
-    bnes    1b
     rts
 
 | Copy d0 (>= 1) 8-byte stereo-sum frames from %a2 to %a1, both advanced.
@@ -1076,8 +1053,9 @@ audio_frame_shim:
     clrl    0x46104d4e              | displaced
     jmp     0x4000d9a6
 
-| The AUD_TARGET ring slots behind the producer, zeroed: the stream's first
-| packets are built from them before the anchor. Both rings. May clobber
+| The AUD_TARGET ring frames behind the producer, zeroed: the stream's first
+| packets are built from them before the anchor. Both rings, the high-speed
+| one through the uncached alias at the stream's frame bytes. May clobber
 | d0-d7/a0-a6.
 audio_cushion_zero:
     movel   aud_produced,%d0
@@ -1086,18 +1064,22 @@ audio_cushion_zero:
     addil   #AUD_FRAMES,%d0         | fewer frames ever produced than the cushion
     movel   %d0,aud_produced        | (boot): count one lap ahead, same slots, so
 0:  subil   #AUD_TARGET,%d0         | bring-up's cursor is not clamped at 0
+    movel   usb_frame_bytes,%d5
+    lsrl    #2,%d5                  | longs a frame (0: no high-speed frame)
     moveq   #AUD_TARGET-1,%d1
 1:  movel   %d0,%d2
     andil   #AUD_FRAMES-1,%d2
+    movel   %d5,%d4
+    beqs    3f
     movel   %d2,%d3
-    MUL_SLOT %d3, %d4               | d4 is dead here
-    lea     aud_ring,%a0
+    mulu.l  %d5,%d3
+    lsll    #2,%d3                  | index * frame bytes
+    moveal  #(aud_ring+UNCACHED),%a0
     addal   %d3,%a0
-    moveq   #SLOT_BYTES/4-1,%d4     | 21 longs a slot
 2:  clrl    %a0@+
     subql   #1,%d4
-    bpls    2b
-    lsll    #3,%d2
+    bnes    2b
+3:  lsll    #3,%d2
     lea     aud_sum,%a0
     addal   %d2,%a0
     clrl    %a0@+
@@ -1166,18 +1148,66 @@ producer_usb:
     bras    4f
 .Lpb_nobank:
     subal   %a2,%a2                 | no arena reads this block
-4:  movel   aud_produced,%d4
+4:  | ---- this block's write pointers, all through the uncached alias ------
+    | The ring frame is the stream's frame (usb_frame_bytes): the checked
+    | fields in wire order, TRACKS' 64 B first, then MAIN, CUE, MASTER, 8 B
+    | each. a3 walks the block's frames; MAIN, CUE and MASTER each have their
+    | own pointer (prod_pm, prod_pc, prod_px: the lags below), advanced a
+    | frame at a time. A block never wraps (16 divides the ring size).
+    movel   usb_frame_bytes,%d7     | d7 = frame bytes
+    movel   aud_produced,%d4
     movel   %d4,%d5
     andil   #AUD_FRAMES-1,%d5
     movel   %d5,%d0
-    MUL_SLOT %d0, %d2               | d2 is dead here (lastbank is stored)
-    lea     aud_ring,%a3
-    addal   %d0,%a3                 | a3 = slot cursor (a block never
-                                    | wraps: 16 divides the ring size)
+    mulu.l  %d7,%d0
+    moveal  #(aud_ring+UNCACHED),%a3
+    addal   %d0,%a3                 | a3 = this frame's slot
     lsll    #3,%d5
     lea     aud_sum,%a4
     addal   %d5,%a4                 | a4 = stereo-sum cursor
+    moveq   #0,%d3                  | d3 = the next field's offset in the frame
+    moveq   #0,%d2                  | d2 = MAIN/CUE's lag behind this frame, in frames
+    tstb    usb_trk
+    beqs    1f
+    moveq   #64,%d3
+    moveq   #16*MAIN_CUE_LAG_BLOCKS,%d2
+1:  movel   %d7,%d0
+    subl    %d3,%d0
+    movel   %d0,prod_skip           | past the tracks' words: to the next frame
+    tstb    usb_main
+    beqs    2f
+    movel   %d4,%d0
+    subl    %d2,%d0
+    andil   #AUD_FRAMES-1,%d0
+    mulu.l  %d7,%d0
+    addl    %d3,%d0
+    addil   #(aud_ring+UNCACHED),%d0
+    movel   %d0,prod_pm             | MAIN: MAIN_CUE_LAG_BLOCKS behind with TRACKS
+    addql   #8,%d3
+2:  tstb    usb_cue
+    beqs    3f
+    movel   %d4,%d0
+    subl    %d2,%d0
+    tstb    MASTER_TRACK_ON
+    beqs    5f
+    addil   #16*CUE_MASTER_LAG_BLOCKS,%d0
+5:  andil   #AUD_FRAMES-1,%d0
+    mulu.l  %d7,%d0
+    addl    %d3,%d0
+    addil   #(aud_ring+UNCACHED),%d0
+    movel   %d0,prod_pc             | CUE: MAIN's frame, or CUE_MASTER_LAG_BLOCKS ahead of it
+    addql   #8,%d3
+3:  movel   %a3,%d0
+    addl    %d3,%d0
+    movel   %d0,prod_px             | MASTER: the current frame, never lagged
+    lea     MAIN_CUE_BASE,%a0
+    movel   %a0,prod_src            | this block's MAIN/CUE pairs, 8 B a frame
+    movel   %d7,%d0
+    lsll    #4,%d0
+    addl    %a3,%d0
+    movel   %d0,prod_end            | 16 frames on
     moveq   #SUM_SHIFT,%d1          | asr.l immediate is 1-8 only: shift via d1
+    movel   %d7,%d4                 | d4 = frame bytes for the frame loop
     mvzb    usb_trk,%d0
     tstb    %d0
     beq.w   7f                      | OFF: no bounds/gain pointers
@@ -1188,7 +1218,28 @@ producer_usb:
     bras    7f
 6:  lea     post_gtab,%a5           | POST: the gain cursor (the sum uses
                                     | the immediate form)
-7:  moveq   #15,%d6                 | 16 frames
+7:  | d6 = this block's checked boxes, read once: the loop tests the
+    | register, not the setting bytes (a cached datum that can be evicted
+    | between frames; at REC SOS x1 the OUT copy, which tested them a frame
+    | at a time, took 33 us a frame against 6 at REC SOS x4, BUILD 35 on
+    | Bryan T's MKII, and the producer 17 against 8).
+    moveq   #0,%d6
+    mvzb    usb_trk,%d0
+    cmpib   #TRK_PRE,%d0
+    bnes    8f
+    bset    #PF_PRE,%d6
+8:  cmpib   #TRK_POST,%d0
+    bnes    8f
+    bset    #PF_POST,%d6
+8:  tstb    usb_main
+    beqs    8f
+    bset    #PF_MAIN,%d6
+8:  tstb    usb_cue
+    beqs    8f
+    bset    #PF_CUE,%d6
+8:  tstb    usb_master
+    beqs    1f
+    bset    #PF_MASTER,%d6
 1:
     | ---- the 16 track channels --------------------------------------------
     | PRE: track t's L,R (32-bit, post-FX, pre-fader) with the low byte
@@ -1196,10 +1247,10 @@ producer_usb:
     | -- then BYTEREV (ISA_C) to little-endian, one longword store each, at
     | slot + t*8. The same words >> 8 accumulate into the stereo sum in
     | 24-bit units (d5 = L, d3 = R; eight tracks fit in 27 bits).
-    mvzb    usb_trk,%d0
+    btst    #PF_POST,%d6
+    bne.w   .Lf_post
+    btst    #PF_PRE,%d6
     beq.w   .Lf_notrk
-    cmpib   #TRK_POST,%d0
-    beq.w   .Lf_post
     moveal  %a2,%a0                 | track 0, this frame
     moveq   #0,%d5                  | L sum
     moveq   #0,%d3                  | R sum
@@ -1296,79 +1347,53 @@ producer_usb:
 .Lf_notrk:
 .Lf_fields:
     | ---- MAIN and CUE, the DAC feed, and MASTER, track 8's pair ------------
-    | Frame f's MAIN/CUE pairs sit at MAIN_CUE_BASE + f*8 (+MAIN_CUE_CUE_OFF
-    | for CUE); f = 15 - d6. MAIN goes into the slot MAIN_CUE_LAG_BLOCKS
-    | blocks behind this frame's (with TRACKS in the stream, see the
-    | constant), at +SLOT_MAIN past the tracks' 64 B; CUE into MAIN's slot,
-    | or CUE_MASTER_LAG_BLOCKS blocks ahead of it with MASTER TRACK on, at
-    | +SLOT_CUE. MASTER reads the arena (a2's bank) and writes the current
-    | slot's +SLOT_MASTER, never lagged.
+    | Frame f's MAIN/CUE pairs sit at prod_src = MAIN_CUE_BASE + f*8
+    | (+MAIN_CUE_CUE_OFF for CUE). MAIN goes to prod_pm: the frame
+    | MAIN_CUE_LAG_BLOCKS blocks behind this one with TRACKS in the stream
+    | (see the constant), this one without; CUE to prod_pc, MAIN's frame or
+    | CUE_MASTER_LAG_BLOCKS blocks ahead of it with MASTER TRACK on. MASTER
+    | reads the arena (a2's bank) and goes to prod_px, this frame, never
+    | lagged. Until 27 Oct 2026 MASTER was stored at a3 + 80 with a3 already
+    | past the tracks' 64 B, so with TRACKS and MASTER both checked its pair
+    | landed in the next slot's track 8 field and the stream's MASTER
+    | channels carried whatever the slot held (read from the source, not
+    | measured on a unit).
     | MAIN (checked): d2/d3 = the pair, byte-reversed
-    tstb    usb_main
+    btst    #PF_MAIN,%d6
     beqs    .Lf_nomain
-    moveq   #15,%d7
-    subl    %d6,%d7                 | f
-    lsll    #3,%d7                  | f * 8
-    lea     MAIN_CUE_BASE,%a0
-    addal   %d7,%a0                 | a0 = this frame's MAIN (L,R)
+    moveal  prod_src,%a0
     movel   %a0@(MAIN_CUE_MAIN_OFF),%d2
     clrb    %d2
     byterev %d2
     movel   %a0@(MAIN_CUE_MAIN_OFF+4),%d3
     clrb    %d3
     byterev %d3
-    tstb    usb_trk
-    bnes    .Lf_main_abs
-    movel   %d2,%a3@(SLOT_MAIN)
-    movel   %d3,%a3@(SLOT_MAIN+4)
+    moveal  prod_pm,%a0
+    movel   %d2,%a0@                | MAIN L
+    movel   %d3,%a0@(4)             | MAIN R
+    addl    %d4,prod_pm
     | MAIN is the sum's priority when it stands alone with no tracks
     movel   %a1,%d0
     bne     .Lf_nomain
+    tstb    usb_trk
+    bne     .Lf_nomain
     movel   %d2,%a4@+               | MAIN L, full speed
     movel   %d3,%a4@+               | MAIN R, full speed
-    bra     .Lf_nomain
-.Lf_main_abs:
-    moveq   #15,%d7
-    subl    %d6,%d7                 | f again
-    addl    %d4,%d7                 | this frame's index
-    subil   #16*MAIN_CUE_LAG_BLOCKS,%d7
-    andil   #AUD_FRAMES-1,%d7       | the slot MAIN_CUE_LAG_BLOCKS blocks back, wrapped
-    MUL_SLOT %d7, %d0               | slot * 88 (d0 is dead: the flag was used)
-    lea     aud_ring+SLOT_MAIN,%a0
-    addal   %d7,%a0                 | + slot * 88 = the slot's MAIN field
-    movel   %d2,%a0@+               | MAIN L
-    movel   %d3,%a0@                | MAIN R
-    | tracks own the sum here; MAIN's pair is not the FS stream
 .Lf_nomain:
     | CUE (checked)
-    tstb    usb_cue
+    btst    #PF_CUE,%d6
     beqs    .Lf_nocue
-    moveq   #15,%d7
-    subl    %d6,%d7                 | f
-    lsll    #3,%d7                  | f * 8
-    lea     MAIN_CUE_BASE,%a0
-    addal   %d7,%a0                 | a0 = this frame's CUE (L,R)
+    moveal  prod_src,%a0
     movel   %a0@(MAIN_CUE_CUE_OFF),%d2
     clrb    %d2
     byterev %d2
     movel   %a0@(MAIN_CUE_CUE_OFF+4),%d3
     clrb    %d3
     byterev %d3
-    moveq   #15,%d7
-    subl    %d6,%d7                 | f again
-    addl    %d4,%d7                 | this frame's index
-    tstb    usb_trk
-    beqs    2f
-    subil   #16*MAIN_CUE_LAG_BLOCKS,%d7
-2:  tstb    MASTER_TRACK_ON
-    beqs    3f
-    addil   #16*CUE_MASTER_LAG_BLOCKS,%d7
-3:  andil   #AUD_FRAMES-1,%d7
-    MUL_SLOT %d7, %d0               | slot * 88 (d0 is dead)
-    lea     aud_ring+SLOT_CUE,%a0
-    addal   %d7,%a0                 | that slot's CUE field
-    movel   %d2,%a0@+               | CUE L
-    movel   %d3,%a0@                | CUE R
+    moveal  prod_pc,%a0
+    movel   %d2,%a0@                | CUE L
+    movel   %d3,%a0@(4)             | CUE R
+    addl    %d4,prod_pc
     | CUE is the sum's priority when it stands alone with no tracks or MAIN
     movel   %a1,%d0
     bne     .Lf_nocue
@@ -1379,17 +1404,19 @@ producer_usb:
     movel   %d2,%a4@+               | CUE L, full speed
     movel   %d3,%a4@+               | CUE R, full speed
 .Lf_nocue:
-    | MASTER (checked): the arena's track 8, the current slot's field
-    tstb    usb_master
+    | MASTER (checked): the arena's track 8, the current frame's field
+    btst    #PF_MASTER,%d6
     beqs    .Lf_nomaster
     movel   %a2@((RB_TRACKS-1)*128),%d2
     clrb    %d2
     byterev %d2
-    movel   %d2,%a3@(SLOT_MASTER)
     movel   %a2@((RB_TRACKS-1)*128+4),%d3
     clrb    %d3
     byterev %d3
-    movel   %d3,%a3@(SLOT_MASTER+4)
+    moveal  prod_px,%a0
+    movel   %d2,%a0@                | T8 L
+    movel   %d3,%a0@(4)             | T8 R
+    addl    %d4,prod_px
     | MASTER is the sum's priority when every other box is off
     movel   %a1,%d0
     bne     .Lf_nomaster
@@ -1402,20 +1429,19 @@ producer_usb:
     movel   %d2,%a4@+               | T8 L, full speed
     movel   %d3,%a4@+               | T8 R, full speed
 .Lf_nomaster:
-    tstb    usb_trk
-    bnes    2f
-    lea     %a3@(64),%a3            | no tracks written: skip the field
-2:  lea     %a3@(24),%a3            | the rest of the 88-byte slot
+    movel   prod_skip,%d0
+    addal   %d0,%a3                 | the next frame (the tracks' words advanced a3 already)
     lea     %a2@(8),%a2             | next frame
-    subql   #1,%d6
-    bpl     1b                      | not bpls: the loop body is long
+    addql   #8,prod_src
+    cmpal   prod_end,%a3
+    bcs     1b                      | 16 frames (not bcss: the loop body is long)
     | TRACKS POST: the interrupted context's EMAC back
     mvzb    usb_trk,%d0
     cmpib   #TRK_POST,%d0
     bnes    2f
     bsr     post_emac_leave
-2:  addql   #8,%d4
-    addql   #8,%d4                  | 16 frames produced
+2:  movel   aud_produced,%d4
+    addil   #16,%d4                 | 16 frames produced
     movel   %d4,aud_produced
     rts
 
@@ -2161,10 +2187,8 @@ aud_produced:      .long 0          | producer frame count
 qh_ep3:            .long 0          | EP3 IN dQH, read from ENDPTLISTADDR
 aud_step:          .long STEP_HS    | frames per packet x1000, set by the speed
 
-| ---- the rings: one 88-byte slot a frame, every combination -----------------
+| ---- the full-speed ring (the high-speed one is with the DMA's, below) ----
     .global aud_ring, aud_sum
-aud_ring:          .space AUD_FRAMES*SLOT_BYTES  | 1024 x 22 ch, 24 in 4 B LE; the
-                                                 | unchecked fields stay unwritten
 aud_sum:           .space AUD_FRAMES*SUM_BYTES   | 1024 x stereo sum (the priority pair)
     .balign 4
 lm_reply:          .space 256       | 0xc0/0x57's reply, written only through the uncached alias
@@ -2234,7 +2258,14 @@ post_xlv:          POST_XLV_TABLE
 | The dTDs are in on-chip SRAM (SRAM_ODTDS) since 27 Oct 2026, as USB IN's
 | are: the controller reaches SRAM through the backdoor and it is not cached,
 | and a CPU access there does not wait for the SDRAM.
+| The high-speed ring is the packets themselves (since 27 Oct 2026): 1024
+| frames of usb_frame_bytes each, then AUD_SPILL frames a packet that runs
+| past the end continues into. Written by the producer through the alias
+| only; the controller reads it. 16-byte aligned and a multiple of 16 long,
+| so no cached datum shares a line with it (a write-back of a line the CPU
+| dirtied through its cached address would land on the ring).
     .balign 32
-aud_bufs:          .space NSLOT*PKT_BUF          | their packets (<= 960 B, one stride per slot)
+aud_ring:          .space (AUD_FRAMES+AUD_SPILL)*SLOT_BYTES  | at most 88 B a frame (22 ch)
+aud_bufs:          .space NSLOT*PKT_BUF          | full speed's packets (<= 360 B, one stride per slot)
 
     .balign 4
