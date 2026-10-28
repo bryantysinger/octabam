@@ -3,7 +3,7 @@
 A remix is a named selection of modules; `make image REMIX=<name> BUILD=<n>` builds it into a card-flashable image from your own OS 1.40C. Each remix is a directory here: `remix.py` is the selection, `README.md` says what is in it, where it has run and how to flash it. This index is rendered from the selections (`make docs`).
 
 - What to install first (the Xcode Command Line Tools, Homebrew, Python 3.10+, `cmake`, `uv`) and every step to a flashed unit: [BUILDING.md](../docs/guide/BUILDING.md).
-- Composing your own: [REMIXER.md](../docs/guide/REMIXER.md).
+- Composing your own: [COMPOSING.md](../docs/guide/COMPOSING.md).
 - The remixes that carry one module for its gates: [test/](test/README.md).
 
 ## The delay and reverb bus

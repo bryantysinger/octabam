@@ -185,12 +185,26 @@ def check(selected) -> list[str]:
     # A hook writes two words (jsr >label), so two hooks clash when their
     # word pairs share a word.
     dsp_hooks: dict[tuple[str, int], str] = {}
+    # A DSP bridge (schema.DspOverride) stands in for the named module's hook at its site: that
+    # hook is not a claim; the bridged module's hook there is the site's one jsr.
+    _dkeys = {m.key for m in selected}
+    overridden_dsp: set[tuple[str, int, str]] = set()      # (payload, site, module key)
+    for m in selected:
+        for o in getattr(m, "dsp_overrides", ()):
+            if o.module not in _dkeys:
+                clash("DSP override", m.name, f"(no {o.module})",
+                      f"it bridges {o.module}'s DSP hook, which this remix does not carry")
+            for pl in ("A", "B"):
+                if o.site_on(pl) is not None:
+                    overridden_dsp.add((pl, o.site_on(pl), o.module))
     for m in selected:
         for h in (m.dsp.hooks if m.dsp is not None else ()):
             for pl in sorted(m.dsp.payloads):
                 if not h.on(pl):
                     continue
                 site = h.site_on(pl)
+                if (pl, site, m.key) in overridden_dsp:
+                    continue                 # a bridge's stub stands in for it
                 hit = next((w for w in (site, site + 1) if (pl, w) in dsp_hooks), None)
                 if hit is not None:
                     clash("DSP hook site", dsp_hooks[(pl, hit)], m.name,

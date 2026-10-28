@@ -54,7 +54,7 @@ Idempotent. What to install before it: [BUILDING.md section 0](../guide/BUILDING
 |---|---|---|
 | `dsp_asm` | `vendor/dsp56300` | the DSP56300 assembler. It mis-encodes some instructions silently (see [TRAPS.md](TRAPS.md#trap-asm)). `tools/patches/dsp56300.patch` adds the chip's one-word displaced move (displacement −64..63, data-ALU register); a word or cycle figure recorded before 14 Sep 2026 counts such a move as 2 |
 | `dsp_host` | `tools/harness/dsp_host/` (staged into `vendor/dsp56300` and built there) | the emulator harness written here: runs assembled effects on the dsp56300 emulator core. `tools/harness/README.md` |
-| `emu_bringup.py` | `tools/emu/` | Tier-0 ColdFire bring-up: boots the MAIN OS image on Unicorn's CFV4E core to the RTOS handoff (the remixer's emulator view). Needs `unicorn`: `make emu-setup` (uv, the `emu` extra). `tools/emu/README.md` |
+| `emu_bringup.py` | `tools/emu/` | Tier-0 ColdFire bring-up: boots the MAIN OS image on Unicorn's CFV4E core to the RTOS handoff. Needs `unicorn`: `make emu-setup` (uv, the `emu` extra). `tools/emu/README.md` |
 | `ot_emu` | `tools/emu/ot_emu/` (`make emu-cf`) | the headless C++ port of the machine: boots the built image, loads a project from a staged card, runs the sequencer and both DSP cores. `tools/emu/README.md` |
 | `ot_brain` | `tools/hw/ot_brain.py` | brain files (`.work`, `.strd`, `.brain`): `dump` to JSON, `build` from JSON (a record it cannot read kept as its bytes, so a round trip is byte for byte), `pair` (what the core does with a directory's `.work` / `.strd`; `docs/proposals/BRAIN.md` section 6.2) |
 | `ot_spec` | `tools/hw/ot_spec.py` | one JSON spec over a project's parts and patterns: `apply` (FX ids by module name, every knob by name, machine type, part names; per pattern track: length, scale, trigs, locks on every page by knob name — PLAYBACK, LFO, AMP, FX1, FX2 — with `clear`; the lock-trig mask follows), `report` (the same shape back), `diff` (two projects, field by field); checksum + read-back on `.work` and `.strd` |
@@ -141,6 +141,31 @@ DE-renewal hunk (disabling `HostTransmitData` as a request source):
 `ot_emu` drives HDI08 directly, never through a `DmaChannel`, so that
 half doesn't apply here (checked, not inferred).
 
+### The 28 Oct 2026 re-pin
+
+`vendor/dsp56300` moved from `8ccdd843` to `8b731966` (upstream's default
+branch `dsp56300`, 66 commits). The patch dropped the hunks upstream
+carries: the signed modulo bounds (`fdd98fc`), the masked-interrupt
+peripheral service, `Peripherals56367::setIoExtension` (our unmapped-register
+hooks; `ot_emu` calls it), the DMA request-target table sized to all 32 DRS
+values (our out-of-range guard) and the dual-counter reload in the 2D
+transfer loop. The same-value DCR renewal of 22 Sep (above) is removed; it
+had no observed effect. Kept: in `DmaChannel::arm`, a channel armed on
+`HostReceiveData` or `HostTransmitData` with its request raised serves it
+(the rule before upstream `3cee91c9`, which waits for the next request on
+a DCR write that also selects the source); the ESAI sources keep
+`3cee91c9`'s rule. Measured: with `3cee91c9` for every source,
+`verify_remix_switch` failed in CI and under the port (`ok d0=0`: neither
+core took the park command), and the arm log (a temporary print, not kept)
+showed channels 0 and 1 armed on those two sources with the request raised
+and not served; serving only those two sources passes the gate, as the
+whole rule did before. Inferred, not measured: HRDF and HTDE do not raise a
+new request until a word has moved. The disassembler now names `M_PCRE` and `M_PRRE` (upstream `2dee93df`),
+so `verify_dsp_vectors` lists them. Built and run in an isolated tree: `dsp56kTestRunner`
+passes (including our `bset #$f,m4` test), `dsp_asm` emits `0257de` and
+`f4f9ea`, `ot_emu` builds and its non-firmware `ctest` passes. The gates run
+in CI.
+
 ## 2. Acquiring and unpacking an OS
 
 No Elektron binary lives in this repository; every build derives from the
@@ -200,8 +225,8 @@ the default m68k core does not decode this CPU.
 
 `tools/build/build_bus.py` is the builder (`make bus` = `XBUS=1 SPEC=1`).
 It builds a remix: a named selection of modules (`make bus REMIX=<name>`,
-no default; `make modules` lists the modules and the remixes,
-`make remix` composes one interactively). Each `modules/<name>/manifest.py`
+no default; `make modules` lists the modules and the remixes).
+Each `modules/<name>/manifest.py`
 declares one contribution against `tools/remix/schema.py`, and
 `tools/remix/ledger.py` refuses a selection whose modules collide.
 `docs/contributing/MODULES.md` is the contributor guide. The builder assembles
@@ -279,6 +304,7 @@ last section), the hardware capture setup — protocol in `docs/history/CAPTURE_
 | `tools/hw/hw_sweep.py` | scripted sweeps: MIDI steps + capture + per-step metrics in one process |
 | `tools/hw/level_cap.py` | quick capture with peak/RMS/crest/clip-run reporting per channel |
 | `tools/hw/gain_pass.py` | gain-matches a whole project bank-by-bank over MIDI |
+| `tools/hw/ot_sampleslot.py` | one WAV in a project as a FLEX slot on one track, with its `[SAMPLE]` block, the `markers.work` trim record the unit needs, the track's machine in every part of every bank, optional trigs every Nth step of A01, and `MIDI_TRANSPORT_RECEIVE=1` so MIDI Start works; `.strd` twins written |
 | `tools/hw/ot_project.py` | reads and writes Octatrack project/bank files on the CF card: `stamp-defaults` after a layout change, `set-fx`, `stamp-slot`, `rigproj` |
 | `tools/hw/ot_soak.py`, `hw_bus_test.py`, `hw_knob_sweep.py`, `hw_flash7.py`, `midi_flash.py`, `ot_clock.py` | a soak run that reports a freeze or the idle tick; synchronous-detection A/B of a parameter over MIDI; every knob's liveness; the one-aux bus claims driven over MIDI; OS flashing over MIDI; transport |
 | `tools/hw/ot_ladder.py` | the LADDER: one configuration per bank in a card project (effect selection without the panel), stepped by program change, each rung measured by level, spectrum and the tail after STOP (bus connected, reverb T60, delay time); `proj` / `run` / `analyse` / `summary` |

@@ -28,7 +28,7 @@ MODULE = Module(
                    abbr=b"WAVE", fullname=b"Wave Synth", build_tag=False),
     params=(
         Param(b"FRAM", 0, active=True, formatter=Formatter.PLAIN,
-              doc="wavetable position: sine, tri, saw, square, pulses; morphs between"),
+              doc="wavetable position: sine, triangle, saw, square, pulses; it morphs between them"),
         Param(b"CUT", 80, active=True, formatter=Formatter.PLAIN,
               doc="DJ filter: low-pass below the middle, high-pass above"),
         Param(b"RES", 40, active=True, formatter=Formatter.PLAIN,

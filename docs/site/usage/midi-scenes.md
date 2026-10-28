@@ -19,7 +19,7 @@ CLEAR, COPY and PASTE SCENE carry the MIDI locks with the audio ones.
 ## Notes
 
 - A track's locks affect that track only.
-- The locks are saved in the project (`scenes.work`); SAVE PROJECT writes
-  them, and the current bank's copy survives a power-off.
+- The locks are saved with the project; SAVE PROJECT writes them, and the
+  current bank's copy survives a power-off.
 - A Kit does not carry a Part's MIDI locks.
 - Page 2 of FX1 and FX2 has its own scene locks (SCENES P2).

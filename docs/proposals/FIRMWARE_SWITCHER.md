@@ -155,7 +155,9 @@ MAIN MENU > OS (a list of /*.OBI)           bootstrap unpacks NOR -> 0x40000400
     every stock effect cannot carry it);
   - two detours (`0x40000412`, `0x40064c32`), one row pointer
     (`0x400cbda4`), one count poke (`0x400cbd8c`, the root 4 → 5);
-  - the top 2.6 MB of the platform reserve, which the gate keeps clear.
+  - 2.6 MB of the platform reserve at a fixed address (an ArenaReserve),
+    which no DRAM region may overlap; the reserve's top unless a region
+    needs more room (STEM REC's 8 MiB ring sits above it).
   (❌ The first prototype was a seventh CONTROL row with a one-file-at-a-
   time dialog and a 274 B ROM cave; the cave did not fit beside
   bottleservice's label formatters.)
@@ -298,7 +300,9 @@ carries OS SWITCH (`schema.Remix.os_switch` was not taken).
   the maintainer's call to make upstream, or a local build option?
 - Should the platform reserve's top 2.6 MB be reserved for the switch in
   every remix (a platform guard in `platform_build.py`), rather than
-  checked by this module's gate only? Today no runtime comes near it.
+  checked by this module's gate only? Answered 11 Oct 2026 (MEMORY): the
+  stage is an ArenaReserve, the build moves DRAM regions off it and
+  refuses a runtime under it.
 - `Category.REFERENCE` is a stand-in; there is no "system" category.
 
 ## 8. Corrections this reading made to existing docs

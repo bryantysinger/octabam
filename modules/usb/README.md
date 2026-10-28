@@ -2,7 +2,7 @@
 
 Class-compliant USB-MIDI in and out on the Octatrack's own USB port,
 mirroring the DIN ports, beside a UAC2 audio function at 44.1 kHz, 24-bit:
-the unit into the host on EP3 IN (2 to 22 channels by the settings), the host
+the unit into the host on EP3 IN (2 to 20 channels by the settings), the host
 into the Octatrack's inputs on EP3 OUT (a stereo pair or four channels by
 IN). The USB controller bursts first on the SDRAM and SRAM-backdoor
 slaves (SCM BCR, XBS PRS/CRS), written once at the stock USB controller init
@@ -36,7 +36,7 @@ from the first enumeration):
 | | POST | 16 channels: the tracks after their own MAIN gain |
 | MAIN (ON) | Binary | 2 channels: MAIN |
 | CUE (ON) | Binary | 2 channels: CUE |
-| MASTER (OFF) | Binary | 2 channels: track 8's L/R |
+| MASTER (OFF) | Binary | 2 channels: track 8's L/R (not with TRACKS) |
 | IN (OFF) | OFF | no host -> device stream |
 | | AB | host channels 1/2 = inputs A/B; C/D stay on the jacks |
 | | CD | host channels 1/2 = inputs C/D; A/B stay on the jacks |
@@ -45,9 +45,14 @@ from the first enumeration):
 
 The pair rule: IN ≠ OFF requires TRACKS ≠ OFF or MAIN or CUE or MASTER
 (the build refuses the combination, brain.c usb_pair_ok; cfgsel forces IN
-off on a bad block). The channel count is 16 × TRACKS(≠ OFF) + 2 × (MAIN
-+ CUE + MASTER): 22 channels at most (TRACKS MAIN CUE MASTER), polled at
-125 µs (bInterval 1); up to 20 channels polls at 250 µs. Every
+off on a bad block). TRACKS with MASTER is refused the same three ways
+(brain.c usb_master_ok; cfgsel clears MASTER): MASTER is track 8's L/R,
+which TRACKS already carries. Scrubbed 27 Oct 2026 at Sam's request: it was
+a layout from before the checkboxes, the only combination over 20
+channels (it needed 125 µs polling), never run on a unit, and with TRACKS
+on the old producer stored MASTER into the next frame's track 8 field, so
+its channels never carried it. The channel count is 16 × TRACKS(≠ OFF) +
+2 × (MAIN + CUE + MASTER): 20 at most, polled at 250 µs (bInterval 2). Every
 combination's full-speed form is two channels, and IN is served at high
 speed only.
 
@@ -314,7 +319,6 @@ the audio function is added to its composite device.
 | MASTER | 2 channels: track 8's L/R | track 8's L/R |
 | MAIN CUE | 4 channels: MAIN, CUE | MAIN |
 | MAIN | 2 channels: MAIN | MAIN |
-| TRACKS MAIN CUE MASTER | 22 channels, polled at 125 µs | the tracks' stereo sum |
 
 Until 6 Oct 2026 each layout was a module of its own (USB AUDIO OUT TRACKS
 MAIN CUE, OUT TRACKS, OUT MASTER, OUT MAIN CUE, OUT MAIN); each remix's
@@ -1130,9 +1134,14 @@ the 1 KB XLV table), in the platform reserve.
   (`0x4000d9a0`), every 16-sample block while the host asks for the stream
   (alt 1 requested; since 5 Oct 2026, before that every block). It reads
   the previous bank, keeps the top 24 bits of each 32-bit sample, and
-  writes one 88-byte slot per frame (the checked fields: 16 tracks × 4 B,
-  then MAIN, CUE, MASTER at +64/+72/+80) into a
-  1,024-frame ring, plus an 8-byte stereo sum into a second ring for full
+  writes each frame in the stream's own layout (the checked fields in wire
+  order: 16 tracks × 4 B, then MAIN, CUE, MASTER, 8 B each; `usb_frame_bytes`
+  a frame) into a 1,024-frame ring through the uncached alias, and each
+  high-speed packet's dTD points into that ring, so nothing is copied
+  (since 27 Oct 2026; before, 88-byte slots copied into packet buffers,
+  5.9 µs a frame at OUT MAIN CUE on Bryan T's MKII). A packet that runs
+  past the ring's end continues into 12 spill frames, filled from the
+  ring's start just before it is queued. Plus an 8-byte stereo sum into a second ring for full
   speed. At the first produced block after a closed spell the 64 slots the
   stream will start from are zeroed, so the packets queued at bring-up
   carry silence rather than the previous session's tail; the first-poll
@@ -1163,9 +1172,10 @@ the 1 KB XLV table), in the platform reserve.
   answered by a shim on the stock "unknown request" STALL tail, and a SET
   CUR of its rate is taken there too (44100 acknowledged).
 - **DMA memory.** The USB controller does not snoop the data cache, so the
-  four dTDs and four 960-byte packet buffers are read and written only
-  through the uncached SDRAM alias (address + `0x08000000`,
-  `docs/contributing/PLACEMENT.md`).
+  high-speed ring and the four full-speed packet buffers are read and
+  written only through the uncached SDRAM alias (address + `0x08000000`,
+  `docs/contributing/PLACEMENT.md`). The four dTDs are in on-chip SRAM at
+  `0x800079c0` (since 27 Oct 2026, `Claims.sram`), as USB IN's are.
 - **Placement.** A DRAM unit: the loader places it in the platform reserve
   and zeroes its data, and every hook is a build-time detour. The unit is
   running before a host can enumerate, so no re-plug is needed. octemu's
@@ -1230,8 +1240,8 @@ case is unmeasured.
 | what | where |
 |---|---|
 | code | DRAM unit `usbaudio` |
-| rings | 1,024 × 88 B (the checked fields per frame) + 1,024 × 8 B (stereo sum), the unit's data |
-| DMA memory | `aud_dtds` + `aud_bufs`, 4 × 32 B + 4 × 960 B, through the uncached alias (+`0x08000000`) |
+| rings | 1,036 × 88 B reserved (1,024 frames of `usb_frame_bytes` + the spill), the packets themselves, through the uncached alias (+`0x08000000`); 1,024 × 8 B (stereo sum), cached |
+| DMA memory | dTDs 4 × 32 B in on-chip SRAM `0x800079c0`; full speed's `aud_bufs`, 4 × 960 B, through the uncached alias |
 | hooks | `0x4001e91c` bus reset (USBSTS.URI handler), `0x4001e952` session end (OTGSC.BSVIS) (both USB MIDI's, replaced), `0x4001dd04` SET_INTERFACE, `0x4001d824` GET_INTERFACE, `0x4001de64` class requests, `0x4001d4b2` EP0 page fix, `0x4000d9a0` producer, `0x4001e606` USB ISR (USB MIDI's, replaced) |
 | poke | `0x400e2004` device class → `ef 02 01` |
 | descriptors | USB MIDI's `usbmidi_cfg` unit, generated with the audio function when an output stream is on |
@@ -1515,7 +1525,7 @@ counters through a host session and prints a verdict.
 | hooks | `0x4001e91c` bus reset and `0x4001e952` session end (usbaudio's shims, below), `0x4001dd0a` SET_INTERFACE (after usbaudio's), `0x40004bc0` frame transfer state 7, `0x4001de6e` EP0 stall store; DSP P:`0x88` (`DspHook`) |
 | ring | 1,024 × 8 B, the unit's data |
 | DMA memory | dTDs `0x80007c00` (128 B), packet buffers `0x80007c80` (384 B), EP0 reply `0x80007f80` (64 B): `Claims.sram` |
-| host-port buffer | `in_tx`, 192 B, through the uncached alias (+`0x08000000`) → core 0 X bank +`$320`..+`$380` |
+| host-port buffer | `SRAM_TX` `0x80007880` in on-chip SRAM (since 27 Oct 2026; `in_tx` in SDRAM through the uncached alias before) → core 0 X bank +`$320`..+`$380` |
 | descriptors | USB MIDI's `usbmidi_cfg` unit, interface 5 in the high-speed configurations |
 
 ## Crossbar

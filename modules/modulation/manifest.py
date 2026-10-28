@@ -101,27 +101,27 @@ MODULE = Module(
         # ---- page 1 (16 Sep 2026): the sweep's three knobs together, RATE
         # and DPTH drawn as a linked pair; LOFI, then MIX bottom right.
         Param(b"RATE", 26, active=True, formatter=_PLAIN,
-              doc="LFO speed, 0.08 .. 10 Hz on a squared taper (26 = the Juno's 0.5 Hz)"),
+              doc="LFO speed, 0.08 to 10 Hz on a squared taper (26 is the Juno's 0.5 Hz)"),
         Param(b"DPTH", 21, active=True, formatter=_PLAIN, link=True,
-              doc="the sweep, 0 .. 480 samples either side of DLY; in PHSR the LFO's reach"),
+              doc="sweep depth, up to 480 samples either side of DLY; in PHSR how far the LFO reaches"),
         Param(b"DLY", 18, active=True, formatter=_PLAIN,
-              doc="the sweep's centre, 0.2 .. 23 ms; COMB's pitch; PHSR's stage count (2/4/6/8 by quarters)"),
+              doc="sweep centre, 0.2 to 23 ms; in COMB the pitch, in PHSR the stages (2, 4, 6, 8)"),
         Param(b"FDBK", 64, 128, active=True, formatter=_BIPOL,
-              doc="bipolar, 64 = none: feedback from the swept tap; PHSR regen; COMB decay time and polarity"),
+              doc="64 is none: feedback from the swept tap; PHSR regen; COMB decay time and polarity"),
         Param(b"LOFI", 0, active=True, formatter=_PLAIN,
-              doc="the line clocked coarse and quantised: hold 1 + 64 (k/128)^2 samples, 24 bits then 16..5"),
+              doc="coarse clock and bit depth on the line: hold up to 65 samples, 24 bits then 16 to 5"),
         # MIX bottom right, as on every effect (Sam, image 29)
         Param(b"MIX", 0, active=True, formatter=_PLAIN,
-              doc="dry/wet; 0 = exact passthrough, 127 = the wet alone"),
+              doc="dry/wet; 0 is exact passthrough, 127 is the wet alone"),
         # ---- page 2, filled from the top left: MODE (slot 6 as on every
         # effect), TONE, WDTH ----------------------------------------------
         Param(b"MODE", 0, 5, active=True, formatter=_STEP,
               labels=("JUNO", "DIM", "FLNG", "COMB", "PHSR"),
-              doc="which pedal"),
+              doc="which pedal: JUNO, DIM, FLNG, COMB or PHSR"),
         Param(b"TONE", 80, 128, active=True, formatter=_PLAIN,
-              doc="the BBD filters in and out of the line: 0 dark (2 kHz), 127 open; COMB brightness; no PHSR"),
+              doc="BBD filters in and out of the line: 0 dark (2 kHz), 127 open; COMB brightness; not PHSR"),
         Param(b"WDTH", 127, 128, active=True, formatter=_PLAIN,
-              doc="the right channel LFO lag: 0 mono, 64 quadrature, 127 antiphase (Juno, DIM); not COMB"),
+              doc="right-channel LFO lag: 0 mono, 64 quadrature, 127 antiphase (JUNO, DIM); not COMB"),
         _BLANK, _BLANK, _BLANK,
     ),
     # ---- what each MODE renames and re-defaults ---------------------------

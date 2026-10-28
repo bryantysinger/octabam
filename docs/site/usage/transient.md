@@ -5,7 +5,7 @@ same, because the detector reads the shape of the envelope, not its level.
 ## Access
 
 An effect on a track: select the track, press FX2, and pick TRANSIENT from
-the chooser. Five knobs on page 1. In Octabam Inserts only.
+the chooser. There are five knobs, all on page 1.
 
 ## Operation
 

@@ -60,9 +60,7 @@ def geom(trk, main, cue, master):
     nch = CH_OUT["TRACKS"] * (trk != 0) + 2 * (main + cue + master)
     if nch == 0:
         return 0, 0, 2
-    fb = 4 * nch
-    cap12 = 12 * fb
-    return (nch, cap12, 2) if cap12 <= 1024 else (nch, 6 * fb, 1)
+    return nch, 12 * 4 * nch, 2            # 20 channels at most (TRACKS with MASTER is refused): 960 B
 
 
 def wire_taps(trk, main, cue, master):
@@ -548,8 +546,9 @@ def main():
     # bracketed: IN with every output off (refused in SETTINGS, brain.c
     # usb_pair_ok) must serve MIDI alone, and IN beside the 20-channel
     # combo must serve the audio set. MIDI off proves the interface
-    # renumber (AC 1 / AS 2 / IN 3), and the 22-channel row the
-    # bInterval-1 endpoint.
+    # renumber (AC 1 / AS 2 / IN 3). TRACKS with MASTER (refused in SETTINGS,
+    # brain.c usb_master_ok) must serve the set without MASTER: cfgsel
+    # clears it.
     base, early, resolved = early_block(remix, mods)
     if base and usb and has_early_slot(early):
         # (tag, trk, main, cue, master, in, midi) as the block's value bytes
@@ -561,7 +560,7 @@ def main():
             ("MASTER", 0, 0, 0, 1, 0, 1),
             ("MAIN CUE", 0, 1, 1, 0, 0, 1),
             ("TRACKS MAIN CUE", 1, 1, 1, 0, 0, 1),
-            ("TRACKS MAIN CUE MASTER", 1, 1, 1, 1, 0, 1),
+            ("TRACKS MAIN CUE + MASTER (the guard: MASTER cleared)", 1, 1, 1, 1, 0, 1),
             ("TRACKS MAIN CUE + IN AB", 1, 1, 1, 0, 1, 1),
             ("TRACKS MAIN CUE + IN CD", 1, 1, 1, 0, 2, 1),
             ("TRACKS MAIN CUE + IN ABCD", 1, 1, 1, 0, 3, 1),
@@ -579,6 +578,8 @@ def main():
             if in_i and not in_settable:
                 continue
             vals = dict(zip(("TRACKS", "MAIN", "CUE", "MASTER", "IN", "MIDI"), row[1:]))
+            if trk_i:
+                s_i = 0                         # the guard: cfgsel serves the set without MASTER
             rnch, rmax, rbint = geom(trk_i, m_i, c_i, s_i)
             rin = IN_LABELS[in_i]
             rin_ch = IN_CH[rin] if in_i else 0

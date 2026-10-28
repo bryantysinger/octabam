@@ -7,8 +7,10 @@ chainloader boots it, and every refusal boots the flashed image instead.
 
 Builds the remix (the HOME image: what NOR would hold), then:
 
-  layout   the platform runtime and its stage end below the mailbox: the
-           top of the reserve is the switch's, in every remix carrying it
+  layout   the platform runtime, its stage and .bss end below the mailbox,
+           no module's DRAM region overlaps the image stage, and the
+           reserve reaches past it (a region may sit above the stage:
+           STEM REC's 8 MiB ring has no room below it)
   ui       an MKII (`--mkii`: the reset sends the panel `60 02` first) with a
            card holding STOCK140.RMX (the user's own stock MAIN OS, copied
            at run time); PROJ opens MAIN MENU > BRAIN (the list in /BRAIN/REMIXES/, scanned),
@@ -55,6 +57,7 @@ the DSP after a chainload (the port boots from reset state either way).
 SKIPs without the port (make emu-cf) or when the remix does not carry OS
 SWITCH.
 """
+import concurrent.futures
 import json
 import os
 import pathlib
@@ -65,6 +68,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "build"))
 from remix import brainfile, registry  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -169,6 +173,17 @@ def main():
             hits[a] = hits.get(a, 0) + 1
         return out, hits, {k: p.read_bytes() for k, p in paths.items() if p.exists()}
 
+    # Every boot after `ui` is its own port process on its own inputs and
+    # dump files (the card is read, and written only to --card-out): they run
+    # side by side, and each scenario's checks run afterwards in order. Cores
+    # beyond the first are free in a unit that runs this gate alone
+    # (27 Oct 2026: 154 s locally, 83 s of it boots one after another).
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=int(os.environ.get("OSW_WORKERS", min(4, os.cpu_count() or 1))))
+    after = []
+
+    def go(*a, **k):
+        return pool.submit(boot, *a, **k)
+
     def mailbox(image, status=0, name=b"TEST.RMX", length=None, check_ok=True):
         n = len(image) if length is None else length
         h = roll(image)
@@ -186,15 +201,23 @@ def main():
     ST = {k: struct.pack(">I", C[k]).decode() for k in ("ST_BOOT", "ST_RUN", "ST_NONE", "ST_SIZE",
                                                          "ST_BVER", "ST_HASH")}
 
-    # ---- layout: the runtime stays below the switch's pages ---------------
+    # ---- layout: nothing the platform places lands on the switch's pages --
     lay = json.loads((ROOT / "out/platform/layout.json").read_text())
-    # the top of everything the platform places: the runtime, its stage,
-    # the units' .bss (never loaded: KITS's library, PLOCKS P2's table) and
-    # the modules' DRAM regions
-    top = max([lay.get("stage_end", 0), lay.get("bss_end", 0)]
-              + [a + n for a, n in lay.get("regions", {}).values()])
-    check("layout: the platform runtime, its stage, .bss and regions end below the mailbox",
+    END = cached(C["OSW_END"])
+    # the runtime, its stage and the units' .bss (never loaded: KITS's
+    # library, PLOCKS P2's table) go up from the reserve's base
+    top = max(lay.get("stage_end", 0), lay.get("bss_end", 0))
+    check("layout: the platform runtime, its stage and .bss end below the mailbox",
           top <= MBOX, f"..0x{top:08x}, mailbox 0x{MBOX:08x}")
+    # the modules' DRAM regions come down from the ceiling and step over
+    # the stage (platform_build.place_regions); STEM REC's 8 MiB ring has
+    # room only above it, and MEMORY then grows the reserve past it
+    on = [f"{s} 0x{a:08x}..0x{a + n:08x}" for s, (a, n) in lay.get("regions", {}).items()
+          if a < END and MBOX < a + n]
+    check("layout: no DRAM region overlaps the stage, and the reserve reaches past it",
+          not on and lay.get("ceiling", 0) >= END,
+          f"stage 0x{MBOX:08x}..0x{END:08x}, ceiling 0x{lay.get('ceiling', 0):08x}"
+          + (f", over it: {', '.join(on)}" if on else ""))
 
     # ---- ui: the row, the dialog, the load, the reset sequence ------------
     tree = work / "card"
@@ -286,60 +309,78 @@ def main():
     lines.clear(); lines.extend(clear_lines)
     t[0] = float(clear_lines[-1].split()[0]) + 400
     key(KEY_DOWN); key(KEY_DOWN)       # file, FLASHED separator, flashed name
-    key(KEY_YES, 400); key(KEY_YES, 20)
+    # Frames stop once the reset is requested: a line timed after it waits 115 s for a frame that never
+    # comes (27 Oct 2026). The wait starts 5 ms after the key, before the reset, and the script ends on it.
+    key(KEY_YES, 400); key(KEY_YES, 5)
     send(f"wait {MBOX + C['MB_RESET']:#x} 52435220 eq 20000", 20000)
-    send("quit")
     clear_script = work / "clear.script"
     clear_script.write_text("\n".join(lines) + "\n")
     escape = work / "escape.bin"
     escape.write_bytes(b"\x10")
-    out, hits, d = boot("clear", [(0x3ffc, norver), (0x80000200, escape)],
-                        [rt["osw_pickhome"], rt["osw_reset"]], {"mbox": (MBOX, 88)},
-                        extra=["--card", str(work / "ui_card.img"), "--live-script", str(clear_script), "--mkii",
-                               "--card-out", str(work / "cleared.img")], max_instr=4_000_000_000)
-    cleared_files = emu_card.extract_image((work / "cleared.img").read_bytes())
-    cleared = brainfile.parse(next(v for k, v in cleared_files.items() if k.lower() == "brain/card.work"))
-    choice = cleared.find(brainfile.SETTINGS, "octabam.remix-switch")
-    check("clear: choosing FLASHED in the pane clears the saved selection and resets without a staged image",
-          hits.get(rt["osw_pickhome"], 0) == 1 and hits.get(rt["osw_reset"], 0) == 1
-          and not magic(d["mbox"]) and choice is not None and not choice.values()[0].data.strip(b"\0"))
+    f_clear = go("clear", [(0x3ffc, norver), (0x80000200, escape)],
+                 [rt["osw_pickhome"], rt["osw_reset"]], {"mbox": (MBOX, 88)},
+                 extra=["--card", str(work / "ui_card.img"), "--live-script", str(clear_script), "--mkii",
+                        "--card-out", str(work / "cleared.img")], max_instr=4_000_000_000)
+
+    def check_clear():
+        out, hits, d = f_clear.result()
+        cleared_files = emu_card.extract_image((work / "cleared.img").read_bytes())
+        cleared = brainfile.parse(next(v for k, v in cleared_files.items() if k.lower() == "brain/card.work"))
+        choice = cleared.find(brainfile.SETTINGS, "octabam.remix-switch")
+        check("clear: choosing FLASHED in the pane clears the saved selection and resets without a staged image",
+              hits.get(rt["osw_pickhome"], 0) == 1 and hits.get(rt["osw_reset"], 0) == 1
+              and not magic(d["mbox"]) and choice is not None and not choice.values()[0].data.strip(b"\0"))
+    after.append(check_clear)
 
     # ---- chain: the memory the ui run left, booted ------------------------
     watch = [0x40000400, chain["osw_chain"], stub, loader]
-    out, hits, d = boot("chain", [(0x3FFC, norver), (MBOX, work / "ui_mbox.bin"), (BODY, body_f),
-                                  (IMG, work / "ui_stage.bin")],
-                        watch, {"site": (0x40000412, 6), "mbox": (MBOX, 72)})
-    check("chain: the chainloader ran, the stub ran from the stage, stock's entry ran again",
-          hits.get(chain["osw_chain"]) == 1 and hits.get(stub) == 1 and hits.get(0x40000400) == 2,
-          f"chain {hits.get(chain['osw_chain'], 0)}, stub {hits.get(stub, 0)}, entry {hits.get(0x40000400, 0)}")
-    check("chain: the home image's loader never ran", not hits.get(loader),
-          f"{hits.get(loader, 0)}x")
-    check("chain: 0x40000412 holds stock's `movea.l #0x48000000,%sp` again",
-          d.get("site") == bytes.fromhex("2e7c48000000"), (d.get("site") or b"").hex())
-    check("chain: the staged OS reached the RTOS handoff", "HANDOFF" in out)
+    f_chain = go("chain", [(0x3FFC, norver), (MBOX, work / "ui_mbox.bin"), (BODY, body_f),
+                           (IMG, work / "ui_stage.bin")],
+                 watch, {"site": (0x40000412, 6), "mbox": (MBOX, 72)})
+
+    def check_chain():
+        out, hits, d = f_chain.result()
+        check("chain: the chainloader ran, the stub ran from the stage, stock's entry ran again",
+              hits.get(chain["osw_chain"]) == 1 and hits.get(stub) == 1 and hits.get(0x40000400) == 2,
+              f"chain {hits.get(chain['osw_chain'], 0)}, stub {hits.get(stub, 0)}, entry {hits.get(0x40000400, 0)}")
+        check("chain: the home image's loader never ran", not hits.get(loader),
+              f"{hits.get(loader, 0)}x")
+        check("chain: 0x40000412 holds stock's `movea.l #0x48000000,%sp` again",
+              d.get("site") == bytes.fromhex("2e7c48000000"), (d.get("site") or b"").hex())
+        check("chain: the staged OS reached the RTOS handoff", "HANDOFF" in out)
+    after.append(check_chain)
 
     # ---- self: the home image as its own target ---------------------------
     homeb = home.read_bytes()
     stage_self = work / "stage_self.bin"
     stage_self.write_bytes(homeb)
-    out, hits, d = boot("self", [(0x3FFC, norver), (MBOX, mailbox(homeb, name=b"HOME.RMX")), (BODY, body_f),
-                                 (IMG, stage_self)], watch, {"mbox": (MBOX, 72)})
-    mb = d.get("mbox", b"\0" * 72)
-    check("self: status RUN after the handover, the mailbox spent, the loader ran once",
-          status(mb) == ST["ST_RUN"] and magic(mb) == 0 and hits.get(loader) == 1
-          and hits.get(chain["osw_chain"]) == 2 and "HANDOFF" in out,
-          f"status {status(mb)!r}, magic {magic(mb):#x}, loader {hits.get(loader, 0)}, "
-          f"chain {hits.get(chain['osw_chain'], 0)}")
+    f_self = go("self", [(0x3FFC, norver), (MBOX, mailbox(homeb, name=b"HOME.RMX")), (BODY, body_f),
+                         (IMG, stage_self)], watch, {"mbox": (MBOX, 72)})
+
+    def check_self():
+        out, hits, d = f_self.result()
+        mb = d.get("mbox", b"\0" * 72)
+        check("self: status RUN after the handover, the mailbox spent, the loader ran once",
+              status(mb) == ST["ST_RUN"] and magic(mb) == 0 and hits.get(loader) == 1
+              and hits.get(chain["osw_chain"]) == 2 and "HANDOFF" in out,
+              f"status {status(mb)!r}, magic {magic(mb):#x}, loader {hits.get(loader, 0)}, "
+              f"chain {hits.get(chain['osw_chain'], 0)}")
+    after.append(check_self)
 
     # ---- the refusals: each boots the home image -------------------------
-    def refused(tag, preload, want):
-        out, hits, d = boot(tag, preload, watch, {"mbox": (MBOX, 72)})
-        mb = d.get("mbox", b"\0" * 72)
-        check(f"{tag}: status {want.strip()}, the normal boot, no stub",
-              status(mb) == ST[want] and not hits.get(stub) and hits.get(loader) == 1
-              and "HANDOFF" in out,
-              f"status {status(mb)!r}, stub {hits.get(stub, 0)}, loader {hits.get(loader, 0)}")
-        return mb
+    def refused(tag, preload, want, then=None):
+        f = go(tag, preload, watch, {"mbox": (MBOX, 72)})
+
+        def run():
+            out, hits, d = f.result()
+            mb = d.get("mbox", b"\0" * 72)
+            check(f"{tag}: status {want.strip()}, the normal boot, no stub",
+                  status(mb) == ST[want] and not hits.get(stub) and hits.get(loader) == 1
+                  and "HANDOFF" in out,
+                  f"status {status(mb)!r}, stub {hits.get(stub, 0)}, loader {hits.get(loader, 0)}")
+            if then:
+                then(mb)
+        after.append(run)
 
     stage_stock = work / "stage_stock.bin"
     stage_stock.write_bytes(stock)
@@ -348,8 +389,8 @@ def main():
     bad[len(bad) // 2] ^= 0x01
     stage_bad = work / "stage_bad.bin"
     stage_bad.write_bytes(bytes(bad))
-    mb = refused("hash", [(0x3FFC, norver), (MBOX, mailbox(stock)), (BODY, body_f), (IMG, stage_bad)], "ST_HASH")
-    check("hash: the mailbox is spent (one-shot)", magic(mb) == 0, f"{magic(mb):#x}")
+    refused("hash", [(0x3FFC, norver), (MBOX, mailbox(stock)), (BODY, body_f), (IMG, stage_bad)], "ST_HASH",
+            lambda mb: check("hash: the mailbox is spent (one-shot)", magic(mb) == 0, f"{magic(mb):#x}"))
     refused("bver", [(MBOX, mailbox(stock)), (BODY, body_f), (IMG, stage_stock)], "ST_BVER")
     refused("size", [(0x3FFC, norver), (MBOX, mailbox(stock, length=C["OSW_MAXLEN"] + 4)), (BODY, body_f),
                      (IMG, stage_stock)], "ST_SIZE")
@@ -358,9 +399,8 @@ def main():
     bb = bytearray(body)
     bb[len(bb) // 2] ^= 0x01
     body_bad.write_bytes(bytes(bb))
-    mb = refused("body", [(0x3FFC, norver), (MBOX, mailbox(stock)), (BODY, body_bad),
-                          (IMG, stage_stock)], "ST_HASH")
-    check("body: the mailbox is spent before the body is checked", magic(mb) == 0, f"{magic(mb):#x}")
+    refused("body", [(0x3FFC, norver), (MBOX, mailbox(stock)), (BODY, body_bad), (IMG, stage_stock)], "ST_HASH",
+            lambda mb: check("body: the mailbox is spent before the body is checked", magic(mb) == 0, f"{magic(mb):#x}"))
     # ---- boot: a power-on with images on the card loads as stock does -----
     # A power-on as the unit has it (--boot-load): the names in battery
     # SRAM before the mount, the harness posts nothing, so the one LOAD
@@ -383,17 +423,21 @@ def main():
     bw = {"dialog": 0x4006D57C, "post": POST, "handler": HANDLER,
           "osw_scan": rt["osw_scan"], "osw_load": rt["osw_load"]}
     name_of = {a: k for k, a in bw.items()}
-    out, hits, _ = boot("boot", [(0x3FFC, norver)], list(bw.values()), {},
-                        extra=["--card", str(bcard), "--mount", "--boot-load", "--set", "/OSW", "--project", "P",
-                               "--mkii", "--load-ms", "20000"], max_instr=3_000_000_000)
-    seq = [name_of.get(int(m.group(1), 16)) for m in re.finditer(r"^\s*\[\s*\d+\] at 0x([0-9a-f]+)", out, re.M)]
-    seq = [x for x in seq if x]
-    # stock's own dialogs (the empty project's) come after the load
-    check("boot: a power-on with images in /BRAIN/REMIXES/ posts LOAD PROJECT and loads it",
-          "post" in seq and "handler" in seq and seq.index("post") < seq.index("handler"), " ".join(seq))
-    check("boot: nothing of REMIX SWITCH runs before it: no dialog before the post, no scan, no image load",
-          ("dialog" not in seq or seq.index("dialog") > seq.index("post")) and "osw_scan" not in seq
-          and "osw_load" not in seq, " ".join(seq))
+    f_boot = go("boot", [(0x3FFC, norver)], list(bw.values()), {},
+                extra=["--card", str(bcard), "--mount", "--boot-load", "--set", "/OSW", "--project", "P",
+                       "--mkii", "--load-ms", "20000"], max_instr=3_000_000_000)
+
+    def check_boot():
+        out, hits, _ = f_boot.result()
+        seq = [name_of.get(int(m.group(1), 16)) for m in re.finditer(r"^\s*\[\s*\d+\] at 0x([0-9a-f]+)", out, re.M)]
+        seq = [x for x in seq if x]
+        # stock's own dialogs (the empty project's) come after the load
+        check("boot: a power-on with images in /BRAIN/REMIXES/ posts LOAD PROJECT and loads it",
+              "post" in seq and "handler" in seq and seq.index("post") < seq.index("handler"), " ".join(seq))
+        check("boot: nothing of REMIX SWITCH runs before it: no dialog before the post, no scan, no image load",
+              ("dialog" not in seq or seq.index("dialog") > seq.index("post")) and "osw_scan" not in seq
+              and "osw_load" not in seq, " ".join(seq))
+    after.append(check_boot)
 
     # A real power-on starts in HOME again with fresh DRAM, and must read
     # the filename the manual switch saved. No mailbox is carried over.
@@ -403,50 +447,67 @@ def main():
     autoscript.write_text(f"0 wait {MBOX + C['MB_RESET']:#x} 52435220 eq 4000\n4000 quit\n")
     aw = [rt["osw_load"], rt["osw_reset"], rt["osw_bootproject"], rt["osw_bootfiles"], HANDLER, 0x40022cd4]
 
-    def auto(tag, preload=(), cardname="autocard.img"):
-        return boot(tag, [(0x3ffc, norver), *preload], aw,
-                    {"mbox": (MBOX, 88), "stage": (IMG, len(stock)), "cs1": (0x10000000, 0x100000)},
-                    extra=["--card", str(work / cardname), "--boot-load", "--set", "/OSW", "--project", "P",
-                           "--mkii", "--load-ms", "2000", "--live-script", str(autoscript)],
-                    max_instr=4_000_000_000)
+    def auto(tag, preload=(), cardname="autocard.img", after_boot=None):
+        def run():
+            if after_boot:
+                after_boot.result()     # remembered reads the battery RAM `escape` dumped
+            return boot(tag, [(0x3ffc, norver), *preload], aw,
+                        {"mbox": (MBOX, 88), "stage": (IMG, len(stock)), "cs1": (0x10000000, 0x100000)},
+                        extra=["--card", str(work / cardname), "--boot-load", "--set", "/OSW", "--project", "P",
+                               "--mkii", "--load-ms", "2000", "--live-script", str(autoscript)],
+                        max_instr=4_000_000_000)
+        return pool.submit(run)
 
-    out, hits, d = auto("automatic")
-    check("automatic: a fresh boot restores the selected image from the card before the project load, without a sync",
-          hits.get(rt["osw_load"], 0) == 1 and hits.get(rt["osw_reset"], 0) == 1
-          and not hits.get(HANDLER) and not hits.get(0x40022cd4) and d.get("stage") == stock
-          and magic(d["mbox"]) == C["OSW_MAGIC"])
-    out, hits, d = auto("escape", [(0x80000200, escape)])
-    check("escape: STARTUP MENU > EXIT skips the saved remix and loads the project in FLASHED",
-          not hits.get(rt["osw_load"]) and hits.get(HANDLER, 0) >= 1
-          and struct.unpack_from(">I", d["mbox"], C["MB_ESCAPE"])[0] == 0x10)
-    out, hits, d = auto("remembered", [(0x10000000, work / "escape_cs1.bin")])
-    check("remembered: the card remembered in battery RAM restores the selection through LOADING FILES",
-          hits.get(rt["osw_bootfiles"], 0) >= 1 and hits.get(rt["osw_reset"], 0) == 1
-          and not hits.get(HANDLER) and d.get("stage") == stock)
+    f_auto = auto("automatic")
+    f_escape = auto("escape", [(0x80000200, escape)])
+    f_remembered = auto("remembered", [(0x10000000, work / "escape_cs1.bin")], after_boot=f_escape)
     already = work / "already.bin"
     already.write_bytes(b"\0" * C["MB_STATUS"] + struct.pack(">I", C["ST_BOOT"]))
-    out, hits, d = auto("already", [(MBOX, already)])
-    check("already: the selected image's boot never recursively switches again",
-          not hits.get(rt["osw_load"]) and hits.get(HANDLER, 0) >= 1 and status(d["mbox"]) == ST["ST_RUN"])
+    f_already = auto("already", [(MBOX, already)])
     # Missing target: hold no engine job forever and do not erase the choice.
     (btree / "BRAIN" / "REMIXES" / "STOCK140.RMX").unlink()
     (work / "missing.img").write_bytes(emu_card.build_image(str(btree), size_mb=64))
-    out, hits, d = auto("missing", cardname="missing.img")
-    check("missing: an unavailable target falls back to FLASHED and releases the project load",
-          hits.get(rt["osw_load"], 0) == 1 and not hits.get(rt["osw_reset"]) and hits.get(HANDLER, 0) >= 1)
+    f_missing = auto("missing", cardname="missing.img")
     malformed = brainfile.File(brainfile.CARD_WORK, [brainfile.Record(
         brainfile.SETTINGS, "octabam.remix-switch",
         payload=brainfile.Value(1, brainfile.BLOB, b"../STOCK140.RMX".ljust(24, b"\0")).encode())])
     (btree / "BRAIN" / "card.work").write_bytes(malformed.encode())
     (work / "malformed.img").write_bytes(emu_card.build_image(str(btree), size_mb=64))
-    out, hits, d = auto("malformed", cardname="malformed.img")
-    check("malformed: an invalid stored filename is ignored and the flashed project loads",
-          not hits.get(rt["osw_load"]) and hits.get(HANDLER, 0) >= 1)
+    f_malformed = auto("malformed", cardname="malformed.img")
+
+    def check_auto():
+        out, hits, d = f_auto.result()
+        check("automatic: a fresh boot restores the selected image from the card before the project load, without a sync",
+              hits.get(rt["osw_load"], 0) == 1 and hits.get(rt["osw_reset"], 0) == 1
+              and not hits.get(HANDLER) and not hits.get(0x40022cd4) and d.get("stage") == stock
+              and magic(d["mbox"]) == C["OSW_MAGIC"])
+        out, hits, d = f_escape.result()
+        check("escape: STARTUP MENU > EXIT skips the saved remix and loads the project in FLASHED",
+              not hits.get(rt["osw_load"]) and hits.get(HANDLER, 0) >= 1
+              and struct.unpack_from(">I", d["mbox"], C["MB_ESCAPE"])[0] == 0x10)
+        out, hits, d = f_remembered.result()
+        check("remembered: the card remembered in battery RAM restores the selection through LOADING FILES",
+              hits.get(rt["osw_bootfiles"], 0) >= 1 and hits.get(rt["osw_reset"], 0) == 1
+              and not hits.get(HANDLER) and d.get("stage") == stock)
+        out, hits, d = f_already.result()
+        check("already: the selected image's boot never recursively switches again",
+              not hits.get(rt["osw_load"]) and hits.get(HANDLER, 0) >= 1 and status(d["mbox"]) == ST["ST_RUN"])
+        out, hits, d = f_missing.result()
+        check("missing: an unavailable target falls back to FLASHED and releases the project load",
+              hits.get(rt["osw_load"], 0) == 1 and not hits.get(rt["osw_reset"]) and hits.get(HANDLER, 0) >= 1)
+        out, hits, d = f_malformed.result()
+        check("malformed: an invalid stored filename is ignored and the flashed project loads",
+              not hits.get(rt["osw_load"]) and hits.get(HANDLER, 0) >= 1)
+    after.append(check_auto)
 
     # ---- dsp: park the running cores, boot them through the loaders --------
     B = 0x40000400
-    blobs = {"bootA": (0x400E21E0, 0x96), "payA": (0x400E2324, 0x136CB),
-             "bootB": (0x400E2276, 0xAE), "payB": (0x400F59EF, 0x12D05)}   # dsp_modmap
+    # the payloads' addresses and lengths are read from the image: the 64-id layout adds a record to each and moves B
+    # (tools/build/idspace.py); the boot blobs and their start addresses are the same in both layouts
+    import idspace  # noqa: E402
+    (a_va, a_len), (b_va, b_len) = idspace.payloads(homeb)
+    blobs = {"bootA": (0x400E21E0, 0x96), "payA": (a_va, a_len),
+             "bootB": (0x400E2276, 0xAE), "payB": (b_va, b_len)}   # dsp_modmap, 32-id: 0x136CB and 0x12D05 long
     at, where, cmds = 0x41300000, {}, ["frame on", "run 300", "frame off", "run 20"]
     for k, (a, n) in blobs.items():
         where[k] = at
@@ -471,7 +532,10 @@ def main():
         arrivals = len(w[-1].split()) - 2 if w else 0
         return oks, arrivals
 
-    res = {pc: interactive(pc) for pc in ("0:0x30000", "1:0x38000")}
+    f_dsp = {pc: pool.submit(interactive, pc) for pc in ("0:0x30000", "1:0x38000")}
+    for run in after:
+        run()
+    res = {pc: f.result() for pc, f in f_dsp.items()}
     oks = res["0:0x30000"][0]
     # osw_park's d0: bits 1..0 the cores that took the command, 3..2 / 5..4
     # the words drained from each one's host-side receive register. The

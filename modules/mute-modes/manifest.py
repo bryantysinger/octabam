@@ -1,7 +1,7 @@
 """MUTE_MODES -- PERSONALIZE > MUTE MODE: OT (stock), OTFX, OTFX-T, DT-T -- what a muted or soloed-out audio track does.
 
 Source: `upstream/` is Zac Kyoti's repository (Zac-Kyoti/octatrack-kyoti-fw,
-submodule, pinned to `8e00275`). The declaration is
+submodule, pinned to `a1e0288`). The declaration is
 `upstream/octabam-modules/mute-modes/manifest.py`: two linked units (`patch_softmute.s`, `patch_mutemode.s`), placed in ROM caves or DRAM by the `PLACE` setting (`kyoti.mute-modes`, default CAVE), six detours, three grown PERSONALIZE tables, four pokes, each re-linked and
 compared with the author's own bytes (`reference`) every build. Its source
 paths are derived from its own directory, so it is executed here from the

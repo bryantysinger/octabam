@@ -1,10 +1,12 @@
 | REMIX SWITCH -- the addresses both units share, and the gate reads
 | (tools/verify/verify_remix_switch.py parses the `.set` lines of this file).
 |
-| The stage is the top of octabam's platform reserve, which MEMORY keeps
-| reaching to 0x41495de0 in every remix that carries this module (its
-| manifest's ArenaReserve, read from OSW_MBOX and OSW_END below; the first
-| 1,707 pages of stock's audio page arena). Stock never touches the reserve
+| The stage is a fixed claim in octabam's platform reserve, which MEMORY
+| keeps reaching at least to 0x41495de0 in every remix that carries this
+| module (its manifest's ArenaReserve, read from OSW_MBOX and OSW_END below;
+| the first 1,707 pages of stock's audio page arena). It is the reserve's
+| top unless a module's DRAM region needs more: STEM REC's 8 MiB ring has
+| no room below it, so it sits above. Stock never touches the reserve
 | (docs/contributing/PLACEMENT.md), and nothing between a reset and the OS
 | entry's `movea.l #0x48000000,%sp` writes SDRAM above the image the
 | bootstrap depacks (read from the bootstrap's copy in the image,

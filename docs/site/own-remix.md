@@ -2,8 +2,7 @@
 
 You can assemble a personal remix from modules already in octabam. A remix
 chooses which modules are included and which effects appear in the FX1 and
-FX2 menus. The remixer shows compatibility conflicts and rebuilds the image
-as you change the selection.
+FX2 menus. The build refuses incompatible selections by name.
 
 This guide is for combining existing modules. If you want to create a new
 feature or contribute a module, start with the
@@ -13,35 +12,15 @@ and the [module author guide](https://github.com/sambanks/octabam/blob/main/docs
 ## 1. Prepare the build environment
 
 Follow the [build guide](https://github.com/sambanks/octabam/blob/main/docs/guide/BUILDING.md) through installing the toolchain and
-preparing your own OS 1.40C. The interactive remixer also needs its optional
-Python environment:
-
-```bash
-make emu-setup
-```
-
-See the [remixer guide](https://github.com/sambanks/octabam/blob/main/docs/guide/REMIXER.md)
-for detailed setup notes, Linux and WSL2 audio, and the keyboard controls.
+preparing your own OS 1.40C.
 
 ## 2. Select modules and effects
 
-Start the interactive remixer:
-
-```bash
-make remix
-```
-
-Use the arrow keys to browse modules and effects. In the **Available** pane,
-press `Enter` to add a module. In **Choosers**, arrange FX2 effects and press
-`1` to add or remove an FX1 entry. The **Unit** pane describes the selected
-module and its compatibility constraints. The remixer rebuilds and boots
-the selection under the emulator as you edit. It does not flash the
-Octatrack.
-
-Press `l` to load a starting remix, or `s` to save your selection under a
-new name. The selection is saved as `remixes/<name>/remix.py`.
-For the full key reference and hand-editing options, see the
-[remixer guide](https://github.com/sambanks/octabam/blob/main/docs/guide/REMIXER.md).
+Copy an existing `remixes/<name>/remix.py` and edit its `modules` (the FX2
+chooser, in row order) and, optionally, `fx1`. `make modules` lists every
+module key and the compatibility matrix. See the
+[composing guide](https://github.com/sambanks/octabam/blob/main/docs/guide/COMPOSING.md)
+for every field and the costs.
 
 Select **USB** for USB MIDI and optional audio in either direction. Its
 TRACKS, MAIN, CUE, MASTER, IN and MIDI settings are changed on the unit in PROJ > BRAIN > SETTINGS

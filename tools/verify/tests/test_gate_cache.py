@@ -28,6 +28,21 @@ class CacheTests(unittest.TestCase):
             self.assertNotEqual(one, gate_cache.project_stamp(d))
         self.assertEqual(gate_cache.project_stamp(None), "none")
 
+    def test_a_fresh_project_is_keyed_by_its_marker_not_its_file_times(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = pathlib.Path(d)
+            (d / "NOPROJ").mkdir()
+            (d / "NOPROJ" / "project.work").write_text("x")
+            (d / "fresh.key").write_text("abc")
+            one = gate_cache.project_stamp(d / "NOPROJ")
+            os.utime(d / "NOPROJ" / "project.work", (1, 1))
+            self.assertEqual(one, gate_cache.project_stamp(d / "NOPROJ"))
+            (d / "fresh.key").write_text("abd")
+            self.assertNotEqual(one, gate_cache.project_stamp(d / "NOPROJ"))
+            (d / "NOPROJ" / "project.work").write_text("xy")
+            (d / "fresh.key").write_text("abc")
+            self.assertNotEqual(one, gate_cache.project_stamp(d / "NOPROJ"))
+
     def test_a_pass_is_stored_with_its_skips_and_the_switch_turns_it_off(self):
         with tempfile.TemporaryDirectory() as d, \
                 mock.patch.object(gate_cache, "store_dir", lambda root=None: pathlib.Path(d)), \
@@ -36,6 +51,16 @@ class CacheTests(unittest.TestCase):
             self.assertEqual(gate_cache.lookup("k2")["skips"], ["[SKIP] midi: x"])
             with mock.patch.dict(os.environ, {"OCTABAM_GATE_CACHE": "0"}):
                 self.assertIsNone(gate_cache.lookup("k2"))
+
+    def test_the_key_covers_every_manifest_and_the_remix_data_files(self):
+        sys.path.insert(0, str(gate_cache.ROOT / "tools"))
+        from remix import registry
+        carried = {m.name for m in registry.selected(registry.remix("octabam"))}
+        other = next(p.parent.name for p in sorted((gate_cache.ROOT / "modules").glob("*/manifest.py"))
+                     if p.parent.name not in carried)
+        files = gate_cache.inputs(gate_cache.ROOT, "octabam", set(), {})
+        self.assertIn(f"modules/{other}/manifest.py", files)
+        self.assertIn("tools/remix/stock_labels.json", files)
 
 
 class SlotTests(unittest.TestCase):

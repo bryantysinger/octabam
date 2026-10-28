@@ -79,7 +79,7 @@ given where it matters.
   (`switch.s:621-633`). None of that exists at the gate. **Falsified by** a
   card read that succeeds from a detour at `0x40000412`.
 - **The mailbox is DRAM and a power-on is treated as having none.** The
-  stage lives at the top of the platform reserve, `OSW_MBOX 0x49200000`
+  stage lives at a fixed address in the platform reserve, `OSW_MBOX 0x49200000`
   (`modules/remix-switch/osw.inc`), and the gate's no-mailbox path records
   `ST_NONE` and resumes (`chain.s:55-64`). Whether a *quick* power-cycle
   keeps DRAM is unmeasured: `chain.s:11-12` says it does, and

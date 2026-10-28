@@ -1,14 +1,13 @@
-A held MIDI note feeds BusDelay's TIME knob, and the knob draws as a
-tempo division while the DSP's sticky snap holds one. The tempo itself is
-stock's.
+A held MIDI note sets the Delay Server's TIME knob, and the knob reads as
+a tempo division while it sits on one. The tempo itself is stock's.
 
 ## Operation
 
-No menu: it runs wherever BusDelay runs. Send a MIDI note into the delay
-host's track channel and hold it: TIME becomes that note's tempo
-division. Release the note (or send note-off): TIME reads 0.
+There is no menu: it works wherever the Delay Server runs. Send a MIDI
+note on the delay track's channel and hold it: TIME becomes that note's
+tempo division. Release the note: TIME reads 0.
 
 ## Notes
 
-- The division names come from the knob's own sticky snap; with no snap
-  held the knob draws milliseconds.
+- The division names come from the knob's own snapping; with no division
+  held, the knob reads in milliseconds.

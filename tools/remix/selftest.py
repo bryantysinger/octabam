@@ -878,6 +878,26 @@ def main():
         _probe.unlink(missing_ok=True)
         for junk in (ROOT / "remixes/__pycache__").glob("_selftest_nofb*"):
             junk.unlink(missing_ok=True)
+    # A stock effect is refused as the fallback, bus or no bus.
+    _probe = ROOT / "remixes/_selftest_stockfb.py"
+    try:
+        _probe.write_text(
+            "from remix.schema import Remix\n\n"
+            "REMIX = Remix(name='_selftest_stockfb', doc='scratch',\n"
+            "              modules=('FILTER', 'SPECTRUM'), fallback='FILTER')\n")
+        registry.remix("_selftest_stockfb")
+        bad += 1
+        print("  [FAIL] fallback='FILTER' (a stock effect) was accepted")
+    except SystemExit as e:
+        if "is a stock effect" in str(e):
+            print("  [PASS] a stock effect is refused as the fallback")
+        else:
+            bad += 1
+            print(f"  [FAIL] fallback='FILTER' was refused for the wrong reason: {e}")
+    finally:
+        _probe.unlink(missing_ok=True)
+        for junk in (ROOT / "remixes/__pycache__").glob("_selftest_stockfb*"):
+            junk.unlink(missing_ok=True)
 
     # And the same rule read off the SHIPPED remixes, which is where it would
     # actually go wrong: nothing may pair NO_FALLBACK with a bus module.
@@ -967,6 +987,7 @@ def main():
     _want = {"midi-loopback": (), "midi-scales": (), "mods": (), "ata-write-guard": (), "usb-out-tracks-main-cue": ("PLATE REV",), "usb-out-tracks": (), "usb-out-master": (),
              "usb-out-tracks-post": (),
              "remix-switch": (), "remix-switch-trace": (),   # REMIX SWITCH's park in dead vectors, no region words
+             "rs64": (),   # remix-switch with BBD placed in the shared window: no region words
              "usb-io-stock14": (),   # USB's RX inject at payload A's tail (DspSection.tail), no region words
              "usb-out-main-cue": (), "usb-out-main": (), "usb-midi": (), "stems": (),     # stock effects + ColdFire modules, no DSP words
              "stems-brain": (),   # STEM REC under PROJECT + BRAIN/REMIX SWITCH; no DSP words
@@ -992,6 +1013,8 @@ def main():
              "window-mod": ("CHORUS", "PLATE REV", "SPRING REV", "DARK REV"), "window-ctl": ("CHORUS", "PLATE REV", "SPRING REV", "DARK REV"),   # MODULATION takes CHORUS's id; the reverbs' words hold LOAD METER and CORE
              "octabam": (),   # all 14 stock effects stay; ours and LOAD METER run from the window
              "dlspike": (),   # all 14 stock effects stay; MODULATION is loaded on demand
+             "dl-probe": ("EQUALIZER",), "dl-probe-any": ("EQUALIZER",),   # DLPROBE takes EQUALIZER's id
+             "ext-probe": ("EQUALIZER",),   # EXTPROBE takes EQUALIZER's id
              "stock-meter-a": ("PHASER",), "stock-meter-b": ("SPATIALIZER",),   # LOAD METER's DSP half in the given-up effect's words
              "sos-capture": ("SPATIALIZER",),   # usb-io-tracks-ab + the recorder fixes
              "cfmeter": ("DARK REV",), "cfmeter-port": ("DARK REV",), "cfmeter-post": ("DARK REV",), "cfmeter-tracks": ("DARK REV",),   # the readout insert's words
@@ -1011,6 +1034,9 @@ def main():
              "resonator": ("PLATE REV",),   # RESONATOR runs in its words; the other 13 stay
              "vocoder": ("PLATE REV", "DJ EQ"),   # VOCODER runs in PLATE's words; DJ EQ out so the tables sit in X
              "vocoder-usb": ("PLATE REV", "DJ EQ"),   # the vocoder remix + USB MIDI and USB AUDIO (ColdFire, no DSP words)
+             "events-empty": ("SPRING REV", "DARK REV"),
+             "events-clients": ("SPATIALIZER", "EQUALIZER", "PHASER", "FLANGER", "CHORUS",
+                                "SPRING REV", "DARK REV", "LO-FI", "DJ EQ", "COMB FILTER"),
              "euclid": ("SPATIALIZER", "FLANGER", "CHORUS", "COMB FILTER"),
              "rig": _rig,
              "character-txtr": _rig,   # octabam-bus with the TXTR station
@@ -1051,7 +1077,7 @@ def main():
     _probe.write_text(
         "from remix.schema import Remix\n\n"
         "REMIX = Remix(name='_selftest_scattered', doc='scratch',\n"
-        "              modules=('EUCLID', 'SEQUENCER EVENTS', 'MINIVERB', 'PLATE REV'),\n"
+        "              modules=('EUCLID', 'EVENTS', 'MINIVERB', 'PLATE REV'),\n"
         "              fallback='NONE',\n"
         "              fx1=('FILTER', 'EQUALIZER', 'DJ EQ', 'PHASER',\n"
         "                   'SPATIALIZER', 'COMPRESSOR', 'LO-FI',\n"

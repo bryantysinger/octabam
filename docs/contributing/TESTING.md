@@ -58,8 +58,12 @@ skipped.
 ## 2. `make check`: the two halves
 
 `make check REMIX=<name>` is `bus`, `cycles`, then `verify`, and `verify`
-is two halves (`Makefile`: `verify-shared`, `verify-remix`). There is no
-default remix.
+is two halves (`Makefile`: `verify-shared`, `verify-remix`). No make target
+has a default remix; `make reach` (QUICK) and CI take `octabam` (the golden
+master, `reach.DEFAULT_REMIX`): a module it carries is checked on it alone, and
+it is the floor for tool, build and unclassified changes. A module it does not
+carry is checked on the remixes that do; FULL=1 checks every carrier and the
+cover.
 
 **The shared half** (`make check-shared REMIXES="a b c"`) does not depend
 on which remix is selected, so a run over several remixes does it once:
@@ -132,6 +136,11 @@ The two tables above.
 | `verify_usb_align` | USB LAYOUT TRACKS MAIN CUE | image | MAIN and CUE are in phase with the tracks in the twenty-channel stream (lag 0) | port, `.venv` |
 | `verify_cfmeter` | CF METER | per remix | the DSP meter under the port with T8's FX2 = CF METER: frames counted within 8 of the frames run; spin min <= max and > 0; period min <= max and > 0; DBRN 40 lowers the spin minimum with the period maximum unchanged (within 10 %); DBRN 127 raises the period maximum past 1.5 x run 1's. Cannot see: the unit's cycle costs (the port prices each instruction at one step) and the ESAI's real underrun behaviour | `.venv`, port, project |
 | `verify_usb_load_meter` | LOAD METER | image | the USB vendor request `0xc0/0x57` returns `lm_stats`, `lm_dsp` and `lm_ot` (20, 48, 256 bytes) equal to the cells at their symbols, seq rising, a 0.5 s window on timer 3, plausible period and busy, sampled slots; wValue 3 STALLs. Cannot see: the unit's timers (the port's timer 0 moves in 1,024-count steps), a project playing | `.venv`, port |
+| `verify_stems` | STEM REC | per remix | static: MAIN MENU's root and PROJECT as the remix's claims leave them (stock, or BRAIN's root), CONTROL stock, the STEMS rows as shipped, the three detours, the DRAM regions above the runtime's stage; under the port on the THRU fixtures: each track's file equals its read-back after the fader at one fixed lag, MAIN minus the sum of the eight stems is 0 to 7, headers and lengths at 16 and 24 bits, masks, a ring wrap and overflow, RING FULL, SAME MINUTE and a refused card write, the writer's stack peak. Cannot see: the unit's card speed (the port's card latency is a model), the hook's cost in microseconds, the chip's order of the level-6 transfer chain against the frame interrupt, how a take plays back | `.venv`, port, project (`STEMS_TEMPLATE`) |
+| `verify_stems_menu` | STEM REC | per remix | UP+REC opens STEMS as its own window on an MKII and an MKI, and closes it; MAIN MENU's root and PROJECT stay as they were; the cursor's rules (the status row skipped, never on PEAK, PEAK kept in view); the source and format rows; the last source stays on; REC arms and cancels; a take from the keys holds the files its rows chose. Cannot see: what the window draws for its status rows (read from memory, so a window drawn from stale labels passes), the unit's key timing | `.venv`, port, project (`STEMS_TEMPLATE`) |
+| `verify_card_reader` | STEM REC | shared | `emu_card.extract_image`, which reads every STEM REC take back, returns the builder's files byte for byte (empty, one byte, one cluster and one more, many clusters, a long name, nested folders); an empty folder reads as absent; the FAT16 image is pinned by hash; the same files on a FAT32 image, files above cluster 65,535 included, and a too-small FAT32 image refused. Cannot see: how the firmware reads a card | `.venv` |
+| `verify_remix_switch` | REMIX SWITCH | per remix | layout (the runtime, its stage and `.bss` below the mailbox, no DRAM region over the image stage, the reserve past it); BRAIN's REMIXES list, the dialog, the deferred load and the reset sequence; the chainload; every refusal (no mailbox, hash, bootstrap version, size, body); the power-on restore, STARTUP MENU's escape, the DSP park. Cannot see: the reset itself, SDRAM across it, caches, the DSP after a chainload | `.venv`, port |
+| `verify_boot_trace` | BOOT TRACE | per remix | a normal MKII boot sends notes 1 and 12 (with REMIX SWITCH), then 9, 2 to 8, the PLL byte 22, never 10 or 11, the uploads' 14 and 15 per core and the final echoes 18 = 3, 3; the run goes on past the port's M6a gate, which note 6 races. Cannot see: the MIDI OUT wire (the notes are read from the calls), the unit's own interrupt timing | port |
 | `verify_char_key` | CHARACTER | shared | KEY = T1 on both cores: a host-fed T3 (core 1) and T6 (core 0, also under four skews) duck in a burst; KEY = T1 with the host unfed holds no gain reduction; no host holds none; SELF is bit-identical fed or not; the master at KEY = T1 equals KEY = SELF; the host's own output is unchanged by Characters reading it. Cannot see: the chip's timing, anything the ColdFire does (knobs are poked into r6) | `dsp_host` |
 | `verify_character_txtr`, `verify_char_key_txtr` (`modules/character-txtr/`) | CHARACTER TXTR | shared | `verify_character` and `verify_char_key` run on the TXTR module (a `Gate` takes no arguments, so each names the module) | `dsp_host` |
 | `verify_fx2_lock` | FX2 LOCK | image | T2, FX2 twice, DOWN, YES leaves the live FX2 ids (`0x80000ec4`) as a run that pressed nothing; with the poke undone in RAM the ids change; the poke is in the image. Without the module the same sequence turns T2's SEND into the stock DELAY | `.venv`, port, project |
@@ -371,18 +380,44 @@ half through `check_shards.py` split by gate, instead of a serial
 `check_shards.py` runs (a remix's whole half, or one gate job) builds the
 remix's image and looks itself up by a key over the image, the job's
 scripts and everything they reach in the tools/ graph, the Makefile, the
-remix's and its modules' tracked files, the port's sources, `dsp_asm` and
+remix's and its modules' tracked files, every module's manifest, the
+data files in `tools/remix/`, the port's sources, `dsp_asm` and
 `dsp_host` by content, the project (each file's path, size and mtime),
 the `.venv` interpreter, `BUILD` and `OT_BANK`. A hit is reported `cached`
 with the commit and time of the pass, replays the pass's `[SKIP]` lines
 and is not run. Passes are stored in `<git common dir>/octabam-gate-cache/`
 (failures are not), so a pass in one worktree is a hit in every other on
-the machine. After a rebase onto a
+the machine. In CI the passes and the durations below go through the
+actions cache per unit (`gates-<unit>-<run id>`, restored from the newest
+entry of the PR's branch, else of main; passes unused for 14 days are
+dropped), so a push that leaves a remix's image and a gate's inputs alone
+reports those gates `cached`. After a rebase onto a
 main that did not move a remix's image or a gate's inputs, the second run
 before merging is cache hits. `CACHE=0` (`--no-cache`) runs every job. The
 key cannot see a file a gate reads through a path built at run time, or
 anything outside the repository other than the toolchain and the project.
 The shared half and `make accept` are not cached.
+
+**CI units cut up** (`reach.entries`, `reach.SPLIT_REMIX_JOBS`). Each unit of
+the CI matrix is a runner with its own setup. `check-remix octabam` runs as
+three units, each `check_shards --only-jobs ...` over a part of the gate jobs:
+`(long)` is `remix-switch`, `(project)` is `set`, `mode-defaults` and
+`plocks-p2` (the jobs that read `OT_PROJECT`), and the unit without a suffix is
+`--skip-jobs` of both (every other job, `image` among them). A name that is no
+gate job is refused, so the parts always cover every gate job once. Only the
+`(project)` unit makes a project: `tools/hw/ot_fresh.py` boots the port and
+creates one with the panel script (100 s locally, 255 s in CI), and keeps it in
+`<git common dir>/octabam-fresh-cache/<sha256 of image, port sources, script>`
+(CI: the same actions cache as the gate passes), so a rerun for the same inputs
+is the image build alone (41 s locally). `image` is outside it: with a project it
+failed in `verify_brain` and ran 2869 s on cxosc-core (27 Oct 2026).
+`check-shared` runs as two units: `make check-shared SHARED_PART=modules`
+(`module_gates --shared`) and `SHARED_PART=rest` (every other step of
+`verify-shared`); a bare `make verify-shared` runs both, in that order. A
+part's gate durations are recorded per job; the remix's total is not (it
+would be the part's). A shard's submodules are cloned from the copy of the tree
+that makes it (`check_shards.local_submodule_update`): 3 s, against 41 s from
+GitHub.
 
 **Virtual card retention (enabled by default).** `make check`,
 `make check-remix`, `make verify-shared`, `make verify-remix`, the split
@@ -694,16 +729,17 @@ PR; a first-time contributor's run waits for maintainer approval:
 | 🗺️ Plan Gates | `reach.py --json --jobs 3` | the units the diff's gates split into; no firmware |
 | 🧪 Gates — `<unit>` | `make reach RUN=1 KEEP=1 JOBS=3 REACHARGS='--only "<unit>"'` | one unit of the plan, on the stock 1.40C fetched into its own runner (Ubuntu) |
 | 🧪 Gates — make reach | `needs` the two above | green when the plan ran and every unit passed (or the plan had none); the one check that stands for all of them |
-| ✅ Acceptance Runner Tests | `make test-acceptance` | the runner refuses skipped, failed, incomplete and over-budget evidence; `reach` routes as documented; the shard runner covers the recipe |
 | 🎛️ DSP Toolchain — dsp56300 | `make ci-dsp` | the vendored DSP emulator at its pin takes our patch, builds, passes upstream's runner; `dsp_asm` emits the one-word displaced move |
 | 🔌 ColdFire Port Unit Tests | `make ci-emu` | `ot_emu` builds on both hosts (the fork unshare has a macOS and a Linux path) and passes `emac` and `periph` |
-| 📚 Docs and Links | `make verify-docs` | the rendered tables are current, every remix has a README, every link between tracked files resolves |
+| 📚 Docs, Site and Web Patches | `make verify-docs`; `make test-acceptance` when `acceptance` is affected (the runner refuses skipped, failed, incomplete and over-budget evidence; `reach` routes as documented; the shard runner covers the recipe); `tools/web/stale.py`; on a PR that reaches the site, `mkdocs build --strict` | the rendered tables are current, every remix has a README, every link between tracked files resolves; the web builder's patch manifest matches its patch files; the manual site builds |
 
 **Units.** `reach.py --json` prints `matrix`, the plan as units (`entries()`):
-`light` (`verify_docs`, `selftest`, `test-acceptance`, last), one `check-remix
-<remix>` per remix (`check_shards.py --jobs 3` on that runner), and every
-other command as its own unit (`check-shared`, `refhash`, `verify-bus`,
-`identity`, `ci`, ...). `--only <unit>` plans again from the same diff and
+`selftest` (last), one `check-remix <remix>` per remix (`check_shards.py --jobs 3`
+on that runner), and every other command as its own unit (`check-shared`,
+`refhash`, `verify-bus`, `identity`, ...). `verify_docs`, `test-acceptance`,
+`ci-dsp`, `ci-emu` and `ci` are no unit: Docs, DSP Toolchain and ColdFire
+Port Unit Tests run them for every diff that plans them (`reach.DEDICATED`;
+a local `make reach RUN=1` still runs them). `--only <unit>` plans again from the same diff and
 keeps that unit, so the plan job and the unit jobs must pass the same
 `--jobs`. A unit's setup is the whole job's (checkout, caches, `make os`,
 `make recon`, `make emu-setup`, ports from the cache): 60 s on a warm run

@@ -74,6 +74,53 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class PickJobs(unittest.TestCase):
+    """--only-jobs / --skip-jobs: two parts of one remix cover every gate job once."""
+
+    def test_the_two_parts_are_a_partition_of_the_jobs(self):
+        jobs = [(n, [], {}, set()) for n in ("cycles", "image", "usb", "remix-switch")]
+        long = {j[0] for j in check_shards.pick_jobs(jobs, ["remix-switch", "image"], [])}
+        rest = {j[0] for j in check_shards.pick_jobs(jobs, [], ["remix-switch", "image"])}
+        self.assertEqual(long, {"remix-switch", "image"})
+        self.assertEqual(rest, {"cycles", "usb"})
+
+    def test_a_name_that_is_no_job_is_refused_in_either_part(self):
+        jobs = [("cycles", [], {}, set())]
+        for only, skip in ((["nope"], []), ([], ["nope"])):
+            with self.assertRaises(SystemExit) as e:
+                check_shards.pick_jobs(jobs, only, skip)
+            self.assertIn("no gate job nope", str(e.exception))
+
+    def test_a_job_outside_the_scoped_list_is_left_out_not_refused(self):
+        # --modules BRAIN: jobs holds BRAIN's; plocks-p2 is another module's job of the same remix
+        jobs = [(n, [], {}, set()) for n in ("set", "mode-defaults", "image")]
+        known = {j[0] for j in jobs} | {"plocks-p2"}
+        got = {j[0] for j in check_shards.pick_jobs(jobs, ["set", "mode-defaults", "plocks-p2"], [], known)}
+        self.assertEqual(got, {"set", "mode-defaults"})
+        got = {j[0] for j in check_shards.pick_jobs(jobs, [], ["set", "plocks-p2"], known)}
+        self.assertEqual(got, {"mode-defaults", "image"})
+        with self.assertRaises(SystemExit):      # a name no job has is still refused
+            check_shards.pick_jobs(jobs, [], ["nope"], known)
+
+    def test_extra_units_run_a_script_of_a_module_the_remix_carries(self):
+        import reach
+        from remix import registry
+        for remix, units in reach.SPLIT_EXTRA_UNITS.items():
+            for unit, (module, command) in units.items():
+                self.assertIn(module, registry.remix(remix).modules, unit)
+                script = next(w for w in command.split() if w.endswith(".py"))
+                self.assertTrue((ROOT / script).is_file(), unit)
+                self.assertIn(script, {g.script for g in registry.by_key(module).gates}, unit)
+
+    def test_octabams_long_share_names_real_jobs(self):
+        import reach
+        names = {j[0] for j in check_shards.remix_jobs("octabam", ROOT)}
+        parts = reach.SPLIT_REMIX_JOBS["octabam"]
+        every = [n for jobs in parts.values() for n in jobs]
+        self.assertLessEqual(set(every), names)
+        self.assertEqual(len(every), len(set(every)))      # no job in two parts
+
+
 class Split(unittest.TestCase):
     """Which remixes run as gate jobs (check_shards.choose_split)."""
 

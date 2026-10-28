@@ -433,14 +433,14 @@
       "caption": "SIDECHAIN_COMPRESSOR: main parameter page.",
       "remix": "sidechain-compressor",
       "source": "emulator panel UART",
-      "firmware_sha256": "9af9e6e17ef3e436ea10e26651cf1933dc5f114e6118f821b02d80e3310a68ca"
+      "firmware_sha256": "6cfe4121e313d05e1c00fb53397bf3000bfd6cffd609987a756092b149c78e23"
     },
     "setup": {
       "image": "sidechain-compressor/setup.png",
       "caption": "SIDECHAIN_COMPRESSOR: effect selection and setup parameters.",
       "remix": "sidechain-compressor",
       "source": "emulator panel UART",
-      "firmware_sha256": "9af9e6e17ef3e436ea10e26651cf1933dc5f114e6118f821b02d80e3310a68ca"
+      "firmware_sha256": "6cfe4121e313d05e1c00fb53397bf3000bfd6cffd609987a756092b149c78e23"
     }
   },
   "miniverb": {
@@ -728,38 +728,38 @@
   "copy-project": {
     "menu": {
       "image": "copy-project/menu.png",
-      "caption": "PROJECT menu with COPY PROJECT under SAVE TO NEW.",
+      "caption": "FUNC+BANK: RENAME / DELETE / COPY.",
       "remix": "copy-project",
       "source": "emulator panel UART",
-      "firmware_sha256": "ed0816a7dead84eb11a3428e3a006bc30a2677b43b5c08051f7260b97cb8ed9e"
+      "firmware_sha256": "9a1a4cd172fc31595bc71ea1187f104c146b425068099c2de6f375e3d07e8b80"
     },
     "list": {
       "image": "copy-project/list.png",
-      "caption": "Source project list (LEVEL scrolls).",
+      "caption": "CHANGE project list (source selected).",
       "remix": "copy-project",
       "source": "emulator panel UART",
-      "firmware_sha256": "ed0816a7dead84eb11a3428e3a006bc30a2677b43b5c08051f7260b97cb8ed9e"
+      "firmware_sha256": "9a1a4cd172fc31595bc71ea1187f104c146b425068099c2de6f375e3d07e8b80"
     },
     "name": {
       "image": "copy-project/name.png",
       "caption": "NAME THE NEW PROJECT (stock PROJECT+date; FUNC+CUE with RND NAME).",
       "remix": "copy-project",
       "source": "emulator panel UART",
-      "firmware_sha256": "ed0816a7dead84eb11a3428e3a006bc30a2677b43b5c08051f7260b97cb8ed9e"
+      "firmware_sha256": "9a1a4cd172fc31595bc71ea1187f104c146b425068099c2de6f375e3d07e8b80"
     },
     "confirm": {
       "image": "copy-project/confirm.png",
       "caption": "Confirm COPY source -> destination.",
       "remix": "copy-project",
       "source": "emulator panel UART",
-      "firmware_sha256": "ed0816a7dead84eb11a3428e3a006bc30a2677b43b5c08051f7260b97cb8ed9e"
+      "firmware_sha256": "9a1a4cd172fc31595bc71ea1187f104c146b425068099c2de6f375e3d07e8b80"
     },
     "open": {
       "image": "copy-project/open.png",
       "caption": "After copy: PROJECT COPIED / OPEN IT?",
       "remix": "copy-project",
       "source": "emulator panel UART",
-      "firmware_sha256": "ed0816a7dead84eb11a3428e3a006bc30a2677b43b5c08051f7260b97cb8ed9e"
+      "firmware_sha256": "9a1a4cd172fc31595bc71ea1187f104c146b425068099c2de6f375e3d07e8b80"
     }
   },
   "varispeed": {

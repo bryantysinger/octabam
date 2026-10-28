@@ -7,7 +7,9 @@ Two kinds of reference are checked:
   must match one of its headings (GitHub's slug rule). A link in a
   `docs/site/usage/` fragment resolves against the generated module page
   it is included into (`docs/site/reference/modules/`), because that
-  page's directory is where the link will live on the site;
+  page's directory is where the link will live on the site; likewise a
+  `docs/site/manual/<remix>.md` intro resolves against the remix's manual
+  directory (`docs/site/reference/manual/<remix>/`);
 - a repository path to a Markdown file, `docs/...md`, `tools/...md`,
   `modules/...md` or `remixes/...md`, written anywhere in a tracked text
   file (code comments, Makefile help, docs): the file must exist.
@@ -100,8 +102,12 @@ def check(root=ROOT):
                             fails.append(f"{rel}:{n}: no heading for {target}")
                         continue
                     ref, _, frag = target.partition("#")
-                    base = (root / pathlib.Path("docs") / "site" / "reference" / "modules"
-                            if rel.startswith("docs/site/usage/") else path.parent)
+                    if rel.startswith("docs/site/usage/"):
+                        base = root / pathlib.Path("docs") / "site" / "reference" / "modules"
+                    elif rel.startswith("docs/site/manual/"):
+                        base = root / pathlib.Path("docs") / "site" / "reference" / "manual" / path.stem
+                    else:
+                        base = path.parent
                     dest = (base / ref).resolve()
                     if not dest.exists():
                         fails.append(f"{rel}:{n}: link to {target} -- no such file")

@@ -12,6 +12,14 @@
    ],
    "name": "PLACE",
    "type": "option"
+  },
+  "2": {
+   "labels": [
+    "PER_CORE",
+    "SHARED"
+   ],
+   "name": "FORM",
+   "type": "option"
   }
  },
  "store": {

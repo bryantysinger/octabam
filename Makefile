@@ -281,11 +281,17 @@ REMIXES ?= $(REMIX)
 # gates of every module those keys reach (module_gates.reached()).
 MODULES ?=
 .PHONY: verify-shared
-verify-shared: ## The gates that do not depend on the remix: ledger selftest, slots, replaces, docs, settings and locks, the remixer draws, label_fmt, knob census, remix-independent module gates (REMIXES="a b")
-	$(PY) tools/verify/card_retention.py run -- $(MAKE) -j1 --no-print-directory verify-shared-impl
+verify-shared: ## The gates that do not depend on the remix: ledger selftest, slots, replaces, docs, settings and locks, the remixer draws, label_fmt, knob census, remix-independent module gates (REMIXES="a b"; SHARED_PART=rest|modules runs one half: CI gives each its own runner)
+	$(PY) tools/verify/card_retention.py run -- $(MAKE) -j1 --no-print-directory verify-shared-impl SHARED_PART=$(SHARED_PART)
 
-.PHONY: verify-shared-impl
-verify-shared-impl:
+ifneq ($(filter-out rest modules,$(SHARED_PART)),)
+$(error SHARED_PART is rest or modules, not $(SHARED_PART))
+endif
+
+.PHONY: verify-shared-impl verify-shared-rest-impl verify-shared-modules-impl
+verify-shared-impl: $(if $(filter modules,$(SHARED_PART)),,verify-shared-rest-impl) $(if $(filter rest,$(SHARED_PART)),,verify-shared-modules-impl)
+
+verify-shared-rest-impl:
 	@test -n "$(REMIXES)" || { echo "REMIXES is unset: make $@ REMIXES=\"<name> ...\"   (make modules lists them)"; exit 2; }
 	$(need-port)
 	$(PY) tools/verify/step.py --cards python3 tools/remix/selftest.py
@@ -299,6 +305,10 @@ verify-shared-impl:
 	@# modules moved mid-render, plus the garbage-start gate. Builds its own
 	@# fixture (registry.fixture); remix-independent.
 	$(PY) tools/verify/step.py --cards $(PY) tools/verify/verify_knob_clicks.py $(if $(MODULES),--modules "$(MODULES)",--sample)
+
+verify-shared-modules-impl:
+	@test -n "$(REMIXES)" || { echo "REMIXES is unset: make $@ REMIXES=\"<name> ...\"   (make modules lists them)"; exit 2; }
+	$(need-port)
 	@# Isolated module gates that take no remix: each renders its module on
 	@# a scratch image it builds itself, or checks an author's oracle. Run
 	@# once for the union of the modules across REMIXES.

@@ -102,6 +102,11 @@ def replies(b, n):
     return out
 
 
+# The host-port block for the DSP (in_build's output): on-chip SRAM since 27 Oct 2026,
+# a .set in the source, not a symbol (it was in_tx, in SDRAM, before).
+SRAM_TX = int(re.search(r"^\.set SRAM_TX,\s+(0x[0-9a-fA-F]+)", (ROOT / "modules/usb/usbaudio_in.s").read_text(), re.M).group(1), 16)
+
+
 def vendor(b):
     """The audio-in counters over the vendor request (0xc0/0x56)."""
     raw = b.ctrl_in(0xc0, 0x56, 0, 0, 4 * len(COUNTERS))
@@ -117,7 +122,7 @@ def run(tag, sym, packets, close_first, in_frame, as_, ii, reset=False, unplug=F
     dump.mkdir(parents=True, exist_ok=True)
     peek = "0:X:8100,576;0:X:202,1"
     mem = (f"{sym['in_counters']:#x},{4 * len(COUNTERS)}={dump}/counters.bin;"
-           f"{sym['in_tx']:#x},4={dump}/tx.bin;0x80005660,2048={dump}/ring.bin;"
+           f"{SRAM_TX:#x},4={dump}/tx.bin;0x80005660,2048={dump}/ring.bin;"
            f"{sym['in_alt']:#x},1={dump}/in_alt.bin;{sym['in_running']:#x},1={dump}/in_running.bin;"
            f"{sym['usbaudio_alt']:#x},1={dump}/aud_alt.bin;{sym['aud_running']:#x},1={dump}/aud_running.bin")
     with open(log, "w") as lf:
@@ -133,10 +138,15 @@ def run(tag, sym, packets, close_first, in_frame, as_, ii, reset=False, unplug=F
         b.ctrl_nodata(0x01, 0x0b, 1, ii)                # SET_INTERFACE alt 1: EP3 OUT (audio in)
         frame, sizes, empty, last_n = 0, set(), 0, 11
         snaps = []
+        short = None
         for _k in range(packets):
             k = _k
             if k in (packets // 4, packets - packets // 4):
                 snaps.append((k, vendor(b)))            # over EP0, as a host on the unit reads them
+                if short is None:
+                    b.setup(0xc0, 0x56, 0, 0, 32)               # wLength below the 60-byte reply,
+                    short = len(b.ep_in(0, 64))                 # read with room for all of it: the device's own length
+                    b.ep_out(0)
             pkt = packet(frame, last_n)
             frame += last_n
             b.sock.sendall(f"in 3 1024\nout 3 {pkt.hex()}\n".encode())
@@ -178,7 +188,7 @@ def run(tag, sym, packets, close_first, in_frame, as_, ii, reset=False, unplug=F
     one = lambda n: (dump / n).read_bytes()[0]
     return dict(in_alt=one("in_alt.bin"), in_running=one("in_running.bin"), aud_alt=one("aud_alt.bin"),
                 aud_running=one("aud_running.bin"), giface=giface, frames=frame, sizes=sorted(sizes), empty=empty, rx=rx, cur=cur,
-                cnt=cnt, tx=tx, ring=ring, log=log, snaps=snaps)
+                cnt=cnt, tx=tx, ring=ring, log=log, snaps=snaps, short=short)
 
 
 def block_frame(words):
@@ -260,6 +270,7 @@ def main():
             rate = (s1["frames"] - s0["frames"]) / (k1 - k0)
             check("vendor request 0x56 reads the counters back over EP0",
                   s0["pkts"] <= s1["pkts"] <= c["pkts"] and s1["frames"] > s0["frames"], f"{s0['pkts']} -> {s1['pkts']} pkts")
+            check("vendor request 0x56 clamps the reply to wLength (32 asked)", r["short"] == 32, f"{r['short']} bytes")
             # The port holds device time for the bench's next IN (usb.h,
             # isoPoll), so every poll is one 250 us slot: state 7 runs at the
             # unit's 0.689 per poll however loaded the machine is.

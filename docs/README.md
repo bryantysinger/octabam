@@ -9,9 +9,10 @@ Where each doc is, by who reads it. A module's own page is
 | doc | what it is |
 |---|---|
 | [site/index.md](site/index.md) | the musician-facing manual site: choose a remix, build and flash it, use BRAIN, and recover to stock OS |
+| [../tools/site/README.md](../tools/site/README.md) | the site generator, including the per-remix manuals it renders from the manifests (`gen_manual.py`) |
 | [guide/BUILDING.md](guide/BUILDING.md) | what to install (macOS, Linux/WSL2), the toolchain, your own OS 1.40C, building an image, flashing from the card or over MIDI, after the flash, recovery, back to stock |
 | [../remixes/README.md](../remixes/README.md) | the remixes you can flash, with where each has run |
-| [guide/REMIXER.md](guide/REMIXER.md) | composing your own remix: the `make remix` TUI, or a `remix.py` by hand |
+| [guide/COMPOSING.md](guide/COMPOSING.md) | composing your own remix: a `remix.py` by hand |
 
 ## Writing a module or changing the build
 
@@ -34,7 +35,7 @@ Where each doc is, by who reads it. A module's own page is
 
 | doc | what it is |
 |---|---|
-| [../tools/remix/README.md](../tools/remix/README.md) | the remix engine: schema, registry, ledger, the DRAM platform, the remixer's internals |
+| [../tools/remix/README.md](../tools/remix/README.md) | the remix engine: schema, registry, ledger, the DRAM platform |
 | [../tools/harness/README.md](../tools/harness/README.md) | hearing and measuring the DSP side locally: `dsp_host`, `send_probe`, `rig_render`, `pressure`, the stress project |
 | [../tools/emu/README.md](../tools/emu/README.md) | the ColdFire emulators: the port (`ot_emu`) and Tier-0 (Unicorn) |
 | [../tools/panel/README.md](../tools/panel/README.md) | the virtual front panel over the port; [KEYMAP.md](../tools/panel/KEYMAP.md) the key and LED map |

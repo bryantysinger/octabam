@@ -5,7 +5,7 @@ MIX 0 is an exact passthrough; MIX 127 is the wet outright.
 ## Access
 
 Press FX1 on a track; MODULATION is in the chooser in place of CHORUS. In
-Octabam Inserts it is also on FX2; in Octabam Bus it is FX1 only.
+Octabam it is also on FX2; in Octabam Bus it is FX1 only.
 
 ## Operation
 
@@ -24,8 +24,8 @@ Octabam Inserts it is also on FX2; in Octabam Bus it is FX1 only.
   brightness, drawn BRIT.
 - WDTH sets the right channel's LFO lag: 0 mono, 64 quadrature, 127
   antiphase.
-- How many fit: beside the bus, three run cleanly; a fourth overran the
-  DSP on the unit (image 88, 27 Sep 2026).
+- How many fit: beside the bus, three instances run cleanly; a fourth
+  overran the DSP on the unit.
 
 ## Parameters
 

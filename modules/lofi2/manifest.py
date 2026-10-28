@@ -143,29 +143,29 @@ MODULE = Module(
     params=(
         # ---- page 1, top row ----------------------------------------------
         Param(b"FREQ", 0, active=True, formatter=_PLAIN,
-              doc="modulator frequency; scaled by RANGE, read by whichever MODE selects"),
+              doc="modulator frequency, scaled by RANGE; used by whichever MODE is selected"),
         Param(b"MIX", 0, active=True, formatter=_PLAIN,
-              doc="modulator depth; SRR, BRR and LPF still act at MIX 0"),
+              doc="modulator depth; SRR, BRR and LPF still act at 0"),
         # One knob, read per MODE: FDBK in SHIFT, GAIN in RING (ModeView
         # renames it below). GAIN 0 is unity, 64 +6 dB, 127 +11.9 dB.
         Param(b"FDBK", 0, active=True, formatter=_PLAIN,
-              doc="SHIFT: feedback (the f/f+d/f+2d ladder); RING: GAIN, 0 to +12 dB"),
+              doc="shift modes: feedback (an f, f+d, f+2d ladder); RING: gain, 0 to +12 dB"),
         # ---- page 1, bottom row -------------------------------------------
         Param(b"SRR", 0, active=True, formatter=_PLAIN,
-              doc="sample-rate reduction, continuous; 0 = off"),
+              doc="sample-rate reduction, continuous; 0 is off"),
         Param(b"BRR", 0, active=True, formatter=_PLAIN,
-              doc="bit-depth reduction; 0 = full depth"),
+              doc="bit-depth reduction; 0 is full depth"),
         # Our own first-order high shelf, LAST in the chain so it tames
         # everything the module does: -12 dB above a corner swept from 100 Hz
         # (0) to 16 kHz (126), and out of circuit bit for bit at 127, which is
         # why the default is 127 and not 0 -- the ONLY control here whose
         # passthrough is at the top of its travel.
         Param(b"LPF", 127, active=True, formatter=_PLAIN,
-              doc="high-shelf cut; 127 = no impact, turn down to darken"),
+              doc="high-shelf cut; 127 has no effect, turn down to darken"),
         # ---- page 2 --------------------------------------------------------
         Param(b"RANGE", 1, 2, active=True, formatter=_STEP,
               labels=("LOW", "HIGH"),
-              doc="FREQ range: LOW = sub-audio, HIGH = audio range"),
+              doc="FREQ range: LOW is sub-audio, HIGH is audio"),
         Param(),
         # Short labels: "SHIFT DOWN" (ten characters) faulted the unit when
         # MODE was turned (VEC:04, ADDR 4E007890; docs/contributing/
@@ -173,11 +173,11 @@ MODULE = Module(
         # between is unmeasured, and the schema does not bound label length.
         Param(b"MODE", 0, 3, active=True, formatter=_STEP,
               labels=("RING", "DOWN", "UP"),
-              doc="RING - SHIFT DOWN - SHIFT UP; ring and shift are exclusive"),
+              doc="RING modulator, or frequency shift DOWN or UP; ring and shift are exclusive"),
         Param(),
         # Bipolar: the knob's centre (64) is 0 degrees.
         Param(b"AMPH", 64, 128, active=True, formatter=_BIP,
-              doc="ring carrier L/R phase: -90..+88.6 deg, 0 = none, + puts R ahead; RING only"),
+              doc="RING only: L/R carrier phase, -90 to +88.6 deg; 0 none, positive puts R ahead"),
         Param(),
     ),
 

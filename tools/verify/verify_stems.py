@@ -4,12 +4,15 @@
     python3 tools/verify/verify_stems.py [remix] [--long] [--fat32] [--static] [--only=NAME,...] [--alone]
 
 Static, from the built image: MAIN MENU root and PROJECT stay stock (no
-STEMS row); CONTROL is stock; the STEMS list ships filled in, its eighteen
+STEMS row; with BRAIN, the root is BRAIN's five categories: its claims say
+so); CONTROL is stock; the STEMS list ships filled in, its eighteen
 rows with their actions, headings and labels as at boot; the frame site
 jumps to the hook; REC's press handler jumps to stems_rec_key (UP + REC);
-the ring and the stack sit at the top of the platform reserve, above the
-runtime's stage. `--static` stops there; `--only=NAME,...` runs only the
-named port runs (their names are main()'s table). Then, when the port is
+the ring ends at the platform reserve's ceiling, the stack and the sector
+buffers below it (below REMIX SWITCH's image stage when the remix carries
+it), all above the runtime's stage. `--static` stops there;
+`--only=NAME,...` runs only the named port runs (their names are main()'s
+table). Then, when the port is
 built, the fixtures are built from the project template
 (tools/verify/stems_fixture.py; STEMS_TEMPLATE=<dir>, default
 out/projects/Ultimate FX 1.5.3) and the port runs of the proof of concept,
@@ -28,6 +31,14 @@ Each check's first run on a fixture shares one boot with the others'
 it sets a boot option (PRE_BOOT: a block dump, an audio capture, a write
 watch, dirty DSP RAM, a card latency). `--alone` boots every run on its
 own, as before; same_as_alone checks the two give the same takes.
+
+What it cannot see: the unit's card speed (the port's card latency is a
+model, so RING FULL margins and the time a take needs to reach IDLE are the
+port's), the hook's cost in microseconds (the port counts instructions),
+the order of the level-6 transfer chain against the frame interrupt on the
+chip (the port has its own), and how a take plays back (its level, its
+tempo). A run ends at a fixed frame count, so a writer that got slower
+fails it before its files are complete (21 Oct 2026, the take folder).
 """
 import json
 import os
@@ -144,11 +155,35 @@ def rd32(img, a):
     return int.from_bytes(img[a - BASE:a - BASE + 4], "big")
 
 
-def static(img, stock, s):
+def root_owner(name):
+    """The module beside STEM REC that grows MAIN MENU's root, by its claims
+    (BRAIN: a poke on the count, a SymbolRef on the rows pointer), as
+    (key, count, rows symbol or None for stock's rows); None when the root
+    is stock's."""
+    from remix import registry
+    for m in registry.selected(registry.remix(name)):
+        if m.key == "STEM REC":
+            continue
+        count = next((int.from_bytes(p.write, "big") for p in m.pokes if p.addr == ROOT_DESC), None)
+        rows = next((r.symbol for r in m.symbol_refs if r.addr == ROOT_DESC + 0x18), None)
+        if count is not None or rows is not None:
+            return m.key, ROOT_N if count is None else count, rows
+    return None
+
+
+def static(img, stock, s, name):
     n = rd32(img, ROOT_DESC)
-    check("MAIN MENU root stays stock (four categories)", n == ROOT_N, f"{n}")
     rows = rd32(img, ROOT_DESC + 0x18)
-    check("the root rows pointer is stock", rows == ROOT_ROWS, f"0x{rows:08x}")
+    owner = root_owner(name)
+    if owner is None:
+        check("MAIN MENU root stays stock (four categories)", n == ROOT_N, f"{n}")
+        check("the root rows pointer is stock", rows == ROOT_ROWS, f"0x{rows:08x}")
+    else:
+        # STEM REC adds no category: the root is exactly what its owner claims
+        key, want_n, want_rows = owner
+        check(f"MAIN MENU root is {key}'s ({want_n} categories), no STEMS row", n == want_n, f"{n}")
+        check(f"the root rows pointer is {key}'s {want_rows or 'stock'}",
+              rows == (s.get(want_rows) if want_rows else ROOT_ROWS), f"0x{rows:08x}")
     a, b = ROOT_ROWS - BASE, ROOT_ROWS - BASE
     check("the four stock categories came across byte for byte",
           img[a:a + ROW_LEN * ROOT_N] == stock[b:b + ROW_LEN * ROOT_N])
@@ -1967,7 +2002,7 @@ def main():
         tail = (r.stdout + r.stderr).strip().splitlines()
         sys.exit(f"{name}: build failed: {tail[-1] if tail else '?'}")
     img, stock, s = IMAGE.read_bytes(), STOCK.read_bytes(), syms()
-    static(img, stock, s)
+    static(img, stock, s, name)
     menu_static(s)
     regions(s)
     check("the card-out parse reads upstream's line and refuses crosscheck's",

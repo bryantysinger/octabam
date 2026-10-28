@@ -100,11 +100,14 @@ unmeasured.)
 | `dsp_park.asm` | both DSP payloads, WHOLLY in stock's dead interrupt vectors: entry on `P:$1E`, 31 words at `P:$20..$3E`, a one-word bridge, 8 words at `P:$06..$0D` | the park (below). It costs the effect region nothing, so a remix that harvests nothing can carry the switcher (`remixes/base/`) |
 | `osw.inc` | all of them | the stage layout and the status words; the gate parses it |
 
-**The stage** is the top of the platform reserve: mailbox `0x49200000`,
-stub `0x49200100`, the chainloader's body `0x49200400`, image `0x49201000..0x49495de0` (uncached aliases). Stock
-never touches the reserve, and nothing between a reset and the OS entry
-writes it (the bootstrap only unpacks the image). The gate checks that the
-remix's own runtime ends below the mailbox.
+**The stage** is a fixed claim in the platform reserve: mailbox `0x49200000`,
+stub `0x49200100`, the chainloader's body `0x49200400`, image `0x49201000..0x49495de0` (uncached aliases). It is the
+reserve's top unless a module's DRAM region needs more: STEM REC's 8 MiB
+ring has no room below it, so it sits above, and MEMORY grows the reserve
+past it. Stock never touches the reserve, and nothing between a reset and
+the OS entry writes it (the bootstrap only unpacks the image). The gate
+checks that the remix's own runtime ends below the mailbox and that no
+DRAM region overlaps the stage.
 
 **Why the OS entry and not the boot detour.** The DSP upload at
 `0x40001e50` assumes both cores sit in their HI08 boot ROM, which only a

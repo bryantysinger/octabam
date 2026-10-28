@@ -77,7 +77,10 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-          submodules: true
+
+      # actions/checkout updates submodules one at a time; these are 16 clones
+      - name: 📥 Submodules
+        run: git submodule update --init --force --depth 1 --jobs 16
 
       - name: 🐍 Setup Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -94,16 +97,16 @@ jobs:
           else
             base="${{ github.event.before }}"
           fi
-          python3 tools/verify/reach.py --json --jobs 3 --base "$base" > plan.json
+          python3 tools/verify/reach.py --json --jobs 3 --base "$base" > "$RUNNER_TEMP/plan.json"
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import json
-          m = json.load(open("plan.json"))["matrix"]
+          import json, os
+          m = json.load(open(os.environ["RUNNER_TEMP"] + "/plan.json"))["matrix"]
           print("matrix=" + json.dumps([{"name": e["name"]} for e in m]))
           print(f"count={len(m)}")
           PY
           python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
-          import json
-          m = json.load(open("plan.json"))["matrix"]
+          import json, os
+          m = json.load(open(os.environ["RUNNER_TEMP"] + "/plan.json"))["matrix"]
           print("| unit | commands |\n|---|---|")
           for e in m:
               print(f"| {e['name']} | " + "<br>".join(f"`{c}`" for c in e["commands"]) + " |")
@@ -139,7 +142,10 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-          submodules: true
+
+      # actions/checkout updates submodules one at a time; these are 16 clones
+      - name: 📥 Submodules
+        run: git submodule update --init --force --depth 1 --jobs 16
 
       - name: 🐍 Setup Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -213,7 +219,7 @@ jobs:
         run: make recon
 
       - name: 📦 Install Remixer Dependencies
-        run: pip install uv && make emu-setup
+        run: pip install uv && make emu-setup && git checkout -- uv.lock   # uv sync rewrites it; reach would read it as a change
 
       # the ColdFire port, built once per source state into .git/octabam-port
       # (tools/emu/port_store.py); `reach` and its shards install from there
@@ -228,6 +234,46 @@ jobs:
           path: .git/octabam-port
           key: port-${{ steps.port.outputs.key }}
 
+      # check_shards orders its jobs longest-first from the durations of the last
+      # run (<git common dir>/octabam-gate-times.json) and skips a gate whose pass
+      # is recorded for the same image and inputs (octabam-gate-cache,
+      # tools/verify/gate_cache.py). Neither survives a runner, so both go
+      # through the cache, keyed by unit. A PR run restores the newest entry of
+      # its own branch, else of the base branch.
+      - name: 🔑 Name the Unit's Caches
+        id: unit
+        env:
+          UNIT: ${{ matrix.name }}
+        run: echo "slug=$(printf '%s' "$UNIT" | tr -c 'A-Za-z0-9\n' '-')" >> "$GITHUB_OUTPUT"
+
+      - name: 💾 Restore Gate Times and Passes
+        id: gatecache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            .git/octabam-gate-times.json
+            .git/octabam-gate-cache
+            .git/octabam-fresh-cache
+          key: gates-${{ steps.unit.outputs.slug }}-${{ github.run_id }}
+          restore-keys: gates-${{ steps.unit.outputs.slug }}-
+
+      # The set gates (mode-defaults, plocks-p2, set, ...) SKIP without a project. An empty one is made by the
+      # firmware itself under the port from the runner's own OS (tools/hw/ot_fresh.py), on the unit's remix, and kept
+      # in .git/octabam-fresh-cache by image, port and script. Only the `(project)` unit of a remix (reach.SPLIT_REMIX_JOBS)
+      # runs the jobs that read it; the image job is not one: with a project it ran 2869 s and failed in verify_brain.
+      # The `(brain)` unit (reach.SPLIT_EXTRA_UNITS) runs BRAIN's image-stage gate, verify_brain, with one.
+      - name: 📁 Fresh Project
+        if: contains(matrix.name, ' (project)') || contains(matrix.name, ' (brain)')
+        env:
+          UNIT: ${{ matrix.name }}
+        run: |
+          remix="${UNIT#check-remix }"
+          remix="${remix% (project)}"
+          remix="${remix% (brain)}"
+          make emu-get
+          .venv/bin/python3 tools/hw/ot_fresh.py --remix "$remix" --out out/fresh
+          echo "OT_PROJECT=$PWD/out/fresh/$remix/NOPROJ" >> "$GITHUB_ENV"
+
       # the unit's name goes through the environment: it can carry a remix name
       - name: 🧪 Run Gates
         env:
@@ -239,7 +285,7 @@ jobs:
             base="${{ github.event.before }}"
           fi
           set -o pipefail
-          make reach RUN=1 KEEP=1 JOBS=3 BASE="$base" REACHARGS='--only "'"$UNIT"'"' 2>&1 | tee reach.log
+          make reach RUN=1 KEEP=1 JOBS=3 BASE="$base" REACHARGS='--only "'"$UNIT"'"' 2>&1 | tee "$RUNNER_TEMP/reach.log"
 
       # the unit's result tables and failure excerpts on the run's summary
       # page, under its name
@@ -248,19 +294,38 @@ jobs:
         env:
           UNIT: ${{ matrix.name }}
         run: |
-          [ -f reach.log ] || exit 0
+          [ -f "$RUNNER_TEMP/reach.log" ] || exit 0
           {
             echo "### 🧪 $UNIT"
             echo '```'
-            awk '/^check_shards: results/ {p=1} p && /^$/ {p=0} p' reach.log
-            sed -n '/^reach: results/,$p' reach.log
+            awk '/^check_shards: results/ {p=1} p && /^$/ {p=0} p' "$RUNNER_TEMP/reach.log"
+            sed -n '/^reach: results/,$p' "$RUNNER_TEMP/reach.log"
             echo '```'
-            if grep -qE '^(check_shards: .* failed \(exit|  \| )' reach.log; then
+            if grep -qE '^(check_shards: .* failed \(exit|  \| )' "$RUNNER_TEMP/reach.log"; then
               echo '```'
-              grep -E '^(check_shards: .* failed \(exit|  \| )' reach.log | head -60
+              grep -E '^(check_shards: .* failed \(exit|  \| )' "$RUNNER_TEMP/reach.log" | head -60
               echo '```'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # a pass is a file of its own; one unused for 14 days is dropped so the
+      # entry does not grow without bound
+      - name: 🧹 Prune Gate Passes
+        id: gatedone
+        if: always()
+        run: |
+          find .git/octabam-gate-cache -name '*.json' -mtime +14 -delete 2>/dev/null || true
+          [ -f .git/octabam-gate-times.json ] && echo recorded=true >> "$GITHUB_OUTPUT" || true
+
+      - name: 💾 Save Gate Times and Passes
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        if: always() && steps.gatedone.outputs.recorded == 'true'
+        with:
+          path: |
+            .git/octabam-gate-times.json
+            .git/octabam-gate-cache
+            .git/octabam-fresh-cache
+          key: gates-${{ steps.unit.outputs.slug }}-${{ github.run_id }}
 
       - name: 🧮 Check ColdFire Port Built
         id: portdone
@@ -324,38 +389,20 @@ jobs:
           [ "$PLAN" = success ] || exit 1
           [ "$GATES" = success ] || { [ "$COUNT" = 0 ] && [ "$GATES" = skipped ]; }
 
-  acceptance-runner:
-    name: ✅ Acceptance Runner Tests (${{ matrix.os }})
-    needs: classify
-    if: needs.classify.outputs.acceptance == 'true'
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    steps:
-      - name: 📥 Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          # the runner tests load the registry, whose manifests read the author submodules (test_check_shards)
-          submodules: true
-
-      - name: 🐍 Setup Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.12'
-
-      - name: 📦 Card Inspection Tool (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y lsof
-
-      - name: ✅ Acceptance Runner Tests
-        run: make test-acceptance
-
   docs:
-    name: 📚 Docs and Links
+    # Docs, the manual site, the web builder's patches and the acceptance
+    # runner's tests: all load the
+    # registry, whose manifests read the author submodules, so one checkout
+    # serves them. The site builds with MkDocs shadcn: the generator runs the
+    # registry, and mkdocs --strict fails on a bad manifest, a broken link or
+    # a broken snippet include; the deploy is the Pages workflow on main, a PR
+    # builds without deploying. The patches (docs/site/builder/) need no
+    # firmware: the manifest must match the patch files, and on main each
+    # remix the code has moved past is reported as a warning (rebuilt from a
+    # machine with the user's 1.40C: make webpatch BUILD=N).
+    name: 📚 Docs, Site and Web Patches
+    needs: classify
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -363,8 +410,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # the rendered tables load the registry, whose manifests read the author submodules
-          submodules: true
+          fetch-depth: 0
+
+      # actions/checkout updates submodules one at a time; these are 16 clones
+      - name: 📥 Submodules
+        run: git submodule update --init --force --depth 1 --jobs 16
 
       - name: 🐍 Setup Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -379,60 +429,6 @@ jobs:
       - name: 🔗 Verify Docs
         run: make verify-docs
 
-  site:
-    # The manual site builds with MkDocs shadcn: the generator runs the registry, and
-    # mkdocs --strict fails on a bad manifest, a broken link or a broken
-    # snippet include. The deploy is the Pages workflow on main; a PR
-    # builds without deploying.
-    name: 🌐 Manual Site Build
-    needs: classify
-    if: github.event_name == 'pull_request' && needs.classify.outputs.site == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: 📥 Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          # the generator loads the registry, whose manifests read the author submodules
-          submodules: true
-
-      - name: 🐍 Setup Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.12'
-
-      - name: 📦 Install Site Dependencies
-        run: pip install -r docs/site/requirements.txt
-
-      - name: 📝 Generate Pages
-        run: python3 tools/site/gen_pages.py
-
-      - name: 🏗️ Build Site
-        run: mkdocs build --strict --config-file docs/site/mkdocs.yml
-
-  web-patches:
-    # The web builder's committed patches (docs/site/builder/). Needs no
-    # firmware: the manifest must match the patch files, and on main each
-    # remix the code has moved past is reported as a warning. The patches are
-    # rebuilt from a machine with the user's 1.40C: make webpatch BUILD=N.
-    name: 🧩 Web Builder Patches
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: 📥 Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-          # the staleness check loads the registry, whose manifests read the author submodules
-          submodules: true
-
-      - name: 🐍 Setup Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.12'
-
       - name: 🧩 Check Patch Manifest
         run: |
           if [ -f docs/site/builder/manifest.json ]; then
@@ -441,6 +437,20 @@ jobs:
           else
             echo "no published patches yet"
           fi
+
+      # firmware-free tests of the acceptance runner and the reach classifier
+      # (make test-acceptance); lsof is the card inspection tool's
+      - name: ✅ Acceptance Runner Tests
+        if: ${{ !cancelled() && needs.classify.outputs.acceptance == 'true' }}
+        run: sudo apt-get update && sudo apt-get install -y lsof && make test-acceptance
+
+      - name: 📦 Install Site Dependencies
+        if: github.event_name == 'pull_request' && needs.classify.outputs.site == 'true'
+        run: pip install -r docs/site/requirements.txt
+
+      - name: 🏗️ Build Site
+        if: github.event_name == 'pull_request' && needs.classify.outputs.site == 'true'
+        run: mkdocs build --strict --config-file docs/site/mkdocs.yml
 
   dsp-toolchain:
     name: 🎛️ DSP Toolchain — dsp56300 (${{ matrix.os }})

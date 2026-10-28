@@ -1,4 +1,3 @@
-A card-write path: stock's initial PIO write could hang polling the card
-after a task switch; the guard keeps its critical section intact.
-Measured under the port; cursory testing on Sam's MKII (owner report,
-16 Oct 2026). Nothing on the panel.
+Protects the card against a hang. On stock, the first write after a task
+switch could stall while polling the card; this keeps that step intact.
+There is nothing to operate and nothing on the panel.

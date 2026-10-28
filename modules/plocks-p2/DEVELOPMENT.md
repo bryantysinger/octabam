@@ -1,5 +1,55 @@
 # PLOCKS-P2 contribution notes
 
+## Trig-paste undo snapshot
+
+Hardware testing of EVENTS image EVT871E1 on 25 October 2026 exposed a
+pre-existing PLOCKS gap: continuous-hold paste/undo restored page-one locks
+but retained copied page-two locks. The same page-two failure reproduces
+under the port on private-hook baseline `ff9c5f84`, before either shared
+editor migration. Stock and the candidate both leave a newly pasted trig
+present while undoing its copied page-one locks.
+
+Native snapshot `0x400294c0` copies a track's 64 × 32 lock bytes from
+`track+0x59` into packed buffer `+0x28`; native restore copies them back.
+The memcpy address loads at `0x40029550` and `0x4002a426` now belong to
+EVENTS `edit.copy_pre`. PLOCKS maps that exact 2,048-byte transfer to its
+existing 768-byte track mirror, including `0xff` values. No extra buffer,
+saved field or native trig mutation is needed. Other transfer lengths,
+unaligned addresses, and the native CS1 duplicate remain outside this
+mapping. The restore touches the page-two power-off copy once.
+
+`verify_plocks_copy.py` executes 61 snapshot/restore and rejection cases
+through the assembled client and EVENTS dispatcher, checking all side memory,
+native-copy count, register preservation and persistence-touch count. Disabling
+the current source's snapshot branch makes the same regression fail. Native
+memcpy and persistence bodies are substituted in this focused gate; the panel
+and save/load gate executes the full firmware.
+
+The panel regression uses the same continuous-hold sequence on stock page
+one and FX1/FX2 page two: empty destination, a different existing lock,
+repeated paste/undo, multiple held destinations and held clear/undo. It checks the entire
+track's restored locks, the source, release behavior and retained native
+trig bits. Releasing between STOP presses starts another paste and is not
+this undo operation.
+
+The same stock/page-two comparison covers track paste/undo and pattern
+copy/paste/clear/undo. In the stopped fixture, stock's pattern paste calls
+`0x4004a8a4`, whose `0x40027e00` call invalidates undo kind 14. The gate
+compares native undo availability and the resulting locks with stock;
+pattern clear/undo separately exercises restoration.
+
+Physical results are recorded once in the
+[combined fixture](../../remixes/test/events-clients/README.md#hardware-results),
+with the earlier discrepancy in the
+[failure register](../../docs/contributing/FAILURE_MODES.md#plocks-trig-paste-undo-keeps-copied-page-two-locks).
+
+Snapshot mirroring copies 768 bytes only at the editor's copy boundary;
+the playback path is unchanged. The existing track/pattern copy instruction
+counts remain unchanged. Empty EVENTS and EUCLID-only selections omit the
+two new hooks entirely.
+
+## Held-edit release
+
 The page-2 editor marks a held trig as edited and clears native pending tap
 masks before committing a lock. This lets release distinguish an edit from
 a bare tap, preserving the lock just entered. `verify_plocks_p2.py`
@@ -128,3 +178,23 @@ particular oracle applicable. This is not a passing aggregate Scenes
 check, and it is not evidence of a new regression. The PLOCKS panel,
 playback and persistence checks are reported separately. No Scenes code
 or verification thresholds are changed by this contribution.
+
+## EDIT EVENTS hardware results, 22 October 2026
+
+radiohagen, Octatrack MKII, `octabam-core`, build 98, `PLK858`.
+Source `0c9b81f90b5ef5436297c3c741383c90b6570b3d`; tested MAIN OS / RMX SHA-256:
+`4aa41530d96ecb04b224253f00000ab1f02fd5307bd320cdaa0bd9748347431b`.
+
+Operator-reported passes:
+
+- FX1 RMS / FX2 GVOL: held 50, released Part 20, reheld 50; native ATK 40 and MIDI VEL 80 remain intact.
+- Multiple steps: +1 changes 50/20 to 51/21; selective removal, partial release, ten quick edits and short taps preserve the expected lock/Part display.
+- Trigs: copy carries ATK/RMS/GVOL; continuous-hold clear/undo restores them; removal/reinsertion clears copied locks.
+- Tracks: T1-to-T2 paste, immediate undo, repaste and clear/undo preserve expected trigs/locks without changing T1.
+- Patterns: copy carries both tracks' locks; clear/undo and ten repeated clear/undo pairs restore checked trigs/locks.
+
+These cover Core editor/copy paths. Track and pattern operations exercise
+clipboard and undo-buffer transfers through EDIT EVENTS; trig copy/paste
+and lock clear/undo use PLOCKS' own hooks. Individual detour addresses and
+physical latency were not instrumented. Bus, Inserts and CX OSC have software
+coverage for the named image. Shared EVENTS results are in the combined fixture.

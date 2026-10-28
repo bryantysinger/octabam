@@ -44,6 +44,12 @@ ONE REMIX IS SPLIT TOO (11 Oct 2026). A run of one remix over more than
 one shard runs it as gate jobs: run whole it took one shard and left the
 rest idle.
 
+A PART OF ONE REMIX (27 Oct 2026). `--only-jobs a,b` / `--skip-jobs a,b`
+run a remix as gate jobs, cut to the named ones or without them (CI runs
+the two as separate units, reach.SPLIT_REMIX_JOBS). A name that is no gate
+job is refused; under `--modules` a name is checked against the remix's
+whole job list, and one outside the reached modules is left out of the cut.
+
 CACHED (11 Oct 2026). Each job (a remix's whole half, or one gate job)
 builds the remix's image first and looks itself up in
 tools/verify/gate_cache.py: a pass recorded for the same image and the
@@ -144,6 +150,23 @@ def shard_ok(path):
     return f"worktree {path.resolve()}" in r.stdout.splitlines()
 
 
+def local_submodule_update():
+    """`git submodule update --init` for a shard that clones each submodule
+    from the copy this tree already holds, not from GitHub: 16 clones took
+    41 s from GitHub and 3 s from here (27 Oct 2026; a CI run's shards were
+    ready in 38-50 s). The URLs are per-command (-c): nothing is written to
+    the shared git config. A submodule this tree has not cloned keeps its URL."""
+    gitdir = pathlib.Path(git("rev-parse", "--absolute-git-dir").stdout.strip())
+    names = [line.split()[0][len("submodule."):-len(".path")]
+             for line in git("config", "-f", ".gitmodules", "--get-regexp", r"^submodule\..*\.path$",
+                             check=False).stdout.splitlines()]
+    cmd = ["git", "-c", "protocol.file.allow=always"]
+    for name in names:
+        if (gitdir / "modules" / name).is_dir():
+            cmd += ["-c", f"submodule.{name}.url={gitdir / 'modules' / name}"]
+    return cmd + ["submodule", "update", "--init"]
+
+
 def make_shard(path, log, fresh=False, port=True):
     """A detached worktree of HEAD with this tree's uncommitted changes, the
     shared toolchain links, the stock slice, its submodules and the port
@@ -184,7 +207,7 @@ def make_shard(path, log, fresh=False, port=True):
     # source state for every worktree and shard, copied in (until 12 Oct
     # 2026 each new shard ran its own cmake build, ~40 s each).
     # port=False: a tree that only builds images (refhash's scratch trees)
-    cmds = [["git", "submodule", "update", "--init"]]
+    cmds = [local_submodule_update()]
     if port:
         cmds += [[sys.executable, "tools/emu/port_store.py", "install"],
                  ["./out/emu/ot_emu", "--image", "out/raw/section_3_MAIN_OS.bin"]]
@@ -194,6 +217,11 @@ def make_shard(path, log, fresh=False, port=True):
             f.write(f"$ {' '.join(cmd)}\n")
             f.flush()
             r = subprocess.run(cmd, cwd=path, stdout=f, stderr=subprocess.STDOUT, env=clean_env())
+            if r.returncode and "protocol.file.allow=always" in cmd:
+                f.write("# a local clone failed: from the URLs\n$ git submodule update --init\n")
+                f.flush()
+                r = subprocess.run(["git", "submodule", "update", "--init"], cwd=path, stdout=f,
+                                   stderr=subprocess.STDOUT, env=clean_env())
             if r.returncode:
                 raise SystemExit(f"check_shards: {' '.join(cmd)} failed in {path} ({r.returncode}): {log}")
 
@@ -383,6 +411,30 @@ def remix_jobs(remix_name, shard):
     return jobs
 
 
+def pick_jobs(jobs, only, skip, known=None):
+    """`jobs` (remix_jobs) cut to the named ones, or without the skipped
+    ones. A name that is no job is refused: a renamed gate would otherwise
+    fall out of the part that ran it, and into neither. `known` is every
+    job name the remix has: with --modules, `jobs` holds only the reached
+    modules' jobs, and a name of another module's job (plocks-p2 under
+    --modules BRAIN) is a job that is not in this cut, not a missing one."""
+    have = {j[0] for j in jobs}
+    unknown = sorted((set(only) | set(skip)) - (known or have))
+    if unknown:
+        raise SystemExit(f"check_shards: no gate job {', '.join(unknown)} (have: {', '.join(sorted(known or have))})")
+    return [j for j in jobs if (not only or j[0] in only) and j[0] not in skip]
+
+
+def all_job_names(remix_name, shard):
+    """Every gate job name of the remix, whatever --modules cut the run to."""
+    global SCOPE
+    scope, SCOPE = SCOPE, None
+    try:
+        return {j[0] for j in remix_jobs(remix_name, shard)}
+    finally:
+        SCOPE = scope
+
+
 def choose_split(remixes, spec, times, jobs):
     """The remixes to run as gate jobs: named, none, or (auto) a remix run
     alone, and those whose last recorded time would set the wall time;
@@ -524,7 +576,15 @@ def _main(argv, owners):
     ap.add_argument("--split", default="auto",
                     help="auto (the default): split the remixes that would set the wall time into gate jobs; "
                          "none; or a comma-separated list")
+    ap.add_argument("--only-jobs", default="",
+                    help="one remix: run only these comma-separated gate jobs (as gate jobs, whatever --split says)")
+    ap.add_argument("--skip-jobs", default="",
+                    help="one remix: run every gate job but these (as gate jobs, whatever --split says)")
     a = ap.parse_args(argv)
+    only_jobs = [j for j in a.only_jobs.split(",") if j]
+    skip_jobs = [j for j in a.skip_jobs.split(",") if j]
+    if (only_jobs or skip_jobs) and (len(set(a.remixes)) != 1 or a.by_gate):
+        sys.exit("check_shards: --only-jobs and --skip-jobs take exactly one remix, without --by-gate")
     # reach runs the shared gates in ROOT while this coordinator dispatches
     # jobs to separate shard worktrees. Own the coordinator's logs/schedule,
     # not ROOT's card output; each shard still takes its normal card lock.
@@ -543,7 +603,9 @@ def _main(argv, owners):
     shared_times = times_path()
     times = read_times(shared_times)
     split = set()
-    if not a.by_gate and a.jobs > 1:
+    if only_jobs or skip_jobs:
+        split = set(remixes)
+    elif not a.by_gate and a.jobs > 1:
         split = choose_split(remixes, a.split, times, a.jobs)
     if a.by_gate:
         work = [("gate", remixes[0], j) for j in gate_jobs]
@@ -553,6 +615,7 @@ def _main(argv, owners):
             if r in split:
                 gj = remix_jobs(r, a.shards / "0")
                 check_recipe(gj)
+                gj = pick_jobs(gj, only_jobs, skip_jobs, all_job_names(r, a.shards / "0"))
                 work += [("gate", r, j) for j in gj]
             else:
                 work.append(("remix", r, None))
@@ -643,7 +706,7 @@ def _main(argv, owners):
             continue            # a cache hit is not the job's duration
         key = f"{remixes[0]}:{n}" if a.by_gate else n
         run[key] = r["seconds"]
-    for rname in ({remixes[0]} if a.by_gate else split):
+    for rname in ({remixes[0]} if a.by_gate else () if only_jobs or skip_jobs else split):
         parts = [s for k, s in run.items() if k.startswith(rname + ":")]
         if parts and not any(r.get("cached") for n, r in results.items()
                              if (f"{remixes[0]}:{n}" if a.by_gate else n).startswith(rname + ":")):

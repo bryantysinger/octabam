@@ -39,8 +39,12 @@
 | in the manifest's Claims.sram; the four-channel buffers reach 768 B): the
 | controller reaches SRAM through the backdoor, it is not cached, so what the
 | CPU writes is what the DMA reads.
-| The host-port buffer is in SDRAM and touched only through the uncached
-| alias (+0x08000000); the ring and the state are CPU-only. Packet buffers
+| The host-port block for the DSP is in on-chip SRAM too (SRAM_TX): the CPU
+| writes it there at SRAM speed and eDMA channel 0 reads it from there, as
+| stock's own frame transfers do from 0x8000xxxx. Until 27 Oct 2026 it was in
+| SDRAM, written through the uncached alias: in_build took 9.5-10.1 us a frame
+| on Bryan T's MKII (a frame profiler, IN ABCD). The ring and the state are
+| CPU-only. Packet buffers
 | in SDRAM through the alias have not been measured with USB CROSSBAR on.
 |
 | Latency: the ring runs at IN_TARGET frames of cushion. With implicit
@@ -56,6 +60,7 @@
 .set UNCACHED,       0x08000000
 .set SRAM_DTDS,      0x80007c00     | NSLOTI dTDs, 32-byte aligned (128 B)
 .set SRAM_BUFS,      0x80007c80     | NSLOTI packet buffers (384 B, or 768 for four channels)
+.set SRAM_TX,        0x80007880     | the host-port block for the DSP (TX_BYTES), 16-byte aligned
 .set SRAM_REPLY,     0x80007f80     | EP0 reply for 0x56 (64 B)
 
 | ---- firmware sites (1.40C) ----
@@ -120,11 +125,13 @@
 .set TX_WORDS,   TX_BYTES/2
 .set NCOUNT,     15                 | longs in in_counters
 
-| wValue / wIndex / wLength from the SETUP packet, 16 bits into \r.
+| wValue / wIndex / wLength from the SETUP packet, 16 bits into \r. The low
+| byte is a byte move: orl reads a long at \lo, which put wLength's low byte
+| in bits 31-24 and left the clamp below unable to fire.
 .macro SETUP16 hi, lo, r
     mvzb    \hi,\r
     lsll    #8,\r
-    orl     \lo,\r
+    moveb   \lo,\r
 .endm
 
     .text
@@ -245,7 +252,7 @@ in_dma_start:
     moveb   %d0,CORE_SEL            | core 0
     moveq   #64,%d1
     movel   %d1,EDMA_NBYTES
-    movel   #(in_tx+UNCACHED),%d1
+    movel   #SRAM_TX,%d1
     movel   %d1,EDMA_SADDR
     movew   #0x81,%d0
     movew   %d0,HOST_ICR
@@ -294,7 +301,7 @@ in_frame:
     bsr     in_selfheal
     bra     in_build
 .Lf_idle:
-    moveal  #(in_tx+UNCACHED),%a1
+    moveal  #SRAM_TX,%a1
     clrl    %a1@                    | words 0-1 clear, both pass flags: the jacks
     rts
 
@@ -640,7 +647,7 @@ in_selfheal:
 | and on an underrun (which refills the cushion), silence: both flags 0 and
 | the jacks come through.
 in_build:
-    moveal  #(in_tx+UNCACHED),%a1
+    moveal  #SRAM_TX,%a1
     movel   in_produced,%d0
     subl    in_consumed,%d0         | fill
     movel   %d0,in_lastfill
@@ -712,14 +719,14 @@ in_build:
     addal   %d3,%a0                 | the pass's pair
     moveq   #2,%d6
 .Lb_ch:
-    mvzb    %a0@(3),%d1             | sample[23:16]
-    lsll    #8,%d1
-    mvzb    %a0@(2),%d2             | sample[15:8]
-    orl     %d2,%d1
-    movew   %d1,%a1@+               | hi = sample[23:8]
-    mvzb    %a0@(1),%d1             | lo = sample[7:0]
-    movew   %d1,%a1@+
-    addql   #4,%a0
+    movel   %a0@+,%d1               | the LE container: b0 b1 b2 b3, sample = b3 b2 b1
+    byterev %d1                     | b3 b2 b1 b0
+    movel   %d1,%d2
+    swap    %d1                     | b1 b0 b3 b2
+    movew   %d1,%a1@+               | hi = sample[23:8] (b3 b2)
+    lsrl    #8,%d2                  | 00 b3 b2 b1
+    mvzb    %d2,%d2                 | lo = sample[7:0] (b1)
+    movew   %d2,%a1@+
     subql   #1,%d6
     bnes    .Lb_ch
     addql   #1,%d5
@@ -765,4 +772,3 @@ in_busy:      .byte 0               | state 7: our transfer is in flight
 in_zero_sent: .byte 0               | closed: blocks with word 0 = 0 completed since the close; transfers skipped from ZERO_BLOCKS
 
     .balign 32
-in_tx:        .space TX_BYTES

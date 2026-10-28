@@ -134,10 +134,15 @@ def dumpmem(img, args):
         # Remix.window_demand records are not uploaded at boot, but a gate renders the effect
         # directly as its reference, so the dump carries them; a gate that needs the code absent
         # removes the record (tools/verify/verify_dlstub.py).
+        # Two demand effects may share a block (DLPUMP loads one at a time), so a record that overlaps one
+        # already carried is left out; a gate that renders that effect adds its own record
+        # (tools/verify/verify_dlhook.py).
         df = pathlib.Path("out/dsp/demand_records.json")
         if df.exists():
             import json
-            win += [(r["addr"], r["words"]) for r in json.loads(df.read_text()).values()]
+            for r in json.loads(df.read_text()).values():
+                if not any(a < r["addr"] + len(r["words"]) and r["addr"] < a + len(w) for a, w in win):
+                    win.append((r["addr"], r["words"]))
         with open(out, "wb") as fh:
             for sp, addr, cnt, data in mods:
                 fh.write(struct.pack("<BII", sp, addr, cnt))

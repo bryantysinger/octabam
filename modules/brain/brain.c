@@ -4519,6 +4519,47 @@ static int usb_pair_ok(u32 i, int v)
 	return 0;
 }
 
+/* TRACKS and MASTER: MASTER is track 8's L/R, which TRACKS already carries
+ * (the usb module's descriptors.py and cfgsel refuse the pair too). A move
+ * of entry i to value v is refused when it leaves both on. */
+static int usb_master_ok(u32 i, int v)
+{
+	int tr = -1, ms = -1;
+	for (u32 k = 0; k < brain_set_n && k < MAX_SET; k++) {
+		const struct set_ent *e = &brain_set[k];
+		if (!same_id(e->id, e->id_len, "octabam.usb", 11))
+			continue;
+		if (e->key == USB_KEY_TRACKS)
+			tr = (int)k;
+		else if (e->key == USB_KEY_MASTER)
+			ms = (int)k;
+	}
+	if (tr < 0 || ms < 0)
+		return 1;
+	if (usb_off(&brain_set[tr], i == (u32)tr ? v : brain_values[tr]))
+		return 1;
+	return usb_off(&brain_set[ms], i == (u32)ms ? v : brain_values[ms]);
+}
+
+/* The usb rules for a move of entry i to v: 1 when allowed, else 0 with the
+ * popup shown. */
+static int usb_move_ok(u32 i, int v)
+{
+	if (!usb_pair_ok(i, v)) {
+		msg[0] = "IN NEEDS AN";
+		msg[1] = "OUTPUT STREAM";
+		POPUP("USB SETTINGS", 2, msg, 0, 0);
+		return 0;
+	}
+	if (!usb_master_ok(i, v)) {
+		msg[0] = "TRACKS HAS T8:";
+		msg[1] = "NO MASTER";
+		POPUP("USB SETTINGS", 2, msg, 0, 0);
+		return 0;
+	}
+	return 1;
+}
+
 /* LEFT and RIGHT: one step down or up, stopping at the ends */
 static void set_move(u32 i, int dir)
 {
@@ -4528,12 +4569,8 @@ static void set_move(u32 i, int dir)
 		v = e->min;
 	if (v > e->max)
 		v = e->max;
-	if (!usb_pair_ok(i, v)) {
-		msg[0] = "IN NEEDS AN";
-		msg[1] = "OUTPUT STREAM";
-		POPUP("USB SETTINGS", 2, msg, 0, 0);
+	if (!usb_move_ok(i, v))
 		return;
-	}
 	brain_values[i] = v;
 	brain_post_settings();
 }
@@ -4544,12 +4581,8 @@ static void set_step(u32 i)
 	int v = brain_values[i] + (e->type == 3 ? e->step : 1);
 	if (v > e->max)
 		v = e->min;
-	if (!usb_pair_ok(i, v)) {
-		msg[0] = "IN NEEDS AN";
-		msg[1] = "OUTPUT STREAM";
-		POPUP("USB SETTINGS", 2, msg, 0, 0);
+	if (!usb_move_ok(i, v))
 		return;
-	}
 	brain_values[i] = v;
 	brain_post_settings();
 }

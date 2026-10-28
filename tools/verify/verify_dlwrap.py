@@ -101,7 +101,7 @@ for key, sid, tag, bases, (lo, hi) in [(k, i, t, b, w) for k, i in (("PLATE REV"
         seeded = TMP / f"seed{key[:2]}{tag}{alloc}.mem"
         blob = mem.read_bytes()
         end = blob.rindex(b"\xff")
-        rec = b"".join(struct.pack("<BII", 1, a_, 1) + struct.pack("<I", v_) for a_, v_ in ((0x3F50 + IDX, 2), (0x3F90 + IDX, base)))
+        rec = b"".join(struct.pack("<BII", 1, a_, 1) + struct.pack("<I", v_) for a_, v_ in ((0x3DC0 + IDX, 2), (0x3E00 + IDX, base)))
         seeded.write_bytes(blob[:end] + rec + blob[end:])
         r_out, r_y = run(seeded, init_n, proc_w, alloc, f"resume{key[:2]}{tag}{alloc}")
         check(f"dry before its init, range clear, buffer at Y:0x{base:05x}: the proc runs the stock init and then equals the stock render",

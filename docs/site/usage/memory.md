@@ -1,4 +1,5 @@
-The platform's reserve in the audio page arena, sized per remix from
-what its modules claim. Nothing on the panel; BRAIN's PERFORMANCE pane,
-MEM tab, shows the split: DRAM RESERVE, RUNTIME, STAGE and REGIONS,
-then FLEX USED, FLEX FREE, RECORDERS, ARENA and IN USE.
+Sets aside the memory the added features need from the sample and recorder
+memory, sized for the modules in this image. Nothing on the panel;
+BRAIN's PERFORMANCE pane, MEM tab, shows the split: DRAM RESERVE,
+RUNTIME, STAGE and REGIONS, then FLEX USED, FLEX FREE, RECORDERS, ARENA and
+IN USE.

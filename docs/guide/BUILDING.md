@@ -23,7 +23,7 @@ remix name.
 - `python3` (3.10+; the build is stdlib only).
 - `cmake` and [uv](https://docs.astral.sh/uv/): `make setup-mac` installs both; `make setup-linux` installs cmake, and uv has an install line in section 1a.
   uv provisions `.venv` (`make emu-setup`: `unicorn`, `textual`,
-  `sounddevice`) for `make remix` and the label gates in `make check`.
+  `sounddevice`) for the label gates in `make check`.
 - An Octatrack MKI or MKII on OS 1.40C. Elektron's MKI and MKII download
   pages serve byte-identical OS files. octabam's own effects have only
   been tested on an MKII; the DRAM platform has run on both (MKI: octalab;
@@ -82,7 +82,7 @@ sudo apt install -y build-essential cmake git curl unzip xxd binutils \
                     binutils-m68k-linux-gnu \
                     python3 python3-numpy binwalk radare2 pulseaudio-utils
 sudo ln -sf "$(command -v m68k-linux-gnu-objdump)" /usr/local/bin/m68k-elf-objdump
-curl -LsSf https://astral.sh/uv/install.sh | sh     # for make emu-setup / make remix
+curl -LsSf https://astral.sh/uv/install.sh | sh     # for make emu-setup
 source $HOME/.local/bin/env
 ```
 
@@ -97,9 +97,6 @@ source $HOME/.local/bin/env
   `invalid`. The symlink goes in `/usr/local/bin`: `~/.local/bin` is on
   PATH only in login shells, and `wsl.exe -d Ubuntu -- bash script.sh`
   from Windows is not one (observed 10 Sep 2026).
-- `make remix` wants a real terminal: run it from Windows Terminal on the
-  Ubuntu profile. Its playback is `afplay` (macOS only); `docs/guide/REMIXER.md`
-  has the two-line wrapper that points it at WSLg's PulseAudio.
 
 **The m68k cross-toolchain.** The build needs `m68k-elf-gcc`, `as`,
 `ld`, `objcopy` and `nm`: every remix with linked ColdFire units (KITS,
@@ -179,8 +176,12 @@ make recon
 ```
 
 `make os` downloads `OCTATRACK_OS1.40C_dist.zip` from Elektron's site into
-`downloads/` and prints its SHA256 (expected
-`370c55a3dad3996b8e4b46400a205066fdaf185ad4d0255a3a3f835060573ff0`).
+`downloads/`, unpacks it, and checks the firmware's SHA256: `OCTATRACK_OS1.40C.bin`
+`34695b606eb00e1b4dded5fd0c4b66f3a460522a632e47d7416dbd220599e1ad`,
+`OCTATRACK_OS1.40C.syx`
+`0a8d2d2b35c2cc78fa338576adc1af0cbc094cef973255103165c73edd87f2b6`. The zip's own
+hash is printed but not checked: since 28 Oct 2026 the zip carries an `Elektron
+EULA.txt` stamped at download time (the zip of record was `370c55a3…`).
 `make recon` unpacks it to `out/raw/section_3_MAIN_OS.bin`, the file every
 build reads. Both directories are gitignored.
 
@@ -325,4 +326,4 @@ card.
 - **Another remix:** build and flash it the same way, then stamp projects
   as in section 6.
 
-Composing your own remix: [REMIXER.md](REMIXER.md).
+Composing your own remix: [COMPOSING.md](COMPOSING.md).

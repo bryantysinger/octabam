@@ -11,8 +11,8 @@ The repo is organised as **modules** (`modules/<name>/manifest.py` declares one
 contribution) composed into **remixes** (`remixes/<name>/remix.py` selects a
 set, `README.md` beside it says where it has run; `remixes/test/<name>/`
 carries one module for its gates).
-`make modules` lists them, with the compatibility matrix; `make remix`
-composes one. `docs/contributing/MODULES.md` is the contributor guide and
+`make modules` lists them, with the compatibility matrix.
+`docs/contributing/MODULES.md` is the contributor guide and
 `CONTRIBUTING.md` the contract. The build refuses to start when two selected
 modules claim the same cave, hook or detour span, poke, table or
 symbol ref, runtime write, kept stock bytes, grown stock table,
@@ -178,6 +178,7 @@ moment it costs real work, and add its line here.
 - [The stock echo-freeze mix rewrites arena region 7 every frame](docs/contributing/TRAPS.md#trap-region7) — poke region 7 AND its staging zero in a tap check; expect zero on src-7.
 - [A gate that models a setting must boot that setting](docs/contributing/TRAPS.md#trap-post-cs1) — `--cs1-in` the block; an empty run reports which watch was empty, never crashes.
 - [The bench socket drops a large reply on EAGAIN](docs/contributing/TRAPS.md#trap-bench-socket) — poll POLLOUT in the write loop; a short line in the port log is display-only.
+- [Payload B's frame routine writes `x:$3f7f..$3fbf` every frame](docs/contributing/TRAPS.md#trap-stock-x-scratch) — the guard's base cells were there; read what the stock writes before putting state in X, and read the cells back on a unit.
 
 **ColdFire / DRAM side**
 
@@ -197,6 +198,7 @@ moment it costs real work, and add its line here.
 - [A forked port shares its DSP memory with its siblings](docs/contributing/TRAPS.md#trap-fork-shm) — `unshareRanges`; new shared maps need the same.
 - [The port ran under Rosetta and nothing said so](docs/contributing/TRAPS.md#trap-rosetta) — `file out/emu/ot_emu` is the check.
 - [The report is API and prints paths](docs/contributing/TRAPS.md#trap-report-api) — re-save refhash only after the artifacts are shown identical.
+- [Id 0 is FX1 NONE too: a stock fallback ran on every empty FX1 slot](docs/contributing/TRAPS.md#trap-stock-fallback) — the sequencer held its first step; `registry.remix` refuses a stock fallback.
 - [A frame count past $7fffff reaches `move a,n1` with A2 stale; the unit's frame interrupt stopped 50.7 min after power-up](docs/contributing/TRAPS.md#trap-frame-count) — keep the count below bit 23; preset it to test (`LM_FRAME0`).
 - [An EP0 reply is DMA'd from memory the cache may not have written; a 64-multiple reply breaks the next request](docs/contributing/TRAPS.md#trap-ep0-dma) — copy through `+UNCACHED`; never answer a multiple of 64 bytes.
 - [Same-named labels across units resolve by nm table order](docs/contributing/TRAPS.md#trap-nm-order) — per-unit tables; a ref naming a symbol its unit does not define is refused.
@@ -205,6 +207,9 @@ moment it costs real work, and add its line here.
 - [At .Lf_nomaster the branch was inverted](docs/contributing/TRAPS.md#trap-producer-stride) — the slot advance walks what was WRITTEN: 24 with tracks, 88 without.
 - [`--watch-mem` is one string](docs/contributing/TRAPS.md#trap-watchmem) — a second flag replaces the first; comma-join the ranges.
 - [A completion IRQ in the first-sector write window polls DRQ on the stale count](docs/contributing/TRAPS.md#trap-first-sector-irq) — the guard keeps the sector and its bookkeeping inside the existing mask; `verify_ata_write` gates it.
+- [The stock Part validator clamps a stored FX2 id to 31](docs/contributing/TRAPS.md#trap-id-clamp) — a poke bypasses it, a project does not; `idspace.convert` raises the two immediates to 63; `verify_ids64_load` loads a project.
+- [A floating cave rounded past the clone window landed on the chooser list](docs/contributing/TRAPS.md#trap-cave-round) — `… not free` names the victim; the overflow fallback takes any floating cave ending past the limit, starting past DELAY's kept bytes.
+- [A DRAM clone's `CLONE_<key>` export is its staging address](docs/contributing/TRAPS.md#trap-dram-clone-stage) — repointed only at the end; compare runtime addresses from `_psyms`.
 
 ## How claims are written here
 

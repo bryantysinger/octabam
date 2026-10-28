@@ -28,12 +28,12 @@ MODULE = Module(
                    abbr=b"GVRB", fullname=b"Gate Verb", build_tag=False),
     params=(
         Param(b"AMNT", 40, active=True, formatter=Formatter.PLAIN, doc="dry/wet; 0 is exactly dry"),
-        Param(b"GAIN", 51, active=True, formatter=Formatter.PLAIN, doc="input gain; Clouds' 0.2 at 51"),
-        Param(b"TIME", 64, active=True, formatter=Formatter.PLAIN, doc="loop gain 0.35..0.98"),
-        Param(b"DIFF", 100, active=True, formatter=Formatter.PLAIN, doc="allpass coefficient 0..0.8; Clouds' 0.625 at 100"),
-        Param(b"TONE", 90, active=True, formatter=Formatter.PLAIN, doc="damping lowpass coefficient 0.05..1; Clouds' 0.7 at 90"),
+        Param(b"GAIN", 51, active=True, formatter=Formatter.PLAIN, doc="input gain; 51 matches the original Clouds reverb"),
+        Param(b"TIME", 64, active=True, formatter=Formatter.PLAIN, doc="decay: loop gain 0.35 to 0.98"),
+        Param(b"DIFF", 100, active=True, formatter=Formatter.PLAIN, doc="diffusion; 100 matches Clouds"),
+        Param(b"TONE", 90, active=True, formatter=Formatter.PLAIN, doc="damping low-pass: lower is darker; 90 matches Clouds"),
         Param(b"GATE", 0, active=True, formatter=Formatter.PLAIN,
-              doc="0 off; k holds the wet 2048 + 256 k samples after the input falls quiet, then closes"),
+              doc="0 off; k holds the tail 2048 + 256 k samples after the input falls quiet, then closes"),
         *(Param() for _ in range(6)),
     ),
     dsp=DspSection(asm="modules/gateverb/gateverb.asm", priority=11,
@@ -41,5 +41,6 @@ MODULE = Module(
                    r7_latch_slot=None, gate_label=None),
     claims=Claims(stock_instance_buffer=True, buffer_words=15862),
     harness=Harness(layout_char="H", is_server=False),
+    dear={'AMNT': 127, 'GAIN': 127, 'TIME': 127, 'DIFF': 127, 'TONE': 127, 'GATE': 127},   # every knob at its maximum: the hardware matrix's dearest layout
     gates=(Gate('tools/verify/verify_gateverb.py', remix_arg=False, venv=True),),
 )

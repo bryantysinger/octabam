@@ -20,6 +20,8 @@ the machine back:
             (the read-back slot); the main out's TX0 counts are printed
   midi      CC 40 and 41 (DEL and REV, FX2 page 1 slots 0/1) at 100 on T2's channel over the
             port's MIDI IN (UART0) moves T2's record halfword 12 to 100;
+            for EUCLID, checks the base FREQ lane instead because its
+            final writer modulates that outgoing halfword each frame;
             with CC MAP in the remix, CC 68 at 77 on T1's channel lands
             in T1's FX1 page-2 lane and record halfword 18 (the queue ->
             main -> DSP leg verify_cc_map cannot run); on a bus remix each
@@ -346,8 +348,16 @@ def main():
         # NOTE is 61 steps: CC 100 lands as 60)
         n0 = t2_fx2.params[0].count if t2_fx2.params and t2_fx2.params[0].count else 128
         want = min(100, n0 - 1)
-        check(f"midi: CC 40 = 100 on T2's channel reached T2's AUX halfword (as {want})", (aux >> 8) == want,
-              f"halfword 12 = {aux:#06x} (knob {aux >> 8}; the lane's slew takes ~30 frames)")
+        if t2_fx2.key == "EUCLID":
+            # EUCLID deliberately replaces the outgoing FREQ halfword
+            # after the stock copier. The CC changes its base in the lane;
+            # verify_euclid checks the final fractional modulation writer.
+            base_freq = lanes[72 + 0x18]
+            check(f"midi: CC 40 = 100 reached T2's EUCLID base FREQ", base_freq == want,
+                  f"lane = {base_freq}; modulated outgoing cutoff = {aux:#06x}")
+        else:
+            check(f"midi: CC 40 = 100 on T2's channel reached T2's AUX halfword (as {want})", (aux >> 8) == want,
+                  f"halfword 12 = {aux:#06x} (knob {aux >> 8}; the lane's slew takes ~30 frames)")
     else:
         # an unimplemented id runs the fallback, whose page publishes no slot 0
         print(f"  [SKIP] midi: CC 40 -> T2 slot 0: the part's T2 FX2 id 0x{part['fx2'][1]:02x} "

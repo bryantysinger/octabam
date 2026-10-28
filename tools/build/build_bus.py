@@ -144,8 +144,14 @@ _BOUND = remix_registry.bound(REMIX)
 WINDOW = dict(REMIX.window)
 WINDOW_KEYS = {_k.removesuffix(":B") for _k in WINDOW}   # modules with window code; "KEY:B" is payload B's own copy
 DEMAND = {_dk: _i for _i, _dk in enumerate(REMIX.window_demand)}      # key -> index k
-if len(DEMAND) > 4:
-    sys.exit(f"Remix.window_demand: {len(DEMAND)} effects; the entry table at x:$33da3 holds 4")
+HOMES = {}                                                              # key -> the addresses of its other homes (Remix.window_homes)
+for _hk, _ha in REMIX.window_homes:
+    HOMES.setdefault(_hk, []).append(_ha)
+DL_ENTRY, DL_STRIDE = 0x33DA3, 8         # effect k's entry is x:$33da3 + 8 k (modules/dlcopy/dlcopy.asm)
+DL_SLOTS = max(4, len(DEMAND))          # entries the reverb guard checks: 4 as before, more when the remix has more
+if DEMAND and DL_ENTRY + DL_STRIDE * len(DEMAND) > WINDOW.get("DLCOPY", 0x33DC3):
+    sys.exit(f"Remix.window_demand: {len(DEMAND)} effects; their entries end at x:${DL_ENTRY + DL_STRIDE * len(DEMAND):x}, "
+             f"past DLCOPY at P:0x{WINDOW.get('DLCOPY', 0x33DC3):05x}: move DLCOPY (Remix.window) up {DL_STRIDE} words an effect")
 for _dk in DEMAND:
     if _dk not in WINDOW:
         sys.exit(f"Remix.window_demand names {_dk!r}, which Remix.window does not place")
@@ -1144,6 +1150,12 @@ def main():
     for _c, _b in _plan:
         if _c.cave_addr is not None and OVERFLOW_RUN <= _c.cave_addr < OVERFLOW_RUN_END:
             _ovf_top = max(_ovf_top, (_c.cave_addr + len(_b) + 3) & ~3)
+    # Floating code starts past any bytes a module keeps stock here (DELAY
+    # reads the run's first 16 as the tail of its table, stock.DELAY_TABLE_END).
+    for _k in REMIX.modules:
+        for _kp in getattr(remix_modules()[_k], "keeps", ()):
+            if OVERFLOW_RUN <= _kp.addr < OVERFLOW_RUN_END:
+                _ovf_top = max(_ovf_top, (_kp.addr + len(_kp.expect) + 3) & ~3)
     # ROM-placed linked units go FIRST, so a cave may name a unit's global
     # (cc-map's CC_MODEDEF*, resolved to mode-defaults' cc_fx2 / cc_fx1 when
     # the module is in the image, its stub `rts` otherwise). Floating caves
@@ -1243,13 +1255,20 @@ def main():
                 f"[PROJ]). Place the cave in the decoded 0x400d2000..0x400d8000 "
                 f"free region.")
         _inside = CLONE_BASE <= _c.cave_addr < cave_limit
-        if _floating and _inside and _c.cave_addr + len(_b) > cave_limit \
+        if _floating and _c.cave_addr + len(_b) > cave_limit \
                 and ((_ovf_top + 3) & ~3) + len(_b) <= OVERFLOW_RUN_END:
             # A floating cave past the clone window goes to the second zero
-            # run, as a linked source cave that outgrows it does below.
+            # run, as a linked source cave that outgrows it does below. Test
+            # its end, not _inside: the 128-byte rounding can put its start
+            # past cave_limit already, on the chooser list.
             _c = dataclasses.replace(_c, cave_addr=(_ovf_top + 3) & ~3)
             _inside = False
             print(f"  {_c.label}: past the clone window, placed in the overflow run")
+        elif _floating and not _inside:
+            # past the window, and the overflow run is too full for it
+            sys.exit(f"{_c.label}: {len(_b)} B fits neither the clone window "
+                     f"(full to 0x{cave_limit:08x}) nor the overflow run (next free "
+                     f"0x{(_ovf_top + 3) & ~3:08x}, ends 0x{OVERFLOW_RUN_END:08x})")
         if _inside:
             if _c.cave_addr < _cave_top:
                 sys.exit(f"{_c.label} at 0x{_c.cave_addr:08x} overlaps what precedes it "
@@ -1799,8 +1818,13 @@ def main():
             _dsym, _, _doff = _desc.partition("+")
             if _dsym not in _exports:
                 sys.exit(f"{name}: no linked unit exports {_dsym} for its MODE renames")
-            print(f"  {name} MODE renames -> {_desc} 0x{_exports[_dsym] + int(_doff or '0', 0):08x}")
-            _desc = _exports[_dsym] + int(_doff or "0", 0)
+            # A DRAM clone's CLONE_<key> in _exports is its staging address,
+            # repointed only at the end; the runtime's formatter was linked
+            # against the clone's final address, which is in _psyms.
+            _dv = (_psyms[_dsym] if _dram_clones and _dsym == _clone_sym(name)
+                   else _exports[_dsym])
+            print(f"  {name} MODE renames -> {_desc} 0x{_dv + int(_doff or '0', 0):08x}")
+            _desc = _dv + int(_doff or "0", 0)
         if _ren:
             _bytes = mode_names.emit(_p.labels, _desc, _ren)
             mode_names.verify(_p.labels, _desc, _ren)
@@ -2471,6 +2495,7 @@ mkgo:""",
     dev_delay = None            # (words) for the .mem dump append, DEV only
     tail_records = {}           # {payload: [P start, words]}: the tail's record
     window_records = {}         # {module key: (P start, words)}: Remix.window's records, payload A's upload
+    demand_homes = {}           # {(module key, P start): (words, (init, proc))}: a demand effect's other homes
     demand_syms = {}            # {module key: (init, proc)}: entries of the Remix.window_demand records
     guard_records = {}          # {"KEY:payload": addresses}: the wrappers of Remix.window_guard
     loader_next = REMIX.window_loader    # where the next loader piece goes
@@ -2492,7 +2517,7 @@ mkgo:""",
     if DEMAND:
         # one stub body for every demand effect; INIT[id] is `init`, PROCESS[id] a trampoline that names the entry
         _tr = "".join(f"dls_p{k}:\n        move    #>${0x33DA3 + 8 * k:x},x0\n        move    x0,x:>$3f4c\n        bra     proc\n"
-                      for k in DEMAND.values())
+                      for _dk2, k in DEMAND.items() if not remix_modules()[_dk2].dsp.hooks)   # a hooked one has no id
         _sw, stub_syms = assemble_syms(pathlib.Path("modules/dlcopy/dlstub.asm").read_text().replace("; TRAMPOLINES\n", _tr),
                                        loader_next, label="demand stub")
         _loader_check("demand stub", loader_next, len(_sw))
@@ -2509,40 +2534,105 @@ mkgo:""",
             return buf[i] | (buf[i + 1] << 8) | (buf[i + 2] << 16)
 
         _body_src = pathlib.Path("modules/dlcopy/dlwrap.asm").read_text()
+        if _body_src.count("        do      #4,>dw_next\n") != 1:
+            sys.exit("modules/dlcopy/dlwrap.asm: dw_over's entry loop (`do #4,>dw_next`) is not where the build expects it")
+        _body_src = _body_src.replace("        do      #4,>dw_next\n", f"        do      #{DL_SLOTS},>dw_next\n")
 
-        def _tramps(tag, body_init, body_proc):
-            out = []
+        # Each reverb's record, per payload: its stock init, its stock proc, its extent (one more than the highest word it
+        # writes above its base). The trampolines only name a record; two loaders, shared by both payloads, copy it into
+        # the cells the body reads (x:$3fd1 the stock entry, x:$3fd2 the extent, x:$3fd3 the stock init) and enter the
+        # body. The records follow the code as data, read with `move p:(r5)+` (the window is one memory on the chip, and
+        # dsp_host keeps P, where the upload puts them). r5 is free at both entries: the body writes it before any stock code runs.
+        _recs = []
+        for _tag in ("A", "B"):
             for _n, _gk in enumerate(GUARD):
                 _gid = stock_mod.BY_KEY[_gk].menu.fx2_id
-                _gi, _gq = _rdx(tag, _gid * 3), _rdx(tag, (PROC_OFF + _gid) * 3)
+                _gi, _gq = _rdx(_tag, _gid * 3), _rdx(_tag, (PROC_OFF + _gid) * 3)
                 _gx = stock_mod.SLOT_EXTENT[_gk] + 1
-                guard_records[f"{_gk}:{tag}"] = {"stock_init": _gi, "stock_proc": _gq, "extent": _gx}
-                out.append(f"dwi_{_n}:\n        move    #>${_gi:x},x0\n        move    x0,x:>$3fd1\n"
-                           f"        move    #>${_gx:x},x0\n        move    x0,x:>$3fd2\n"
-                           f"        move    #>${body_init:x},r2\n        jmp     (r2)\n"
-                           f"dwp_{_n}:\n        move    #>${_gq:x},x0\n        move    x0,x:>$3fd1\n"
-                           f"        move    #>${_gx:x},x0\n        move    x0,x:>$3fd2\n"
-                           f"        move    #>${_gi:x},x0\n        move    x0,x:>$3fd3\n"
-                           f"        move    #>${body_proc:x},r2\n        jmp     (r2)\n")
+                guard_records[f"{_gk}:{_tag}"] = {"stock_init": _gi, "stock_proc": _gq, "extent": _gx}
+                _recs += [_gi, _gq, _gx]
+
+        def _tramps(rec_at, body_init, body_proc):
+            out = []
+            for _p, _tag in enumerate(("a", "b")):
+                for _n in range(len(GUARD)):
+                    _r = rec_at + 3 * (_p * len(GUARD) + _n)
+                    out.append(f"dwi{_tag}{_n}:\n        move    #>${_r:x},r5\n        bra     dwlqi\n"
+                               f"dwp{_tag}{_n}:\n        move    #>${_r:x},r5\n        bra     dwlqp\n")
+            out.append("dwlqi:\n        move    p:(r5)+,x0\n        move    x0,x:>$3fd1\n"
+                       "        move    p:(r5)+,x0\n        move    p:(r5)+,x0\n        move    x0,x:>$3fd2\n"
+                       f"        move    #>${body_init:x},r2\n        jmp     (r2)\n"
+                       "dwlqp:\n        move    p:(r5)+,x0\n        move    x0,x:>$3fd3\n"
+                       "        move    p:(r5)+,x0\n        move    x0,x:>$3fd1\n"
+                       "        move    p:(r5)+,x0\n        move    x0,x:>$3fd2\n"
+                       f"        move    #>${body_proc:x},r2\n        jmp     (r2)\n")
             return "".join(out)
 
-        # the trampolines' length does not depend on the body's address (all immediates are 24-bit)
-        _la = len(assemble_syms(_tramps("A", 0x30000, 0x30000), loader_next, label="guard trampolines A")[0])
-        _lb = len(assemble_syms(_tramps("B", 0x30000, 0x30000), loader_next, label="guard trampolines B")[0])
-        _bat = loader_next + _la + _lb
+        # the code's length does not depend on the records' or the body's address (all immediates are 24-bit)
+        _lt = len(assemble_syms(_tramps(0x30000, 0x30000, 0x30000), loader_next, label="guard trampolines")[0])
+        _rat = loader_next + _lt
+        _bat = _rat + len(_recs)
         _bw, _bs = assemble_syms(_body_src, _bat, label="reverb guard body")
-        _at = loader_next
-        for _tag, _ln in (("A", _la), ("B", _lb)):
-            _tw, guard_syms[_tag] = assemble_syms(_tramps(_tag, _bs["init"], _bs["proc"]), _at, label=f"guard trampolines {_tag}")
-            _loader_check(f"reverb guard trampolines {_tag}", _at, len(_tw))
-            window_records[f"guard {_tag}"] = (_at, list(_tw))
+        _tw, _ts = assemble_syms(_tramps(_rat, _bs["init"], _bs["proc"]), loader_next, label="guard trampolines")
+        if len(_tw) != _lt:
+            sys.exit("guard trampolines: the code changed length with its addresses")
+        _loader_check("reverb guard trampolines", loader_next, len(_tw) + len(_recs))
+        window_records["guard trampolines"] = (loader_next, list(_tw) + _recs)
+        for _tag in ("A", "B"):
+            guard_syms[_tag] = {}
             for _n, _gk in enumerate(GUARD):
+                guard_syms[_tag][f"dwi_{_n}"] = _ts[f"dwi{_tag.lower()}{_n}"]
+                guard_syms[_tag][f"dwp_{_n}"] = _ts[f"dwp{_tag.lower()}{_n}"]
                 guard_records[f"{_gk}:{_tag}"].update(init=guard_syms[_tag][f"dwi_{_n}"], proc=guard_syms[_tag][f"dwp_{_n}"])
-            _at += _ln
         _loader_check("reverb guard body", _bat, len(_bw))
         window_records["guard body"] = (_bat, list(_bw))
-        print(f"  reverb guard  trampolines P:0x{loader_next:05x}..0x{_bat:05x} (A {_la}, B {_lb} words), body P:0x{_bat:05x}..0x{_bat + len(_bw):05x} ({len(_bw)} words)")
+        print(f"  reverb guard  trampolines P:0x{loader_next:05x}..0x{_rat:05x} ({_lt} words), records P:0x{_rat:05x}..0x{_bat:05x} "
+              f"({len(_recs)} words), body P:0x{_bat:05x}..0x{_bat + len(_bw):05x} ({len(_bw)} words)")
         loader_next = _bat + len(_bw)
+    # ---- HOOKED DEMAND MODULES (docs/proposals/SC_DEMAND_LOAD.md) --------------------------------------
+    # A Remix.window_demand module reached by DspHooks, not by an id (SIDECHAIN_COMPRESSOR): its hooks
+    # run whether or not its code is loaded, so each jsr goes to a resident stub, reserved here and
+    # assembled once the body's and any bridged hook's addresses are known (_hook_stub_words). The stub
+    # tests the module's BOUND word (x:$33da3 + 8 k) and enters the body when it is loaded; otherwise
+    # it replays the displaced instruction and returns. At a site a bridge overrides
+    # (schema.DspOverride) it calls the body when loaded and then jumps to the overridden hook's entry,
+    # which replays the instruction itself. A stub serves every payload whose site holds the same stock
+    # words, except a bridged one, whose chain target is that payload's.
+    DSP_OVR = {}                # (payload, site) -> the module key whose hook a bridge stands in for
+    for _k in REMIX.modules:
+        for _o in getattr(remix_modules()[_k], "dsp_overrides", ()):
+            for _t in ("A", "B"):
+                if _o.site_on(_t) is not None:
+                    DSP_OVR[(_t, _o.site_on(_t))] = _o.module
+    hook_stub_at = {}           # (module key, hook label, payload) -> the stub's P address
+    hook_stub_plan = []         # (record key, P address, words, module key, hook, payloads, bridged)
+    hook_bodies = {}            # (module key, hook label) -> the body's P address (one copy, both payloads)
+    hook_chain = {}             # (payload, site) -> the overridden hook's entry, the bridge's jump target
+    STUB_WORDS, BRIDGE_WORDS = 9, 10
+    for _k in DEMAND:
+        _m = remix_modules()[_k]
+        if not _m.dsp.hooks:
+            continue
+        if HOMES.get(_k):
+            sys.exit(f"{_k}: a hooked demand module has one home (its stubs jump to fixed addresses); "
+                     f"Remix.window_homes names others")
+        for _h in _m.dsp.hooks:
+            _tags = [t for t in ("A", "B") if _h.on(t) and t in _m.dsp.payloads]
+            _groups = {}
+            for _t in _tags:
+                _br = (_t, _h.site_on(_t)) in DSP_OVR
+                _groups.setdefault(("bridge", _t) if _br else ("plain", tuple(_h.stock_on(_t))), []).append(_t)
+            for (_kind, _), _ts in _groups.items():
+                _n = BRIDGE_WORDS if _kind == "bridge" else STUB_WORDS
+                _rk = f"hook stub {_k} {_h.label} {''.join(_ts)}"
+                _loader_check(_rk, loader_next, _n)
+                window_records[_rk] = (loader_next, [0] * _n)
+                hook_stub_plan.append((_rk, loader_next, _n, _k, _h, tuple(_ts), _kind == "bridge"))
+                for _t in _ts:
+                    hook_stub_at[(_k, _h.label, _t)] = loader_next
+                print(f"  hook stub     P:0x{loader_next:05x}..0x{loader_next + _n:05x} ({_n} words)  {_k} {_h.label}, "
+                      f"payload {'/'.join(_ts)}{', bridging ' + DSP_OVR[(_ts[0], _h.site_on(_ts[0]))] if _kind == 'bridge' else ''}")
+                loader_next += _n
     pathlib.Path("out/dsp/demand_records.json").unlink(missing_ok=True)   # DLPUMP's table reads it after this stage
     for tag, va, ln in PAYLOADS:
         pp = PP[tag]
@@ -3262,26 +3352,36 @@ hostquit:
                 # addresses it replays into differ; a server: per-core code) has "KEY:B" for payload B's copy
                 _wk = name + ":B" if (tag == "B" and name + ":B" in WINDOW) else name
                 _wa = WINDOW[_wk]
-                if _wd.tail or _wd.ptable2 or _wd.pins:
-                    sys.exit(f"{name}: placed in the shared window, so it has no tail, "
-                             f"second table or pins")
+                if _wd.tail or _wd.pins:
+                    sys.exit(f"{name}: placed in the shared window, so it has no tail or pins")
                 _wt = list(_wd.ptable)
                 if _wt and (PTABLE_MARK not in src or src.count(PTABLE_MARK) != 1):
                     sys.exit(f"payload {tag}: {name}: a DspSection.ptable and exactly one "
                              f"{PTABLE_MARK} literal in the source go together")
+                # the second table follows the first (SIDECHAIN_COMPRESSOR's key filters), as on the harvested path
+                _wt2 = list(_wd.ptable2)
+                if bool(_wt2) != (PTABLE2_MARK in src) or src.count(PTABLE2_MARK) > 1 or (_wt2 and not _wt):
+                    sys.exit(f"payload {tag}: {name}: a DspSection.ptable2, a ptable, and exactly one "
+                             f"{PTABLE2_MARK} literal in the source go together")
                 # the LFO roll table (the source's $facade literal) goes behind the code, before the ptable
                 _wl = ((LFO01 + LFOTAB) if LFO01_MARK in src else LFOTAB) if "$facade" in src else []
                 if _wl and src.count("$facade") != 1:
                     sys.exit(f"payload {tag}: {name} has multiple $facade LFOTAB literals -- expected exactly one")
-                _ws = src
-                if _wt or _wl:
-                    _w0, _ = assemble_syms(src.replace(PTABLE_MARK, "$0").replace("$facade", "$0"), _wa, label=name)
-                    _tb = _wa + len(_w0)
-                    _ws = src.replace("$facade", f"${_tb:x}").replace(PTABLE_MARK, f"${_tb + len(_wl):x}")
-                _ww, _wsyms = assemble_syms(_ws, _wa, label=name)
-                if (_wt or _wl) and len(_ww) != len(_w0):
-                    sys.exit(f"{name}: the code changed length with its table's address")
-                _ww = list(_ww) + _wl + _wt
+                def _asm_at(_addr, src=src, _wt=_wt, _wt2=_wt2, _wl=_wl, name=name):
+                    """The module assembled at a window address: its code, then the LFO table, the ptable, the ptable2."""
+                    _ws = src
+                    if _wt or _wl:
+                        _w0, _ = assemble_syms(src.replace(PTABLE_MARK, "$0").replace(PTABLE2_MARK, "$0")
+                                               .replace("$facade", "$0"), _addr, label=name)
+                        _tb = _addr + len(_w0)
+                        _ws = src.replace("$facade", f"${_tb:x}").replace(PTABLE_MARK, f"${_tb + len(_wl):x}")
+                        if _wt2:
+                            _ws = _ws.replace(PTABLE2_MARK, f"${_tb + len(_wl) + len(_wt):x}")
+                    _aw, _asyms = assemble_syms(_ws, _addr, label=name)
+                    if (_wt or _wl) and len(_aw) != len(_w0):
+                        sys.exit(f"{name}: the code changed length with its table's address")
+                    return list(_aw) + _wl + _wt + _wt2, _asyms
+                _ww, _wsyms = _asm_at(_wa)
                 if _wk in window_records and window_records[_wk][1] != _ww:
                     sys.exit(f"{name}: placed in the shared window as one copy, but its payload "
                              f"A and payload B sources assemble to different words")
@@ -3294,10 +3394,33 @@ hostquit:
                                      f"{_o.owner}'s {_o.what} "
                                      f"(0x{_o.start:05x}..0x{_o.end:05x})")
                     for _on, (_oa, _ow) in window_records.items():
+                        if name in DEMAND and _on.removesuffix(":B") in DEMAND:
+                            continue     # two demand effects' blocks: never uploaded, and DLPUMP loads one a block
                         if _oa < _wa + len(_ww) and _wa < _oa + len(_ow):
                             sys.exit(f"{name} and {_on} overlap in the shared window")
                     window_records[_wk] = (_wa, _ww)
-                    demand_syms[_wk] = (_wsyms.get("init"), _wsyms.get("proc"))
+                    # a hooked module has no init/proc: its entry's two words then name the block's first word
+                    demand_syms[_wk] = (_wsyms.get("init", _wa), _wsyms.get("proc", _wa))
+                if name in DEMAND and _wk == name:
+                    # the effect's other homes (Remix.window_homes): assembled at each address by each payload, which must agree
+                    from remix import dsp_ranges as _dr
+                    for _ha in HOMES.get(name, ()):
+                        _hw, _hs = _asm_at(_ha)
+                        if (_ha - 0x30000) >> 14 != (_ha + len(_hw) - 1 - 0x30000) >> 14:
+                            sys.exit(f"{name}: its home at P:0x{_ha:05x}..0x{_ha + len(_hw):05x} crosses the end of its FX2 block")
+                        _prev = demand_homes.get((name, _ha))
+                        if _prev is not None:
+                            if _prev[0] != _hw:
+                                sys.exit(f"{name}: its home at P:0x{_ha:05x}: payload A and payload B sources assemble to different words")
+                            continue
+                        for _o in _dr.owners(remix_registry.selected(REMIX)):
+                            if _o.domain == "shared" and _o.start < _ha + len(_hw) and _ha < _o.end:
+                                sys.exit(f"{name}: its home at P:0x{_ha:05x}..0x{_ha + len(_hw):05x} overlaps "
+                                         f"{_o.owner}'s {_o.what} (0x{_o.start:05x}..0x{_o.end:05x})")
+                        for _on, (_oa, _ow) in window_records.items():
+                            if _on.removesuffix(":B") not in DEMAND and _oa < _ha + len(_hw) and _ha < _oa + len(_ow):
+                                sys.exit(f"{name}: its home at P:0x{_ha:05x} overlaps {_on} in the shared window")
+                        demand_homes[(name, _ha)] = (_hw, (_hs.get("init"), _hs.get("proc")))
                 for _h in _wd.hooks:
                     # the two stock words become `jsr >label`, a 24-bit address (schema.DspHook)
                     if not _h.on(tag):
@@ -3309,10 +3432,21 @@ hostquit:
                         sys.exit(f"payload {tag}: {name}'s hook site P:0x{_hs:05x} holds "
                                  f"{_got[0]:06x} {_got[1]:06x}, not stock "
                                  f"{_want[0]:06x} {_want[1]:06x}; refusing")
+                    if DSP_OVR.get((tag, _hs)) == name:
+                        # a bridge stands in for this hook: the jsr here is the bridged demand module's stub,
+                        # which jumps to this entry after its own body
+                        hook_chain[(tag, _hs)] = _wsyms[_h.label]
+                        print(f"  {'HOOK':13} P:0x{_hs:05x}    {name} {_h.label} P:0x{_wsyms[_h.label]:05x} "
+                              f"BRIDGED: the jsr here is a demand module's stub, which jumps to this entry")
+                        continue
+                    _to = _wsyms[_h.label]
+                    if name in DEMAND:
+                        hook_bodies[(name, _h.label)] = _to
+                        _to = hook_stub_at[(name, _h.label, tag)]
                     wrw_p_at(_hs, 0x0BF080)
-                    wrw_p_at(_hs + 1, _wsyms[_h.label])
+                    wrw_p_at(_hs + 1, _to)
                     print(f"  {'HOOK':13} P:0x{_hs:05x} -> {name} {_h.label} "
-                          f"P:0x{_wsyms[_h.label]:05x}  {_h.note}")
+                          f"P:0x{_to:05x}  {_h.note}{' (its resident stub; the body is loaded on demand)' if name in DEMAND else ''}")
                 if _wd.hooks:
                     print(f"  {name:13} P:0x{_wa:05x}..0x{_wa + len(_ww):05x} ({len(_ww):4} words)  "
                           f"no dispatch entry: reached by its hook(s)  IN THE SHARED WINDOW")
@@ -3971,12 +4105,60 @@ hostquit:
     # The window's records are not in the OS image's payload: tools/build/dsp_modmap.py's memory
     # dumps (every gate that runs an effect in dsp_host) read them from here and append them.
     # Remix.window_demand records are loaded at run time by the ColdFire, not uploaded at boot.
+    def _displaced_text(words):
+        """The stock instruction(s) in two words, as source text: disassembled, then checked by the stub's
+        own assembly (the stub refuses unless they reassemble to the same words)."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as _td:
+            _f = pathlib.Path(_td) / "d.txt"
+            _f.write_text(" ".join(f"{w:06x}" for w in words))
+            _out = subprocess.run([str(DISASM), "-in", str(_f), "-pc", "0"], capture_output=True, text=True).stdout
+        _lines = [re.sub(r"\s+", " ", l.split(":", 1)[1].split(";", 1)[0]).strip()
+                  for l in _out.splitlines() if re.match(r"^[0-9a-f]{6}: ", l)]
+        if not _lines or any(_l.startswith(("dc", "nop")) for _l in _lines):
+            sys.exit(f"hook stub: the displaced words {words[0]:06x} {words[1]:06x} do not disassemble to instructions")
+        return "".join(f"        {_l}\n" for _l in _lines)
+
+    def _hook_stub_words(at, key, hook, tags, bridged):
+        """One hooked demand module's stub for `hook`, at `at`, serving `tags`. dsp_asm writes a long
+        branch's operand as the displacement itself (AGENTS.md, the brclr trap), so each one is spelled
+        as target - the branch's own address."""
+        bound = DL_ENTRY + DL_STRIDE * DEMAND[key]
+        body = hook_bodies[(key, hook.label)]
+        head = (f"zqhs:\n        move    x:>${bound:x},a\n        cmp     #>$b0a5ed,a\n")
+        if bridged:
+            t = tags[0]
+            chain = hook_chain.get((t, hook.site_on(t)))
+            if chain is None:
+                sys.exit(f"hook stub {key} {hook.label}: the bridged hook at P:0x{hook.site_on(t):05x} on payload "
+                         f"{t} was not placed in the window, so the stub has no entry to jump to")
+            src = head + (f"        bne     >$4\n"
+                          f"        bsr     >${(body - (at + 6)) & 0xFFFFFF:x}\n"
+                          f"        bra     >${(chain - (at + 8)) & 0xFFFFFF:x}\n")
+        else:
+            stock = tuple(hook.stock_on(tags[0]))
+            src = head + f"        beq     >${(body - (at + 4)) & 0xFFFFFF:x}\n" + _displaced_text(stock) + "        rts\n"
+        words, _ = assemble_syms(src, at, label=f"hook stub {key} {hook.label}")
+        if not bridged and tuple(words[6:8]) != stock:
+            sys.exit(f"hook stub {key} {hook.label}: the replayed instruction assembled to "
+                     f"{words[6]:06x} {words[7]:06x}, not the stock {stock[0]:06x} {stock[1]:06x}")
+        return list(words)
+
+    for _rk, _at, _n, _k, _h, _ts, _br in hook_stub_plan:
+        _w = _hook_stub_words(_at, _k, _h, _ts, _br)
+        if len(_w) != _n:
+            sys.exit(f"{_rk}: assembled {len(_w)} words, {_n} reserved")
+        window_records[_rk] = (_at, _w)
     demand_records = {k: window_records.pop(k) for k in list(window_records) if k in DEMAND}
     _df = pathlib.Path("out/dsp/demand_records.json")
     if demand_records:
         _df.parent.mkdir(parents=True, exist_ok=True)
         _df.write_text(json.dumps({k: {"addr": a, "words": list(w), "init": demand_syms[k][0],
-                                       "proc": demand_syms[k][1], "id": NEW_IDS[k]}
+                                       "proc": demand_syms[k][1], "id": NEW_IDS[k],
+                                       "homes": [{"addr": a, "words": list(w), "init": demand_syms[k][0], "proc": demand_syms[k][1]}]
+                                                + [{"addr": _ha, "words": list(demand_homes[(k, _ha)][0]),
+                                                    "init": demand_homes[(k, _ha)][1][0], "proc": demand_homes[(k, _ha)][1][1]}
+                                                   for _hk, _ha in REMIX.window_homes if _hk == k]}
                                    for k, (a, w) in demand_records.items()}))
     else:
         _df.unlink(missing_ok=True)

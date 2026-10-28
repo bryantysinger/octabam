@@ -113,6 +113,9 @@ def main():
         print(f"  [ -- ] verify_scenes_p2: {a.remix} carries no SCENES P2"); return 0
     if not a.project:
         print("  [SKIP] verify_scenes_p2: no project (OT_PROJECT=<dir> or --project)"); return 0
+    if "/out/fresh/" in str(a.project):
+        print("  [SKIP] verify_scenes_p2: the project is a generated empty one (tools/hw/ot_fresh.py); the gate "
+              "reads its expected values from a project with scene data"); return 0
     if not EMU.is_file():
         print("  [SKIP] verify_scenes_p2: no port binary (make emu-cf)"); return 0
     pdir = pathlib.Path(a.project).expanduser()

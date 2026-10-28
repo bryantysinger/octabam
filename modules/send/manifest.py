@@ -37,7 +37,7 @@ MODULE = Module(
         # Both 0 by default: a nonzero default registers every idle track as
         # a client and dilutes the real senders (the phantom-client rule).
         Param(b"DEL", 0, active=True,
-              doc="this track's send into the delay (the reverb hears the repeats x its DLY)"),
+              doc="this track's send into the delay (the reverb hears the repeats through its DLY)"),
         Param(b"REV", 0, active=True,
               doc="this track's send into the reverb"),
         _BLANK, _BLANK, _BLANK, _BLANK,

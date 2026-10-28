@@ -82,7 +82,7 @@ Five fields are the README's module table, rendered by `make docs`
 ```
 
 `category` is where the module sits in the table, the index and the
-remixer's AVAILABLE pane. `proof` is the vocabulary of the last column:
+index. `proof` is the vocabulary of the last column:
 `CHECK` builds and boots under the port, `RENDER` was heard or measured
 locally and never flashed, `PORT` has a gate under the ColdFire port that
 pins its behaviour, `HARDWARE` ran on a unit. The selftest refuses a
@@ -123,8 +123,7 @@ by name, for a remix with a DSP module that has none. The schema checks
 each name against `params` when the manifest loads, so a knob rename
 refuses the build rather than failing a fixture after the merge.
 
-`make remix` opens the remixer (`tools/remix/app.py`, Textual, provisioned
-by `make emu-setup`; manual `docs/guide/REMIXER.md`). It derives a
+`tools/remix/rig.py` derives a
 placement role and a track range for every module (`tools/remix/rig.py`):
 
 - **bus effect** (`harness.is_server`): one payload, declared in
@@ -141,8 +140,8 @@ Every effect is auditionable through `tools/remix/audition.py`, and
 through its own `knob_map()`. Every render and A/B mark is journalled to
 `out/_audition/log.jsonl` (track, effect, source, every knob).
 
-Two `Param` fields exist for the remixer (the build never reads them):
-`doc`, one line shown under the knob cursor, and `labels`, one short label
+Two `Param` fields exist for display (the build never reads them):
+`doc`, one line describing the knob, and `labels`, one short label
 per value of a stepped select (length pinned to `count`). The selftest
 requires a `doc` on every named, drawn param of every menu-bearing module.
 
@@ -201,8 +200,7 @@ state things you might assume:
   (int exact, symbol non-zero and not the donor's, `None` the donor's) in
   place of the count rule. The stock formatters and widgets are in
   `docs/firmware/PARAM_PAGES.md` section 7. The build emits no label
-  formatter for such a slot; its `labels` are display-only (the remixer's
-  help row, the BCR map).
+  formatter for such a slot; its `labels` are display-only (the BCR map).
 - **`active` writes the slot's enable nibble.** `True` draws it, `False`
   hides it. `None` (the default) hides it too, except on a
   `MenuEntry(stock_dsp=True)` clone, where it keeps the donor's nibble,
@@ -340,10 +338,10 @@ Both maps are sparse and optional. `names` renames a slot for that mode
 (four characters); `defaults` is where the other knobs land when the
 operator arrives at this mode.
 
-| | the remixer | the unit |
-|---|---|---|
-| `names` | the UNIT pane's rows follow the current MODE (`Module.knob_map_in`); `send_probe --set SCTR=40` resolves the alias | `tools/build/mode_names.py` emits a MODE formatter that rewrites the descriptor's name fields before printing its own word |
-| `defaults` | applied the moment MODE changes | `modules/mode-defaults` (in octabam-bus): the FX1 and FX2 page-2 editors are detoured, and a MODE turned on the panel writes the view -- page 1 through the stock page-1 writer, page 2 with the editor's own stores; without the module, `stamp-defaults` writes them; a MODE over CC MAP goes through the same unit (the cave calls it) |
+| | the unit |
+|---|---|
+| `names` | `tools/build/mode_names.py` emits a MODE formatter that rewrites the descriptor's name fields before printing its own word |
+| `defaults` | `modules/mode-defaults` (in octabam-bus): the FX1 and FX2 page-2 editors are detoured, and a MODE turned on the panel writes the view -- page 1 through the stock page-1 writer, page 2 with the editor's own stores; without the module, `stamp-defaults` writes them; a MODE over CC MAP goes through the same unit (the cave calls it) |
 
 The unit half needs no new hook: a descriptor carries its twelve parameter
 names as 12 × 6 bytes at `E+0x4e`, the clones are writable RAM, and every
@@ -423,7 +421,7 @@ Two rules, both enforced:
   from stock's fifteen-row list; no image with more than seven rows has
   been flashed.
 
-Stock rows appear in the remixer with their real knobs: `stock.py` reads
+Stock rows carry their real knobs: `stock.py` reads
 each descriptor's names, defaults, value counts and enable bitmap out of
 the pristine image (`out/raw/section_3_MAIN_OS.bin`); a duplicated label
 gets a `2` suffix on the later slot. A select carries the firmware's own
@@ -1128,8 +1126,8 @@ never listed, and a key with no FX2 chooser row of its own.
 
 #### Only a buffer-free insert may take an FX1 row
 
-`state.fx1_hazard()` is the single statement of the rule, read by the
-remixer and by `build_bus.py`. Refused:
+`state.fx1_hazard()` is the single statement of the rule, read by
+`build_bus.py`. Refused:
 
 | refused | why |
 |---|---|
@@ -1187,3 +1185,18 @@ Seen in the emulator: the firmware's own draw puts a module on FX1's
 chooser with its own knob names; a replacement on LO-FI's id draws in
 LO-FI's slot on the FX1 chooser with its own page. `verify_replaces.py`
 checks both tables in both directions.
+
+## Shared native events
+
+Use [EVENTS](../../modules/events/README.md) for transport notifications,
+accepted-note notifications, held-step ownership and native copy notifications.
+Register by event family and select `EVENTS`; clients must not also claim its
+native detours. STORE continues to own project/Part persistence.
+
+An optional `Module.select(frozenset(module_keys))` returns `linked` and/or
+`detours` for that selection. It runs in `registry.bound()` after build settings,
+so the claims ledger, linker, installer and image gates share the same result.
+It must be deterministic, have no side effects and may not change identity,
+dependencies, settings or gates. Unselected modules are not specialized.
+EVENTS uses it to omit unsubscribed boundaries, with independent assembly guards
+omitting unused entry points within a selected unit.

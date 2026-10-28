@@ -4,8 +4,9 @@
     python3 tools/verify/verify_copy_project.py [REMIX]
     make check REMIX=copy-project   # runs this as the module gate
 
-1. Success: stage SRC, PROJECT > COPY PROJECT, stock default name under a
-   pinned RTC, confirm, OPEN IT? NO — destination matches source.
+1. Success: stage SRC, PROJECT > CHANGE > FUNC+BANK > COPY, stock default
+   name under a pinned RTC, confirm, OPEN IT? NO — destination matches
+   source.
 2. Failure / cleanup: SRC with more than 256 entries in one directory
    forces COPY FAILED; destination is removed; source untouched; a retry
    with the same name does not hit NAME ALREADY IN USE! (dest still gone
@@ -43,6 +44,7 @@ def press(p, name, n=1, settle=80):
 
 
 def menu_copy_project(p):
+    """PROJECT > CHANGE > highlight SRC > FUNC+BANK > COPY."""
     from panel_server import popup_geometry  # noqa: PLC0415
 
     if popup_geometry(p.rt.uc) != (5, 0, 0xf6, 0x40):
@@ -52,7 +54,12 @@ def menu_copy_project(p):
     press(p, "down", 0)  # PROJECT
     press(p, "right")
     press(p, "up", 20)
-    press(p, "down", 5)  # COPY PROJECT (after SAVE TO NEW)
+    press(p, "down", 0)  # CHANGE
+    press(p, "yes", settle=400)  # CHOOSE PROJECT
+    press(p, "down", 1)  # SRC under <CREATE EMPTY PROJECT>
+    p.chord("func", "bank", settle=400)
+    press(p, "down", 2)  # RENAME, DELETE, COPY
+    # YES on COPY is the caller's first press
 
 
 def build_image(remix: str) -> pathlib.Path:
@@ -137,8 +144,7 @@ def run_success(image: pathlib.Path, pdir: pathlib.Path) -> None:
                   log_path=log, extra=("--rtc", str(RTC_EPOCH))) as p:
         p.settle()
         menu_copy_project(p)
-        press(p, "yes", settle=400)          # open list
-        press(p, "yes", settle=600)          # pick SRC -> name editor
+        press(p, "yes", settle=600)          # COPY -> name editor
         press(p, "yes", settle=400)          # accept PROJECT YYMMDD
         press(p, "yes", settle=400)          # confirm COPY SRC -> DST?
         p.run(20000)                         # engine job 21
@@ -169,38 +175,40 @@ def run_fail_cleanup(image: pathlib.Path, pdir: pathlib.Path) -> None:
                   log_path=log, extra=("--rtc", str(RTC_EPOCH))) as p:
         p.settle()
         menu_copy_project(p)
-        press(p, "yes", settle=400)
-        press(p, "yes", settle=600)
+        press(p, "yes", settle=600)          # COPY -> name editor
         press(p, "yes", settle=400)          # accept PROJECT YYMMDD
         press(p, "yes", settle=400)          # confirm
         p.run(20000)                         # COPY FAILED + rm_tree
         p.card_flush()
 
-        files = card_files(card)
-        if project_keys(files, DST):
-            sys.exit(f"verify_copy_project: {DST!r} still on card after COPY FAILED "
-                     f"-- cleanup missed -- {log}")
-        src_key = next((k for k in files if k.endswith("/SRC/project.work")), None)
-        if not src_key or files[src_key] != src_work:
-            sys.exit(f"verify_copy_project: SRC damaged after COPY FAILED -- {log}")
-        pad = sum(1 for k in files if "/SRC/pad" in k.replace("\\", "/"))
-        if pad < EMAX + 1:
-            sys.exit(f"verify_copy_project: SRC lost pad files "
-                     f"({pad} < {EMAX + 1}) -- {log}")
-        print(f"  [PASS] verify_copy_project: COPY FAILED cleaned {DST!r}; "
-              f"SRC untouched ({pad} pad files)")
+    files = card_files(card)
+    if project_keys(files, DST):
+        sys.exit(f"verify_copy_project: {DST!r} still on card after COPY FAILED "
+                 f"-- cleanup missed -- {log}")
+    src_key = next((k for k in files if k.endswith("/SRC/project.work")), None)
+    if not src_key or files[src_key] != src_work:
+        sys.exit(f"verify_copy_project: SRC damaged after COPY FAILED -- {log}")
+    pad = sum(1 for k in files if "/SRC/pad" in k.replace("\\", "/"))
+    if pad < EMAX + 1:
+        sys.exit(f"verify_copy_project: SRC lost pad files "
+                 f"({pad} < {EMAX + 1}) -- {log}")
+    print(f"  [PASS] verify_copy_project: COPY FAILED cleaned {DST!r}; "
+          f"SRC untouched ({pad} pad files)")
 
-        # Retry same default name: dest must still be absent after name YES
-        # (proves NAME ALREADY IN USE! did not fire — that path needs dest present).
+    # Fresh port: re-enter after COPY FAILED left UI state that mangled a
+    # second FUNC+BANK pass in the same session (dest name grew a '%').
+    log2 = OUT / "port_fat_retry.log"
+    with MenuPort(image.resolve(), card.resolve(), "OCTABAM", "SRC", True,
+                  log_path=log2, extra=("--rtc", str(RTC_EPOCH))) as p:
+        p.settle()
         menu_copy_project(p)
-        press(p, "yes", settle=400)
-        press(p, "yes", settle=600)
+        press(p, "yes", settle=600)          # COPY -> name editor
         press(p, "yes", settle=400)          # accept PROJECT YYMMDD again
         p.card_flush()
         files = card_files(card)
         if project_keys(files, DST):
             sys.exit(f"verify_copy_project: retry hit NAME ALREADY IN USE! "
-                     f"({DST!r} present after name YES) -- {log}")
+                     f"({DST!r} present after name YES) -- {log2}")
         print(f"  [PASS] verify_copy_project: retry name {DST!r} not in use "
               f"(dest still absent after name YES)")
 
@@ -210,10 +218,10 @@ def run_fail_cleanup(image: pathlib.Path, pdir: pathlib.Path) -> None:
 
     files = card_files(card)
     if project_keys(files, DST):
-        sys.exit(f"verify_copy_project: {DST!r} left after second COPY FAILED -- {log}")
+        sys.exit(f"verify_copy_project: {DST!r} left after second COPY FAILED -- {log2}")
     src_key = next((k for k in files if k.endswith("/SRC/project.work")), None)
     if not src_key or files[src_key] != src_work:
-        sys.exit(f"verify_copy_project: SRC damaged after retry -- {log}")
+        sys.exit(f"verify_copy_project: SRC damaged after retry -- {log2}")
     print("  [PASS] verify_copy_project: second COPY FAILED still cleans dest; "
           "SRC intact")
 

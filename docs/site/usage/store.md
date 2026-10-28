@@ -1,7 +1,8 @@
-The project's side files — KITS' kits.work, PLOCKS P2's p2lkNN.work,
-MIDI SCENES' scenes.work and PERSISTENT BUFFERS' `BUFFERS/RECn.wav` — are
-written, copied and cleared at the right times: every bank load, a new
-project, the bank writer, the project save and reload.
+Keeps each feature's side files with the project: KITS' kits file, PAGE 2
+LOCKS' per-bank lock files, MIDI SCENES' scenes file and PERSISTENT
+BUFFERS' `BUFFERS/RECn.wav`. They are written, copied and cleared at the
+right moments: every bank load, a new project, the bank writer, project
+save and reload.
 
-With COPY PROJECT in the remix, LEVEL scrolls that module's project list
-only (same `M_CBS` gate KITS uses for its own lists).
+With COPY PROJECT in the image, LEVEL scrolls that module's project list
+only, as it does for KITS' own lists.

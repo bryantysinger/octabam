@@ -170,8 +170,8 @@ def check_saveas_choose(image: pathlib.Path, card: pathlib.Path,
 
     def menu_proj_row(p, row: int) -> None:
         # Selectable PROJECT rows skip separators: CHANGE=0 … SAVE TO NEW=4,
-        # EXPORT TO SET=5 (capture_copy_project / MAINMENU.md); COPY PROJECT,
-        # when the remix has it, sits at 5 and pushes EXPORT TO SET to 6.
+        # EXPORT TO SET=5 (MAINMENU.md). COPY PROJECT used to insert at 5 and
+        # push EXPORT to 6; since #931 it lives on CHANGE→FUNC+BANK instead.
         if popup_geometry(p.rt.uc) != (5, 0, 0xf6, 0x40):
             p.open_menu()
         p.press("left", settle=80)
@@ -218,6 +218,7 @@ def check_saveas_choose(image: pathlib.Path, card: pathlib.Path,
 
         for _ in range(3):
             p.press("no", settle=300)
+        p.run(400)  # dismiss residual SAVEAS chrome before re-entering PROJECT
 
         # EXPORT TO SET -> YES -> YES -> CHOOSE NEW PROJECT NAME
         menu_proj_row(p, export_row)
@@ -296,8 +297,8 @@ def main() -> int:
         sys.exit(f"verify_rnd_name: stage_card failed:\n{r.stdout[-800:]}{r.stderr[-800:]}")
 
     check_create(image, card, a.set_name, a.name)
-    check_saveas_choose(image, card, a.set_name, a.name,
-                        export_row=6 if "COPY PROJECT" in remix.modules else 5)
+    # EXPORT TO SET is stock index 5; COPY PROJECT no longer grows PROJECT (#931).
+    check_saveas_choose(image, card, a.set_name, a.name, export_row=5)
     return 0
 
 

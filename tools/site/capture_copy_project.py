@@ -38,12 +38,12 @@ def shot(p, name, caption):
     print(f"Captured copy-project/{name}: {caption}", flush=True)
 
 
-def press(p, name, n=1):
+def press(p, name, n=1, settle=80):
     for _ in range(n):
-        p.press(name, settle=80)
+        p.press(name, settle=settle)
 
 
-def menu_project_row(p, downs):
+def open_change_list(p):
     if popup_geometry(p.rt.uc) != (5, 0, 0xf6, 0x40):
         p.open_menu()
     press(p, "left")
@@ -51,7 +51,8 @@ def menu_project_row(p, downs):
     press(p, "down", 0)  # PROJECT
     press(p, "right")
     press(p, "up", 20)
-    press(p, "down", downs)
+    press(p, "down", 0)  # CHANGE
+    press(p, "yes", settle=400)
 
 
 def main():
@@ -95,20 +96,20 @@ def main():
         (OUT / "card.img").resolve(),
         "MANUAL", "SCREENS", True,
         log_path=OUT / "port.log",
+        extra=("--rtc", "1791979200"),
     ) as p:
         p.settle()
-        # Selectable PROJECT rows (separators skipped): CHANGE=0 … SAVE TO NEW=4,
-        # COPY PROJECT=5, EXPORT TO SET=6.
-        menu_project_row(p, 5)
-        shot(p, "menu", "PROJECT menu with COPY PROJECT under SAVE TO NEW.")
-        press(p, "yes")
-        shot(p, "list", "Source project list (LEVEL scrolls).")
-        press(p, "yes")
+        open_change_list(p)
+        press(p, "down", 1)  # SCREENS under CREATE EMPTY
+        shot(p, "list", "CHANGE project list (source selected).")
+        p.chord("func", "bank", settle=400)
+        shot(p, "menu", "FUNC+BANK: RENAME / DELETE / COPY.")
+        press(p, "down", 2)  # COPY
+        press(p, "yes", settle=600)
         shot(p, "name", "NAME THE NEW PROJECT (stock PROJECT+date; FUNC+CUE with RND NAME).")
-        press(p, "yes")
+        press(p, "yes", settle=400)
         shot(p, "confirm", "Confirm COPY source -> destination.")
-        press(p, "yes")  # start the copy (engine/UI job type 21)
-        # Template project is tiny; give the dir copy + OPEN IT? popup time.
+        press(p, "yes", settle=400)  # start the copy (engine/UI job type 21)
         p.run(20000)
         shot(p, "open", "After copy: PROJECT COPIED / OPEN IT?")
 

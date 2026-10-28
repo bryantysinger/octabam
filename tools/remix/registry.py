@@ -133,6 +133,7 @@ def validate_keys(mods: dict[str, object]) -> list[str]:
         named = [("conflicts", k) for k, _why in getattr(m, "conflicts", ())]
         named += [("requires", k) for k in getattr(m, "requires", ())]
         named += [("overrides", o.module) for o in getattr(m, "overrides", ())]
+        named += [("dsp_overrides", o.module) for o in getattr(m, "dsp_overrides", ())]
         for field, key in named:
             if key not in mods:
                 bad.append(f"{m.name}: {field} names {key!r}, which no module has")
@@ -255,6 +256,14 @@ def remix(name: str | None):
                 f"{', '.join(sorted(on_bus))} -- an unassigned track would run "
                 f"nothing, so nobody would flip the rotation or clear the "
                 f"accumulators. Use fallback=\"SEND\".")
+    # A STOCK EFFECT CANNOT BE THE FALLBACK. The build places no code for it,
+    # and id 0 is also FX1 NONE, so aliasing id 0 to stock code runs that
+    # effect on every empty FX1 slot (docs/contributing/FAILURE_MODES.md,
+    # "Sequencer stuck at play with a stock fallback").
+    if r.fallback in known and known[r.fallback].is_stock:
+        raise SystemExit(
+            f"remix {name!r}: fallback {r.fallback!r} is a stock effect -- use "
+            f"\"NONE\", \"SEND\" or a module the remix carries.")
     # AN FX1-ONLY MODULE ON THE FX1 CHOOSER TAKES NO FX2 ROW.
     # Claims.fx1_only is the module's promise that an FX2 instance runs dry,
     # so an FX2 row for it would be a row that does nothing; the build's
@@ -332,6 +341,11 @@ def bound(r) -> dict[str, object]:
         if m.dsp_if is not None and m.dsp is not None and k in sel:
             if not m.dsp_if(fixed.get(k, {})):
                 m = dataclasses.replace(m, dsp=None)
+        if m.select is not None and k in sel:
+            over = m.select(frozenset(sel))
+            if set(over) - {'linked', 'detours'}:
+                raise ValueError(f'{m.name}: select may only set linked and detours')
+            m = dataclasses.replace(m, **over)
         out[k] = m
     return assign_ids(r, out)
 

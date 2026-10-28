@@ -32,7 +32,10 @@ A.RemixerScreen.ensure_sync = lambda self, probs=None: None     # no image build
 
 async def run():
     fails = []
-    names = ["stock"] + [n for n in registry.remix_names() if not n.startswith("_")]
+    # The shipped remixes (remixes/<name>) and `mods`, which the key checks below load; a test remix
+    # draws through the same code (full set: 105 selections, 157 s on a CI runner, 26 Oct 2026).
+    names = ["stock"] + [n for n in registry.remix_names()
+                         if not n.startswith("_") and ((registry.REMIXES_DIR / n).is_dir() or n == "mods")]
     app = A.Remixer()
     async with app.run_test(size=(160, 50)) as pilot:
         await pilot.pause()

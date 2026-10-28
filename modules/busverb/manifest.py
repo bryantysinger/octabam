@@ -100,24 +100,24 @@ MODULE = Module(
         # host as a client and dilutes the real senders (-3.0 dB with one
         # sender under the 1/sqrt(N) law, XBUS.md).
         Param(b"DEL", 0, active=True, formatter=_PLAIN,
-              doc="this host's own send into the delay"),
+              doc="this track's own send into the delay"),
         Param(b"REV", 0, active=True, formatter=_PLAIN,
-              doc="this host's own send into the reverb (the REV bus)"),
+              doc="this track's own send into the reverb"),
         # SHMR-SHFT are drawn as a linked pair; TIME moved to page-2 slot 11.
         Param(b"SIZE", 100, active=True, formatter=_PLAIN,
-              doc="room size -- scales the eight tank lines (taps up to ~89 ms)"),
+              doc="room size: scales the eight tank lines"),
         # SHMR 0 is bit-identical to the engine without shimmer (the tank
         # modulation is pinned at MOD 30 / RATE 1x inside the engine).
         Param(b"SHMR", 0, active=True, formatter=_PLAIN,
-              doc="shimmer -- pitch-shifted regeneration in the tail; 0 = off"),
+              doc="shimmer: pitch-shifted regeneration in the tail; 0 is off"),
         # SHFT selects the shimmer interval; width is pinned wide.
         Param(b"SHFT", 3, 6, active=True, formatter=_STEP, link=True,
               labels=("-12", "+5", "+7", "+12", "+19", "+24"),
-              doc="shimmer interval, -12 +5 +7 +12 +19 +24; heard once SHMR is up"),
+              doc="shimmer interval in semitones: -12, +5, +7, +12, +19 or +24; heard once SHMR is up"),
         # WET: the reverb's level. The tank hears the REV sends plus the
         # delay's repeats x DLY; the host prints wet*WET under its own dry.
         Param(b"WET", 127, active=True, formatter=_PLAIN,
-              doc="the reverb's level on this host (127 = the wet at +6 dB)"),
+              doc="level of the reverb on this track (127 is the wet at +6 dB)"),
         # ---- page 2 ---------------------------------------------------------
         # MODE on slot 6: an even slot is the one the panel's page-2 knob
         # editor writes (docs/firmware/MAINMENU.md 9c-ii); the DSP reads $c's
@@ -126,26 +126,26 @@ MODULE = Module(
         # SEND 100, README.md).
         Param(b"MODE", 1, 3, active=True, formatter=_STEP,
               labels=("ROOM", "PLATE", "BIG"),
-              doc="voicing: ROOM / PLATE / BIG; BIG clips first"),
+              doc="voicing: ROOM, PLATE or BIG; BIG clips first"),
         # TONE is HP + LP on one knob: 0..64 closes the high cut (dark),
         # 64..127 opens the low cut inside the loop (thin); 64 = HP 0 / LP 127.
         # Slot 7 = $c's companion field (bits 8-15).
         Param(b"TONE", 64, 128, active=True, formatter=_PLAIN,
-              doc="tail tone: below 64 darkens (high cut), above 64 thins (low cut); 64 = flat"),
+              doc="tail tone: below 64 darkens (high cut), above 64 thins (low cut); 64 is flat"),
         # DIFF 80: the VintageVerb match point bracketed at ~80-90.
         Param(b"DIFF", 80, 128, active=True, formatter=_PLAIN,
-              doc="diffusion -- low = discrete repeats, high = smooth wash"),
+              doc="diffusion: low gives discrete repeats, high a smooth wash"),
         # GATE on slot 9 ($d's companion field): page 2 fills from the top left
         Param(b"GATE", 0, 128, active=True, formatter=_PLAIN,
-              doc="gated-reverb hold -- higher holds longer; the useful range is low (8-20)"),
+              doc="gated-reverb hold: higher holds longer; the useful range is low, about 8 to 20"),
         # DLY on slot 10 ($e's KNOB field): published to y:$982, read by the
         # delay, which writes wet*DLY into the chain.
         Param(b"DLY", 127, 128, active=True, formatter=_PLAIN,
-              doc="how much of the delay's repeats go into the reverb; 0 = the two in parallel"),
+              doc="how much of the delay's repeats feed the reverb; 0 runs the two in parallel"),
         # TIME on slot 11, $e's companion field (page-1 slot 1 until 26 Sep
         # 2026).
         Param(b"TIME", 64, 128, active=True, formatter=_PLAIN,
-              doc="decay time -- how long the tail rings"),
+              doc="decay time: how long the tail rings"),
     ),
     mode_slot=6,                      # MODE names itself (ROOM / PLATE / BIG)
     dsp=DspSection(

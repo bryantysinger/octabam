@@ -9,7 +9,7 @@ lagging the tracks (Bryan T, 25 Sep 2026), the amount unmeasured. This
 stages the tone project (tools/harness/usb_sig_project.py: track N's left
 channel at 200 + 100 N Hz, its right at +50) on a card, runs the remix under
 the port with the sequencer playing, and at the end dumps the producer's
-own ring (`aud_ring`, 1,024 88-byte slots, the last 23 ms, contiguous
+own ring (`aud_ring`, 1,024 80-byte frames, the last 23 ms, contiguous
 once unwrapped at `aud_produced`) -- no USB bench, whose polls pace nothing
 under --sequencer; `aud_force` is poked to 1 after the load so the producer
 runs, as it otherwise does only while a host asks for the stream. The lag of MAIN L (channel 17) behind each track's left
@@ -46,9 +46,9 @@ PY = ROOT / ".venv/bin/python3"
 OUT = ROOT / "out/usb_align"
 FS = 44100
 NCH = 20
-FRAME_B = 4 * NCH                   # the stream's frame bytes; the ring slot is
-SLOT_B = 88                         # 88 (tracks 64 + MAIN 8 + CUE 8 + MASTER 8,
-                                    # usbaudio.s SLOT_MAIN/CUE/MASTER)
+FRAME_B = 4 * NCH                   # the stream's frame bytes, which is the ring's
+SLOT_B = FRAME_B                    # frame stride since 27 Oct 2026 (it was an 88-byte
+                                    # slot): tracks 64, MAIN 8, CUE 8
 SEARCH = 4096                       # samples either side
 
 
@@ -156,8 +156,8 @@ def main():
     for i in range(n):
         base = ((start + i) & (n - 1)) * SLOT_B
         for c in range(NCH):
-            # channels 0-15: the tracks' pairs at slot + 4c; 16/17: MAIN L/R
-            # at slot + 64/+68 (SLOT_MAIN), 18/19: CUE at +72/+76 (SLOT_CUE)
+            # channels 0-15: the tracks' pairs at frame + 4c; 16/17: MAIN L/R
+            # at frame + 64/+68, 18/19: CUE at +72/+76 (wire order)
             w = int.from_bytes(raw[base + 4 * c:base + 4 * c + 4], "little")
             v = w >> 8
             ch[c][i] = v - (1 << 24) if v & 0x800000 else v

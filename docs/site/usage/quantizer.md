@@ -14,5 +14,6 @@ ROOT row under it (C .. B) and a GLIDE row (OFF, 1..127).
 - A sample track's keyboard plays the one complete root-to-root octave.
 - GLIDE is the slide time of the synth's and a sample track's legato
   (the LEG box on AMP SETUP).
-- Polyphonic chromatic keys on a synth track whose VOIC is 2..4.
-- The three bytes survive a power cycle.
+- Polyphonic chromatic keys on a synth track whose VOIC is 2 to 4 snap
+  to the scale too.
+- SCALE, ROOT and GLIDE survive a power cycle.

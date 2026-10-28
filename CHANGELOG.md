@@ -18,6 +18,32 @@ The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
 
 ## Unreleased
 
+- DISTORX v10 (`modules/distorx`): the RAT and SD-1 sample loops split into settled (MIX 127, the wet alone), calm (d = 0, the MIX blend) and fading, with a leaner stage; bit for bit v9 in the emulator, static cost 291 → 223 (RAT, settled) and 227 → 181 (SD-1). Not flashed: v9's 9.45 % of core 0 at its dearest is the only unit figure, and `dear` is now MIX 126.
+- **USB** (`modules/usb`): less ColdFire time per frame. USB IN writes the
+  DSP's block to on-chip SRAM (`0x80007880`) instead of SDRAM through the
+  uncached alias, one long load a sample; USB OUT's dTDs are in on-chip
+  SRAM (`0x800079c0`), and the producer writes each frame in the stream's
+  wire layout straight into the ring (through the alias), the packets sent
+  from there: no copy. On Bryan T's MKII (IN ABCD, OUT MAIN CUE, images
+  with a frame profiler, 27 Oct 2026): USB's share of the frame interrupt
+  about 34 -> 24 us a frame; two 20-minute round-trip soaks, idle and with
+  three recorder loops, every click at one latency and every IN/OUT
+  counter +0 (on images that also carried the profiler's timer reads,
+  which this change does not).
+- **USB**: TRACKS with MASTER is refused (build, SETTINGS, cfgsel), at
+  Sam's request: the 22-channel combination is gone, and every combination
+  polls at 250 us. With TRACKS on, MASTER's channels had never carried
+  track 8 (the old producer stored the pair into the next frame's track 8
+  field).
+- SIDECHAIN_COMPRESSOR (`modules/sidechain-compressor`, `b0d49bf`): on the author's MKI as OCTABAM33 (`remixes/test/sidechain-compressor`, mainos `6cfe4121…`, 26 Oct 2026): KBAS and KWID across their range with MON on and off, MON's switch and its OFF on a project saved with an earlier version, KEY's pressed turn, the MON and KEY fades, all good. The module's proof is now hardware.
+- SIDECHAIN_COMPRESSOR (`modules/sidechain-compressor`, submodule `554ca1c` → `b0d49bf`): KBAS and KWID work in this form. The key-filter table's base came from `lua (r1+$10),r1` after the gain store had already moved r1, so the filters read their coefficients from unrelated P memory: silence, level jumps and squeals on the author's MKI (OCTABAM31, 24 Oct 2026). The table is now the module's `ptable2`, loaded by its own literal as in the standalone image; the image changes in two DSP words per core. MON shows OFF on the left and ON on the right (it stores 2 / 3; `sc_norm` turns any other value OFF, so a COMPRESSOR saved with an earlier version comes up with MON OFF); KEY gets its own step handler (`word_12a`), so a pressed turn moves one position per detent instead of stock's 7; switching MON, or changing KEY while MON is on, fades over 256 samples (was 64). `sc_cf` grows to 698 B. On the author's MKI: the table fix as OCTABAM32 (25 Oct 2026); MON, KEY and the fades in the author's standalone image `140C_SCKD3` (25 Oct 2026), not yet in this form.
+- **EVENTS** replaces SEQUENCER EVENTS with separate transport,
+  MIDI notification and editor contracts. EUCLID and PLOCKS P2 register as
+  consumers. Unused events install no hooks or code; active events use generated
+  direct calls. PLOCKS mirrors native trig-undo snapshots so page-two locks
+  restore with page one. [Tests on radiohagen's MKII](remixes/test/events-clients/README.md#hardware-results)
+  cover controlled trig undo, CONTINUE and sustained audio.
+
 - OCTA303 v7.1 (`modules/octa303`, MaMarko; code by Claude): on an OCTA-303 track, held trig + UP / DOWN moves each held step's TUNE an octave, as the TB-303's UP and DOWN (stock opens the sample-lock list, which a machine without samples has no use for; every other track is unchanged), with a toast naming the note (`C4 +OCT`); a new trigless trig or trigless lock gets the TUNE lock of the note it slides from at once (the previous step with a trig or a slide, else the Part's TUNE), so a slide ties into that note until another is chosen; LFO SETUP names the PLAYBACK destinations TUNE CUT RES ENV DEC ACC (was FLEX's PTCH STRT LEN RATE RTRG RTIM: the modulation was right, the names were not). Five new detours, read from the user's 1.40C: `0x400434d8` (the held-trig layer's UP / DOWN), `0x40060b58` / `0x40060b3e` (the trig keys' press and the release handler's tail), `0x4003bff0` (the LFO PMTR formatter, the site BLACKPYRAMIDS_303 also uses). `test_octa303` 108/108; `tools/octa303/port_o3keys.py` drives the panel under the port. On the owner's MKI as image O3V71 (BUILD A0, `remixes/test/octa303`, 23 Oct 2026): every step of the checklist.
 - MORPH (`modules/morph`, MaMarko; code by Claude): a track's scene morph played by itself, A → B → A once every STEPS × x sequencer steps (16 × 8 by default; STEPS 1..64 or the track's length, x 1..16), counted on the sequencer's step word, starting on A; the other tracks keep the crossfader. [TRACK] + [UP] opens a window (STEPS, x, MODE SMOOTH / TRIG HOLD on A, B, C) and arms the held tracks, which start on the step after the track keys are released; [TRACK] + [DOWN] finishes the cycle on A and parks the track there until the crossfader reaches A. The settings and which tracks morph are saved in `morph.work` beside the bank files (`.strd` at SAVE PROJECT, back at RELOAD); MORPH is STORE's client 4, a bad file is listed and never written over. Inspired by the Korg Electribe's Motion Sequence. Conflicts with REC_TRIG_MUTE (both rewrite the [TRACK]-layer table). `remixes/test/morph`; gates `test_morph` (source simulator) and `port_morph` (port). On the owner's MKI as image MRPPR1 (BUILD 98, `remixes/test/morph`, 23 Oct 2026): the window, the start on the release, x to 16 and 41.625, the settings and the morphing tracks kept through SAVE PROJECT and a power cycle, RELOAD back to the saved copy, another project on the defaults; before, inside aCiDtRacK (ACIDV74MP, 22 Oct): several tracks at once, SMOOTH and TRIG HOLD.
 - `octabam-core`: USB IN is selectable (default OFF), no longer pinned. The 29-word inject goes above payload A's code through `DspSection.tail`. The platform reserve is unchanged at 1,707 pages (12,895 left for samples); the tail's 167,318 B pre-boot region fits inside it. Two build fixes it needed: the pre-boot table's entries now precede the runtime's blob in the loader (a 79,748 B runtime put `pretable` out of the 16-bit PC-relative reach of `lea`), and the first platform link assembles the loader with the pre-boot code (REMIX SWITCH's `osw_resume` and `osw_chain` sit after it, and moved between the two links). Under the port only; not on a unit in this remix.
@@ -130,6 +156,19 @@ Docs
 - `docs/contributing/TESTING.md`: every gate, how to write one, what it costs (29 Sep).
 - ColdFire load on a unit: Bryan T's CF METER takes (4 Oct; `docs/firmware/ARCHITECTURE.md` section 6): ~16.5 µs per playing voice at CPI ~4.4 against the port, no first-voice premium (the morning's +37 µs retracted the same evening), the USB stack ~14 µs idle / ~25 µs playing, no crossbar contention; OUT TRACKS MAIN CUE costs 27–50 µs of frame interrupt over OUT MAIN CUE, most of it with no host connected; TSTR and the stock DELAY not measurable; interrupt levels from the ICR writes in `KERNEL.md`.
 - Removed: `PLAN.md`, `docs/TIMESTRETCH_PIPELINE.md` (27 Sep).
+- Demand loader (`modules/dlpump`, `modules/dlcopy`, `modules/dlprobe`; `docs/proposals/DEMAND_LOAD.md`): `octabam` copies SPECTRUM, CHARACTER, MODULATION and TRANSIENT into the DSP's shared window while a track uses them and withdraws them 10 s after the last use. All 14 stock effects stay; the stock reverbs run behind a guard that keeps them off loaded code. A block is held by whoever has it first: the FX1 and FX2 choosers refuse an effect whose block is under PLATE, DARK or SPRING REV, and a reverb on the block of a loaded effect a track uses, each with a toast (`NEEDS Tn FX2 FREE`, `Tn HOLDS <effect>`); other routes toast at the next page key. `octabam` lists the stations on FX1 (it offered SPECTRUM and CHARACTER on FX2 only, where they render dry). GATE VERB is not in `octabam`. New builder fields `Remix.window_demand`, `window_guard`, `window_loader`; the build refuses an uploaded window record above `0x37f00`. DLPROBE and `tools/hw/dl_state.py` (USB `0xc0/0x57` block 3) read the counters on a unit. Gates `verify_dlstub`, `verify_dlwrap`, `verify_dlload`, `verify_dlprobe`.
+
+## Images DLPROBEJ1..K1 (26 Oct 2026, `remixes/test/dl-probe` and `dl-probe-any`)
+
+Sam's MKII, one image after another with the project `MXDLPR01` / `MXDLPR02` (DLPROBE on T1's FX1; MODULATION, SPECTRUM, CHARACTER on FX1 or FX2 of other tracks, TRANSIENT on T6's FX2), read over USB (`modules/dlprobe/decode.py`, `tools/hw/dl_state.py`, `tools/hw/load_meter.py`):
+
+- `DLPROBEJ1`: all four effects unbound, received 0.
+- `DLPROBEJ3`: the pump ran (the ping word alternated 0 and 1; 4 loads, 180 chunks, 8 doorbells sent); the doorbell word read `0x40a55a` and stayed non-zero (~77,000 frames): the byte above a host word's 16 bits is stale on the unit, and the copier compared the full word. The unit froze once on this image (13:27, cause not found).
+- `DLPROBEJ5`: with the doorbell and header masked, all four effects BOUND, every block's sum matched, published equal to received. SPECTRUM and CHARACTER on FX2 cost a dry slot's 116..119 counts (`fx1_only`).
+- `DLPROBEJ7`: the stations on FX1. CHARACTER (core A) 5,147 counts a frame, SPECTRUM (core B) 4,062, TRANSIENT (core A, FX2) 3,616, MODULATION (core B) 323, a dry slot 89..147: the code runs, on core A as written by core B.
+- `DLPANYJ9` (the pump sends on every frame): blocks refused for their sum (MODULATION received 4, refused 3, published 1; SPECTRUM 2, 2, 0; TRANSIENT 2, 1, 1; CHARACTER received nothing). The ping-0 rule holds on the unit.
+- `DLPROBEK0`: with a 2 s grace, a project load withdrew and reloaded all four effects: the ids sit at their defaults for 3.8 s.
+- `DLPROBEK1`: the 10 s grace; 4 loads, 0 withdrawals, received 2, refused 0, published 2 per effect, all four running.
 
 ## AUTOSAVE1 and AUTOSAVE2 — 15-16 Oct 2026 (`rec-buffer-autosave`, now `buffer-saver`, Chupitnik's builds)
 

@@ -149,7 +149,7 @@ def remix_index() -> str:
              "- What to install first (the Xcode Command Line Tools, Homebrew, "
              "Python 3.10+, `cmake`, `uv`) and every step to a flashed unit: "
              "[BUILDING.md](../docs/guide/BUILDING.md).",
-             "- Composing your own: [REMIXER.md](../docs/guide/REMIXER.md).",
+             "- Composing your own: [COMPOSING.md](../docs/guide/COMPOSING.md).",
              "- The remixes that carry one module for its gates: "
              "[test/](test/README.md).", ""]
     for fam, title in FAMILIES:

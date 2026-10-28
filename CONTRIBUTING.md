@@ -67,7 +67,7 @@ README.md       what it is, what was MEASURED, what is INFERRED, what is open
 plus a remix that carries it (`remixes/<name>/remix.py`, or
 `remixes/test/<name>/remix.py` for a remix of that one module, and a
 `README.md` beside it: what is in it, where it has run;
-`docs/guide/REMIXER.md`) and, for anything with behaviour worth pinning, a gate
+`docs/guide/COMPOSING.md`) and, for anything with behaviour worth pinning, a gate
 (`tools/verify/verify_<name>.py`, named in the manifest's `gates`, run by
 `make check` for every remix that carries the module). Nothing else
 registers it: the registry discovers every `modules/*/manifest.py`, and
@@ -172,9 +172,10 @@ what `make check` runs, what each gate proves, what none of them can see.
 The contract:
 
 **`make check REMIX=<name>` is the floor**, for every remix the change
-reaches. There is no default remix: every target that builds or checks an
+reaches. No make target has a default remix: every target that builds or checks an
 image takes `REMIX=<name>` and refuses without it (`make modules` lists
-them). It builds, prices cycles, runs the gates every remix gets (the
+them); `make reach` and CI check `octabam`, the golden master, for every module
+it carries. It builds, prices cycles, runs the gates every remix gets (the
 ledger selftest, the stock-id audit, the docs, the knob census, the
 dirty-state render, the menu, the boot under the ColdFire port, a project
 under the port, USB) and then every gate the selected modules declare in

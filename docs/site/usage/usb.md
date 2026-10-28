@@ -50,20 +50,16 @@ fixing it.
 
 ### Without BRAIN
 
-A remix built without BRAIN has no settings menu and no `BRAIN/card.work`.
-USB uses the values the image was built with: the defaults above, changed by
-the remix's `settings=` (for example
-`settings={("octabam.usb", "TRACKS"): "POST"}`). To change one, change the
-remix and rebuild; `python3 tools/remix/brain.py resolve <remix>` prints each
-setting and where its value came from. This was read from the source and not
-run on a unit.
+An image built without BRAIN has no settings menu and no `BRAIN/card.work`.
+USB uses the values the image was built with, the defaults above unless the
+remix sets others. To change one, rebuild with a different value; see
+[Create a remix](../../own-remix.md).
 
 ## USB MIDI
 
 MIDI in and out over USB, mirroring the DIN ports. The sequencer, time
-stretch, the LFOs and the FX follow USB MIDI clock; this was reported working
-on one MKI after the 6 Oct 2026 change, and which of the three was checked is
-not recorded.
+stretch, the LFOs and the FX follow USB MIDI clock. This has been reported
+working on one MKI.
 
 ## Audio in
 

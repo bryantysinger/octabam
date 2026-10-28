@@ -6,7 +6,7 @@ turn it.
 ## Access
 
 Press FX1 on a track; CHARACTER is in the chooser in place of LO-FI. In
-Octabam Inserts it is also on FX2; in Octabam Bus it is FX1 only.
+Octabam it is also on FX2; in Octabam Bus it is FX1 only.
 
 ## Operation
 
@@ -19,7 +19,7 @@ Octabam Inserts it is also on FX2; in Octabam Bus it is FX1 only.
   picks between them.
 - KEY on page 2 picks the compressor's key. SELF is the track's own input.
   T1 keys on the bus delay host (track 1's input peak, scaled by KLVL) —
-  the bus's delay level ducks the track. In Octabam Inserts (no bus) T1
+  the bus's delay level ducks the track. In Octabam (no bus) T1
   reads as SELF.
 - TONE tilts the spectrum: centre (64) is flat, + is bright, − is dark.
 - WDTH: 64 untouched, 0 mono, 127 double sides. MIX 127 is full wet.

@@ -52,5 +52,5 @@ settings.
 - On the first load of a project without a Kits file, Octakit's
   `kits3a.work` and `kits3b.work` are imported when present; those files
   are left on the card.
-- With MIDI SCENES in the remix, a Kit also carries the Part's scene
-  lock table.
+- With MIDI SCENES in the image, a Kit also carries the Part's MIDI scene
+  locks.

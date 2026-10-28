@@ -10,7 +10,7 @@ it.
 
 An effect on a track: select the track, press FX2, and pick LOFI2 from the
 chooser. Page 1: FREQ, MIX, FDBK/GAIN, SRR, BRR, LPF. Page 2: RANGE, MODE,
-AMPH. In Octabam Inserts only.
+AMPH. It is not in an official remix; build the test remix `lofi2`.
 
 ## Operation
 

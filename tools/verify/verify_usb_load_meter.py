@@ -8,7 +8,7 @@ Boots out/mainos_bus.bin with both DSP cores and the frame interrupt
 the three blocks twice, a second of port time apart. Checks:
 
   blocks     wValue 0, 1, 2 read whole through wIndex offsets (20, 48 and 256 bytes); no reply is a
-             multiple of 64 bytes; an offset at the end and wValue 3 STALL
+             multiple of 64 bytes; an offset at the end and wValue 4 STALL; wValue 3 is DLPUMP's counters when the remix has it, else STALLs
   match      lm_stats read over USB equals the same words peeked from DRAM at
              the symbol's address (runtime.elf), so the request points at the
              meter's cells and not at a neighbour
@@ -148,10 +148,19 @@ def main():
         except Exception as e:  # noqa: BLE001
             check("an offset at the block's end STALLs", True, type(e).__name__)
         try:
-            serve(lambda: b.ctrl_in(0xc0, 0x57, 3, 0, 4))
-            check("wValue 3 STALLs", False, "a reply came back")
+            serve(lambda: b.ctrl_in(0xc0, 0x57, 4, 0, 4))
+            check("wValue 4 STALLs", False, "a reply came back")
         except Exception as e:  # noqa: BLE001
-            check("wValue 3 STALLs", True, type(e).__name__)
+            check("wValue 4 STALLs", True, type(e).__name__)
+        if "DLPUMP" in mods:               # block 3 is DLPUMP's counters: 16 longs, sent a byte short of 64
+            check("wValue 3 returns DLPUMP's counters (63 bytes for a 64-byte request)",
+                  len(serve(lambda: b.ctrl_in(0xc0, 0x57, 3, 0, 64))) == 63)
+        else:
+            try:
+                serve(lambda: b.ctrl_in(0xc0, 0x57, 3, 0, 4))
+                check("wValue 3 STALLs (no DLPUMP)", False, "a reply came back")
+            except Exception as e:  # noqa: BLE001
+                check("wValue 3 STALLs (no DLPUMP)", True, type(e).__name__)
         cmd("run 1000")
         second = blocks(b)
         a, c = load_meter.decode(*first), load_meter.decode(*second)

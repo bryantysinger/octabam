@@ -1,8 +1,9 @@
 /* COPY PROJECT -- duplicate a project folder on the card without loading it.
  *
- * PROJECT > COPY PROJECT: pick a project in the mounted set, name the copy,
- * confirm. The live project stays loaded; the job copies the source folder
- * byte-for-byte (stock files and module sidecars) into a new folder.
+ * CHANGE project list > FUNC+BANK > COPY: the highlighted folder is the
+ * source; name the copy, confirm. The live project stays loaded; the job
+ * copies the source folder byte-for-byte (stock files and module sidecars)
+ * into a new folder. (Was PROJECT > COPY PROJECT; re-homed for packing #931.)
  */
 
 typedef unsigned char u8;
@@ -17,6 +18,10 @@ typedef unsigned int u32;
 #define Q_SEND   ((int (*)(void *, void *))0x40000c3c)
 /* Stock CHANGE/boot path: (name*) posts engine job 4 (LOAD PROJECT). */
 #define POST_LOAD ((void (*)(const char *))0x40023c7c)
+/* LISTPOP close; toast close; CHOOSE PROJECT window teardown (stock after load). */
+#define LIST_CLOSE   ((void (*)(void))0x4006d754)
+#define TOAST_CLOSE  ((void (*)(void))0x40056bec)
+#define CHOOSE_CLOSE ((void (*)(void))0x40063ee4)
 /* Stock CREATE / SAVE TO NEW name fill: strcpy "PROJECT ", date YYMMDD, strcat. */
 #define STRCPY   ((void (*)(char *, const char *))0x40013f40)
 #define STRCAT   ((void (*)(char *, const char *))0x40013f94)
@@ -28,6 +33,8 @@ typedef unsigned int u32;
 #define SET_PATH ((const char *)0x100f8480)
 /* CREATE EMPTY's name-editor buffer (NAME THE NEW PROJECT). Not SAVE AS's. */
 #define ED_BUF   ((char *)0x460e436a)
+/* CHANGE list selection name (RENAME/DELETE handlers pea this; port: "FB"). */
+#define SEL_NAME ((const char *)0x100f8378)
 #define SCAN_STATE     ((u8 *)0x460e76ac)
 #define SCAN_STATE_LEN 0x10154u
 #define SCAN_MAX       1024
@@ -249,6 +256,18 @@ static void stock_default_name(char *dst)
 		STRCAT(dst, date);
 }
 
+/* FUNC+BANK LISTPOP callback: source = CHANGE-list selection (SEL_NAME). */
+void cp_from_change(void)
+{
+	if (!SEL_NAME[0])
+		return;
+	cpy(src_name, SEL_NAME, NLEN + 1);
+	/* Same buffer and NAMEED args as SAVE TO NEW (4th arg 0, not 1). */
+	stock_default_name(ED_BUF);
+	NAMEED(0x20, STR_NAMEED, ED_BUF, 0, cp_named);
+}
+
+/* Kept for the oversize-dir failure gate: build a pick list, then YES. */
 void cp_menu(u32 unused)
 {
 	int n;
@@ -275,7 +294,6 @@ static void cp_picked(u32 unused)
 	if (name_sel >= name_n)
 		return;
 	cpy(src_name, names[name_sel], NLEN + 1);
-	/* Same buffer and NAMEED args as SAVE TO NEW (4th arg 0, not 1). */
 	stock_default_name(ED_BUF);
 	NAMEED(0x20, STR_NAMEED, ED_BUF, 0, cp_named);
 }
@@ -376,7 +394,11 @@ static void cp_open_answer(u32 answer)
 	/* POPUP flags 3: 0 = YES, non-zero = NO (remix-switch / BRAIN). */
 	if (answer)
 		return;
+	LIST_CLOSE();
+	TOAST_CLOSE();
 	POST_LOAD(dst_name);
+	/* Stock CHANGE does this after POST_LOAD; without it CHOOSE PROJECT stays up. */
+	CHOOSE_CLOSE();
 }
 
 static void cp_job(void)

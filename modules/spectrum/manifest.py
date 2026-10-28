@@ -82,26 +82,26 @@ MODULE = Module(
     params=(
         # ---- page 1: the performance surface, scene/CC-reachable -----------
         Param(b"FREQ", 127, active=True, formatter=_PLAIN,
-              doc="the cutoff, 60 Hz..15 kHz exponential; in VOWL the vowel A-E-I-O-U; ENV and LFO move it"),
+              doc="cutoff, 60 Hz to 15 kHz exponential; the vowel A-E-I-O-U in VOWL; ENV and LFO move it"),
         Param(b"RES", 0, active=True, formatter=_PLAIN, link=True,
-              doc="the flavour: resonance in SEM/LADR, sharpness in VOWL, the dielectric colour in ISO"),
+              doc="resonance in LADR and SEM, COLR in ISO, sharpness in VOWL"),
         Param(b"ENV", 64, 128, active=True, formatter=_BIPOL,
-              doc="the envelope follower onto the cutoff, drawn -64..+63; 0 = none"),
+              doc="envelope follower onto the cutoff, drawn -64 to +63; 0 is none"),
         Param(b"LDP", 0, active=True, formatter=_PLAIN,
-              doc="LFO depth onto the cutoff, 0 = none (a negative depth would only flip the phase)"),
+              doc="LFO depth onto the cutoff; 0 is none"),
         Param(b"LSP", 64, 128, active=True, formatter=_PLAIN, link=True,
-              doc="LFO speed ~0.08..9 Hz, and the envelope release (0 slow .. 127 fast)"),
+              doc="LFO speed, about 0.08 to 9 Hz, and the envelope's release (0 slow, 127 fast)"),
         Param(b"WDTH", 64, 128, active=True, formatter=_BIPOL,
-              doc="stereo width of the output, drawn -64..+63: 0 untouched, -64 mono, +63 double sides"),
+              doc="stereo width, drawn -64 to +63: 0 untouched, -64 mono, +63 doubles the sides"),
         # ---- page 2: knob / select / knob / select / knob / select ----------
         # MODE top left (slot 6, the knob field), as on every effect (16 Sep 2026)
         Param(b"MODE", 0, 4, active=True, formatter=_STEP,
               labels=("LADR", "SEM", "ISO", "VOWL"),
-              doc="LADR the Moog (first); SEM the SVF (SHPE: LP -> BP -> HP); ISO (Capacitor2); VOWL"),
+              doc="filter: LADR (Moog ladder), SEM (state-variable), ISO (isolator), VOWL (formants)"),
         # SHPE on slot 7 ($c's companion field): the SEM's mode pot; `---`
         # in every other mode (the views below).
         Param(b"SHPE", 0, 128, active=True, formatter=_PLAIN,
-              doc="SEM only: 0 lowpass, 64 bandpass, 127 highpass, crossfaded; --- in the other modes"),
+              doc="SEM only: 0 low-pass, 64 band-pass, 127 high-pass, crossfaded; blank in the other modes"),
         _BLANK, _BLANK, _BLANK, _BLANK,
     ),
     # FREQ is always where, RES always the flavour; a mode labels RES for

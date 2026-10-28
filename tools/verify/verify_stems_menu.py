@@ -27,8 +27,11 @@ as an MKII (MAIN MENU = PROJ) and as an MKI (FUNC+MIXER). Each boot:
 A PNG of the screen at each step goes to out/stems_runs/menu-<model>-*.png.
 Pass or fail comes from memory, never from a picture.
 
-What it cannot see: the unit's key timing, its card speed while STEMS
-is open, and the MKII's hardware (flash A)."""
+What it cannot see: what the window draws for its status rows (their
+labels are read from memory, so a window drawn from stale labels passes:
+on main since 15 Oct 2026 it opens on REC and READY whatever the take is
+doing, until a key), the unit's key timing, its card speed while STEMS is
+open, and the MKII's hardware (flash A)."""
 import json
 import os
 import pathlib

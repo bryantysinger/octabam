@@ -23,6 +23,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import too
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "site"))  # gen_pages lives outside the toolpath groups
 from remix import index, registry
 import doclinks
+import gen_manual
 import gen_pages
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -49,6 +50,15 @@ def main():
         if m is not None and gen_pages._label(m) != label:
             fails.append(f"docs/site/mkdocs.yml: nav label '{label}' for {name} differs from its page title "
                          f"'{gen_pages._label(m)}'")
+    mods = registry.modules()
+    want = {f"reference/manual/{n}/{p}.md" for n in registry.remix_names()
+            if not registry.is_test(n) and registry.remix_dir(n) is not None
+            for p in gen_manual.pages_of(registry.remix(n), mods)}
+    have = set(re.findall(r"reference/manual/[\w-]+/[\w-]+\.md", nav))
+    for path in sorted(want - have):
+        fails.append(f"docs/site/mkdocs.yml: no nav entry for the manual page {path}")
+    for path in sorted(have - want):
+        fails.append(f"docs/site/mkdocs.yml: nav entry {path} is not a page of any manual")
     fails += doclinks.check()
     for f in fails:
         print("  [FAIL]", f)

@@ -170,12 +170,16 @@ call), 14 Oct 2026, every gate of `tools/verify/verify_distorx.py`:
 
 ## Where it goes
 
-1,586 words is one code stream, so it needs ONE harvested run that long.
+Since v10 (below) DISTORX is 1,629 words: 1,114 of code and the 515-word P
+table, still one code stream, so it needs ONE harvested run that long.
+(The 1,586 of v7 and the 1,548 of v9 are in "Measured" and "v9".)
 CHORUS + PLATE REV + SPRING REV is 1,743 words up to the 35 SPRING REV words
 DARK REV still calls (P:0x01586), which cut the run there: DISTORX fits with
-157 to spare. A remix that keeps DARK REV and also places another module
-of more than 157 words gives up a second, separate run for it. aCiDtRacK
-gives up PHASER: its 207 words join EQUALIZER's 282 (dB666 is on
+114 to spare (v9: 195). A remix that keeps DARK REV and also places another
+module of more than 114 words gives up a second, separate run for it.
+`make check REMIX=distorx` is what places it; v10's size was counted from
+the assembled file, not placed (no stock image where it was written).
+aCiDtRacK gives up PHASER: its 207 words join EQUALIZER's 282 (dB666 is on
 EQUALIZER's id) into 489, where dB666 (297 + 66 words) goes.
 
 ## On the unit
@@ -309,7 +313,68 @@ T1 and T2 kicks with DISTORX, T3 hats and T4 claps dry, T5 COMB FILTER + DISTORX
 remix, so no recording). MODE changed through SD-1, RAT and TURB all along; taken off and chosen
 again, it starts at OFF.
 
+## v10 (28 Oct 2026): settled and calm loops, a leaner stage
+
+**Not yet on a unit.** Everything below is a static word count and a bit-exact
+render in the emulator; the one hardware figure is v9's (`docs/contributing/COSTS.md`:
+9.45 % of core 0 at the dearest, over the 9.07 % that core 0 allows).
+
+The cost was the MODE fade, run on every sample. `dtx_out` computes
+MIX x (1 + d), steps d and clamps it, then blends; at d = 0 (the fade is over)
+it hands back MIX exactly, and with MIX 127 the settled block's `tne` throws the
+whole blend away for the wet. v10 stops computing what a settled block does not
+use:
+
+- **Per block, a calm flag** (`$2f`): d = 0 and the step up, so d stays 0
+  through the block (the test the settled flag `$30` already made, without MIX).
+  Settled (`$30`) is calm with MIX 127.
+- **Three loops per pedal**, one straight-line `stage` routine each (`sod_stage`,
+  `dtx_rstage`: the input to the wet in y0, the clipper's callee inlined):
+  *settled* writes the wet to both channels; *calm* is `dtx_out`'s blend with
+  MIX x (1 + d) = MIX, d untouched; *fading* is v9's `dtx_out`, unchanged.
+  The output is bit for bit v9's in all three.
+- **The RAT stage, bit for bit** (the model is untouched): the diode law's table
+  offset in r4 once a block and the segment index without the 2 (m - 1/2)
+  subtraction (`lsl`/`lsr` for the fraction, read from `a1` because A2 is stale
+  there); three of the stage's constants in n1, n2, n4 (a word a use instead of
+  two); the sign select as `tpl`; vp into y0; the HP stages' constant in y0 so
+  `mac x1,y0` skips a copy (the signed form: `x1,y1` assembles as `macsu`,
+  TRAPS "The assembler mis-encodes"); v- and v kept in b; vo1 in x1 (`y1,x1`,
+  signed); the C7 update after the vX sum and the vX terms ordered so x0 already
+  holds vh8.
+
+`make cycles REMIX=distorx` reads 267 for the module now (the RAT's fading loop, the worst of the six; v9: 289).
+Static cycles a sample (this note's counter, the same method: the loop body plus each callee
+plus 4 a call; v9 read 289 and 225 there, this counter 291 and 227, and the
+deltas are what is quoted):
+
+| | v9 | settled (MIX 127) | calm (MIX below 127) | fading |
+|---|---|---|---|---|
+| SD-1 | 227 | 181 | 198 | 226 |
+| RAT / TURBO | 291 | 223 | 240 | 268 |
+
+v9's 9.45 % was 289 static cycles at 1.48 measured over static. That ratio, if
+it holds, puts the RAT at about 7.2 % settled and 7.8 % calm, under the 9.07 %.
+It is an inference from one ratio; the unit decides. **`dear` now sets MIX 126**,
+the calm blend, which is the dearest state that lasts: the settled loop is
+cheaper than the calm one, and the fade lasts 2.9 ms a MODE change. An LFO on
+MODE that keeps the fade running prices at the fading column.
+
+Bit-exactness and the circuit gates: `verify_distorx`'s render gates run
+against the same model unchanged (every case 0 LSB); they were run here
+through a standalone driver on the emulator library, with garbage in the
+r7 block and every scratch register before each call, because the 1.40C was not
+at hand. CI's reach job runs the real ones. New instruction forms against
+v9: `lsl #n,a` (the load meter runs `lsr #n,a`), `tpl`, `mac -y0,x0,a`,
+`mac x1,y0,a`, `mac y1,x1,a`, `mpy y1,x1,a`, `move a,b`; `verify_distorx` lists
+the ones with no stock site. n1, n2 and n4 are clobbered across `proc`, as BBD's
+n4 and the reverb server's n1 and n4 already are.
+
 ## Open
+
+- v10 has not been flashed. To count: the image, then `COST-B`'s read with `dear` (MIX 126), the settled
+  state (MIX 127) and a MODE change under load; T1 for a few minutes, since the fix for v7's T1 junk
+  was ending earlier in the block and v10 ends earlier still.
 
 - The `-pword` (dirty LFO word) renders of `verify_distorx`: skipped on the owner's tree, whose
   `dsp_host` lacks the option. `make check REMIX=acidtrack` otherwise passes there (20 Oct 2026).

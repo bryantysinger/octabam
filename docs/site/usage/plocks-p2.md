@@ -10,10 +10,11 @@ each held step gets that slot's page-2 lock. Hold FUNC while turning to
 remove it. The trig plays the lock, and the next trig puts the Part's
 value back — the same as page 1.
 
-After the same short hold delay as page 1, the page-two lock value stays visible with the value
-area highlighted, as on page 1. The parameter name stays unchanged.
-Turning a knob while holding a trig updates the displayed lock immediately.
-Releasing the trig shows the Part value again and keeps the step's lock. A later bare trig tap still clears the step and its locks.
+After the same short hold delay as page 1, the lock's value stays on the
+screen with the value area highlighted; the parameter name stays
+unchanged. Turning a knob while holding a trig updates the displayed lock
+at once. Releasing the trig shows the Part value again and keeps the
+step's lock. A later bare trig tap still clears the step and its locks.
 
 ![GVOL locked to 50 while trig 1 is held](../../img/plocks-p2/lock.png)
 
@@ -30,3 +31,6 @@ them. SAVE PROJECT writes them and a power cycle loads them back.
 - The power-off copy of the current bank holds 4,768 locks. A bank with
   more has no power-cut copy: a power cut loses its unsaved page-2 locks
   back to the last save.
+
+Page 2 locks add no controls of their own: they use the same trig-hold
+and FUNC gestures as page 1.

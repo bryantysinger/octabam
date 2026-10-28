@@ -89,6 +89,9 @@ def run(memfile, init, proc, tag, vals):
 
 
 for k, key in enumerate(R.window_demand):
+    if registry.by_key(key).dsp.hooks:
+        print(f"{key} (effect {k}): reached by hooks, not by an id stub -- verify_dlhook's")
+        continue
     print(f"{key} (effect {k}):")
     mod = registry.modules()[key]
     rec = RECS[key]
@@ -133,6 +136,10 @@ for k, key in enumerate(R.window_demand):
         write_records(TMP / f"{name}.mem", gone + ([(1, STAGE, words)] if stage else []) + list(extra))
         return TMP / f"{name}.mem"
 
+    stale = [w | 0x400000 for w in staged]                              # the byte above a host word's 16 bits is stale on the unit (0x40)
+    write_records(TMP / f"stale{k}.mem", gone + [(1, STAGE, stale)])
+    check("every staged word with a stale high byte (0x40): the copier still binds it and the stub runs the real code",
+          run(TMP / f"stale{k}.mem", DLC, proc_s, f"stale{k}", vals) == direct)
     check("not staged, code absent: the stub stays dry", run(variant(f"cold{k}", stage=False), init_s, proc_s, f"cold{k}", vals) == dry)
     check("staged without the doorbell: still dry", run(variant(f"nobell{k}", doorbell=False), init_s, proc_s, f"nobell{k}", vals) == dry)
     check("staged without the doorbell: the copier leaves the stub dry",

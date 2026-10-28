@@ -42,9 +42,11 @@ forked (`ot_emu --scenario`):
 SKIPs without a project, without the port, or for a remix without PLOCKS
 P2. The display walk decodes the panel UART and compares held-lock dials
 with actual stock page-one held locks and unheld references on FX1 and FX2.
+It also compares trig paste/clear undo, track paste undo and pattern editing
+with stock, including native undo availability rather than assuming it.
 It cannot measure physical panel timing or a slide trig (page 2 does not slide).
 """
-import argparse, os, pathlib, shutil, subprocess, sys
+import argparse, os, pathlib, shutil, subprocess, sys, threading
 from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
@@ -131,6 +133,141 @@ def hold_display_timing(p, box, target):
     return first_change, first_lock
 
 
+def trig_paste_undo(p, db, records, width, label, out, check):
+    """Native panel sequence, shared by the stock page-one oracle and page two.
+
+    Grid recording and the parameter page are already open; trig 1 has a
+    lock, trigs 5/6 start empty. Keep destinations held across both STOPs:
+    releasing between them starts another paste instead of undoing it.
+    """
+    def record(step):
+        return p.peek(records + step * width, width)
+
+    source = record(0)
+    check(f"{label}: source lock exists", source != b"\xff" * width)
+
+    def paste_undo(steps, tag, repeats=1):
+        before = p.peek(records, 64 * width)
+        p.chord("trig1", "rec")
+        for step in steps:
+            p.key(f"trig{step + 1}", True)
+        p.run(350)
+        for repeat in range(repeats):
+            p.press("stop", settle=350)
+            # One source trig does not fill every selected destination on
+            # stock. Check that paste occurred, then require exact undo of
+            # the complete snapshot, including the other selected steps.
+            check(f"{label} {tag}/{repeat}: paste copies the source to the first held step",
+                  record(steps[0]) == source)
+            p.press("stop", settle=350)
+            check(f"{label} {tag}/{repeat}: undo restores all previous locks",
+                  p.peek(records, 64 * width) == before)
+        p.png(out / f"{label}-{tag}-undo-held.png")
+        for step in steps:
+            p.key(f"trig{step + 1}", False)
+        p.run(350)
+        check(f"{label} {tag}: undo survives release and preserves the source",
+              p.peek(records, 64 * width) == before and record(0) == source)
+        # Stock leaves newly pasted trigs present; undo restores locks, not
+        # the absence of the trig. Use the same assertion on both pages.
+        mask = int.from_bytes(p.peek(db, 8), "big")
+        check(f"{label} {tag}: native destination trigs remain after undo",
+              all(mask & (1 << step) for step in steps))
+
+    check(f"{label}: empty paste destination", record(4) == b"\xff" * width)
+    paste_undo((4,), "empty")
+    # Give the destination its own lock through the panel, so undo must
+    # restore a value rather than merely clear the pasted value.
+    p.key("trig5", True); p.run(350)
+    p.proc.command("knob 48 10", "ok"); p.run(350)
+    p.key("trig5", False); p.run(350)
+    check(f"{label}: destination has a distinct previous lock",
+          record(4) not in (source, b"\xff" * width))
+    paste_undo((4,), "existing", repeats=2)
+    p.press("trig6")
+    p.key("trig6", True); p.run(350)
+    p.proc.command("knob 48 14", "ok"); p.run(350)
+    p.key("trig6", False); p.run(350)
+    check(f"{label}: second destination has its own previous lock",
+          record(5) not in (source, record(4), b"\xff" * width))
+    paste_undo((4, 5), "multiple")
+    before = p.peek(records, 64 * width)
+    p.key("trig5", True); p.run(350)
+    p.press("play", settle=350)
+    check(f"{label}: held clear removes the destination locks",
+          record(4) == b"\xff" * width and record(0) == source)
+    p.press("play", settle=350)
+    check(f"{label}: held clear undo restores all previous locks",
+          p.peek(records, 64 * width) == before)
+    p.key("trig5", False); p.run(350)
+    check(f"{label}: clear undo survives release",
+          p.peek(records, 64 * width) == before)
+    p.press("trig5"); p.press("trig6")
+
+
+def container_paste_undo(p, records, width, label, check, stock_pattern_kind=None):
+    """Compare whole-track/pattern paste undo through the same native inputs.
+
+    Start on track 1, pattern 1, grid recording on, with its source lock
+    recorded. Track 2 and pattern 2 are disposable, initially empty targets.
+    """
+    track_stride = TRK_STRIDE if width == 32 else TRACK_B
+    pattern_stride = PTN_STRIDE if width == 32 else 8 * TRACK_B
+
+    def locks(address, tracks):
+        return b"".join(p.peek(address + track * track_stride, 64 * width)
+                        for track in range(tracks))
+
+    source = locks(records, 1)
+    before = locks(records + track_stride, 1)
+    check(f"{label}: track paste target starts empty", before == b"\xff" * len(before))
+    p.chord("func", "rec")
+    p.press("t2")
+    p.key("func", True); p.run(60)
+    p.press("stop", settle=300)
+    check(f"{label}: track paste copies all locks", locks(records + track_stride, 1) == source)
+    p.press("stop", settle=300)
+    check(f"{label}: track paste undo restores previous locks",
+          locks(records + track_stride, 1) == before and locks(records, 1) == source)
+    p.key("func", False); p.run(300)
+    p.press("t1")
+    p.press("rec")
+    source = locks(records, 8)
+    before = locks(records + pattern_stride, 8)
+    check(f"{label}: pattern paste target starts empty", before == b"\xff" * len(before))
+    p.chord("func", "rec")
+    p.chord("pattern", "trig2")
+    p.key("func", True); p.run(60)
+    p.press("stop", settle=300)
+    check(f"{label}: pattern paste copies all locks", locks(records + pattern_stride, 8) == source)
+    kind = p.long(0x460c80f0)
+    # Stock 1.40C's stopped pattern paste calls the scale setter, which
+    # invalidates its undo kind (14 -> 0). Do not claim an undo happened
+    # when the next STOP actually pastes again. Compare the native kind
+    # with the stock run, then separately exercise real clear/undo below.
+    check(f"{label}: pattern paste native undo kind is known ({kind})", kind in (0, 14))
+    if stock_pattern_kind is not None:
+        check(f"{label}: pattern paste undo availability matches stock", kind == stock_pattern_kind)
+    p.press("stop", settle=300)
+    expected = before if kind == 14 else source
+    operation = "undo" if kind == 14 else "repeat paste (native undo invalidated)"
+    check(f"{label}: pattern {operation} preserves the expected locks",
+          locks(records + pattern_stride, 8) == expected and locks(records, 8) == source)
+    p.key("func", False); p.run(300)
+    if kind == 14:
+        p.chord("func", "stop")
+    p.chord("func", "play")
+    check(f"{label}: pattern clear removes all locks",
+          locks(records + pattern_stride, 8) == b"\xff" * len(source))
+    p.chord("func", "play")
+    check(f"{label}: pattern clear undo restores all locks",
+          locks(records + pattern_stride, 8) == source and locks(records, 8) == source)
+    p.chord("func", "play")
+    p.chord("pattern", "trig1")
+    p.press("rec")
+    return kind
+
+
 def stock_lock_references(card, set_name, project, out, check):
     """Capture real page-one locks on unmodified stock, using panel inputs.
 
@@ -186,7 +323,11 @@ def stock_lock_references(card, set_name, project, out, check):
               screen("stock-reheld-settled") == refs[50])
         check("stock reference: different lock values produce different pixels",
               len(set(refs.values())) == len(refs))
-    return refs, timing
+        p.key("trig1", False); p.run(350)
+        db = p.long(DBPTR)
+        trig_paste_undo(p, db, db + 0x59, 32, "stock-page1", out, check)
+        pattern_kind = container_paste_undo(p, db + 0x59, 32, "stock-page1", check)
+    return refs, timing, pattern_kind
 
 
 def display_walk(image, card, set_name, project, store, out, check):
@@ -200,7 +341,7 @@ def display_walk(image, card, set_name, project, store, out, check):
     from panel_server import setup_window_open
 
     out.mkdir(parents=True, exist_ok=True)
-    stock, stock_timing = stock_lock_references(card, set_name, project, out / "stock", check)
+    stock, stock_timing, stock_pattern_kind = stock_lock_references(card, set_name, project, out / "stock", check)
     run_card = out / "card.img"
     shutil.copy2(card, run_card)
     with MenuPort(image, run_card, set_name, project, True,
@@ -347,6 +488,11 @@ def display_walk(image, card, set_name, project, store, out, check):
             p.run(2500)
             check(f"display {slot}: early-release Part number follows its normal timeout",
                   crop(screen(f"{slot}-early-release-settled"), dial) == normal)
+            trig_paste_undo(p, db, block, REC, f"{slot}-page2", out, check)
+            container_paste_undo(p, block, REC, f"{slot}-page2", check, stock_pattern_kind)
+            if not setup_window_open(p.rt.uc):
+                p.press("pg_" + slot, hold=30, settle=30)
+                p.press("pg_" + slot, hold=180, settle=180)
             held("trig1", True)
             held("func", True)
             turn(1)
@@ -455,15 +601,28 @@ def main():
         sys.exit("verify_plocks_p2: no FX2 page-2 slot 0 available for the fixture")
     for bankfile in sorted(copy.glob("bank*.work")):
         def usable_fx(data):
-            # record() first taps trig 1 to create it; start empty in our copy.
+            # Panel recording creates its own trigs and locks. Clear the copied
+            # first pattern, including inherited locks: clearing only trig 1
+            # leaves a stress project's ATK lock as the encoder's starting value
+            # and breaks even the unmodified-stock reference walk.
             for track in range(8):
-                data[ot_project.trac_off(0, track) + 7] &= 0xfe
+                at = ot_project.trac_off(0, track)
+                data[at:at + 64] = bytes(64)
+                data[at + 0x59:at + 0x59 + 64 * 32] = b'\xff' * (64 * 32)
             for part_index in range(ot_project.NPARTS_ALL):
                 part_start = ot_project.PART_BASE + part_index * ot_project.PART_STRIDE
                 for track in range(8):
                     at = part_start + ot_project.FX2_OFF + track
                     if not page2_ok(data[at]):
                         data[at] = fallback
+                    # record() turns +3. A copied value at/above this image's
+                    # limit clamps to the same value (e.g. a reverb id reused
+                    # for a three-choice selector in Inserts), falsely making
+                    # a correctly recorded lock look like an unedited Part.
+                    count = rd32(rd32(DESC2 + 4 * data[at]) + 0x9a + 4 * 6)
+                    knob_at = part_start + ot_project.P2_OFF + track * ot_project.P2_STRIDE + 6
+                    if data[knob_at] >= count - 1:
+                        data[knob_at] = 0
         ot_project._bank_write(copy, int(bankfile.stem[4:]), usable_fx, guard=False)
 
     card = OUT / "card.img"
@@ -474,10 +633,13 @@ def main():
     base = [EMU, "--image", image, "--card", card, "--set", a.set_name, "--project", a.name, "--load-ms", "90000"]
     fails = 0
 
+    check_lock = threading.Lock()
+
     def check(msg, ok):
         nonlocal fails
-        print(f"  [{'ok' if ok else 'FAIL'}] {msg}")
-        fails += not ok
+        with check_lock:
+            print(f"  [{'ok' if ok else 'FAIL'}] {msg}", flush=True)
+            fails += not ok
 
     # ---- the probe: which bank, track and part the panel edits ---------------
     pr = OUT / "probe"
@@ -518,8 +680,12 @@ def main():
     display_card = OUT / "display-card.img"
     run([PY, ROOT / "tools/emu/ot_emu/stage_card.py", display_project, a.set_name, a.name,
          "--tree", OUT / "display-tree", "--out", display_card], OUT / "display-stage.log")
-    display_walk(image, display_card, a.set_name, a.name, STORE, OUT / "display", check)
+    # The walk is its own port sessions on its own card; the scenario run
+    # below is another: they run side by side (27 Oct 2026: 374 s locally,
+    # the walk 135 s of it before the scenarios started).
+    walk = ThreadPoolExecutor(1).submit(display_walk, image, display_card, a.set_name, a.name, STORE, OUT / "display", check)
     if a.display_only:
+        walk.result()
         print(f"verify_plocks_p2 display: {fails} failure(s)")
         return int(bool(fails))
 
@@ -628,7 +794,7 @@ def main():
         d = files.get(k, b"")
         got = d[16 + (trk * 64) * REC + 6] if len(d) == 16 + 16 * 8 * TRACK_B else None
         check(f"save: {nn}.{ext} holds the lock ({got})", got == v)
-    if saved.is_file():
+    def reload_saved():
         reload_dump = OUT / "reload.bin"
         s = Script(); s.tap("no", 400)
         (OUT / "reload.script").write_text(s.text())
@@ -637,6 +803,57 @@ def main():
             OUT / "reload.txt")
         got = reload_dump.read_bytes()[0] if reload_dump.is_file() else None
         check(f"load: the saved card's lock is in STORE after the load ({got})", got == v)
+
+    # ---- a refused p2lkNN.work is listed and never written over -------------------
+    def refused_chain():
+        if saved.is_file() and "store_npend" in sym:
+            prefix = f"/{a.name.lower()}/"
+            proj = OUT / "proj_bad"
+            if proj.exists():
+                shutil.rmtree(proj)
+            proj.mkdir(parents=True)
+            for k, v in files.items():
+                if prefix in k.lower() and "/" not in k.lower().split(prefix, 1)[1]:
+                    (proj / k.rsplit("/", 1)[1]).write_bytes(v)
+            wk = proj / f"{nn}.work"
+            bad = bytearray(wk.read_bytes()); bad[0] ^= 0x20; wk.write_bytes(bytes(bad))        # 'P2LK' -> 'p2LK'
+            card_bad = OUT / "card_bad.img"
+            r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(proj), a.set_name, a.name,
+                                "--tree", str(OUT / "tree_bad"), "--out", str(card_bad)], cwd=ROOT, capture_output=True, text=True)
+            check("refused: the card with a bad p2lk header staged", r.returncode == 0)
+            run([EMU, "--image", image, "--card", card_bad, "--set", a.set_name, "--project", a.name, "--load-ms", "90000",
+                 "--live-script", OUT / "save.script", "--card-out", OUT / "refused.img",
+                 "--mem-dump", f"{sym['store_npend']:#x},4={OUT / 'ref_np.bin'};{sym['store_pend']:#x},32={OUT / 'ref_pend.bin'}"],
+                OUT / "refused.txt")
+            npend = int.from_bytes((OUT / "ref_np.bin").read_bytes(), "big")
+            pend = (OUT / "ref_pend.bin").read_bytes()
+            listed = [(pend[2 * i], pend[2 * i + 1]) for i in range(npend)]
+            check(f"refused: STORE lists the bank ({listed}, wanted (0, {bank}))", (0, bank) in listed)
+            after = emu_card.extract_image((OUT / "refused.img").read_bytes())
+            k = next((k for k in after if k.lower().endswith(f"/{nn}.work")), None)
+            check(f"refused: {nn}.work is as it was after a SAVE PROJECT (it used to be overwritten)", after.get(k) == bytes(bad))
+            # The first dialog names the lost feature, before any recovery choice.
+            def refusal_ui(tag):
+                s = Script(); s.tap("no", 400); s.send("enc 1 1", 800)
+                if tag == "options":
+                    s.tap("yes", 600)
+                elif tag == "cancel":
+                    s.tap("no", 400); s.send("enc 1 1", 800)
+                script = OUT / f"ref_{tag}.script"; script.write_text(s.text())
+                dump = OUT / f"ref_{tag}.bin"
+                run([EMU, "--image", image, "--card", card_bad, "--set", a.set_name, "--project", a.name,
+                     "--load-ms", "90000", "--mkii", "--live-script", script, "--lcd", OUT / f"ref_{tag}.lcd",
+                     "--mem-dump", f"{sym['store_info_lines']:#x},4={dump};"
+                     f"{sym['NWMASK']:#x},4={OUT / f'ref_{tag}_mask.bin'};"
+                     f"0x460e5cd0,4={OUT / f'ref_{tag}_dialog.bin'};"
+                     f"{sym['store_mown']:#x},4={OUT / f'ref_{tag}_menu.bin'}"], OUT / f"ref_{tag}.txt")
+                word = lambda name: int.from_bytes((OUT / f"ref_{tag}_{name}.bin").read_bytes(), "big")
+                check(f"refused {tag}: names FX page 2 locks and keeps the original file protected",
+                      int.from_bytes(dump.read_bytes(), "big") == sym["store_info_plk"] and word("mask") & (1 << bank))
+                check(f"refused {tag}: the expected dialog or choices are open",
+                      bool(word("dialog")) == (tag == "info") and bool(word("menu")) == (tag == "options"))
+            with ThreadPoolExecutor(3) as ex:
+                list(ex.map(refusal_ui, ("info", "options", "cancel")))
 
     # ---- power cycles -----------------------------------------------------------
     cs1s, cs1u = OUT / "cs1_saved.bin", OUT / "cs1_unsaved.bin"
@@ -656,61 +873,19 @@ def main():
              "--mem-dump", f"{block(0, trk) + 6:#x},1={dump}"], OUT / f"power_{tag}.txt")
         return tag, dump.read_bytes()[0] if dump.is_file() else None
     jobs = [("saved", saved, cs1s), ("unsaved", unsaved, cs1u), ("nocopy", saved, OUT / "cs1_nocopy.bin")]
-    with ThreadPoolExecutor(3) as ex:
-        got = dict(ex.map(lambda j: power(*j), jobs))
+    after_ex = ThreadPoolExecutor(6)
+    f_reload = after_ex.submit(reload_saved) if saved.is_file() else None
+    f_power = [after_ex.submit(power, *j) for j in jobs]
+    f_refused = after_ex.submit(refused_chain)
+    got = dict(f.result() for f in f_power)
     check(f"power cycle, saved: the lock is in STORE ({got['saved']})", got["saved"] == v)
     check(f"power cycle, never saved: the lock is in STORE from CS1 ({got['unsaved']})", got["unsaved"] == v)
     check(f"power cycle, no CS1 copy: the lock is in STORE from p2lk{bank + 1:02d}.work ({got['nocopy']})",
           got["nocopy"] == v)
-    # ---- a refused p2lkNN.work is listed and never written over -------------------
-    if saved.is_file() and "store_npend" in sym:
-        prefix = f"/{a.name.lower()}/"
-        proj = OUT / "proj_bad"
-        if proj.exists():
-            shutil.rmtree(proj)
-        proj.mkdir(parents=True)
-        for k, v in files.items():
-            if prefix in k.lower() and "/" not in k.lower().split(prefix, 1)[1]:
-                (proj / k.rsplit("/", 1)[1]).write_bytes(v)
-        wk = proj / f"{nn}.work"
-        bad = bytearray(wk.read_bytes()); bad[0] ^= 0x20; wk.write_bytes(bytes(bad))        # 'P2LK' -> 'p2LK'
-        card_bad = OUT / "card_bad.img"
-        r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(proj), a.set_name, a.name,
-                            "--tree", str(OUT / "tree_bad"), "--out", str(card_bad)], cwd=ROOT, capture_output=True, text=True)
-        check("refused: the card with a bad p2lk header staged", r.returncode == 0)
-        run([EMU, "--image", image, "--card", card_bad, "--set", a.set_name, "--project", a.name, "--load-ms", "90000",
-             "--live-script", OUT / "save.script", "--card-out", OUT / "refused.img",
-             "--mem-dump", f"{sym['store_npend']:#x},4={OUT / 'ref_np.bin'};{sym['store_pend']:#x},32={OUT / 'ref_pend.bin'}"],
-            OUT / "refused.txt")
-        npend = int.from_bytes((OUT / "ref_np.bin").read_bytes(), "big")
-        pend = (OUT / "ref_pend.bin").read_bytes()
-        listed = [(pend[2 * i], pend[2 * i + 1]) for i in range(npend)]
-        check(f"refused: STORE lists the bank ({listed}, wanted (0, {bank}))", (0, bank) in listed)
-        after = emu_card.extract_image((OUT / "refused.img").read_bytes())
-        k = next((k for k in after if k.lower().endswith(f"/{nn}.work")), None)
-        check(f"refused: {nn}.work is as it was after a SAVE PROJECT (it used to be overwritten)", after.get(k) == bytes(bad))
-        # The first dialog names the lost feature, before any recovery choice.
-        def refusal_ui(tag):
-            s = Script(); s.tap("no", 400); s.send("enc 1 1", 800)
-            if tag == "options":
-                s.tap("yes", 600)
-            elif tag == "cancel":
-                s.tap("no", 400); s.send("enc 1 1", 800)
-            script = OUT / f"ref_{tag}.script"; script.write_text(s.text())
-            dump = OUT / f"ref_{tag}.bin"
-            run([EMU, "--image", image, "--card", card_bad, "--set", a.set_name, "--project", a.name,
-                 "--load-ms", "90000", "--mkii", "--live-script", script, "--lcd", OUT / f"ref_{tag}.lcd",
-                 "--mem-dump", f"{sym['store_info_lines']:#x},4={dump};"
-                 f"{sym['NWMASK']:#x},4={OUT / f'ref_{tag}_mask.bin'};"
-                 f"0x460e5cd0,4={OUT / f'ref_{tag}_dialog.bin'};"
-                 f"{sym['store_mown']:#x},4={OUT / f'ref_{tag}_menu.bin'}"], OUT / f"ref_{tag}.txt")
-            word = lambda name: int.from_bytes((OUT / f"ref_{tag}_{name}.bin").read_bytes(), "big")
-            check(f"refused {tag}: names FX page 2 locks and keeps the original file protected",
-                  int.from_bytes(dump.read_bytes(), "big") == sym["store_info_plk"] and word("mask") & (1 << bank))
-            check(f"refused {tag}: the expected dialog or choices are open",
-                  bool(word("dialog")) == (tag == "info") and bool(word("menu")) == (tag == "options"))
-        with ThreadPoolExecutor(3) as ex:
-            list(ex.map(refusal_ui, ("info", "options", "cancel")))
+    if f_reload:
+        f_reload.result()
+    f_refused.result()
+    walk.result()
     print(f"verify_plocks_p2: {'FAIL' if fails else 'ok'} ({fails} failure(s))")
     return 1 if fails else 0
 

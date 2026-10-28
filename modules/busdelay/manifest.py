@@ -74,54 +74,54 @@ MODULE = Module(
         # send into the reverb's REV accumulator. Both count as clients only
         # while nonzero, so both default to 0.
         Param(b"DEL", 0, active=True, formatter=_PLAIN,
-              doc="this host's own send into the delay"),
+              doc="this track's own send into the delay"),
         Param(b"REV", 0, active=True, formatter=_PLAIN,
-              doc="this host's own send into the reverb"),
+              doc="this track's own send into the reverb"),
         Param(b"FDBK", 60, active=True, formatter=_PLAIN,
-              doc="feedback -- how much each repeat regenerates"),
+              doc="feedback: how much each repeat regenerates"),
         Param(b"TONE", 100, active=True, formatter=_PLAIN,
-              doc="tone of the repeats -- lower = darker every pass"),
+              doc="tone of the repeats: lower is darker on every pass"),
         # PING 0 = centred. Measured at FDBK 60: 0 mono (L/R correlation
         # 1.000), 32 / 64 near-mono (0.998 / 0.965), the alternation is in
         # 96..127 (0.73 / 0.01); 127 leans +4.4 dB left (L gets repeats 1, 3,
         # 5: L/R = 1/feedback).
         Param(b"PING", 0, active=True, formatter=_PLAIN,
-              doc="stereo ping-pong spread; 0 = centred, the alternation is in the top quarter"),
+              doc="stereo ping-pong; 0 is centred, the alternation comes in over the top quarter"),
         # WET: the repeats' level on this host, wet*WET under its dry. The
         # chain to the reverb carries wet*DLY, DLY being BusVerb's page-2
         # knob (a crossfade until 15 Sep 2026).
         Param(b"WET", 127, active=True, formatter=_PLAIN,
-              doc="the repeats' level on this host (the reverb's DLY sets what goes into the reverb)"),
+              doc="level of the repeats on this track (the reverb's DLY sets what the reverb hears)"),
         # ---- page 2 -------------------------------------------------------
         # MODE on slot 6: an even slot is the one the panel's page-2 knob
         # editor writes (docs/firmware/MAINMENU.md 9c-ii). The DSP reads $c's
         # KNOB field for it.
         Param(b"MODE", 0, 3, active=True, formatter=_STEP,
               labels=("CLEAN", "GRAIN", "REVRS"),
-              doc="engine select: CLEAN, GRAIN (pitched cloud, v5), REVERSE"),
+              doc="engine: CLEAN, GRAIN (a pitched granular cloud) or REVRS (reverse)"),
         # MDEP on slot 7: delivered in $c's companion field (bits 8-15), as
         # stock FILTER's DIST knob is on slot 11. Default 0: an aux delay
         # sits still.
         # SCTR / DENS are GRAIN's (inert in CLEAN and REVERSE); the tape wow
         # that used these slots went 15 Sep 2026.
         Param(b"SCTR", 40, 128, active=True, formatter=_PLAIN,
-              doc="GRAIN: scatter, how far apart the grains read; inert in CLEAN and REVERSE"),
+              doc="GRAIN: how far apart the grains are read; no effect in CLEAN or REVRS"),
         Param(b"DENS", 127, 128, active=True, formatter=_PLAIN, link=True,
-              doc="GRAIN: density, full dial, level-flat (R61); inert in CLEAN and REVERSE"),
+              doc="GRAIN: grain density, level stays flat; no effect in CLEAN or REVRS"),
         # SIZE: GRAIN's grain length and REVERSE's segment, one select; drawn
         # GLEN in GRAIN, SLEN in REVERSE, `---` in CLEAN (the mode names it).
         Param(b"SIZE", 1, 4, active=True, formatter=_STEP,
               labels=("46MS", "93MS", "23MS", "XTRM"),
-              doc="segment/grain size 46/93/23 ms; XTRM = 186 ms grains, 371 ms REVERSE segments"),
+              doc="GRAIN: grain length 46, 93 or 23 ms, XTRM 186 ms. REVRS: segment length, XTRM 371 ms"),
         # PTCH on page-2 slot 10: the DSP reads $e's KNOB field. GRAIN's
         # pitch; idle in other modes.
         Param(b"PTCH", 64, 128, active=True, formatter=_PLAIN, link=True,
-              doc="GRAIN pitch, +-2 oct, 64 = unison (a held MIDI note overrides); idle in other modes"),
+              doc="GRAIN: pitch +-2 octaves, 64 unison (a held MIDI note overrides); idle in other modes"),
         # TIME on page-2 slot 11, $e's companion field (page-1 slot 1 until
         # 26 Sep 2026, when WOW left to make room for REV). Tempo-sync's
         # division formatter follows it here.
         Param(b"TIME", 20, 128, active=True, formatter=_PLAIN,
-              doc="delay time, 1.5 .. 739 ms -- a free dial that sticky-snaps to tempo divisions"),
+              doc="delay time, 1.5 to 739 ms: a free dial that snaps to tempo divisions when close"),
     ),
     # ---- what each MODE re-defaults, and which knobs it names `---` ------
     # A knob a mode never reads is named `---` there, the unused-knob

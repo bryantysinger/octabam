@@ -6,7 +6,7 @@ chose FILTER sounds the same until you turn it.
 ## Access
 
 Press FX1 on a track; SPECTRUM is in the chooser in place of FILTER. In
-Octabam Inserts it is also on FX2; in Octabam Bus it is FX1 only.
+Octabam it is also on FX2; in Octabam Bus it is FX1 only.
 
 ## Operation
 

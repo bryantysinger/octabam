@@ -17,8 +17,8 @@
 ;   than the highest word the reverb writes above its base   x:$3fd3 (proc only) the stock init
 ;
 ; Per core (X, private), one word per instance at idx = (r7 >> 8) & $3f:
-;   x:$3f50+idx  0 never initialised, 1 running, 2 dry and its init has not run, 3 dry after it ran
-;   x:$3f90+idx  the buffer base the instance was given
+;   x:$3dc0+idx  0 never initialised, 1 running, 2 dry and its init has not run, 3 dry after it ran
+;   x:$3e00+idx  the buffer base the instance was given
 ; x:$3fd0 the proc's entry a   x:$3fe0..$3fe7 registers kept across a resumed init
 ; Shared (DLCOPY writes the entry of each loaded effect, x:$33da3 + 8 k): +0 BOUND,
 ; +3 and +4 the span [first word, word after the last).
@@ -108,13 +108,14 @@ dw_ix:
         move    r7,a
         asr     #$8,a,a
         and     #>$3f,a
-        move    #>$3f90,x0
+        move    #>$3e00,x0               ; not x:$3f7f..$3fbf: payload B's frame routine at P:$7a writes those every frame
         add     x0,a
         move    a1,r3
         lua     (r3-64),r4
         rts
 
-; a = 1 when the range [x1, x1 + extent) covers any word of any loaded effect's code, else 0.
+; a = 1 when the range [x1, x1 + extent) covers any word of any loaded effect's code, else 0. The build sets the loop's
+; count to the remix's entries (4, or more when it has more demand effects).
 dw_over:
         clr     b
         move    #>$33da3,r5

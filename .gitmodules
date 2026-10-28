@@ -33,7 +33,7 @@
 	url = https://github.com/Zac-Kyoti/octatrack-kyoti-fw
 [submodule "modules/sidechain-compressor/upstream"]
 	path = modules/sidechain-compressor/upstream
-	url = https://github.com/Zac-Kyoti/octatrack-kyoti-fw
+	url = https://github.com/sambanks/octatrack-kyoti-fw
 
 [submodule "modules/midi-loopback/upstream"]
 	path = modules/midi-loopback/upstream

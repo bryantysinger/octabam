@@ -1,4 +1,4 @@
-A new part is born hosted: T1's FX2 is BusDelay, T5's BusVerb, T8's
-(the master) the stock DELAY (Echo Freeze, for its beat repeat), every
-other track's SEND. This is what makes a project made on the unit host
-the bus with no stamping.
+A new Part is born with the bus in place: track 1's FX2 is the Delay
+Server, track 5's the Reverb Server, track 8 (the master) the stock DELAY
+(Echo Freeze, for its beat repeat), and every other track's a SEND. A
+project made on the unit therefore hosts the bus with no further setup.

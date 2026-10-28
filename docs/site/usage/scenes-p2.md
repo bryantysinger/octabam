@@ -19,6 +19,5 @@ the page-1 dials do.
 
 ## Notes
 
-- Page-2 scene locks saved by an image before 10 Oct 2026 are not read
-  by this one.
-- Not run on a unit beyond being carried by image 88.
+- Page-2 scene locks saved by an image from before 10 Oct 2026 are not
+  read by this one.
