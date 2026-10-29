@@ -469,8 +469,8 @@ rmx_draw:
         move.l  %d5,-(%sp)
         move.l  %d4,-(%sp)
         bra.s   42f
-41:     pea     1                           | not selected: one pixel, one over
-        move.l  %d5,%d0                     | and one down from the box's top left
+41:     pea     1                           | not selected: one pixel at the
+        move.l  %d5,%d0                     | box's centre
         add.l   #OFF_DY,%d0
         move.l  %d4,%d1
         add.l   #OFF_DX,%d1
@@ -548,11 +548,12 @@ rmx_mark:
         rts
 
 | x0, dy0, x1, dy1 (dy from the row's box bottom): a left-pointing arrowhead
-| 6 px tall, its outer column in the 1-px gaps between rows
+| 5 px tall, centred on the box, its outer column reaching into the gaps
+| between rows
 rmx_arrow:
-        .byte   120, 1, 120, 2
-        .byte   121, 0, 121, 3
-        .byte   122, -1, 122, 4
+        .byte   120, 1, 120, 1
+        .byte   121, 0, 121, 2
+        .byte   122, -1, 122, 3
         .balign 2
 
 | d0 = the left x of column d2's box (rmx_col_xs).
@@ -562,10 +563,11 @@ rmx_col_x:
         move.b  (%a0,%d2.l),%d0
         rts
 
-| box x per column: AB and CD wide enough for their two-letter labels, a gap
-| after the stereo sources and after the inputs
+| box x per column, each box centred under its label (AB and CD under the
+| middle of their two letters), a gap after the stereo sources and after the
+| inputs
 rmx_col_xs:
-        .byte   10, 21, 30, 36,  45, 51, 57, 63,  72, 78, 84, 90, 96, 102, 108, 114
+        .byte    9, 20, 30, 36,  45, 51, 57, 63,  72, 78, 84, 90, 96, 102, 108, 114
 | header x per column (a label's left; AB and CD centred over their boxes)
 rmx_hdr_xs:
         .byte    7, 18, 30, 36,  45, 51, 57, 63,  72, 78, 84, 90, 96, 102, 108, 114
@@ -575,11 +577,11 @@ rmx_hdr_xs:
         .equ    HDR_FROM_TOP,   17
         .equ    ROW1_BELOW_HDR, 7
         .equ    ROW_PITCH,      5
-        .equ    BOX,            4
-        .equ    OFF_DX,         1           | an unselected box's pixel, from its
-        .equ    OFF_DY,         BOX-2       | bottom left (y runs up)
+        .equ    BOX,            3           | odd, so an unselected box's pixel
+        .equ    OFF_DX,         1           | sits at its centre (from its bottom
+        .equ    OFF_DY,         1           | left; y runs up)
         .equ    NUM_X,          4           | the active row's number
-        .equ    NUM_DY,         0
+        .equ    NUM_DY,         -1          | centred on the 3-px box
 
 rmx_title_fmt:
         .asciz  "REC BUF %d"
