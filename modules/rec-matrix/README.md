@@ -32,7 +32,9 @@ clicking. Needs BRAIN in the image (the matrix is kept in the project's
 
    Columns on the screen follow the same order: stereo sources, then the
    mono inputs, then the tracks.
-4. The **track keys** move to another recorder's row.
+4. The **track keys** move to another recorder's row, and **UP** and
+   **DOWN** step through the rows: UP toward T1, DOWN toward T8, stopping
+   at the ends. The track keys light the active track either way.
 5. **SRC**, **AMP**, **LFO**, **FX1** or **FX2** closes the matrix and
    RECORDING SETUP and goes to that page. (Stock leaves RECORDING SETUP
    open over a page key; the matrix covers the whole screen, so the page

@@ -4,8 +4,9 @@
 | RECORDING SETUP key layers (MKI 0x400b9e36, MKII 0x400b9e22) carry a
 | knob-E record whose press handler stock leaves 0 (swallowed); the manifest
 | points it at rmx_knob_e. Opening registers rmx_layer on top of the
-| setup's: the trigs toggle sources, NO or knob E closes, the six knobs are
-| swallowed; every other key falls through (track keys still change the
+| setup's: the trigs toggle sources, NO or knob E closes, UP and DOWN step
+| the active track (toward T1 and T8, stopping at the ends), the six knobs
+| are swallowed; every other key falls through (track keys still change the
 | active track, and the editor follows it). The setup window's redraw
 | (0x4002f2f8) redraws the editor's own full-screen window (128 x 64, level 2,
 | over the level-1 setup window) while it is open, and the trig-LED refresh
@@ -46,6 +47,7 @@
         .equ    CLOSE_SITE, 0x4002ee88      | the setup close
         .equ    PAGE_PRESS, 0x4005578c      | stock's SRC..FX2 page select: (code, 1)
         .equ    SETUP_KEY,  0x4002ff84      | FUNC + REC1/REC2: (0x2b + page); opens, switches or closes
+        .equ    SEL_TRACK,  0x40083bf8      | (track): selects it (both globals, restage, redraw, LEDs)
 
 | mask bits: 0 A, 1 B, 2 C, 3 D, 4 AB, 5 CD, 6..13 T1..T8, 14 MAIN, 15 CUE
         .equ    GREEN_LEVEL, 8              | of 15; the unit: 15/8 orange, 15/4 red-orange
@@ -220,6 +222,29 @@ rmx_page_key:
         jsr     (PAGE_PRESS).l
         addq.l  #8,%sp
         rts
+
+| UP or DOWN inside the editor: (code, edge). The rows run T1 at the top to
+| T8 at the bottom, so UP selects the track before the active one and DOWN
+| the one after, with nothing at T1 or T8. Stock's track select (the menu
+| module's way of changing the host track) writes both globals and lights
+| the track key; the matrix and its trig LEDs are redrawn after it.
+rmx_key_up:
+        moveq   #-1,%d1
+        bra.s   1f
+rmx_key_down:
+        moveq   #1,%d1
+1:      moveq   #0,%d0
+        move.b  (CUR_TRACK).l,%d0
+        add.l   %d1,%d0
+        moveq   #7,%d1
+        cmp.l   %d1,%d0                     | below T1 (-1, unsigned) or past T8
+        bhi.s   9f
+        move.l  %d0,-(%sp)
+        jsr     (SEL_TRACK).l
+        addq.l  #4,%sp
+        bsr     rmx_draw
+        bsr     rmx_leds
+9:      rts
 
 | The window manager closed the editor's window (another window opened).
 | Called for this editor's current window, or for an earlier one still listed
@@ -626,6 +651,8 @@ rmx_keys:
         .endr
         key     0x32, rmx_key_close         | NO
         key     0x3c, rmx_key_close         | knob E's push
+        key     0x33, rmx_key_up            | UP
+        key     0x20, rmx_key_down          | DOWN
         .irp    k, 0x22,0x23,0x24,0x25,0x26
         key     \k, rmx_page_key            | SRC AMP LFO FX1 FX2
         .endr
