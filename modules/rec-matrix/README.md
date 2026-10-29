@@ -18,9 +18,10 @@ clicking. Needs BRAIN in the image (the matrix is kept in the project's
 2. Open the matrix: from any page, hold **CUE** and press **MIX**. (On
    RECORDING SETUP 1 with SRC3 on MTRX, pushing **knob E**, SRC3's knob,
    opens it too.) The matrix opens over whatever track is active, on MTRX
-   or not: one row per recorder, one column per source, a filled box where
-   a source is selected. The active track's row is marked by its number at
-   the left and a pointer at the right; the title reads REC BUF *n*.
+   or not: one row per recorder, one column per source, a filled 3×3 box
+   where a source is selected and a centred dot where it isn't. The active
+   track's row is marked by its number at the left and a pointer at the
+   right; the title reads REC BUF *n*.
 3. The trigs toggle the active row's sources, and their LEDs show its
    selection in orange, a colour stock's trigs do not use, so the mode is
    plain at a glance:
