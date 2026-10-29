@@ -392,7 +392,7 @@ rmx_on_draw:
 
 | The editor's window: title "REC BUF n"; a header of the sixteen sources in
 | trig order; under it a row per recorder (buffer 1 at the top), a box per
-| source, filled when selected; the active track's row inverted (8 rows fit
+| source, filled when selected, a single pixel when not (8 rows fit
 | 5 px apart, too close for row labels). y runs up from the bottom of the
 | surface.
 rmx_draw:
@@ -455,7 +455,11 @@ rmx_draw:
         moveq   #0,%d2                      | d2 = the column
 4:      bsr     rmx_col_x
         move.l  %d0,%d4                     | d4 = the box's left
-        pea     1                           | the box, filled
+        moveq   #0,%d0
+        move.w  (%a5,%d2.l*2),%d0
+        and.l   %d7,%d0
+        beq.s   41f
+        pea     1                           | selected: the box, filled
         move.l  %d5,%d0
         add.l   #BOX-1,%d0
         move.l  %d0,-(%sp)
@@ -464,27 +468,17 @@ rmx_draw:
         move.l  %d0,-(%sp)
         move.l  %d5,-(%sp)
         move.l  %d4,-(%sp)
-        move.l  %a4,-(%sp)
-        jsr     (INVERT).l
-        lea     24(%sp),%sp
-        moveq   #0,%d0
-        move.w  (%a5,%d2.l*2),%d0
-        and.l   %d7,%d0
-        bne.s   5f
-        clr.l   -(%sp)                      | not selected: its inside cleared
-        move.l  %d5,%d0
-        add.l   #BOX-2,%d0
-        move.l  %d0,-(%sp)
-        move.l  %d4,%d0
-        add.l   #BOX-2,%d0
-        move.l  %d0,-(%sp)
-        move.l  %d5,%d0
-        addq.l  #1,%d0
-        move.l  %d0,-(%sp)
-        move.l  %d4,%d0
-        addq.l  #1,%d0
-        move.l  %d0,-(%sp)
-        move.l  %a4,-(%sp)
+        bra.s   42f
+41:     pea     1                           | not selected: one pixel, one over
+        move.l  %d5,%d0                     | and one down from the box's top left
+        add.l   #OFF_DY,%d0
+        move.l  %d4,%d1
+        add.l   #OFF_DX,%d1
+        move.l  %d0,-(%sp)                  | y1
+        move.l  %d1,-(%sp)                  | x1
+        move.l  %d0,-(%sp)                  | y0
+        move.l  %d1,-(%sp)                  | x0
+42:     move.l  %a4,-(%sp)
         jsr     (INVERT).l
         lea     24(%sp),%sp
 5:      addq.l  #1,%d2
@@ -582,6 +576,8 @@ rmx_hdr_xs:
         .equ    ROW1_BELOW_HDR, 7
         .equ    ROW_PITCH,      5
         .equ    BOX,            4
+        .equ    OFF_DX,         1           | an unselected box's pixel, from its
+        .equ    OFF_DY,         BOX-2       | bottom left (y runs up)
         .equ    NUM_X,          4           | the active row's number
         .equ    NUM_DY,         0
 
