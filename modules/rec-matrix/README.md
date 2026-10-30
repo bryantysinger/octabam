@@ -258,6 +258,9 @@ Bryan T's MKII, images built from this module:
 - 19 Oct 2026, BUILD 10 (CUE + MIX) and BUILD 11 (page keys): CUE + MIX
   opens and closes the matrix from other pages, and a page key inside it
   goes to that page; both work as intended.
+- 29 Oct 2026, quantized switching: a step-quantized switch (the proof of
+  concept), then QUANT's divisions on LEFT / RIGHT with the toast, then the
+  ramp ending on the boundary; each works as intended.
 
 ## Inferred
 
@@ -278,10 +281,8 @@ Bryan T's MKII, images built from this module:
 - A ramp length in BRAIN > SETTINGS (card scope) instead of the constant
   `RAMP` in `rmx.s`. Planned.
 - MIDI control of the matrix.
-- Quantized switching (`QUANT.md`): used on the unit 29 Oct with the ramp
-  starting on the boundary, QUANT 1 and then every division and the toast;
-  the ramp ending on the boundary not yet. Whether stock's
-  5-frame QREC start lag (Measured) holds on the unit is untested.
+- Whether stock's 5-frame QREC start lag (Measured) holds on the unit is
+  untested.
 - Not tried together with REC THRESHOLD or the other RECORDING SETUP
   modules. No hook site is shared with any module in the tree (18 Oct).
 
