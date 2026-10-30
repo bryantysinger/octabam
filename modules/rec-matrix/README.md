@@ -83,8 +83,9 @@ QUANT decides when a change to a recorder's selection takes over while the
 sequencer plays. OFF: at once. 1/2: on the next half-trig boundary of the
 master grid (the pattern's scale). 1 to 4: on the 1st to 4th trig boundary
 after the change, counted from the change, so 3 lands three boundaries on
-wherever that falls in the bar. The switch is on that boundary's sample and
-its 64-sample ramp starts there. Further edits before it go with it. The
+wherever that falls in the bar. The 64-sample ramp ends on that boundary's
+sample: it starts 63 samples before, so the new selection is at full level
+on the boundary and an attack there is recorded whole. Further edits before it go with it. The
 matrix and its LEDs show the new selection at once; the take follows at the
 boundary. With the sequencer stopped, and at the start of a take, the
 selection applies at once whatever QUANT says. The default is OFF, as
@@ -177,6 +178,9 @@ BPM, SRC3 = MTRX on T1, a take running, REC1 changed mid-take):
   after the key reached the firmware (the editor wrote it 6 samples after
   the key; the mixer took it in the next frame). A change left waiting
   when STOP was pressed switched in the next frame.
+- **The ramp ends on the boundary** (29 Oct, QUANT 1, a change at trig
+  8.2): the commit fell 63 samples before trig 9's sample, so the ramp
+  (unity on its 64th sample, as measured above) reaches unity on it.
 - **The divisions** (29 Oct, the editor's LEFT / RIGHT): QUANT 3 with the
   change at trig 8.79 (counted from the transport start) committed on
   boundary 11; QUANT 1/2 at 8.21 on 8.5 and at 15.99 on 16.0, 40 samples
@@ -274,9 +278,9 @@ Bryan T's MKII, images built from this module:
 - A ramp length in BRAIN > SETTINGS (card scope) instead of the constant
   `RAMP` in `rmx.s`. Planned.
 - MIDI control of the matrix.
-- Quantized switching (`QUANT.md`): one step (QUANT 1) used on the unit,
-  29 Oct; the other divisions and the toast not yet. Where the ramp sits
-  (it starts on the boundary) is open. Whether stock's
+- Quantized switching (`QUANT.md`): used on the unit 29 Oct with the ramp
+  starting on the boundary, QUANT 1 and then every division and the toast;
+  the ramp ending on the boundary not yet. Whether stock's
   5-frame QREC start lag (Measured) holds on the unit is untested.
 - Not tried together with REC THRESHOLD or the other RECORDING SETUP
   modules. No hook site is shared with any module in the tree (18 Oct).
