@@ -5,7 +5,8 @@
 | knob-E record whose press handler stock leaves 0 (swallowed); the manifest
 | points it at rmx_knob_e. Opening registers rmx_layer on top of the
 | setup's: the trigs toggle sources, NO or knob E closes, UP and DOWN step
-| the active track (toward T1 and T8, stopping at the ends), the six knobs
+| the active track (toward T1 and T8, stopping at the ends), LEFT and RIGHT
+| step QUANT (OFF, 1/2, 1, 2, 3, 4 trigs) in a toast, the six knobs
 | are swallowed; every other key falls through (track keys still change the
 | active track, and the editor follows it). The setup window's redraw
 | (0x4002f2f8) redraws the editor's own full-screen window (128 x 64, level 2,
@@ -48,6 +49,9 @@
         .equ    PAGE_PRESS, 0x4005578c      | stock's SRC..FX2 page select: (code, 1)
         .equ    SETUP_KEY,  0x4002ff84      | FUNC + REC1/REC2: (0x2b + page); opens, switches or closes
         .equ    SEL_TRACK,  0x40083bf8      | (track): selects it (both globals, restage, redraw, LEDs)
+        .equ    NOTIFY,     0x4005a2b8      | (text, ticks > 0): stock's toast, a level-10 window
+        .equ    TOAST_TICKS, 0x30           | 0.8 s, stock's usual length
+        .equ    QUANT_MAX,  5               | QUANT: 0 OFF, 1 1/2, 2..5 one to four trigs
 
 | mask bits: 0 A, 1 B, 2 C, 3 D, 4 AB, 5 CD, 6..13 T1..T8, 14 MAIN, 15 CUE
         .equ    GREEN_LEVEL, 8              | of 15; the unit: 15/8 orange, 15/4 red-orange
@@ -245,6 +249,45 @@ rmx_key_down:
         bsr     rmx_draw
         bsr     rmx_leds
 9:      rts
+
+| LEFT or RIGHT inside the editor: (code, edge). QUANT one step down or up
+| (OFF, 1/2, 1, 2, 3, 4 trigs; stopping at the ends), saved to brain.work as
+| a SETTINGS edit is, and shown in stock's toast over the matrix (level 10,
+| above the editor's window, so opening it closes nothing of ours). A press
+| at an end shows the setting again.
+rmx_key_left:
+        moveq   #-1,%d1
+        bra.s   1f
+rmx_key_right:
+        moveq   #1,%d1
+1:      move.l  rmx_quant_ptr,%a0
+        move.l  (%a0),%d0
+        add.l   %d1,%d0
+        moveq   #QUANT_MAX,%d1
+        cmp.l   %d1,%d0                     | below OFF (-1, unsigned) or past 4
+        bhi.s   2f
+        move.l  %d0,(%a0)
+        jsr     brain_post_settings
+2:      move.l  rmx_quant_ptr,%a0
+        move.l  (%a0),%d0
+        lea     rmx_quant_txt,%a0
+        move.l  (%a0,%d0.l*4),%a0
+        pea     TOAST_TICKS
+        move.l  %a0,-(%sp)
+        jsr     (NOTIFY).l
+        addq.l  #8,%sp
+        rts
+
+        .balign 4
+rmx_quant_txt:
+        .long   q_imm, q_half, q_1, q_2, q_3, q_4
+q_imm:  .asciz  "QUANT OFF"
+q_half: .asciz  "QUANT 1/2 TRIG"
+q_1:    .asciz  "QUANT 1 TRIG"
+q_2:    .asciz  "QUANT 2 TRIGS"
+q_3:    .asciz  "QUANT 3 TRIGS"
+q_4:    .asciz  "QUANT 4 TRIGS"
+        .balign 2
 
 | The window manager closed the editor's window (another window opened).
 | Called for this editor's current window, or for an earlier one still listed
@@ -653,6 +696,8 @@ rmx_keys:
         key     0x3c, rmx_key_close         | knob E's push
         key     0x33, rmx_key_up            | UP
         key     0x20, rmx_key_down          | DOWN
+        key     0x34, rmx_key_left          | LEFT
+        key     0x21, rmx_key_right         | RIGHT
         .irp    k, 0x22,0x23,0x24,0x25,0x26
         key     \k, rmx_page_key            | SRC AMP LFO FX1 FX2
         .endr

@@ -26,8 +26,9 @@ too (A alone to AB crossfades A's right side into B). A new take starts at
 the current selection without a ramp: a third detour, in the write path's
 prologue (0x400068f0), counts calls so the mixer can tell a take start
 from a running take. While the sequencer plays, a changed selection takes
-over at the next step of the master grid, on that step's sample
-(QUANT.md); stopped, at once.
+over per QUANT (a PROJECT setting): at once, or on the Nth half-trig or
+trig boundary of the master grid after the change, on that boundary's
+sample (QUANT.md); stopped, at once.
 
 The editor (editor.s): CUE + MIX, from any page, opens a full-screen
 window of all eight recorders' rows over RECORDING SETUP 1 (opened for it
@@ -35,14 +36,14 @@ and closed with it); knob E on RECORDING SETUP 1, with SRC3 on MTRX, opens
 it too. The trigs edit the active track's row (1 AB, 2 CD, 3 MAIN, 4 CUE,
 5..8 A..D, 9..16 T1..T8; a pair and its inputs exclude each other, the
 newest press wins) and show it on their LEDs; track keys, UP and DOWN
-change the row;
+change the row; LEFT and RIGHT set QUANT (OFF, 1/2, 1..4 trigs) in a toast;
 a page key leaves for its page; CUE + MIX, NO or knob E closes. Each edit
 is saved to brain.work as a SETTINGS edit is.
 """
 import os
 
-from remix.schema import (Apply, Category, Detour, Kind, Linked, Module, Number, Poke, Proof,
-                           Scope, Setting, Store, SymbolRef)
+from remix.schema import (Apply, Category, Detour, Kind, Linked, Module, Number, Option, Poke,
+                           Proof, Scope, Setting, Store, SymbolRef)
 
 H = bytes.fromhex
 
@@ -74,6 +75,8 @@ KEY_RECORD = 0x1A
 MIX_KEY = 0x30
 
 STORE = "octabam.rec-matrix"
+QUANT_KEY = 9
+QUANT_LABELS = ("OFF", "1/2", "1", "2", "3", "4")
 
 # Mask bits: 0 A, 1 B, 2 C, 3 D, 4 AB, 5 CD, 6..13 T1..T8, 14 MAIN, 15 CUE.
 # Signed 16-bit (BRAIN's Number); bit 15 (CUE) reads as negative.
@@ -81,21 +84,28 @@ SETTINGS = tuple(
     Setting(r + 1, f"REC{r + 1}", Number(-0x8000, 0x7FFF), default=0,
             scope=Scope.PROJECT, apply=Apply.LIVE,
             doc=f"recorder {r + 1}'s MTRX sources, one bit each")
-    for r in range(8))
+    for r in range(8)) + (
+    # When a changed selection takes over while the sequencer plays: at once
+    # (OFF), or on the Nth boundary of the master grid after the change
+    # (1/2 trig, 1..4 trigs). One for all recorders. Labels are append-only.
+    Setting(QUANT_KEY, "QUANT", Option(*QUANT_LABELS), default="OFF",
+            scope=Scope.PROJECT, apply=Apply.LIVE,
+            doc="when a changed MTRX selection takes over while playing"),)
 
 
 def mask_inc(mods, remix=None):
     """rmx_mask_ptr: eight longs, recorder 1 first, each the address of that
-    recorder's mask as a long. With BRAIN in the image they are BRAIN's
-    value globals (remix.brain.value_symbol), read live; otherwise local
-    constants holding the defaults."""
+    recorder's mask as a long; then rmx_quant_ptr, QUANT's. With BRAIN in
+    the image they are BRAIN's value globals (remix.brain.value_symbol),
+    read live; otherwise local constants holding the defaults."""
     from remix import brain, registry
     remix = registry.remix(os.environ.get("REMIX")) if os.environ.get("REMIX") else None
     live = {}
     if remix is not None:
         for r, s in brain.resolve(remix, mods):
             if r.store_id == STORE:
-                live[r.key] = (r.runtime, int(r.value))
+                v = QUANT_LABELS.index(r.value) if isinstance(r.value, str) else int(r.value)
+                live[r.key] = (r.runtime, v)
     out = ["        .balign 4", "        .global rmx_mask_ptr", "rmx_mask_ptr:"]
     consts = []
     for k in range(1, 9):
@@ -105,6 +115,11 @@ def mask_inc(mods, remix=None):
         else:
             out.append(f"        .long   rmx_mask_c{k}")
             consts.append(f"rmx_mask_c{k}: .long {value}")
+    runtime, value = live.get(QUANT_KEY, (False, 0))
+    out += ["        .global rmx_quant_ptr", "rmx_quant_ptr:",
+            f"        .long   {brain.value_symbol(STORE, QUANT_KEY) if runtime else 'rmx_quant_c'}"]
+    if not runtime:
+        consts.append(f"rmx_quant_c: .long {value}")
     return "\n".join(out + consts) + "\n"
 
 

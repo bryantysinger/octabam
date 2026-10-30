@@ -145,16 +145,27 @@ sample, the take silent to the commit and ramping from it.
 - Every recorder with a pending change commits on the same sample.
 - Sequencer stopped: no grid, so QUANT behaves as immediate.
 
+## Decided (29 Oct 2026)
+
+- **Divisions:** OFF, 1/2, 1, 2, 3, 4 trigs, one setting for all recorders
+  (BRAIN PROJECT setting QUANT, an Option, default OFF). Each is relative to
+  the change: N is the Nth trig boundary after it (1/2: the next half-trig
+  boundary). A change a few ms before a boundary counts that boundary.
+- **Grid:** the master clock (the pattern's scale), for every recorder.
+- **UI:** LEFT / RIGHT in the matrix editor, stopping at the ends; stock's
+  toast (`0x4005a2b8`, 0.8 s, a level-10 window over the editor's level 2)
+  shows the setting. No indication that a change is waiting.
+
 ## Open design questions
 
-1. **Which grid.** The recorder's own track scale (2x, 3/4x, 1/2x …) or the
-   pattern's master length. "The next trig" differs between them on a
-   scaled track.
-2. **Where the ramp sits.** Starting at the beat (like a stock trig start)
-   or centered on it. Centering starts 32 samples early and must cope with
-   a tempo change between prediction and beat.
-3. **Which divisions.** For example IMM, 1/4, 1/2, 1, 2, 4, 8, 16 trigs,
-   perhaps bar or pattern. One setting per project, or per recorder.
+1. ~~Which grid~~: the master (Decided).
+2. **Where the ramp sits.** Now it starts on the boundary, so the first
+   1.45 ms of whatever arrives on the beat (often an attack) is faded in.
+   Ending on the boundary instead (the commit 64 samples early) fades the
+   old material's last 1.45 ms and leaves the attack whole; centring
+   splits it. The target is known well ahead, so ending on it is the same
+   code with the target moved.
+3. ~~Which divisions~~: Decided.
 
 ## Unknowns to trace (under the port)
 

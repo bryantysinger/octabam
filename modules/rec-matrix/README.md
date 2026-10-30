@@ -35,11 +35,16 @@ clicking. Needs BRAIN in the image (the matrix is kept in the project's
 4. The **track keys** move to another recorder's row, and **UP** and
    **DOWN** step through the rows: UP toward T1, DOWN toward T8, stopping
    at the ends. The track keys light the active track either way.
-5. **SRC**, **AMP**, **LFO**, **FX1** or **FX2** closes the matrix and
+5. **LEFT** and **RIGHT** set QUANT, when a change takes over while the
+   sequencer plays: OFF (at once), 1/2 TRIG, 1 TRIG, 2, 3 or 4 TRIGS,
+   stopping at the ends. A toast over the matrix shows the setting for
+   0.8 s (stock's toast and length). One setting for all recorders, kept
+   in the project with the matrix (BRAIN > SETTINGS shows it as QUANT).
+6. **SRC**, **AMP**, **LFO**, **FX1** or **FX2** closes the matrix and
    RECORDING SETUP and goes to that page. (Stock leaves RECORDING SETUP
    open over a page key; the matrix covers the whole screen, so the page
    change would be hidden.)
-6. **CUE + MIX**, **NO** or **knob E** closes the matrix and returns to the
+7. **CUE + MIX**, **NO** or **knob E** closes the matrix and returns to the
    page it was opened from (RECORDING SETUP 1, if it was opened there).
 
 - Every edit is saved to the project's `brain.work` at once, as an edit in
@@ -74,13 +79,16 @@ ramp, however the selection changed between takes.
 
 ### Timing
 
-While the sequencer plays, a change to a recorder's selection waits for the
-next step of the master grid (the pattern's scale) and switches on that
-step's sample; its 64-sample ramp starts there. Further edits before that
-step go with it. The matrix and its LEDs show the new selection at once;
-the take follows on the step. With the sequencer stopped, and at the start
-of a take, the selection applies at once. (Proof of concept, 29 Oct 2026:
-one division, a step; `QUANT.md` has the plan and what is still open.)
+QUANT decides when a change to a recorder's selection takes over while the
+sequencer plays. OFF: at once. 1/2: on the next half-trig boundary of the
+master grid (the pattern's scale). 1 to 4: on the 1st to 4th trig boundary
+after the change, counted from the change, so 3 lands three boundaries on
+wherever that falls in the bar. The switch is on that boundary's sample and
+its 64-sample ramp starts there. Further edits before it go with it. The
+matrix and its LEDs show the new selection at once; the take follows at the
+boundary. With the sequencer stopped, and at the start of a take, the
+selection applies at once whatever QUANT says. The default is OFF, as
+before QUANT. (`QUANT.md` has the design and what is still open.)
 
 ## How it works
 
@@ -169,6 +177,11 @@ BPM, SRC3 = MTRX on T1, a take running, REC1 changed mid-take):
   after the key reached the firmware (the editor wrote it 6 samples after
   the key; the mixer took it in the next frame). A change left waiting
   when STOP was pressed switched in the next frame.
+- **The divisions** (29 Oct, the editor's LEFT / RIGHT): QUANT 3 with the
+  change at trig 8.79 (counted from the transport start) committed on
+  boundary 11; QUANT 1/2 at 8.21 on 8.5 and at 15.99 on 16.0, 40 samples
+  after the change. The toast draws over the matrix and the matrix is
+  whole after it.
 - **Stock's QREC, alongside.** A stock REC AB with QREC on T2 in the same
   run: its event was computed for sample 8 of its step's frame, as MTRX's
   is, but the take's first sample came 80 samples (5 frames) later than the
@@ -261,9 +274,9 @@ Bryan T's MKII, images built from this module:
 - A ramp length in BRAIN > SETTINGS (card scope) instead of the constant
   `RAMP` in `rmx.s`. Planned.
 - MIDI control of the matrix.
-- Quantized switching (`QUANT.md`): not yet run on the unit. Divisions
-  other than a step, the grid for a scaled track, an indication that a
-  change is waiting, and where the ramp sits are open. Whether stock's
+- Quantized switching (`QUANT.md`): one step (QUANT 1) used on the unit,
+  29 Oct; the other divisions and the toast not yet. Where the ramp sits
+  (it starts on the boundary) is open. Whether stock's
   5-frame QREC start lag (Measured) holds on the unit is untested.
 - Not tried together with REC THRESHOLD or the other RECORDING SETUP
   modules. No hook site is shared with any module in the tree (18 Oct).
