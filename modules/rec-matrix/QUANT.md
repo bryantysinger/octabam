@@ -159,12 +159,11 @@ sample, the take silent to the commit and ramping from it.
 ## Open design questions
 
 1. ~~Which grid~~: the master (Decided).
-2. **Where the ramp sits.** Now it starts on the boundary, so the first
-   1.45 ms of whatever arrives on the beat (often an attack) is faded in.
-   Ending on the boundary instead (the commit 64 samples early) fades the
-   old material's last 1.45 ms and leaves the attack whole; centring
-   splits it. The target is known well ahead, so ending on it is the same
-   code with the target moved.
+2. ~~Where the ramp sits~~: it ends on the boundary (29 Oct). Starting on
+   it faded in the first 1.45 ms of whatever arrives on the beat, often an
+   attack; ending on it fades the old material's last 1.45 ms instead. The
+   commit is 63 samples before the boundary (the ramp's first step has
+   gain 1/64, so unity is its 64th sample).
 3. ~~Which divisions~~: Decided.
 
 ## Unknowns to trace (under the port)

@@ -59,6 +59,10 @@
 | recorder's stored mask takes over at once (QUANT OFF) or on the Nth
 | boundary of the master grid after it (QUANT 1/2: half trigs; 1..4: trigs),
 | on the sample stock's own arithmetic places an event there (0x4000aee0).
+| The ramp ends on that sample: its first step is RAMP-1 samples before, so
+| the new mask is at unity on the boundary and an attack there is recorded
+| whole (a change made less than that before its boundary starts at once
+| and finishes just after it).
 | Positions are stock's (1/tempo24 sample units, modulo 2^32). A transport
 | restart while a change waits moves no target: one already passed commits
 | at once, one ahead keeps its position.
@@ -119,7 +123,8 @@ rmx_select:
 | a new take or with the transport stopped; while playing, at the target:
 | the next master step after the change, fixed when the change is first
 | seen (later edits before it ride along). The target's sample in this
-| frame is computed as stock's 0x4000aee0 computes its event bytes.
+| frame is computed as stock's 0x4000aee0 computes its event bytes, less
+| RAMP: the commit is the ramp's start.
         lea     rmx_live,%a0
         lea     (%a0,%d0.l*4),%a0           | a0 = this recorder's live mask
         lea     rmx_pend,%a1
@@ -179,7 +184,10 @@ rmx_select:
         move.l  TINV,%d5
         msac.l  %d1,%d5,%acc0
         movclr.l %acc0,%d1
-        add.l   #16,%d1                     | d1 = the target's sample in this frame
+        add.l   #16-RAMP+1,%d1              | d1 = the commit's sample in this frame: the
+                                            | ramp's first step (gain 1/RAMP) RAMP-1
+                                            | samples before the target, so the
+                                            | new mask is at unity on it
         move.l  32(%sp),%d2
         move.l  %d2,%acc0
         move.l  28(%sp),%d2
