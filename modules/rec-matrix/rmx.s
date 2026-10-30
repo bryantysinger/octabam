@@ -56,8 +56,9 @@
         .equ    GAP,    48                  | write-path calls, 16 a frame: three frames
 
 | Quantized switching (QUANT.md): while the transport plays, a change to a
-| recorder's stored mask takes over at the next step of the master grid, on
-| the sample stock's own arithmetic places an event there (0x4000aee0).
+| recorder's stored mask takes over at once (QUANT OFF) or on the Nth
+| boundary of the master grid after it (QUANT 1/2: half trigs; 1..4: trigs),
+| on the sample stock's own arithmetic places an event there (0x4000aee0).
 | Positions are stock's (1/tempo24 sample units, modulo 2^32). A transport
 | restart while a change waits moves no target: one already passed commits
 | at once, one ahead keeps its position.
@@ -131,10 +132,14 @@ rmx_select:
         cmp.l   RUNNING,%d1
         bne.w   .Ladopt
         tst.l   (%a1)
-        bne.s   .Lhave
-        mvz.b   PHASE,%d1                   | the target: the next clock, plus the
-        mvs.b   MSCALE,%d2                  | clocks from it to a step start
-        lea     CPS_TAB,%a5
+        bne.w   .Lhave
+        move.l  rmx_quant_ptr,%a5           | QUANT: 0 OFF, 1 half a trig,
+        move.l  (%a5),%d4                   | 2..5 one to four trigs
+        tst.l   %d4
+        beq.w   .Ladopt
+        mvz.b   PHASE,%d1                   | the next trig boundary: the next
+        mvs.b   MSCALE,%d2                  | clock, plus the clocks from it to a
+        lea     CPS_TAB,%a5                 | step start
         move.l  (%a5,%d2.l*4),%d6           | d6 = clocks per step
         move.l  %d6,%d2
         sub.l   %d1,%d2
@@ -143,8 +148,22 @@ rmx_select:
         moveq   #0,%d2                      | phase 0: that clock starts a step
 1:      move.l  #CLOCK,%d1
         muls.l  %d1,%d2
-        add.l   NEXTCLK,%d2
-        lea     rmx_tgt,%a5
+        add.l   NEXTCLK,%d2                 | d2 = the next trig boundary
+        muls.l  %d1,%d6                     | d6 = a trig in position units
+        subq.l  #1,%d4
+        bne.s   2f
+        lsr.l   #1,%d6                      | half a trig: the boundary half a
+        move.l  %d2,%d1                     | trig before the next trig, if it is
+        sub.l   %d6,%d1                     | still ahead of this frame's end
+        move.l  %d1,%d4
+        sub.l   FRAME_END,%d4
+        ble.s   3f
+        move.l  %d1,%d2
+        bra.s   3f
+2:      subq.l  #1,%d4                      | N trigs: the Nth trig boundary
+        muls.l  %d4,%d6
+        add.l   %d6,%d2
+3:      lea     rmx_tgt,%a5
         move.l  %d2,(%a5,%d0.l*4)
         moveq   #1,%d1
         move.l  %d1,(%a1)
