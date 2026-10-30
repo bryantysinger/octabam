@@ -55,6 +55,21 @@
         .equ    NGAIN,  18
         .equ    GAP,    48                  | write-path calls, 16 a frame: three frames
 
+| Quantized switching (QUANT.md): while the transport plays, a change to a
+| recorder's stored mask takes over at the next step of the master grid, on
+| the sample stock's own arithmetic places an event there (0x4000aee0).
+| Positions are stock's (1/tempo24 sample units, modulo 2^32). A transport
+| restart while a change waits moves no target: one already passed commits
+| at once, one ahead keeps its position.
+        .equ    RUNNING,    0x800065B8      | long, 1 while the transport plays
+        .equ    NEXTCLK,    0x4610757C      | the next 24 PPQN clock's position
+        .equ    PHASE,      0x800065B6      | byte, that clock's index within the master step
+        .equ    MSCALE,     0x8000663D      | byte, the master scale (CPS_TAB's index)
+        .equ    CPS_TAB,    0x400ABA50      | clocks per step, a long per scale (6 at 1x)
+        .equ    CLOCK,      2646000         | one 24 PPQN clock in position units
+        .equ    FRAME_END,  0x46104CF0      | the end of the frame being written
+        .equ    TINV,       0x80001820      | -2^31 / tempo24 (stock's 0x4000aee0 operand)
+
         .text
 
 | Entry: the jmp written over stock's `mvsb d1,d1; moveq #7,d4; cmpl d1,d4`.
@@ -70,17 +85,23 @@ rmx_select:
         cmp.l   %d1,%d4                     | sets the flags stock's blts reads
         jmp     SEL_CONT
 
+| The frame below: 0 d6, 4 a2 (live into MIX_CONT), 8 start, 12 count,
+| 16 snap, 20 the second piece's mask, 24 the first piece's count (0: one
+| piece), 28 MACSR, 32 ACC0.
 .Lmtrx:
         move.l  136(%sp),%d0                | recorder 0..7 (the routine's first argument)
         move.l  144(%sp),%d4                | start sample
         move.l  48(%sp),%d7                 | d7 = sample count (end - start)
-        lea     -12(%sp),%sp                | a2 and d6 are live into MIX_CONT;
-        movem.l %d6/%a2,(%sp)               | 8(sp) = the recorder
-        move.l  %d0,8(%sp)
+        lea     -36(%sp),%sp
+        movem.l %d6/%a2,(%sp)
+        move.l  %d0,rmx_cur
+        move.l  %d4,8(%sp)
+        move.l  %d7,12(%sp)
+        clr.l   24(%sp)
         lea     rmx_mask_ptr,%a1
         move.l  (%a1,%d0.l*4),%a1
         move.l  (%a1),%d3
-        and.l   #0xffff,%d3                 | d3 = this recorder's mask
+        and.l   #0xffff,%d3                 | d3 = this recorder's stored mask
         lea     rmx_last,%a0                | a new take (this recorder not mixed
         move.l  rmx_calls,%d1               | for GAP write-path calls) starts at
         move.l  (%a0,%d0.l*4),%d2           | the current selection: no ramp from
@@ -90,7 +111,126 @@ rmx_select:
         cmp.l   #GAP,%d1
         bls.s   0f
         moveq   #1,%d5
-0:      moveq   #NGAIN*4,%d1
+0:      move.l  %d5,16(%sp)
+
+| ---- when the stored mask takes over -------------------------------------
+| rmx_live is the mask the mixer uses. It becomes the stored mask at once on
+| a new take or with the transport stopped; while playing, at the target:
+| the next master step after the change, fixed when the change is first
+| seen (later edits before it ride along). The target's sample in this
+| frame is computed as stock's 0x4000aee0 computes its event bytes.
+        lea     rmx_live,%a0
+        lea     (%a0,%d0.l*4),%a0           | a0 = this recorder's live mask
+        lea     rmx_pend,%a1
+        lea     (%a1,%d0.l*4),%a1           | a1 = its pending flag
+        tst.l   %d5
+        bne.w   .Ladopt
+        cmp.l   (%a0),%d3
+        beq.w   .Lsame
+        moveq   #1,%d1
+        cmp.l   RUNNING,%d1
+        bne.w   .Ladopt
+        tst.l   (%a1)
+        bne.s   .Lhave
+        mvz.b   PHASE,%d1                   | the target: the next clock, plus the
+        mvs.b   MSCALE,%d2                  | clocks from it to a step start
+        lea     CPS_TAB,%a5
+        move.l  (%a5,%d2.l*4),%d6           | d6 = clocks per step
+        move.l  %d6,%d2
+        sub.l   %d1,%d2
+        cmp.l   %d6,%d2
+        blt.s   1f
+        moveq   #0,%d2                      | phase 0: that clock starts a step
+1:      move.l  #CLOCK,%d1
+        muls.l  %d1,%d2
+        add.l   NEXTCLK,%d2
+        lea     rmx_tgt,%a5
+        move.l  %d2,(%a5,%d0.l*4)
+        moveq   #1,%d1
+        move.l  %d1,(%a1)
+.Lhave: lea     rmx_tgt,%a5
+        move.l  (%a5,%d0.l*4),%d1
+        sub.l   FRAME_END,%d1               | d1 = target - frame end
+        move.l  %macsr,%d2                  | stock's arithmetic, with its EMAC mode;
+        move.l  %d2,28(%sp)                 | the write path's own state kept
+        move.l  %acc0,%d2
+        move.l  %d2,32(%sp)
+        move.l  #32,%macsr
+        move.l  #0,%acc0
+        move.l  TINV,%d5
+        msac.l  %d1,%d5,%acc0
+        movclr.l %acc0,%d1
+        add.l   #16,%d1                     | d1 = the target's sample in this frame
+        move.l  32(%sp),%d2
+        move.l  %d2,%acc0
+        move.l  28(%sp),%d2
+        move.l  %d2,%macsr
+        move.l  8(%sp),%d2
+        cmp.l   %d2,%d1
+        ble.s   .Lnow                       | at or before this segment: from its start
+        add.l   12(%sp),%d2
+        cmp.l   %d2,%d1
+        bge.s   .Lkeep                      | after it: not yet
+        move.l  %d1,rmx_commit              | inside it: split there
+        move.l  %d3,20(%sp)                 | the second piece's mask
+        sub.l   8(%sp),%d1
+        move.l  %d1,24(%sp)                 | the first piece's count
+        clr.l   (%a1)
+        move.l  %d3,%d1
+        move.l  (%a0),%d3                   | the first piece: the old mask
+        move.l  %d1,(%a0)
+        bra.s   .Lmix
+.Lnow:  move.l  8(%sp),%d1
+        move.l  %d1,rmx_commit
+        bra.s   .Ladopt
+.Lsame: clr.l   (%a1)                       | edited back before its step
+        bra.s   .Lmix
+.Lkeep: move.l  (%a0),%d3
+        bra.s   .Lmix
+.Ladopt:
+        move.l  %d3,(%a0)
+        clr.l   (%a1)
+
+.Lmix:  move.l  16(%sp),%d5
+        move.l  8(%sp),%d4
+        move.l  24(%sp),%d7
+        bne.s   1f
+        move.l  12(%sp),%d7                 | one piece: the whole segment
+1:      move.l  (%sp),%d6
+        move.l  4(%sp),%a2
+        bsr.w   rmx_mix
+        move.l  24(%sp),%d1
+        beq.s   .Lend
+        move.l  8(%sp),%d4                  | the second piece, from the commit
+        add.l   %d1,%d4                     | sample, on the new mask: its gains
+        move.l  12(%sp),%d7                 | ramp from there
+        sub.l   %d1,%d7
+        lsl.l   #3,%d1
+        move.l  (%sp),%d6
+        add.l   %d1,%d6
+        move.l  4(%sp),%a2
+        add.l   %d1,%a2
+        move.l  20(%sp),%d3
+        moveq   #0,%d5
+        bsr.w   rmx_mix
+.Lend:  move.l  rmx_cur,%d0                 | d5 = this recorder's block at the
+        lsl.l   #7,%d0                      | call's start, as stock leaves it
+        lea     rmx_buf,%a4
+        add.l   %d0,%a4
+        move.l  8(%sp),%d0
+        lsl.l   #3,%d0
+        add.l   %d0,%a4
+        movem.l (%sp),%d6/%a2
+        lea     36(%sp),%sp
+        move.l  %a4,%d5
+        jmp     MIX_CONT
+
+| rmx_mix: one piece of a segment into this recorder's block. d3 = the mask,
+| d4 = its start sample, d7 = its count, d5 = snap, a2 / d6 = the AB / CD
+| segments at its start, rmx_cur = the recorder.
+rmx_mix:
+        move.l  rmx_cur,%d0
+        moveq   #NGAIN*4,%d1
         muls.l  %d0,%d1
         lea     rmx_gains,%a5
         add.l   %d1,%a5                     | a5 = this recorder's gains
@@ -108,7 +248,7 @@ rmx_select:
 1:      btst    #5,%d3
         beq.s   2f
         and.l   #0xfffffff3,%d3
-2:      move.l  8(%sp),%d0
+2:      move.l  rmx_cur,%d0
         lea     rmx_set,%a0
         lea     (%a0,%d0.l*4),%a0           | a0 = this recorder's settled mask
         tst.l   %d5
@@ -209,7 +349,7 @@ rmx_select:
         subq.l  #1,%d0
         bgt.s   .Lsat
 
-        move.l  8(%sp),%d0                  | every gain on its target now:
+        move.l  rmx_cur,%d0                 | every gain on its target now:
         lea     rmx_set,%a0                 | settled on this mask
         moveq   #-1,%d1
         tst.l   rmx_moving
@@ -350,10 +490,7 @@ rmx_select:
         subq.l  #1,%d0
         bgt.s   1b
 
-.Ldone: movem.l (%sp),%d6/%a2
-        lea     12(%sp),%sp
-        move.l  %a4,%d5                     | the SRC3 pointer, as stock leaves it
-        jmp     MIX_CONT
+.Ldone: rts
 
 | An input pair's targets (A>L, A>R, B>L, B>R) by (pair bit, B, A), stock's
 | INAB rules: A alone or B alone to both sides, both folded at 0.5, the pair
@@ -645,6 +782,19 @@ rmx_gains:
         .space  8 * NGAIN * 4               | 8 recorders x 18 paths, Q15
 rmx_set:
         .space  8 * 4                       | the mask each recorder settled on, -1 ramping
+rmx_cur:
+        .space  4                           | the recorder being mixed
+        .global rmx_live
+rmx_live:
+        .space  8 * 4                       | the mask each recorder mixes now
+rmx_pend:
+        .space  8 * 4                       | a change waiting for its step
+        .global rmx_tgt
+rmx_tgt:
+        .space  8 * 4                       | that step's position
+        .global rmx_commit
+rmx_commit:
+        .space  4                           | the last commit's sample in its frame (the port test reads it)
 rmx_moving:
         .space  4                           | a ramp still running (rmx_gain)
 rmx_list:

@@ -25,7 +25,9 @@ source and side, so toggling a source does not click; a pair's rules ramp
 too (A alone to AB crossfades A's right side into B). A new take starts at
 the current selection without a ramp: a third detour, in the write path's
 prologue (0x400068f0), counts calls so the mixer can tell a take start
-from a running take.
+from a running take. While the sequencer plays, a changed selection takes
+over at the next step of the master grid, on that step's sample
+(QUANT.md); stopped, at once.
 
 The editor (editor.s): CUE + MIX, from any page, opens a full-screen
 window of all eight recorders' rows over RECORDING SETUP 1 (opened for it

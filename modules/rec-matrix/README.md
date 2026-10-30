@@ -72,6 +72,16 @@ The pair rules ramp too: A alone to AB keeps A on the left and crossfades
 the right side from A to B. A take starts at the current selection, with no
 ramp, however the selection changed between takes.
 
+### Timing
+
+While the sequencer plays, a change to a recorder's selection waits for the
+next step of the master grid (the pattern's scale) and switches on that
+step's sample; its 64-sample ramp starts there. Further edits before that
+step go with it. The matrix and its LEDs show the new selection at once;
+the take follows on the step. With the sequencer stopped, and at the start
+of a take, the selection applies at once. (Proof of concept, 29 Oct 2026:
+one division, a step; `QUANT.md` has the plan and what is still open.)
+
 ## How it works
 
 Two DRAM units (`rmx.s`, the mixer; `editor.s`, the matrix editor), six
@@ -145,6 +155,25 @@ call counter and per-recorder stamps 36 B, the settled masks, ramp flag and
 pass list 132 B, plus the two units' code and tables.
 
 ## Measured
+
+Quantized switching, under the port, 29 Oct 2026 (empty project at 120
+BPM, SRC3 = MTRX on T1, a take running, REC1 changed mid-take):
+
+- **On the step.** The target was the transport start + 6 steps exactly
+  (95,256,000 position units), and the split fell on sample 3 of the frame
+  holding it, the sample stock's own arithmetic gives for that position.
+- **In the take.** Numbered input (each input sample carries its index):
+  the take is silent up to the commit, then A and B ramp in, gain 1/64 on
+  the first sample and unity 63 samples later, bit for bit.
+- **Stopped.** A change made with the sequencer stopped switched 21 samples
+  after the key reached the firmware (the editor wrote it 6 samples after
+  the key; the mixer took it in the next frame). A change left waiting
+  when STOP was pressed switched in the next frame.
+- **Stock's QREC, alongside.** A stock REC AB with QREC on T2 in the same
+  run: its event was computed for sample 8 of its step's frame, as MTRX's
+  is, but the take's first sample came 80 samples (5 frames) later than the
+  grid places it, at the same in-frame sample 8; the arm followed the
+  mailbox event by 84–85 samples in two runs. MTRX switches on the grid.
 
 Under the ColdFire port (`ot_emu`), 17–18 Oct 2026, project MTRXTEST,
 24-bit recorders, a tone on inputs A–D and T1:
@@ -232,6 +261,10 @@ Bryan T's MKII, images built from this module:
 - A ramp length in BRAIN > SETTINGS (card scope) instead of the constant
   `RAMP` in `rmx.s`. Planned.
 - MIDI control of the matrix.
+- Quantized switching (`QUANT.md`): not yet run on the unit. Divisions
+  other than a step, the grid for a scaled track, an indication that a
+  change is waiting, and where the ramp sits are open. Whether stock's
+  5-frame QREC start lag (Measured) holds on the unit is untested.
 - Not tried together with REC THRESHOLD or the other RECORDING SETUP
   modules. No hook site is shared with any module in the tree (18 Oct).
 

@@ -1,7 +1,9 @@
 # REC MATRIX: quantized switching (planning note)
 
 Planning, 26 Oct 2026; stock's timing traced 29 Oct 2026 (section "How
-stock places a quantized recorder event"). Nothing of MTRX's side is built.
+stock places a quantized recorder event"). A proof of concept is built
+(29 Oct, section "Proof of concept"): one division, a step of the master
+grid, measured under the port only.
 
 ## Goal
 
@@ -81,9 +83,48 @@ Read from `section_3_MAIN_OS.bin` (SHA-256 `164f3122…af0a84e`) with
   recorder's write at the word's low nibble, runs the event between the
   two halves when `word & 0xd0`, then keeps only the nibble (`0x4000d378`).
 
-So a stock quantized recorder start lands on an exact sample inside the
-frame, and the audio side keeps sequencer position finer than a tick
+So a stock quantized recorder event is placed on an exact sample inside
+the frame, and the audio side keeps sequencer position finer than a tick
 (1/tempo24 sample). Unknowns 1 and 2 below are answered by this.
+
+🟡 But the take does not start in that frame: under the port the recorder
+armed 84–85 samples after the mailbox event (two runs), and the take's
+first sample came 5 frames after the grid position, at the same in-frame
+sample (README, Measured). Where the 5 frames go (the event handler
+`0x40005ff0` and the engine task, presumably) is not traced, nor whether
+the unit shows the same.
+
+## The master grid (traced 29 Oct 2026)
+
+- `0x4610757c` is the next 24 PPQN clock's position. PLAY writes it as the
+  start position, a frame boundary two frames ahead (`0x4009c186`:
+  `[0x46104cf0] + tempo24 × 16`); each clock adds 2,646,000
+  (`0x400a1ea4`). Four other sites write it too (`0x4000ae7a`,
+  `0x4009bad4`, `0x4009bb96`, `0x4009c46e`; restarts and external clock,
+  not traced).
+- `0x800065b6` is that clock's index within the master step: PLAY clears
+  it (`0x4009bebe`), each clock adds one (`0x400a3fe4`) and wraps it at
+  `[0x400aba50 + 4 × scale]`, scale = `[0x8000663d]` (`0x400a3ff8`). The
+  table is 3 4 6 8 12 24 48 96 48 24 clocks per step; 2 (6) is 1x.
+- So the next step starts at `[0x4610757c] + ((cps − phase) mod cps) ×
+  2,646,000`. The clock itself runs with the transport stopped
+  (`0x46c7a19c` counts it), so the phase, not the clock count, is the
+  reference. Per-track phases sit at `0x46c7757c` (16 bytes).
+
+## Proof of concept (29 Oct 2026)
+
+`rmx.s` keeps a live mask per recorder (`rmx_live`) beside the stored one
+(BRAIN's). The editor and storage are unchanged. In each MTRX write-path
+call: a new take or a stopped transport takes the stored mask at once;
+otherwise a difference fixes a target (the next step, above) the first
+time it is seen, and the call converts it to a sample in this frame with
+`0x4000aee0`'s EMAC sequence against `0x46104cf0` (MACSR and ACC0 saved
+and restored). At or before the call's segment: the stored mask from the
+segment's start; inside it: the segment is mixed in two pieces (the body
+became `rmx_mix`), the second from the commit sample on the new mask, so
+its ramp starts there; after it: not yet. Measured under the port (README,
+Measured): the target exactly on the step, the split on stock's
+sample, the take silent to the commit and ramping from it.
 
 ## Sketch
 
@@ -122,7 +163,9 @@ frame, and the audio side keeps sequencer position finer than a tick
    1/tempo24-sample units, so a quarter trig need not round to a tick.
 2. ✅ Answered 29 Oct: n is entry 59's in-frame byte, ORed in at
    `0x4000b37a`; a stock recorder trig starts mid-frame.
-3. Baseline: the key-to-switch latency of an unquantized edit today.
+3. ✅ Measured 29 Oct (port): an unquantized edit switches 21 samples
+   after the key reaches the firmware. The panel's own scan is not in
+   that figure.
 4. How a scaled track (2x, 3/4x, 1/2x …) and the pattern's master length
    show up in these positions, for open question 1.
 5. Whether a tempo change between the target being set and the commit
