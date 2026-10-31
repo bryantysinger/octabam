@@ -37,8 +37,10 @@ clicking. Needs BRAIN in the image (the matrix is kept in the project's
    at the ends. The track keys light the active track either way.
 5. **LEFT** and **RIGHT** set QUANT, when a change takes over while the
    sequencer plays: OFF (at once), 1/2 TRIG, 1 TRIG, 2, 3 or 4 TRIGS,
-   stopping at the ends. A toast over the matrix shows the setting for
-   0.8 s (stock's toast and length). One setting for all recorders, kept
+   stopping at the ends. The first press shows the setting in a toast over
+   the matrix without changing it; while the toast is up (0.8 s, stock's
+   length, renewed by each press) LEFT and RIGHT step it. The toast's box
+   keeps one size for every setting. One setting for all recorders, kept
    in the project with the matrix (BRAIN > SETTINGS shows it as QUANT).
 6. **SRC**, **AMP**, **LFO**, **FX1** or **FX2** closes the matrix and
    RECORDING SETUP and goes to that page. (Stock leaves RECORDING SETUP
@@ -186,6 +188,10 @@ BPM, SRC3 = MTRX on T1, a take running, REC1 changed mid-take):
   boundary 11; QUANT 1/2 at 8.21 on 8.5 and at 15.99 on 16.0, 40 samples
   after the change. The toast draws over the matrix and the matrix is
   whole after it.
+- **The arrows and the toast** (30 Oct): the first RIGHT showed QUANT OFF
+  and left it at OFF; RIGHT, RIGHT and LEFT inside the toast's 0.8 s set 1,
+  2, 1; after the toast had closed, a press showed it again unchanged. The
+  box was the same size for QUANT OFF and QUANT 1/2 TRIG (screen captures).
 - **Stock's QREC, alongside.** A stock REC AB with QREC on T2 in the same
   run: its event was computed for sample 8 of its step's frame, as MTRX's
   is, but the take's first sample came 80 samples (5 frames) later than the

@@ -36,7 +36,8 @@ and closed with it); knob E on RECORDING SETUP 1, with SRC3 on MTRX, opens
 it too. The trigs edit the active track's row (1 AB, 2 CD, 3 MAIN, 4 CUE,
 5..8 A..D, 9..16 T1..T8; a pair and its inputs exclude each other, the
 newest press wins) and show it on their LEDs; track keys, UP and DOWN
-change the row; LEFT and RIGHT set QUANT (OFF, 1/2, 1..4 trigs) in a toast;
+change the row; LEFT and RIGHT show QUANT in a toast and, while it is up,
+step it (OFF, 1/2, 1..4 trigs);
 a page key leaves for its page; CUE + MIX, NO or knob E closes. Each edit
 is saved to brain.work as a SETTINGS edit is.
 """
