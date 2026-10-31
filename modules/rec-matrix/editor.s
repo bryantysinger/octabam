@@ -6,7 +6,8 @@
 | points it at rmx_knob_e. Opening registers rmx_layer on top of the
 | setup's: the trigs toggle sources, NO or knob E closes, UP and DOWN step
 | the active track (toward T1 and T8, stopping at the ends), LEFT and RIGHT
-| step QUANT (OFF, 1/2, 1, 2, 3, 4 trigs) in a toast, the six knobs
+| show QUANT in a toast and, while it is up, step it (OFF, 1/2, 1, 2, 3, 4
+| trigs), the six knobs
 | are swallowed; every other key falls through (track keys still change the
 | active track, and the editor follows it). The setup window's redraw
 | (0x4002f2f8) redraws the editor's own full-screen window (128 x 64, level 2,
@@ -49,8 +50,15 @@
         .equ    PAGE_PRESS, 0x4005578c      | stock's SRC..FX2 page select: (code, 1)
         .equ    SETUP_KEY,  0x4002ff84      | FUNC + REC1/REC2: (0x2b + page); opens, switches or closes
         .equ    SEL_TRACK,  0x40083bf8      | (track): selects it (both globals, restage, redraw, LEDs)
-        .equ    NOTIFY,     0x4005a2b8      | (text, ticks > 0): stock's toast, a level-10 window
-        .equ    TOAST_TICKS, 0x30           | 0.8 s, stock's usual length
+        .equ    TOAST_TICKS, 0x30           | 0.8 s, stock's usual length (UI ticks, 60 Hz)
+| Stock's toast, NOTIFY 0x4005a2b8 (text, ticks), sizes its window to the
+| text; rmx_toast is its sequence with a fixed width. Its state, stock's:
+        .equ    NOTIF_H,    0x460d1e70      | the toast's window, 0 when none
+        .equ    NOTIF_T,    0x460d1e6c      | its ticks left; at 0 the UI task closes it
+        .equ    NOTIF_ON,   0x46c7c72c      | set to 1 by NOTIFY
+        .equ    NOTIF_CLOSE, 0x40056bec     | closes it (a kernel post: key handlers only)
+        .equ    WIN_TEXT,   0x40057008      | (window, text, 0, font): cleared, text centred
+        .equ    TOAST_FONT, 0x400ba862
         .equ    QUANT_MAX,  5               | QUANT: 0 OFF, 1 1/2, 2..5 one to four trigs
 
 | mask bits: 0 A, 1 B, 2 C, 3 D, 4 AB, 5 CD, 6..13 T1..T8, 14 MAIN, 15 CUE
@@ -250,17 +258,27 @@ rmx_key_down:
         bsr     rmx_leds
 9:      rts
 
-| LEFT or RIGHT inside the editor: (code, edge). QUANT one step down or up
-| (OFF, 1/2, 1, 2, 3, 4 trigs; stopping at the ends), saved to brain.work as
-| a SETTINGS edit is, and shown in stock's toast over the matrix (level 10,
-| above the editor's window, so opening it closes nothing of ours). A press
-| at an end shows the setting again.
+| LEFT or RIGHT inside the editor: (code, edge). The first press shows QUANT
+| in a toast over the matrix and leaves it; while that toast is up, each
+| press steps QUANT down or up (OFF, 1/2, 1, 2, 3, 4 trigs; stopping at the
+| ends), saves it to brain.work as a SETTINGS edit is and shows it again.
+| The toast is level 10, above the editor's window, so opening it closes
+| nothing of ours. "Up" means the toast this editor opened is still listed
+| (stock's NOTIF_H) with ticks left; any other toast does not count. (Stock
+| reuses window records, so a stock toast opened in the same record while
+| the matrix is open would pass for ours; none is known to open there.)
 rmx_key_left:
         moveq   #-1,%d1
         bra.s   1f
 rmx_key_right:
         moveq   #1,%d1
-1:      move.l  rmx_quant_ptr,%a0
+1:      move.l  (NOTIF_H).l,%d0
+        beq.s   2f
+        cmp.l   rmx_toast_h,%d0
+        bne.s   2f
+        tst.l   (NOTIF_T).l
+        ble.s   2f
+        move.l  rmx_quant_ptr,%a0           | ours is up: step
         move.l  (%a0),%d0
         add.l   %d1,%d0
         moveq   #QUANT_MAX,%d1
@@ -271,11 +289,45 @@ rmx_key_right:
 2:      move.l  rmx_quant_ptr,%a0
         move.l  (%a0),%d0
         lea     rmx_quant_txt,%a0
-        move.l  (%a0,%d0.l*4),%a0
-        pea     TOAST_TICKS
-        move.l  %a0,-(%sp)
-        jsr     (NOTIFY).l
-        addq.l  #8,%sp
+        move.l  (%a0,%d0.l*4),-(%sp)
+        bsr     rmx_toast
+        addq.l  #4,%sp
+        rts
+
+| rmx_toast(text): NOTIFY's sequence (0x4005a2b8 to 0x4005a332) with the
+| window as wide as the widest label (QUANT 1/2 TRIG) plus stock's 15, so
+| the box keeps its size and each label sits centred in it (WIN_TEXT
+| centres). Key-handler context only, as NOTIFY.
+rmx_toast:
+        tst.l   (NOTIF_H).l
+        beq.s   1f
+        jsr     (NOTIF_CLOSE).l
+1:      pea     q_half                      | the widest label
+        pea     -1
+        pea     TOAST_FONT
+        jsr     (TEXT_W).l
+        lea     12(%sp),%sp
+        pea     (NOTIF_CLOSE).l
+        pea     0xa                         | level 10
+        clr.l   -(%sp)
+        clr.l   -(%sp)
+        pea     0x12                        | 18 px tall
+        add.l   #15,%d0
+        move.l  %d0,-(%sp)
+        jsr     (WIN_NEW).l
+        lea     24(%sp),%sp
+        move.l  %d0,(NOTIF_H).l
+        move.l  %d0,rmx_toast_h
+        pea     TOAST_FONT
+        clr.l   -(%sp)
+        move.l  12(%sp),-(%sp)              | the text
+        move.l  %d0,-(%sp)
+        jsr     (WIN_TEXT).l
+        lea     16(%sp),%sp
+        moveq   #1,%d0
+        move.l  %d0,(NOTIF_ON).l
+        moveq   #TOAST_TICKS,%d0
+        move.l  %d0,(NOTIF_T).l
         rts
 
         .balign 4
@@ -723,5 +775,7 @@ rmx_shortcut:
         .long   0                           | 1: CUE + MIX opened the setup under the matrix
 rmx_win:
         .long   0
+rmx_toast_h:
+        .long   0                           | the toast window this editor last opened
 
         .include "remix.inc"                | rmx_cue_keys (manifest.py cue_keys_inc)
