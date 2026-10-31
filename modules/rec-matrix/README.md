@@ -26,12 +26,12 @@ clicking. Needs BRAIN in the image (the matrix is kept in the project's
    selection in orange, a colour stock's trigs do not use, so the mode is
    plain at a glance:
 
-   | trig | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9–16 |
+   | trig | 1–8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 |
    |---|---|---|---|---|---|---|---|---|---|
-   | source | AB | CD | MAIN | CUE | A | B | C | D | T1–T8 |
+   | source | T1–T8 | AB | CD | A | B | C | D | MAIN | CUE |
 
-   Columns on the screen follow the same order: stereo sources, then the
-   mono inputs, then the tracks.
+   Columns on the screen follow the same order: the tracks, then the
+   stereo inputs, then the mono inputs, then MAIN and CUE.
 4. The **track keys** move to another recorder's row, and **UP** and
    **DOWN** step through the rows: UP toward T1, DOWN toward T8, stopping
    at the ends. The track keys light the active track either way.
