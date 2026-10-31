@@ -9,6 +9,11 @@ the three blocks twice, a second of port time apart. Checks:
 
   blocks     wValue 0, 1, 2 read whole through wIndex offsets (20, 48 and 256 bytes); no reply is a
              multiple of 64 bytes; an offset at the end and wValue 4 STALL; wValue 3 is DLPUMP's counters when the remix has it, else STALLs
+  probes     with FRAME PROFILE (USB_PROBES): wValue 4 is BRAIN's task ledger (96 bytes, sent 95 then 1), wValue
+             5 FRAME PROFILE's window (96 bytes, its seq rising), wValue 6 STALLs; with REC MATRIX as well,
+             the test command 0xc0/0x58 reads recorder 1's mask, writes one, reads it back over USB and as the
+             long in DRAM the mixer reads (rmx_mask_ptr's first entry), restores it, and STALLs for recorder 9.
+             Without FRAME PROFILE, 0xc0/0x58 STALLs
   match      lm_stats read over USB equals the same words peeked from DRAM at
              the symbol's address (runtime.elf), so the request points at the
              meter's cells and not at a neighbour
@@ -147,11 +152,41 @@ def main():
             check("an offset at the block's end STALLs", False, "a reply came back")
         except Exception as e:  # noqa: BLE001
             check("an offset at the block's end STALLs", True, type(e).__name__)
-        try:
-            serve(lambda: b.ctrl_in(0xc0, 0x57, 4, 0, 4))
-            check("wValue 4 STALLs", False, "a reply came back")
-        except Exception as e:  # noqa: BLE001
-            check("wValue 4 STALLs", True, type(e).__name__)
+        probes = "FRAME PROFILE" in mods
+
+        def stalls(what, fn):
+            try:
+                serve(fn)
+                check(f"{what} STALLs", False, "a reply came back")
+            except Exception as e:  # noqa: BLE001
+                check(f"{what} STALLs", True, type(e).__name__)
+        if probes:
+            led = load_meter.read_block(c, 4, 96)
+            check("wValue 4 is BRAIN's task ledger: 96 bytes", len(led) == 96, str(len(led)))
+            f1 = load_meter.read_block(c, 5, 96)
+            cmd("run 1500")
+            f2 = load_meter.read_block(c, 5, 96)
+            seq = lambda raw: int.from_bytes(raw[:4], "big")
+            check("wValue 5 is FRAME PROFILE's window: 96 bytes, its seq rising",
+                  len(f1) == 96 and seq(f2) > seq(f1), f"seq {seq(f1)} -> {seq(f2)}")
+            stalls("wValue 6", lambda: b.ctrl_in(0xc0, 0x57, 6, 0, 4))
+        else:
+            stalls("wValue 4", lambda: b.ctrl_in(0xc0, 0x57, 4, 0, 4))
+        mask = lambda rec, val=None: int.from_bytes(bytes(serve(lambda: b.ctrl_in(
+            0xc0, 0x58, (val or 0) & 0xFFFF, rec | (0x100 if val is not None else 0), 4))), "big", signed=True)
+        if probes and "REC MATRIX" in mods:
+            ptr = int(cmd(f"peek {symbol('rmx_mask_ptr'):#x} 4")[1], 16)
+            dram = lambda: int.from_bytes(bytes.fromhex(cmd(f"peek {ptr:#x} 4")[1]), "big", signed=True)
+            was = mask(0)
+            check("0xc0/0x58 reads recorder 1's mask as the long in DRAM", was == dram(), f"{was} vs {dram()}")
+            got = mask(0, 0xC0C0)                        # CUE set: negative, as BRAIN keeps it
+            check("0xc0/0x58 writes the mask, sign-extended, and replies it",
+                  got == dram() == -0x3F40, f"reply {got}, dram {dram()}")
+            mask(0, was & 0xFFFF)
+            check("0xc0/0x58 restores the mask", dram() == was, f"{dram()} vs {was}")
+            stalls("0xc0/0x58 for recorder 9", lambda: b.ctrl_in(0xc0, 0x58, 0, 8, 4))
+        else:
+            stalls("0xc0/0x58 (no FRAME PROFILE or no REC MATRIX)", lambda: b.ctrl_in(0xc0, 0x58, 0, 0, 4))
         if "DLPUMP" in mods:               # block 3 is DLPUMP's counters: 16 longs, sent a byte short of 64
             check("wValue 3 returns DLPUMP's counters (63 bytes for a 64-byte request)",
                   len(serve(lambda: b.ctrl_in(0xc0, 0x57, 3, 0, 64))) == 63)

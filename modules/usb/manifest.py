@@ -94,7 +94,17 @@ def audio_inc(modules, remix):
     for i in range(0, XLV_WORDS, 8):
         lines.append("    .long " + ", ".join(f"0x{w:06x}" for w in words[i:i + 8]))
     lines.append(".endm")
-    return "\n".join(lines) + descriptors.audio_remix_inc(modules, remix)
+    return "\n".join(lines) + "\n" + probes_inc(modules) + descriptors.audio_remix_inc(modules, remix)
+
+
+def probes_inc(modules, remix=None):
+    """USB_PROBES: 1 when FRAME PROFILE is in the image. It turns on the USB
+    timers FRAME PROFILE reads, 0xc0/0x57 blocks 4 (BRAIN's task ledger) and
+    5 (FRAME PROFILE's window), and the test command 0xc0/0x58 (REC MATRIX's
+    masks, tools/hw/rec_stress.py) in usbaudio.s and usbaudio_in.s. An image
+    without FRAME PROFILE assembles none of them."""
+    keys = {getattr(m, "key", m) for m in (modules or ())}
+    return f"    .set USB_PROBES, {1 if 'FRAME PROFILE' in keys else 0}\n"
 
 
 # ---- the linked units, in the order the four modules linked them ------------
@@ -116,9 +126,11 @@ LINKED = (
     # and geometry cfgsel writes before the handoff (40 B, contiguous)
     Linked("usbaudio", f"{SOURCE}/usbaudio.s", cpu="5475", dram=True,
            include=audio_inc, boot_mutable=(("usb_trk", 40),),
-           defsyms=(("LM_STATS", 0), ("LM_DSP", 0), ("LM_OT", 0), ("DL_DIAG", 0))),   # LOAD METER's blocks, 0 without it
+           defsyms=(("LM_STATS", 0), ("LM_DSP", 0), ("LM_OT", 0), ("DL_DIAG", 0),
+                    ("brain_ts", 0), ("FP_STATS", 0), ("rmx_mask_ptr", 0))),
+           # LOAD METER's, DLPUMP's, BRAIN's, FRAME PROFILE's and REC MATRIX's, 0 without them
     Linked("usbcrossbar", f"{SOURCE}/usbcrossbar.s", cpu="5475", dram=True),
-    Linked("usbaudio_in", f"{SOURCE}/usbaudio_in.s", cpu="5475", dram=True),
+    Linked("usbaudio_in", f"{SOURCE}/usbaudio_in.s", cpu="5475", dram=True, include=probes_inc),
 )
 
 

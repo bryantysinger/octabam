@@ -1210,6 +1210,22 @@ bytes, measured on a unit), so `lm_ot` comes as 255 bytes and 1.
 `verify_usb_load_meter` checks the request under the port (not the cache or
 the stale status, which only a unit shows; `docs/contributing/TRAPS.md`).
 
+**Probes (`USB_PROBES`, test images only).** With FRAME PROFILE in the remix,
+`remix.inc` sets `USB_PROBES` to 1 (`manifest.py` `probes_inc`) and three
+things are assembled in: DMA timer 3 stamps around the OUT shim, the
+producer, the packet builds, the self-heal, `in_frame` and `in_build`
+(`usb_tm`, which FRAME PROFILE takes and clears each window); `0xc0/0x57`
+blocks 4 (BRAIN's task ledger `brain_ts`, 96 bytes) and 5 (FRAME PROFILE's
+window, 96 bytes); and the test command `0xc0/0x58`, REC MATRIX's mask for
+recorder `wIndex` low (0-7): with `wIndex` high 1 it first writes `wValue`
+(sign-extended, as BRAIN keeps the Number) to the long the mixer reads,
+live and not saved to `brain.work`, then replies the mask (4 bytes). It
+STALLs without REC MATRIX or past recorder 8. `tools/hw/rec_stress.py`
+drives it. An image without FRAME PROFILE assembles none of this and is
+byte-identical to the build without the switch (`stock-meter-a`, compared
+31 Oct 2026). `verify_usb_load_meter` checks blocks 4-6 and `0xc0/0x58`
+when the remix has the probes.
+
 #### Bus reset and session end
 
 The stock USBSTS.URI handler (`jsr 0x4001d6b8` at `0x4001e91c`: flush, dTD

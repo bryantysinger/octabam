@@ -49,6 +49,24 @@
 | by cfgsel with the four config-table pointers; the four config responders
 | serve the matching set (descriptors.py, cfg.s).
     .include "remix.inc"
+| USB_PROBES (remix.inc: 1 when FRAME PROFILE is in the image, else 0) adds
+| the USB timers FRAME PROFILE reads (usb_tm), BRAIN's task ledger and FRAME
+| PROFILE's window as 0xc0/0x57 blocks 4 and 5, and the test command
+| 0xc0/0x58 (REC MATRIX's masks). An image without FRAME PROFILE assembles
+| none of it: its bytes are those of the build without probes.
+.macro TM_MARK var
+.if USB_PROBES
+    movel   0xfc07c00c,%d0
+    movel   %d0,\var
+.endif
+.endm
+.macro TM_ADD var, slot
+.if USB_PROBES
+    movel   0xfc07c00c,%d0
+    subl    \var,%d0
+    addl    %d0,usb_tm+\slot
+.endif
+.endm
 .set TRK_OFF,   0
 .set TRK_PRE,   1
 .set TRK_POST,  2
@@ -457,7 +475,7 @@ usbaudio_kick:
     bnes    3f
     moveq   #2,%d0                  | the bring-up's packets are queued
     moveb   %d0,aud_await
-3:
+3:  TM_MARK usb_tm_t2               | usb_tm+24: the self-heal
     | Self-heal. The add-dTD tripwire (audio_pkt_build) is the documented
     | way to append to a running queue, and its hazard window is reported by
     | the hardware clearing ATDTW. Should anything ever leave an ACTIVE dTD
@@ -469,13 +487,14 @@ usbaudio_kick:
     movel   EPPRIME,%d1
     orl     %d1,%d0
     andil   #EP3IN_BIT,%d0
-    bnes    9f                      | primed or priming: running
+    bnes    8f                      | primed or priming: running
     mvzb    aud_tail,%d2            | oldest first: fill order from the tail
     bsr     audio_oldest
     tstl    %d0
-    beqs    9f                      | nothing queued: idle is correct
+    beqs    8f                      | nothing queued: idle is correct
     bsr     audio_prime             | %a4 = head dTD
     addql   #1,usbaudio_reprimes
+8:  TM_ADD  usb_tm_t2, 24
 9:  rts
 
 | %d0 = slot index (taken mod NSLOT) -> %a0 = its dTD, in on-chip SRAM.
@@ -602,6 +621,7 @@ audio_pkt_build:
     | one packet in 93. Full speed copies the 8-byte sum ring into this
     | slot's buffer (aud_bufs + slot * PKT_BUF), in at most two straight runs.
     | a3 = the packet's first byte, through the uncached alias.
+    TM_MARK usb_tm_t2               | usb_tm+16: the packet's bytes (the FS copy, the HS spill)
     movel   %d4,%d3                 | d3 = n
     movel   usbaudio_consumed,%d1
     andil   #AUD_FRAMES-1,%d1       | ring index of the first frame
@@ -653,6 +673,13 @@ audio_pkt_build:
     movel   %a5,%d0
     bsr     audio_copy_sum
 .Lcopied:
+.if USB_PROBES
+    movel   0xfc07c00c,%d0
+    movel   %d0,%d1
+    subl    usb_tm_t2,%d0
+    addl    %d0,usb_tm+16
+    movel   %d1,usb_tm_t2           | usb_tm+20: the dTD and its queueing, from here
+.endif
     movel   usbaudio_lastn,%d4      | n again (the copy clobbered it)
     addl    %d4,usbaudio_consumed
     movel   %d4,%d6
@@ -727,6 +754,10 @@ audio_pkt_build:
 .Lenq_prime:
     bsr     audio_prime
 .Lenq_done:
+    TM_ADD  usb_tm_t2, 20
+.if USB_PROBES
+    addql   #1,usb_tm+28            | packets queued
+.endif
     movel   %a6,%d0
     addql   #1,%d0
     andil   #NSLOT-1,%d0
@@ -960,6 +991,7 @@ audio_ep3_flush:
 
     .global audio_frame_shim
 audio_frame_shim:
+    TM_MARK usb_tm_t0               | USB timers (usb_tm): the shim's entry
     | The producer runs only while the host asks for the stream (usbaudio_alt,
     | the SET_INTERFACE request, so from the block after it). His build idled
     | until alt 1 and had 127 underruns at startup on hardware, which is why
@@ -999,12 +1031,14 @@ audio_frame_shim:
     clrb    aud_closed
     bsr     audio_cushion_zero
 .Lproduce_go:
+    TM_MARK usb_tm_t1
     bsr     producer_usb            | the composable producer (the six bytes
                                     | decide what each frame holds)
     | ---- EP3, owned by this context alone ---------------------------------
     | usbaudio_alt is what the host asked for (SET_INTERFACE); aud_running is
     | what EP3 currently is. Bring it up or down when they differ, and when
     | it is up the block clock IS the send clock: top the queue up now.
+    TM_ADD  usb_tm_t1, 4            | the producer's time
 .Lep3:
     mvzb    usbaudio_alt,%d0
     mvzb    aud_running,%d1
@@ -1022,7 +1056,8 @@ audio_frame_shim:
     beqs    9f                      | nobody listening: nothing to send
 .Lep3_kick:
     bsr     usbaudio_kick
-9:  clrl    0x46104d4e              | displaced
+9:  TM_ADD  usb_tm_t0, 0            | the whole shim: producer, EP3, packet builds
+    clrl    0x46104d4e              | displaced
     jmp     0x4000d9a6
 
 | The AUD_TARGET ring frames behind the producer, zeroed: the stream's first
@@ -1925,6 +1960,41 @@ audio_ctrl_shim:
     | reply that would be one is sent a byte short and the host asks again
     | from the new offset.
 .Lctrl_lm:
+.if USB_PROBES
+    | 0xc0/0x58, TEST ONLY (USB_PROBES images): REC MATRIX's mask for
+    | recorder wIndex low (0..7). wIndex high 1 first writes wValue (the
+    | 16-bit mask, bit 0 A .. 15 CUE, sign-extended as BRAIN keeps it) to the
+    | long the mixer reads (rmx_mask_ptr's entry), applied live and not
+    | saved to brain.work; any other wIndex high only reads. Replies the
+    | mask now (4 bytes). STALLs without REC MATRIX or past recorder 8.
+    cmpil   #0x58,%d0
+    bne     .Lctrl_lm2
+    movel   #rmx_mask_ptr,%d1
+    beq     .Lctrl_stock
+    mvzb    SETUP_WIDXL,%d0
+    cmpil   #8,%d0
+    bcc     .Lctrl_stock
+    lsll    #2,%d0
+    moveal  %d1,%a0
+    moveal  %a0@(0,%d0:l),%a0       | the recorder's mask long
+    mvzb    SETUP_WIDXH,%d0
+    cmpil   #1,%d0
+    bnes    1f
+    mvzb    SETUP_WVALH,%d0
+    lsll    #8,%d0
+    mvzb    SETUP_WVALL,%d1
+    orl     %d1,%d0
+    movew   %d0,%d1
+    extl    %d1
+    movel   %d1,%a0@
+1:  movel   %a0@,%d0
+    moveal  #(lm_reply+UNCACHED),%a1
+    movel   %d0,%a1@
+    pea     lm_reply
+    moveq   #4,%d0
+    bra     .Lctrl_send
+.Lctrl_lm2:
+.endif
     cmpil   #0x57,%d0
     bne     .Lctrl_stock
     lea     %sp@(-12),%sp
@@ -1945,6 +2015,16 @@ audio_ctrl_shim:
     moveq   #64,%d1                 | block 3: DLPUMP's counters (16 longs)
     movel   #DL_DIAG,%d3
     cmpil   #3,%d0
+.if USB_PROBES
+    beqs    3f
+    moveq   #96,%d1                 | block 4: BRAIN's task ledger, brain_ts (12 x {TCB, counts})
+    movel   #brain_ts,%d3
+    cmpil   #4,%d0
+    beqs    3f
+    moveq   #96,%d1                 | block 5: FRAME PROFILE's window (24 longs, modules/frame-profile)
+    movel   #FP_STATS,%d3
+    cmpil   #5,%d0
+.endif
     bne     9f
 3:  tstl    %d3
     beq     9f                      | the remix has no LOAD METER (or, for block 3, no DLPUMP)
@@ -2112,6 +2192,19 @@ uac2_clock_valid: .byte 0x01
     .global usbaudio_reprimes, usbaudio_minfill, usbaudio_maxfill, usbaudio_anchor
 | The fifteen longs from usbaudio_consumed to aud_produced are what the
 | vendor request 0xc0/0x55 returns, in this order.
+.if USB_PROBES
+| USB timers, DMA timer 3 counts summed since FRAME PROFILE last took them
+| (modules/frame-profile; nothing else reads or clears them): the frame
+| shim (OUT: producer, EP3, packet builds), the producer alone, USB IN's
+| per-frame work in state 7, in_build alone, then inside the OUT packet
+| builds: the copy, the dTD and its queueing, the self-heal, and a count of
+| packets queued (not a time).
+    .globl  usb_tm
+usb_tm:            .long 0, 0, 0, 0, 0, 0, 0, 0
+usb_tm_t0:         .long 0
+usb_tm_t1:         .long 0
+usb_tm_t2:         .long 0
+.endif
 usbaudio_consumed: .long 0          | frames pulled from the ring
 usbaudio_acc:      .long 0          | frames-per-packet accumulator (x1000)
 usbaudio_overruns: .long 0
