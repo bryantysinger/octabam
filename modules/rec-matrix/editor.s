@@ -15,8 +15,8 @@
 | (0x40043fdc) shows the row. The setup window's close
 | (0x4002ee88) closes the editor first, so its layer never outlives it.
 |
-| Trigs (Bryan T): 1 AB, 2 CD, 3 MAIN, 4 CUE, 5 A, 6 B, 7 C, 8 D, 9..16
-| T1..T8. A press turns its source on or off; turning AB on turns A and B
+| Trigs (Bryan T): 1..8 T1..T8, 9 AB, 10 CD, 11 A, 12 B, 13 C, 14 D,
+| 15 MAIN, 16 CUE. A press turns its source on or off; turning AB on turns A and B
 | off and turning A or B on turns AB off (the same for CD, C, D), so the
 | row never holds both a pair and one of its inputs. An edit goes to BRAIN's
 | value (REC<n>) and is saved as a SETTINGS edit is (brain_post_settings).
@@ -410,10 +410,10 @@ rmx_trig:
 | trig 1..16 -> its source bit (Bryan T's layout)
         .balign 2
 rmx_trig_bit:
-        .word   M_AB, M_CD, 0x4000, 0x8000          | AB, CD, MAIN, CUE
-        .word   M_A, M_B, M_C, M_D                  | A, B, C, D
         .word   0x0040, 0x0080, 0x0100, 0x0200      | T1..T4
         .word   0x0400, 0x0800, 0x1000, 0x2000      | T5..T8
+        .word   M_AB, M_CD, M_A, M_B                | AB, CD, A, B
+        .word   M_C, M_D, 0x4000, 0x8000            | C, D, MAIN, CUE
 
 | ---- LEDs -------------------------------------------------------------------
 
@@ -684,13 +684,13 @@ rmx_col_x:
         rts
 
 | box x per column, each box centred under its label (AB and CD under the
-| middle of their two letters), a gap after the stereo sources and after the
-| inputs
+| middle of their two letters), a gap after the tracks, after the stereo
+| sources and after the inputs
 rmx_col_xs:
-        .byte    9, 20, 30, 36,  45, 51, 57, 63,  72, 78, 84, 90, 96, 102, 108, 114
+        .byte    9, 15, 21, 27, 33, 39, 45, 51,  60, 71,  81, 87, 93, 99,  108, 114
 | header x per column (a label's left; AB and CD centred over their boxes)
 rmx_hdr_xs:
-        .byte    7, 18, 30, 36,  45, 51, 57, 63,  72, 78, 84, 90, 96, 102, 108, 114
+        .byte    9, 15, 21, 27, 33, 39, 45, 51,  58, 69,  81, 87, 93, 99,  108, 114
         .balign 2
 
 | the grid (checked against the screen under the port)
@@ -707,8 +707,8 @@ rmx_title_fmt:
         .asciz  "REC BUF %d"
         .balign 4
 rmx_hdr:
-        .long   h_ab, h_cd, h_m, h_q, h_a, h_b, h_c, h_d
         .long   h_1, h_2, h_3, h_4, h_5, h_6, h_7, h_8
+        .long   h_ab, h_cd, h_a, h_b, h_c, h_d, h_m, h_q
 h_ab:   .asciz  "AB"
 h_cd:   .asciz  "CD"
 h_m:    .asciz  "M"
