@@ -43,7 +43,11 @@ MIDI receive settings and 128 BPM (RECORD_24BIT too, if --bits is given):
                     DENSE  AB + CD + T1-T8 + MAIN + CUE                            (12 sources, every non-overlapping one)
                   SWITCH holds MTRX x4 and flips every row between DIAG and DENSE every --flip seconds (the
                   64-sample ramps on every change, QUANT as the project has it: OFF in a fresh one).
-A program change (channel --pc-channel, default 1) selects 16 x bank + pattern; `run` sends the clock.
+A program change (channel 1) selects 16 x bank + pattern. By default (proj --clock internal) the unit is the
+clock, as it is played, and the script sends only START, STOP and program changes; with --clock midi the project
+receives MIDI clock and the script sends it (every project before 1 Nov 2026 did: a stop seen then began with
+playback ending three quarters through a bar, a short take, one candidate cause being arm spacing measured
+from a jittered external clock).
 
 A RUN. --usb off,on runs every ladder with USB audio idle, then again with the host streaming: a 997 Hz sine at
 -20 dBFS into USB IN ABCD and the unit's output taken (with --audio, MAIN L checked: only with a template whose
@@ -264,11 +268,13 @@ def check_banks(dest, template_bank):
         assert (sum(data[0x10:-2]) & 0xFFFF) == int.from_bytes(data[-2:], "big"), "bank checksum"
 
 
-def write_project_text(dest, bits):
-    """MIDI clock, transport and program change in; 128 BPM; RECORD_24BIT only when --bits is given."""
+def write_project_text(dest, bits, clock="internal"):
+    """Transport and program change in; MIDI clock in only with clock "midi" (the unit is the clock otherwise, as
+    Bryan T plays it); 128 BPM; RECORD_24BIT only when --bits is given."""
     import ot_matrix as M
     settings = M.test_settings(1)
     settings["TEMPOx24"] = BPM * 24
+    settings["MIDI_CLOCK_RECEIVE"] = 1 if clock == "midi" else 0
     if bits:
         settings["RECORD_24BIT"] = 1 if bits == 24 else 0
     return M.stamp_text(dest, settings, M.TEST_STATES)
@@ -290,16 +296,17 @@ def cmd_proj(a):
                  + "\nSet the eight tracks up on the unit (FLEX on their own buffers, INAB A B, INCD -, RLEN 16, "
                    "SRC3 the track itself) and SAVE PROJECT.")
     shutil.copytree(src, dest)
-    changed = write_project_text(dest, a.bits)
+    changed = write_project_text(dest, a.bits, a.clock)
     write_banks(dest, tbank)
     check_banks(dest, tbank)
     raw = (dest / "project.work").read_text(errors="replace")
     depth = 24 if "RECORD_24BIT=1" in raw else 16
-    plan = {"bpm": BPM, "bits": depth, "pc_channel": 1, "rungs": rungs(), "settings_changed": changed,
-            "template": str(src)}
+    plan = {"bpm": BPM, "bits": depth, "clock": a.clock, "pc_channel": 1, "rungs": rungs(),
+            "settings_changed": changed, "template": str(src)}
     (dest / PLAN_FILE).write_text(json.dumps(plan, indent=1))
-    print(f"{dest}: from {src}'s part, banks A (SELF) and B (MTRX), {depth}-bit recorders, {len(rungs())} rungs a "
-          "USB phase; copy the folder into a set on the card and load it")
+    print(f"{dest}: from {src}'s part, banks A (SELF) and B (MTRX), {depth}-bit recorders, "
+          f"{'the unit' if a.clock == 'internal' else 'MIDI'} as the clock, {len(rungs())} rungs a USB phase; copy the "
+          "folder into a set on the card and load it")
 
 
 # ------------------------------------------------------------------------------------------------------ the unit --
@@ -756,7 +763,7 @@ def cmd_run(a):
         if "?" in sts:
             sys.exit(f"the screen's track glyphs read {sts}: leave the unit on the PLAYBACK page (track 1), "
                      "then run again")
-    clock = L.Clock(plan["bpm"], a.midi)
+    clock = make_clock(plan, a.midi)
     stream = None
     print(f"writing {path}  ({plan.get('bits', 16)}-bit recorders)")
     try:
@@ -953,6 +960,35 @@ def cmd_report(a):
                   f"{f('usb out shim')} | {f('usb in frame')} | {aud} | {scr_text(r).strip()} |")
 
 
+class TransportOnly:
+    """START, STOP and program changes over MIDI, no clock: the unit runs on its own (ot_ladder.Clock's calls)."""
+
+    def __init__(self, port):
+        import ot_midi
+        self.out = ot_midi.Out(port)
+
+    def start(self):
+        self.out.send([0xFA])
+
+    def stop(self):
+        self.out.send([0xFC])
+
+    def pc(self, ch, prog):
+        self.out.send([0xC0 | (ch - 1), prog & 0x7f])
+
+    def close(self):
+        pass
+
+
+def make_clock(plan, port):
+    """MIDI clock and transport for a project made with --clock midi (and every project before 1 Nov 2026, which
+    had clock receive on); transport only for --clock internal."""
+    if plan.get("clock", "midi") == "midi":
+        import ot_ladder as L
+        return L.Clock(plan["bpm"], port)
+    return TransportOnly(port)
+
+
 def parse_rung(name):
     """'MED x3', 'SELF x8', 'BASE' -> a rung as rungs() makes them."""
     m = re.fullmatch(r"\s*(BASE|SELF|DIAG|MED|DENSE)(?:\s*X\s*(\d))?\s*", name.upper())
@@ -1042,7 +1078,7 @@ def cmd_hold(a):
         sys.exit("no REC MATRIX test command in this image")
     if not unit.has_peek:
         sys.exit("no 0xc0/0x59 in this image: hold needs the screen")
-    clock = L.Clock(plan["bpm"], a.midi)
+    clock = make_clock(plan, a.midi)
     stream = None
     print(f"hold {rung_name(r)}, USB {a.usb.upper()}, {a.minutes:g} min x up to {a.repeats}; writing {path}")
     total_s = total_stops = 0.0
@@ -1080,6 +1116,22 @@ def cmd_hold(a):
                 if stopped:
                     stops += 1
                     print(f"  STOP: tracks {stopped} after {held:.0f} s of this hold; {_context(rec)}")
+                    if a.observe:
+                        print(f"  watching {a.observe:g} s more before the restart (do they come back?)")
+                        scr2 = Screen(expected_states(r), t_start, plan["bpm"], on_event=print_event)
+                        obs = {"kind": "hold-observe", "rung": rung_name(r), "usb": a.usb, "hold": rep_i,
+                               "segment": seg, "time": time.strftime("%Y-%m-%d %H:%M:%S")}
+                        try:
+                            obs.update(measure(unit, a.observe, screen=scr2, usb_every=0.5))
+                        except Lockup as e:
+                            obs.update({"result": "LOCKUP", "detail": str(e)})
+                        obs.setdefault("result", "OBSERVED")
+                        with path.open("a") as f:
+                            f.write(json.dumps(obs) + "\n")
+                        held += a.observe
+                        if obs["result"] == "LOCKUP":
+                            print(f"\nLOCKUP while watching: {obs['detail']}")
+                            return
                     print("  restarting the transport")
                     t_start = start_rung(clock, unit, plan, r, a.settle)
             total_s += held; total_stops += stops
@@ -1110,7 +1162,7 @@ def cmd_cycle(a):
         sys.exit("no REC MATRIX test command in this image")
     if not unit.has_peek:
         sys.exit("no 0xc0/0x59 in this image: cycle needs the screen")
-    clock = L.Clock(plan["bpm"], a.midi)
+    clock = make_clock(plan, a.midi)
     stream = None
     print(f"cycle {rung_name(r_from)} -> {rung_name(r_to)}, USB {a.usb.upper()}, {a.count} times; writing {path}")
     stops = 0
@@ -1170,8 +1222,11 @@ def main():
     sub.add_parser("plan")
     p = sub.add_parser("proj"); p.add_argument("template"); p.add_argument("dest")
     p.add_argument("--bits", type=int, choices=(16, 24), default=None, help="the template's when not given")
+    p.add_argument("--clock", choices=("internal", "midi"), default="internal",
+                   help="internal: the unit is the clock, the script sends transport only (default); midi: the script "
+                        "sends MIDI clock")
     p = sub.add_parser("run"); p.add_argument("dest"); p.add_argument("label")
-    p.add_argument("--midi", default="Octatrack"); p.add_argument("--usb-in", default="Octatrack")
+    p.add_argument("--midi", default="Elektron Octatrack DPS-1"); p.add_argument("--usb-in", default="Octatrack")
     p.add_argument("--usb", default="off,on"); p.add_argument("--ladders", default=",".join(LADDERS))
     p.add_argument("--secs", type=float, default=10.0); p.add_argument("--settle", type=float, default=4.0)
     p.add_argument("--flip", type=float, default=0.5); p.add_argument("--resume", action="store_true")
@@ -1180,12 +1235,14 @@ def main():
     p = sub.add_parser("masks"); p.add_argument("--set", nargs="*")
     for name in ("hold", "cycle"):
         p = sub.add_parser(name); p.add_argument("dest"); p.add_argument("label")
-        p.add_argument("--midi", default="Octatrack"); p.add_argument("--usb-in", default="Octatrack")
+        p.add_argument("--midi", default="Elektron Octatrack DPS-1"); p.add_argument("--usb-in", default="Octatrack")
         p.add_argument("--usb", default="on"); p.add_argument("--settle", type=float, default=4.0)
         if name == "hold":
             p.add_argument("--rung", required=True); p.add_argument("--minutes", type=float, default=5.0)
             p.add_argument("--repeats", type=int, default=3); p.add_argument("--all", action="store_true")
             p.add_argument("--segment", type=float, default=10.0, help="seconds a written segment")
+            p.add_argument("--observe", type=float, default=8.0, help="seconds watched after a stop, before the "
+                                                                       "restart (0: restart at once)")
         else:
             p.add_argument("--from", required=True); p.add_argument("--to", required=True)
             p.add_argument("--count", type=int, default=30); p.add_argument("--secs", type=float, default=10.0)
