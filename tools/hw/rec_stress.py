@@ -980,12 +980,93 @@ class TransportOnly:
         pass
 
 
+class LoggedClock:
+    """ot_ladder.Clock (continuous 0xF8 on an absolute schedule, START/STOP/PC on demand) that also logs its own
+    timing: each tick's lateness against its due time and the spacing from the tick before. A late wakeup is
+    followed by overdue ticks sent back to back (the catch-up burst), so a stall shows as one long gap and then
+    gaps near zero. drain() returns the summary since the last call and resets it."""
+
+    LATE_MS = 2.0      # ticks later than this are kept as events
+    KEEP = 400
+
+    def __init__(self, bpm, port):
+        import threading
+        import ot_midi
+        self.out = ot_midi.Out(port)
+        self.period = 60.0 / (bpm * 24.0)
+        self._lock = threading.Lock()
+        self._reset()
+        self._stop = threading.Event()
+        self.th = threading.Thread(target=self._run, daemon=True)
+        self.th.start()
+
+    def _reset(self):
+        self.ticks = 0
+        self.max_late = 0.0
+        self.max_gap = 0.0
+        self.min_gap = None
+        self.burst = 0         # ticks sent less than a quarter period after the one before
+        self.events = []       # (monotonic time, lateness ms, gap ms) for ticks later than LATE_MS
+
+    def _run(self):
+        t0 = time.monotonic(); n = 0; last = None
+        while not self._stop.is_set():
+            n += 1
+            due = t0 + n * self.period
+            dt = due - time.monotonic()
+            if dt > 0:
+                time.sleep(dt)
+            self.out.send([0xF8])
+            now = time.monotonic()
+            late = (now - due) * 1e3
+            gap = (now - last) * 1e3 if last is not None else self.period * 1e3
+            last = now
+            with self._lock:
+                self.ticks += 1
+                self.max_late = max(self.max_late, late)
+                self.max_gap = max(self.max_gap, gap)
+                self.min_gap = gap if self.min_gap is None else min(self.min_gap, gap)
+                if gap < self.period * 250:
+                    self.burst += 1
+                if late > self.LATE_MS and len(self.events) < self.KEEP:
+                    self.events.append((round(now, 4), round(late, 2), round(gap, 2)))
+
+    def drain(self, t_ref=None):
+        """Summary since the last drain; event times relative to t_ref (monotonic) when given."""
+        with self._lock:
+            ev = [((t - t_ref) if t_ref is not None else t, l, g) for t, l, g in self.events]
+            d = {"period_ms": round(self.period * 1e3, 3), "ticks": self.ticks, "max_late_ms": round(self.max_late, 2),
+                 "max_gap_ms": round(self.max_gap, 2),
+                 "min_gap_ms": round(self.min_gap, 2) if self.min_gap is not None else None,
+                 "burst_ticks": self.burst, "late_events": [(round(t, 3), l, g) for t, l, g in ev]}
+            self._reset()
+        return d
+
+    def start(self):
+        self.out.send([0xFA])
+
+    def stop(self):
+        self.out.send([0xFC])
+
+    def pc(self, ch, prog):
+        self.out.send([0xC0 | (ch - 1), prog & 0x7f])
+
+    def close(self):
+        self._stop.set(); self.th.join(timeout=1)
+
+
+def clock_line(d):
+    """One console line from a LoggedClock summary."""
+    return (f"clock: worst tick {d['max_late_ms']:.1f} ms late, gaps {d['min_gap_ms']:.2f}-{d['max_gap_ms']:.1f} ms "
+            f"(period {d['period_ms']:.2f}), {d['burst_ticks']} burst tick(s), {len(d['late_events'])} late > "
+            f"{LoggedClock.LATE_MS:g} ms")
+
+
 def make_clock(plan, port):
     """MIDI clock and transport for a project made with --clock midi (and every project before 1 Nov 2026, which
     had clock receive on); transport only for --clock internal."""
     if plan.get("clock", "midi") == "midi":
-        import ot_ladder as L
-        return L.Clock(plan["bpm"], port)
+        return LoggedClock(plan["bpm"], port)
     return TransportOnly(port)
 
 
@@ -1104,6 +1185,8 @@ def cmd_hold(a):
                     print(f"\nLOCKUP: {e}\nPower-cycle the unit, load the project, SRC page, then run again.")
                     return
                 held += time.monotonic() - t0
+                if hasattr(clock, "drain"):
+                    rec["clock"] = clock.drain(t0)
                 dead = usb_dead(rec.get("series", {}), in_ref, out_ref)
                 stopped = rec.get("screen", {}).get("stopped", [])
                 rec["result"] = dead or ("STOP" if stopped else "CLEAN")
@@ -1116,15 +1199,21 @@ def cmd_hold(a):
                 if stopped:
                     stops += 1
                     print(f"  STOP: tracks {stopped} after {held:.0f} s of this hold; {_context(rec)}")
+                    if "clock" in rec:
+                        print(f"  {clock_line(rec['clock'])}; late ticks this segment (s, late ms, gap ms): "
+                              f"{rec['clock']['late_events'][-12:]}")
                     if a.observe:
                         print(f"  watching {a.observe:g} s more before the restart (do they come back?)")
                         scr2 = Screen(expected_states(r), t_start, plan["bpm"], on_event=print_event)
                         obs = {"kind": "hold-observe", "rung": rung_name(r), "usb": a.usb, "hold": rep_i,
                                "segment": seg, "time": time.strftime("%Y-%m-%d %H:%M:%S")}
+                        t_obs = time.monotonic()
                         try:
                             obs.update(measure(unit, a.observe, screen=scr2, usb_every=0.5))
                         except Lockup as e:
                             obs.update({"result": "LOCKUP", "detail": str(e)})
+                        if hasattr(clock, "drain"):
+                            obs["clock"] = clock.drain(t_obs)
                         obs.setdefault("result", "OBSERVED")
                         with path.open("a") as f:
                             f.write(json.dumps(obs) + "\n")
@@ -1173,9 +1262,14 @@ def cmd_cycle(a):
                    "time": time.strftime("%Y-%m-%d %H:%M:%S"), "bits": plan.get("bits", 16)}
             try:
                 start_rung(clock, unit, plan, r_from, a.settle)
+                if hasattr(clock, "drain"):
+                    clock.drain()
                 t_start = start_rung(clock, unit, plan, r_to, a.settle)
                 scr = Screen(expected_states(r_to), t_start, plan["bpm"], on_event=print_event)
+                t_seg = time.monotonic()
                 rec.update(measure(unit, a.secs, screen=scr, usb_every=0.5))
+                if hasattr(clock, "drain"):
+                    rec["clock"] = clock.drain(t_seg)
             except Lockup as e:
                 rec.update({"result": "LOCKUP", "detail": str(e)})
                 with path.open("a") as f:
@@ -1191,6 +1285,8 @@ def cmd_cycle(a):
                   f"worst {rec.get('worst_us', 0):5.1f}" + (f"  tracks {stopped}" if stopped else ""), flush=True)
             if stopped:
                 stops += 1
+                if "clock" in rec:
+                    print(f"    {clock_line(rec['clock'])}")
             if dead:
                 print(f"  {dead}; {_context(rec)}\nPower-cycle the unit, load the project, SRC page, then run again.")
                 return
