@@ -3,7 +3,7 @@
 the tasks read over USB at every rung, a scorecard per image.
 
     python3 tools/hw/rec_stress.py plan
-    python3 tools/hw/rec_stress.py proj TEMPLATE DEST [--bits 24]   # TEMPLATE: a fresh project (the unit's, or ot_fresh.py's)
+    python3 tools/hw/rec_stress.py proj TEMPLATE DEST [--bits 24]   # TEMPLATE: eight sound-on-sound tracks set up on the unit
     python3 tools/hw/rec_stress.py run DEST LABEL [--midi Octatrack] [--usb-in Octatrack] [--usb off,on]
                                                   [--ladders SELF,DIAG,MED,DENSE,SWITCH] [--secs 10] [--settle 4]
                                                   [--resume]
@@ -13,13 +13,16 @@ the tasks read over USB at every rung, a scorecard per image.
 WHY. "Is it better than last build" and "what do we have to tell users before they rely on it" both need the same
 conditions every time, run without anyone at the panel. The ladders climb in load and stop where the unit does.
 
-THE PROJECT (128 BPM, every pattern LEN 16 1X; RECORD_24BIT from --bits, 24 by default; DIR AB 127, so USB IN A/B
-reaches MAIN; every track's LEVEL 0 in part 1, so MAIN carries only that input: the recorders' taps are pre-fader):
-  bank A, part 1  SELF: track t a FLEX machine on its own recorder buffer R(t), INAB A B, INCD -, SRC3 the track
-                  itself, RLEN 16, LOOP off, TSTR off on the buffers (Bryan T's 8-buffer lockup case). Pattern n
-                  (1-8): the first n tracks with PLAY + REC1 + REC2 + REC3 on step 1. Pattern 16: no trigs (BASE).
-  bank B, part 1  MTRX: the same machines, INAB -, INCD -, SRC3 MTRX. Pattern n: the first n tracks with PLAY +
-                  REC3 on step 1. The matrix is not in the project: `run` sets every recorder's row over USB
+THE TEMPLATE is a project set up on the unit, as a user sets up sound-on-sound: bank A part 1 with every track a
+FLEX machine on its own recorder buffer, INAB A B, INCD -, RLEN 16, SRC3 the track itself, chosen on the panel (the
+panel's FLEX choice sets bytes a machine-type write does not: 1 Nov 2026, the play triangle only flashed on a
+generated part). `proj` refuses any other. It keeps the template's Part as the unit wrote it -- machines, levels,
+volumes, effects, attributes, DYNAMIC_RECORDERS, depth -- and writes only the trigs, bank B's recorder sources, the
+MIDI receive settings and 128 BPM (RECORD_24BIT too, if --bits is given):
+  bank A, part 1  SELF: the template's part. Pattern n (1-8): the first n tracks with PLAY + REC1 + REC2 + REC3 on
+                  step 1 (the template's own layout). Pattern 16: no trigs (BASE).
+  bank B, part 1  MTRX: the template's part with every track's INAB -, INCD -, SRC3 MTRX. Pattern n: the first n
+                  tracks with PLAY + REC3 on step 1. The matrix is not in the project: `run` sets every recorder's row over USB
                   before each rung (vendor request 0xc0/0x58, images with FRAME PROFILE and REC MATRIX):
                     DIAG   recorder t records Tt                                   (1 source)
                     MED    Tt + AB + MAIN                                          (3 sources)
@@ -29,7 +32,8 @@ reaches MAIN; every track's LEVEL 0 in part 1, so MAIN carries only that input: 
 A program change (channel --pc-channel, default 1) selects 16 x bank + pattern; `run` sends the clock.
 
 A RUN. --usb off,on runs every ladder with USB audio idle, then again with the host streaming: a 997 Hz sine at
--20 dBFS into USB IN ABCD and MAIN L taken back from the unit's output. Within a phase: BASE; each ladder from x1
+-20 dBFS into USB IN ABCD and the unit's output taken (with --audio, MAIN L checked: only with a template whose
+tracks do not reach MAIN, since the loops on MAIN would read as damage). Within a phase: BASE; each ladder from x1
 up, then its DROP rung (x8 played for --settle, then STOP and x1: the heavy-to-light change that locked a unit on 31
 Oct 2026); then BASE again as a cool-down before the next ladder. Per rung: STOP twice, the program change, START,
 --settle seconds (two bars at 128 BPM: the first take, then sound on sound), then --secs of polling: BRAIN's task
@@ -97,7 +101,6 @@ REC_SELF = {"INAB": 1, "INCD": 0, "RLEN": 15, "LOOP": 0}    # A B, -, 16 steps (
 REC_MTRX = {"INAB": 0, "INCD": 0, "RLEN": 15, "LOOP": 0}
 TRIGS_SELF = (AZ.MASK_PLAY, AZ.MASK_REC1, AZ.MASK_REC2, AZ.MASK_REC3)
 TRIGS_MTRX = (AZ.MASK_PLAY, AZ.MASK_REC3)
-LEVEL_OFF = 0x01b                                     # a part's track LEVELs, every other byte (ot_project.py)
 NS = range(1, 9)
 SWITCH_N = 4
 TONE_HZ, TONE_DBFS = 997.0, -20.0
@@ -169,77 +172,91 @@ def cmd_plan(_a):
 
 # ------------------------------------------------------------------------------------------------- the project --
 
-def write_bank(dest, bank, setup, src3, trigs):
-    for suffix in ("work", "strd"):
-        path = dest / f"bank{bank + 1:02d}.{suffix}"
-        if not path.exists():
-            continue
-        data = bytearray(path.read_bytes())
-        for p in (0, 4):                                    # part 1 and its saved copy
-            base = AZ.PART_BASE + p * AZ.PART_STRIDE
-            for t in range(8):
-                data[base + AZ.MTYPE_OFF + t] = 1           # FLEX
-                data[base + AZ.SLOT_OFF + t * 5 + 1] = 128 + t   # on recorder buffer R(t+1)
-                data[base + LEVEL_OFF + 2 * t] = 0          # LEVEL 0: MAIN carries only DIR AB
-                rs = base + AZ.REC_SETUP_OFF + t * 12
-                for f, v in setup.items():
-                    data[rs + AZ.REC_FIELDS.index(f)] = v
-                data[rs + AZ.REC_FIELDS.index("SRC3")] = src3(t)
-        for pat in range(16):
-            for t in range(8):
-                off = AZ.trac_off(pat, t)
-                data[off:off + 64] = bytes(64)              # no trigs or trigless locks
-                data[off + 0x50], data[off + 0x51] = 16, 2
-            tail = AZ.PTRN0 + pat * AZ.PTRN_FSTRIDE + AZ.PTRN_FSTRIDE - 11
-            data[tail + 2], data[tail + 3] = 16, 2          # LEN 16, 1X
-            data[AZ.PTRN0 + pat * AZ.PTRN_FSTRIDE + AZ.PTRN_FSTRIDE - 5] = 0   # part 1
-        for n in NS:
-            for t in range(n):
-                for mask in trigs:
-                    data[AZ.trac_off(n - 1, t) + mask + 7] |= 1    # step 1
-        data[-2:] = (sum(data[0x10:-2]) & 0xFFFF).to_bytes(2, "big")
-        path.write_bytes(bytes(data))
+PART_BYTES = AZ.PART_STRIDE
 
 
-def check_bank(dest, bank, setup, src3, trigs):
-    data = (dest / f"bank{bank + 1:02d}.work").read_bytes()
-    for n in NS:
-        for mask in (AZ.MASK_PLAY, AZ.MASK_REC1, AZ.MASK_REC2, AZ.MASK_REC3):
-            on = [t for t in range(8) if data[AZ.trac_off(n - 1, t) + mask + 7] & 1]
-            assert on == (list(range(n)) if mask in trigs else []), (bank, n, hex(mask), on)
-    for pat in (8, BASE_PATTERN):
-        assert not any(data[AZ.trac_off(pat, t) + m + 7] & 1 for t in range(8)
-                       for m in (AZ.MASK_PLAY, AZ.MASK_REC1, AZ.MASK_REC2, AZ.MASK_REC3)), (bank, pat)
+def template_ok(data):
+    """The template's bank A part 1 is eight sound-on-sound tracks: FLEX on buffer R(t), INAB A B, INCD -, RLEN 16,
+    SRC3 the track. -> list of what is not."""
+    bad = []
+    b = AZ.PART_BASE
     for t in range(8):
-        base = AZ.PART_BASE
-        assert data[base + AZ.MTYPE_OFF + t] == 1 and data[base + AZ.SLOT_OFF + t * 5 + 1] == 128 + t
-        assert data[base + LEVEL_OFF + 2 * t] == 0
-        rs = base + AZ.REC_SETUP_OFF + t * 12
-        assert data[rs + AZ.REC_FIELDS.index("SRC3")] == src3(t)
-        assert all(data[rs + AZ.REC_FIELDS.index(f)] == v for f, v in setup.items())
-    assert (sum(data[0x10:-2]) & 0xFFFF) == int.from_bytes(data[-2:], "big"), "bank checksum"
+        rs = b + AZ.REC_SETUP_OFF + t * 12
+        f = lambda k: data[rs + AZ.REC_FIELDS.index(k)]
+        if data[b + AZ.MTYPE_OFF + t] != 1 or data[b + AZ.SLOT_OFF + t * 5 + 1] != 128 + t:
+            bad.append(f"T{t + 1} is not FLEX on recorder buffer {t + 1}")
+        elif (f("INAB"), f("INCD"), f("RLEN"), f("SRC3")) != (1, 0, 15, t + 1):
+            bad.append(f"T{t + 1}'s recording setup is not INAB A B, INCD -, RLEN 16, SRC3 T{t + 1}")
+    return bad
+
+
+def write_banks(dest, template_bank):
+    """Bank A: the template's part 1 (and as its saved copy), the SELF trigs. Bank B: the same part with the MTRX
+    sources, the MTRX trigs. Every pattern of both: part 1, LEN 16 1X, no other trig or lock."""
+    part = template_bank[AZ.PART_BASE:AZ.PART_BASE + PART_BYTES]
+    for bank, trigs, mtrx in ((SELF_BANK, TRIGS_SELF, False), (MTRX_BANK, TRIGS_MTRX, True)):
+        for suffix in ("work", "strd"):
+            path = dest / f"bank{bank + 1:02d}.{suffix}"
+            if not path.exists():
+                continue
+            data = bytearray(path.read_bytes())
+            for p in (0, 4):                                # part 1 and its saved copy
+                base = AZ.PART_BASE + p * AZ.PART_STRIDE
+                data[base:base + PART_BYTES] = part
+                if mtrx:
+                    for t in range(8):
+                        rs = base + AZ.REC_SETUP_OFF + t * 12
+                        for f, v in REC_MTRX.items():
+                            data[rs + AZ.REC_FIELDS.index(f)] = v
+                        data[rs + AZ.REC_FIELDS.index("SRC3")] = SRC3_MTRX
+            for pat in range(16):
+                for t in range(8):
+                    off = AZ.trac_off(pat, t)
+                    data[off:off + 64] = bytes(64)          # no trigs or trigless locks
+                    data[off + 0x50], data[off + 0x51] = 16, 2
+                tail = AZ.PTRN0 + pat * AZ.PTRN_FSTRIDE + AZ.PTRN_FSTRIDE - 11
+                data[tail + 2], data[tail + 3] = 16, 2      # LEN 16, 1X
+                data[AZ.PTRN0 + pat * AZ.PTRN_FSTRIDE + AZ.PTRN_FSTRIDE - 5] = 0   # part 1
+            for n in NS:
+                for t in range(n):
+                    for mask in trigs:
+                        data[AZ.trac_off(n - 1, t) + mask + 7] |= 1    # step 1
+            data[-2:] = (sum(data[0x10:-2]) & 0xFFFF).to_bytes(2, "big")
+            path.write_bytes(bytes(data))
+
+
+def check_banks(dest, template_bank):
+    tpart = template_bank[AZ.PART_BASE:AZ.PART_BASE + PART_BYTES]
+    for bank, trigs, mtrx in ((SELF_BANK, TRIGS_SELF, False), (MTRX_BANK, TRIGS_MTRX, True)):
+        data = (dest / f"bank{bank + 1:02d}.work").read_bytes()
+        for n in NS:
+            for mask in (AZ.MASK_PLAY, AZ.MASK_REC1, AZ.MASK_REC2, AZ.MASK_REC3):
+                on = [t for t in range(8) if data[AZ.trac_off(n - 1, t) + mask + 7] & 1]
+                assert on == (list(range(n)) if mask in trigs else []), (bank, n, hex(mask), on)
+        for pat in (8, BASE_PATTERN):
+            assert not any(data[AZ.trac_off(pat, t) + m + 7] & 1 for t in range(8)
+                           for m in (AZ.MASK_PLAY, AZ.MASK_REC1, AZ.MASK_REC2, AZ.MASK_REC3)), (bank, pat)
+        for p in (0, 4):
+            part = data[AZ.PART_BASE + p * AZ.PART_STRIDE:AZ.PART_BASE + p * AZ.PART_STRIDE + PART_BYTES]
+            moved = [i for i in range(PART_BYTES) if part[i] != tpart[i]]
+            if mtrx:
+                allowed = {AZ.REC_SETUP_OFF + t * 12 + AZ.REC_FIELDS.index(f) for t in range(8)
+                           for f in ("INAB", "INCD", "SRC3")}
+                assert set(moved) <= allowed, (bank, p, [hex(i) for i in moved if i not in allowed][:8])
+                assert all(part[AZ.REC_SETUP_OFF + t * 12 + AZ.REC_FIELDS.index("SRC3")] == SRC3_MTRX
+                           for t in range(8))
+            else:
+                assert not moved, (bank, p, [hex(i) for i in moved][:8])
+        assert (sum(data[0x10:-2]) & 0xFFFF) == int.from_bytes(data[-2:], "big"), "bank checksum"
 
 
 def write_project_text(dest, bits):
-    """TSTR and loop off on the eight recorder buffers; MIDI clock, transport and program change in; 128 BPM;
-    the recorders' depth; DIR AB up."""
-    for name in ("project.work", "project.strd"):
-        path = dest / name
-        if not path.exists():
-            continue
-        raw = path.read_bytes()
-
-        def rec_attrs(m):
-            b = re.sub(rb"TSMODE=\d+", b"TSMODE=0", m.group(0))
-            return re.sub(rb"LOOPMODE=\d+", b"LOOPMODE=0", b)
-        raw, k = re.subn(rb"\[SAMPLE\]\r?\nTYPE=FLEX\r?\nSLOT=(129|13[0-6])\r?\n.*?\[/SAMPLE\]", rec_attrs, raw,
-                         flags=re.S)
-        if k != 8:
-            sys.exit(f"{path}: {k} recorder sample blocks (FLEX 129-136), want 8")
-        path.write_bytes(raw)
+    """MIDI clock, transport and program change in; 128 BPM; RECORD_24BIT only when --bits is given."""
     import ot_matrix as M
     settings = M.test_settings(1)
-    settings.update({"TEMPOx24": BPM * 24, "RECORD_24BIT": 1 if bits == 24 else 0, "DIR_AB": 127})
+    settings["TEMPOx24"] = BPM * 24
+    if bits:
+        settings["RECORD_24BIT"] = 1 if bits == 24 else 0
     return M.stamp_text(dest, settings, M.TEST_STATES)
 
 
@@ -252,16 +269,23 @@ def cmd_proj(a):
     for b in (SELF_BANK, MTRX_BANK):
         if not (src / f"bank{b + 1:02d}.work").is_file():
             sys.exit(f"{src}: no bank{b + 1:02d}.work")
+    tbank = (src / "bank01.work").read_bytes()
+    bad = template_ok(tbank)
+    if bad:
+        sys.exit(f"{src} is not a sound-on-sound template (bank A, part 1):\n  " + "\n  ".join(bad)
+                 + "\nSet the eight tracks up on the unit (FLEX on their own buffers, INAB A B, INCD -, RLEN 16, "
+                   "SRC3 the track itself) and SAVE PROJECT.")
     shutil.copytree(src, dest)
     changed = write_project_text(dest, a.bits)
-    write_bank(dest, SELF_BANK, REC_SELF, lambda t: t + 1, TRIGS_SELF)
-    write_bank(dest, MTRX_BANK, REC_MTRX, lambda t: SRC3_MTRX, TRIGS_MTRX)
-    check_bank(dest, SELF_BANK, REC_SELF, lambda t: t + 1, TRIGS_SELF)
-    check_bank(dest, MTRX_BANK, REC_MTRX, lambda t: SRC3_MTRX, TRIGS_MTRX)
-    plan = {"bpm": BPM, "bits": a.bits, "pc_channel": 1, "rungs": rungs(), "settings_changed": changed}
+    write_banks(dest, tbank)
+    check_banks(dest, tbank)
+    raw = (dest / "project.work").read_text(errors="replace")
+    depth = 24 if "RECORD_24BIT=1" in raw else 16
+    plan = {"bpm": BPM, "bits": depth, "pc_channel": 1, "rungs": rungs(), "settings_changed": changed,
+            "template": str(src)}
     (dest / PLAN_FILE).write_text(json.dumps(plan, indent=1))
-    print(f"{dest}: banks A (SELF) and B (MTRX), {a.bits}-bit recorders, {len(rungs())} rungs a USB phase; "
-          "copy the folder into a set on the card and load it")
+    print(f"{dest}: from {src}'s part, banks A (SELF) and B (MTRX), {depth}-bit recorders, {len(rungs())} rungs a "
+          "USB phase; copy the folder into a set on the card and load it")
 
 
 # ------------------------------------------------------------------------------------------------------ the unit --
@@ -731,7 +755,7 @@ def cmd_run(a):
                         elif pout is not None and pout < 0.5 * out_ref:
                             rec["result"] = "USB OUT STOPPED"
                         lo, x = stream.segment(m0, stream.mark())
-                        au = tone_check(lo, x, stream.w)
+                        au = tone_check(lo, x, stream.w) if a.audio else None
                         if au:
                             rec["audio"] = au
                             if r["ladder"] == "BASE" and not r.get("tag") and au.get("thdn_db") is not None:
@@ -886,12 +910,13 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("plan")
     p = sub.add_parser("proj"); p.add_argument("template"); p.add_argument("dest")
-    p.add_argument("--bits", type=int, choices=(16, 24), default=24)
+    p.add_argument("--bits", type=int, choices=(16, 24), default=None, help="the template's when not given")
     p = sub.add_parser("run"); p.add_argument("dest"); p.add_argument("label")
     p.add_argument("--midi", default="Octatrack"); p.add_argument("--usb-in", default="Octatrack")
     p.add_argument("--usb", default="off,on"); p.add_argument("--ladders", default=",".join(LADDERS))
     p.add_argument("--secs", type=float, default=10.0); p.add_argument("--settle", type=float, default=4.0)
     p.add_argument("--flip", type=float, default=0.5); p.add_argument("--resume", action="store_true")
+    p.add_argument("--audio", action="store_true", help="check MAIN L's tone (only with tracks kept off MAIN)")
     p = sub.add_parser("report"); p.add_argument("labels", nargs="+")
     p = sub.add_parser("masks"); p.add_argument("--set", nargs="*")
     a = ap.parse_args()
