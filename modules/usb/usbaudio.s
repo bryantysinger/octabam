@@ -54,6 +54,11 @@
 | PROFILE's window as 0xc0/0x57 blocks 4 and 5, and the test command
 | 0xc0/0x58 (REC MATRIX's masks). An image without FRAME PROFILE assembles
 | none of it: its bytes are those of the build without probes.
+.macro SETUP16_P hi, lo, r            | a 16-bit SETUP field (usbaudio_in.s SETUP16's shape)
+    mvzb    \hi,\r
+    lsll    #8,\r
+    moveb   \lo,\r
+.endm
 .macro TM_MARK var
 .if USB_PROBES
     movel   0xfc07c00c,%d0
@@ -1994,6 +1999,55 @@ audio_ctrl_shim:
     moveq   #4,%d0
     bra     .Lctrl_send
 .Lctrl_lm2:
+    | 0xc0/0x59, TEST ONLY (USB_PROBES images): read memory. The address is
+    | wIndex << 16 | wValue; the reply is min(wLength, 255) bytes, never a
+    | multiple of 64 (as 0x57's), copied by the CPU (its cached view) into
+    | lm_reply through the uncached alias. RAM only, so a read has no side
+    | effect: CS1 0x10000000-0x1fffffff, SDRAM 0x40000000-0x4fffffff, the
+    | on-chip SRAM 0x80000000-0x8000ffff, the whole read inside one of
+    | them; anything else STALLs. tools/hw/rec_stress.py reads the screen's
+    | plane (0x46c7e0ea) and the recorders' state with it.
+    cmpil   #0x59,%d0
+    bne     .Lctrl_lm3
+    lea     %sp@(-12),%sp
+    movem.l %d3/%a2-%a3,%sp@
+    SETUP16_P SETUP_WIDXH, SETUP_WIDXL, %d3
+    swap    %d3
+    SETUP16_P SETUP_WVALH, SETUP_WVALL, %d0
+    orl     %d0,%d3                 | d3 = the address
+    movel   %d2,%d1
+    cmpil   #255,%d1
+    bls     1f
+    movel   #255,%d1
+1:  tstl    %d1
+    beq     9f
+    movel   %d1,%d0
+    andil   #63,%d0
+    bnes    2f
+    subql   #1,%d1                  | never a multiple of 64
+2:  movel   %d3,%d0
+    andil   #0xf0000000,%d0
+    cmpil   #0x10000000,%d0
+    beqs    3f
+    cmpil   #0x40000000,%d0
+    beqs    3f
+    movel   %d3,%d0
+    andil   #0xffff0000,%d0
+    cmpil   #0x80000000,%d0
+    bne     9f
+    movel   %d3,%d0                 | SRAM: the end inside its 64 KB
+    andil   #0xffff,%d0
+    addl    %d1,%d0
+    cmpil   #0x10000,%d0
+    bhi     9f
+    bra     .Lctrl_copy
+3:  movel   %d3,%d0                 | CS1 or SDRAM: the end inside its 256 MB
+    andil   #0x0fffffff,%d0
+    addl    %d1,%d0
+    cmpil   #0x10000000,%d0
+    bhi     9f
+    bra     .Lctrl_copy
+.Lctrl_lm3:
 .endif
     cmpil   #0x57,%d0
     bne     .Lctrl_stock
@@ -2042,6 +2096,7 @@ audio_ctrl_shim:
     andil   #63,%d0
     bnes    5f
     subql   #1,%d1                  | never a multiple of 64
+.Lctrl_copy:                        | d1 = bytes, d3 = source, d3/a2-a3 saved at sp
 5:  moveal  %d3,%a2
     moveal  #(lm_reply+UNCACHED),%a3
     movel   %d1,%d0

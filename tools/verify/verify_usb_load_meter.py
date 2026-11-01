@@ -13,7 +13,9 @@ the three blocks twice, a second of port time apart. Checks:
              5 FRAME PROFILE's window (96 bytes, its seq rising), wValue 6 STALLs; with REC MATRIX as well,
              the test command 0xc0/0x58 reads recorder 1's mask, writes one, reads it back over USB and as the
              long in DRAM the mixer reads (rmx_mask_ptr's first entry), restores it, and STALLs for recorder 9.
-             Without FRAME PROFILE, 0xc0/0x58 STALLs
+             0xc0/0x59 reads RAM as the port's peek (the UI descriptor, the screen's plane in five reads), never
+             replies a multiple of 64 and STALLs outside RAM or across a region's end. Without FRAME PROFILE,
+             0xc0/0x58 and 0xc0/0x59 STALL
   match      lm_stats read over USB equals the same words peeked from DRAM at
              the symbol's address (runtime.elf), so the request points at the
              meter's cells and not at a neighbour
@@ -187,6 +189,22 @@ def main():
             stalls("0xc0/0x58 for recorder 9", lambda: b.ctrl_in(0xc0, 0x58, 0, 8, 4))
         else:
             stalls("0xc0/0x58 (no FRAME PROFILE or no REC MATRIX)", lambda: b.ctrl_in(0xc0, 0x58, 0, 0, 4))
+        peek = lambda addr, n: bytes(serve(lambda: b.ctrl_in(0xc0, 0x59, addr & 0xFFFF, addr >> 16, n)))
+        if probes:
+            desc = 0x400bf10a                            # the UI surface descriptor (docs/firmware/PANEL.md)
+            got = peek(desc, 16)
+            want = bytes.fromhex("".join(cmd(f"peek {desc + 4 * i:#x} 4")[1] for i in range(4)))
+            check("0xc0/0x59 reads memory as the port's peek: the UI descriptor (128 x 64, 2 bpp)",
+                  got == want and got[:4] == bytes.fromhex("00000080"), f"{got.hex()} vs {want.hex()}")
+            plane = b"".join(peek(0x46c7e0ea + o, n) for o, n in ((0, 255), (255, 255), (510, 255), (765, 255),
+                                                                    (1020, 4)))
+            check("0xc0/0x59 reads the screen's plane whole (1,024 bytes in five reads)", len(plane) == 1024,
+                  str(len(plane)))
+            check("0xc0/0x59 never replies a multiple of 64 bytes", len(peek(0x40000400, 64)) == 63)
+            stalls("0xc0/0x59 outside RAM (0xfc060000, a UART)", lambda: b.ctrl_in(0xc0, 0x59, 0x0000, 0xfc06, 4))
+            stalls("0xc0/0x59 across the SRAM's end", lambda: b.ctrl_in(0xc0, 0x59, 0xfff0, 0x8000, 32))
+        else:
+            stalls("0xc0/0x59 (no FRAME PROFILE)", lambda: b.ctrl_in(0xc0, 0x59, 0x0400, 0x4000, 4))
         if "DLPUMP" in mods:               # block 3 is DLPUMP's counters: 16 longs, sent a byte short of 64
             check("wValue 3 returns DLPUMP's counters (63 bytes for a 64-byte request)",
                   len(serve(lambda: b.ctrl_in(0xc0, 0x57, 3, 0, 64))) == 63)

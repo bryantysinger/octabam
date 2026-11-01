@@ -48,12 +48,23 @@ WHAT A RUNG REPORTS.
   USB IN STOPPED / USB OUT STOPPED
                  (USB on) the stream stopped moving in that direction during the rung, with no counter to say so
                  (31 Oct 2026: USB IN stopped at MED x8 and stayed stopped until a power cycle).
+  SCREEN FROZEN  the screen's picture did not change for 2 s or more while the transport ran (the beat boxes
+                 change every beat, 0.47 s at 128 BPM): what a user sees as the screen no longer updating.
+  REC/PLAY       a recording track's glyph on the PLAYBACK page was not + with the play triangle for two polls
+                 running (a take not started, or a buffer not playing), or a track that should be stopped was
+                 not: what a user sees as the + or the animation missing.
   LOCKUP         the unit stopped answering, or LOAD METER's window count stopped for 3 s.
 LOCKUP and the STOPPEDs end the run: power-cycle the unit (it reloads the project), then the same command with
 --resume skips the rungs already done and the rest of the ladder that ended it. The scorecard climbs each ladder to
 the first USB ERR, AUDIO, STOPPED or LOCKUP and gives the frame interrupt's mean load at the top clean rung.
 
-What it cannot see: the screen (IDLE's share falling is the stand-in; the UI task's share stays near 0.1%);
+THE SCREEN. With FRAME PROFILE's probes the unit answers 0xc0/0x59 (a read of RAM), and every poll reads the
+screen's plane (0x46c7e0ea, 1,024 bytes; docs/firmware/PANEL.md) and each track's glyph under its F on the PLAYBACK
+page: a square stopped, + recording, + and a triangle recording and playing. Each rung reports how often the
+picture changed (updates a second: the slowdown users see) and its longest still stretch. Leave the unit on the
+PLAYBACK page of track 1; `run` refuses to start when it cannot read the glyphs.
+
+What it cannot see:
 interrupts other than the frame interrupt stay inside the tasks they hit; FRAME PROFILE's sections are window
 means, so a single long frame is not attributed; the audio check covers the realtime path, not what a recorder
 wrote.
@@ -90,7 +101,9 @@ LEVEL_OFF = 0x01b                                     # a part's track LEVELs, e
 NS = range(1, 9)
 SWITCH_N = 4
 TONE_HZ, TONE_DBFS = 997.0, -20.0
-HARD = ("LOCKUP", "USB IN STOPPED", "USB OUT STOPPED", "USB ERR", "AUDIO")
+HARD = ("LOCKUP", "USB IN STOPPED", "USB OUT STOPPED", "USB ERR", "AUDIO", "SCREEN FROZEN", "REC/PLAY")
+PLANE, PLANE_BYTES = 0x46c7e0ea, 1024                  # the screen's 1-bit plane (docs/firmware/PANEL.md)
+STILL_S = 2.0
 TERMINAL = ("LOCKUP", "USB IN STOPPED", "USB OUT STOPPED")
 
 # REC MATRIX's masks (modules/rec-matrix README, Storage): bit 0 A, 1 B, 2 C, 3 D, 4 AB, 5 CD, 6-13 T1-T8,
@@ -267,6 +280,7 @@ class Unit:
         self.dev = L.libusb_device()
         self.has_fp = self._try(lambda: self.block(T.FP_BLOCK, T.FP_BYTES))
         self.has_mtrx = self._try(lambda: self.mask(0))
+        self.has_peek = self._try(lambda: self.peek(PLANE, 4))
         if not self._try(lambda: self.block(T.STATS_BLOCK, T.STATS_BYTES)):
             sys.exit("no LOAD METER in this image (block 0 STALLs): build a _bt_stress_* remix")
         if not self._try(lambda: self.block(T.LEDGER_BLOCK, T.LEDGER_BYTES)):
@@ -300,6 +314,24 @@ class Unit:
     def snapshot(self):
         try:
             return AZ.usb_snapshot(self.dev)
+        except Exception as e:  # noqa: BLE001
+            raise Lockup(f"the unit stopped answering USB ({e})") from e
+
+    def peek(self, addr, n):
+        """n bytes of RAM at addr (0xc0/0x59, at most 255 a request, never a multiple of 64)."""
+        out = b""
+        while n:
+            k = min(n, 255)
+            if k % 64 == 0:
+                k -= 1
+            out += bytes(self.dev.ctrl_transfer(0xc0, 0x59, (addr + len(out)) & 0xFFFF, (addr + len(out)) >> 16,
+                                                k, timeout=1000))
+            n -= k
+        return out
+
+    def plane(self):
+        try:
+            return self.peek(PLANE, PLANE_BYTES)
         except Exception as e:  # noqa: BLE001
             raise Lockup(f"the unit stopped answering USB ({e})") from e
 
@@ -422,9 +454,93 @@ def tone_check(lo, x, w, block=4410, slip=0.25):
             "thdn_max_db": round(max(thdn), 1) if thdn else None}
 
 
+# ------------------------------------------------------------------------------------------------- the screen --
+
+def pixels(plane):
+    """Rows of 0/1, screen orientation: pixel (x, y) is column 63 - y of row x (tools/emu/lcd_view.py)."""
+    return [[(plane[x * 8 + (63 - y) // 8] >> (7 - (63 - y) % 8)) & 1 for x in range(128)] for y in range(64)]
+
+
+GLYPHS = {                                            # PLAYBACK page, under each track's F (port, 1 Nov 2026)
+    "stop": ("###", "###", "###"),
+    "rec": (".#.", "###", ".#."),
+    "play": ("#..", "##.", "###", "##.", "#.."),
+}
+
+
+def _find(band, glyph):
+    h, w = len(glyph), len(glyph[0])
+    want = [[c == "#" for c in row] for row in glyph]
+    for y in range(len(band) - h + 1):
+        for x in range(len(band[0]) - w + 1):
+            if all(band[y + i][x + j] == want[i][j] for i in range(h) for j in range(w)):
+                if glyph is GLYPHS["play"] and any(band[y + i][x + w] for i in range(h) if x + w < len(band[0])):
+                    continue
+                return True
+    return False
+
+
+def track_states(rows):
+    """Per track: 'recplay', 'rec', 'play', 'stop' or '?' from the glyph under its F (tracks 1-4 on the left
+    edge, 5-8 on the right; the selected track's band is drawn inverted)."""
+    out = []
+    for t in range(8):
+        x0, x1 = (0, 10) if t < 4 else (118, 128)
+        band = [row[x0:x1] for row in rows[16 * (t % 4):16 * (t % 4) + 16]]
+        if sum(map(sum, band)) > len(band) * len(band[0]) // 2:
+            band = [[1 - v for v in row] for row in band]
+        rec, play, stop = _find(band, GLYPHS["rec"]), _find(band, GLYPHS["play"]), _find(band, GLYPHS["stop"])
+        out.append("recplay" if rec and play else "rec" if rec else "play" if play else "stop" if stop else "?")
+    return out
+
+
+def expected_states(r):
+    n = 0 if r["ladder"] == "BASE" else (1 if r.get("drop") is not None else r["n"])
+    return ["recplay"] * n + ["stop"] * (8 - n)
+
+
+class Screen:
+    """Each poll's picture: how often it changes, its longest still stretch, and the tracks' glyphs against the
+    rung's expectation (a mismatch must hold for two polls running: a read can catch the UI mid-draw)."""
+
+    def __init__(self, want):
+        self.want = want
+        self.polls = self.changes = 0
+        self.prev = None
+        self.t_still = self.t0 = None
+        self.longest = 0.0
+        self.counts = [{} for _ in range(8)]
+        self.miss_run = [0] * 8
+        self.misses = [0] * 8
+
+    def add(self, plane, now):
+        if self.t0 is None:
+            self.t0 = self.t_still = now
+        self.polls += 1
+        if self.prev is not None and plane != self.prev:
+            self.changes += 1
+            self.t_still = now
+        self.longest = max(self.longest, now - self.t_still)
+        self.prev = plane
+        for t, st in enumerate(track_states(pixels(plane))):
+            self.counts[t][st] = self.counts[t].get(st, 0) + 1
+            if st != self.want[t]:
+                self.miss_run[t] += 1
+                if self.miss_run[t] == 2:
+                    self.misses[t] += 1
+            else:
+                self.miss_run[t] = 0
+
+    def result(self, now):
+        secs = max(now - (self.t0 if self.t0 is not None else now), 1e-6)
+        return {"polls": self.polls, "updates_s": round(self.changes / secs, 2),
+                "longest_still_s": round(self.longest, 2),
+                "tracks": [{"want": w, "seen": c, "missed": m} for w, c, m in zip(self.want, self.counts, self.misses)]}
+
+
 # ---------------------------------------------------------------------------------------------- a measurement --
 
-def measure(unit, secs, interval=0.25, flip=None):
+def measure(unit, secs, interval=0.25, flip=None, screen=None):
     """Poll for secs. -> dict with the task shares (task_meter's Accumulator), the frame interrupt's mean and worst
     frame per LOAD METER window, FRAME PROFILE's sections per window, and every window (`series`)."""
     T = unit.T
@@ -438,6 +554,8 @@ def measure(unit, secs, interval=0.25, flip=None):
         led, st, fp = unit.read()
         now = time.monotonic()
         acc.add(led, st, fp)
+        if screen is not None:
+            screen.add(unit.plane(), time.monotonic())
         if st["seq"] != lm_seq:
             if lm_seq is not None and st["count"]:
                 wins.append((now - t0, st["sum"] / st["count"] / CF_HZ * 1e6, st["longest"] / CF_HZ * 1e6))
@@ -463,12 +581,16 @@ def measure(unit, secs, interval=0.25, flip=None):
             break
         time.sleep(interval)
     res = acc.result()
+    if screen is not None:
+        sc = screen.result(time.monotonic())
     out = {"seconds": round(res["seconds"], 2), "frame_irq": res["frame_irq"],
            "share": {k: round(v, 5) for k, v in res["share"].items()},
            "profile": {k: (round(v, 2) if isinstance(v, float) else v) for k, v in (res["profile"] or {}).items()},
            "windows": len(wins),
            "series": {"lm": [[round(t, 2), round(m, 1), round(l, 1)] for t, m, l in wins],
                       "fp": [[round(t, 2), {k: round(v, 1) for k, v in d.items()}] for t, d in fps]}}
+    if screen is not None:
+        out["screen"] = sc
     if wins:
         means = [w[1] for w in wins]
         worst = max(wins, key=lambda w: w[2])
@@ -512,6 +634,11 @@ def verdict(rec):
         tags.append("USB ERR")
     if rec.get("audio_bad"):
         tags.append("AUDIO")
+    sc = rec.get("screen")
+    if sc and sc["longest_still_s"] >= STILL_S:
+        tags.append("SCREEN FROZEN")
+    if sc and any(t["missed"] for t in sc["tracks"]):
+        tags.append("REC/PLAY")
     return " ".join(tags) or "CLEAN"
 
 
@@ -539,6 +666,13 @@ def cmd_run(a):
         ladders = [x for x in ladders if x == "SELF"]
         if dropped:
             print(f"no REC MATRIX test command in this image (0xc0/0x58): skipping {', '.join(dropped)}")
+    if not unit.has_peek:
+        print("no 0xc0/0x59 in this image: the screen is not watched (build with FRAME PROFILE)")
+    else:
+        sts = track_states(pixels(unit.plane()))
+        if "?" in sts:
+            sys.exit(f"the screen's track glyphs read {sts}: leave the unit on the PLAYBACK page (track 1), "
+                     "then run again")
     clock = L.Clock(plan["bpm"], a.midi)
     stream = None
     print(f"writing {path}  ({plan.get('bits', 16)}-bit recorders)")
@@ -584,7 +718,8 @@ def cmd_run(a):
                     m0 = stream.mark() if stream else None
                     t0 = time.monotonic()
                     rec.update(measure(unit, a.secs if r["ladder"] != "SWITCH" else 2 * a.secs,
-                                       flip=a.flip if r["ladder"] == "SWITCH" else None))
+                                       flip=a.flip if r["ladder"] == "SWITCH" else None,
+                                       screen=Screen(expected_states(r)) if unit.has_peek else None))
                     secs = time.monotonic() - t0
                     u1 = unit.snapshot()
                     rec["usb_errors"] = errors_of(AZ.usb_delta(u0, u1))
@@ -638,6 +773,16 @@ def result_of(rec):
     return rec["result"].replace("OVER", "LATE")
 
 
+def scr_text(rec):
+    sc = rec.get("screen")
+    if not sc:
+        return ""
+    bad = [f"T{t + 1} {tr['missed']}x {max(tr['seen'], key=tr['seen'].get)}" for t, tr in enumerate(sc["tracks"])
+           if tr["missed"]]
+    return (f"  screen {sc['updates_s']}/s still {sc['longest_still_s']}s"
+            + (f" MISSED {', '.join(bad)}" if bad else ""))
+
+
 def line(rec):
     res = result_of(rec)
     if rec["result"] in ("LOCKUP",):
@@ -652,7 +797,7 @@ def line(rec):
     return (f"{rec['rung']:26s} {res:10s} frame {rec.get('frame_us', 0):5.1f} us "
             f"({100 * rec.get('frame_us', 0) / FRAME_US:4.1f}%)  worst {rec.get('worst_us', 0):5.1f}  "
             f"IDLE {100 * sh.get('IDLE', 0):4.1f}%  rec {p.get('recorder', 0):5.1f}  voices {p.get('voices', 0):5.1f}"
-            + aud + (f"  {rec['usb_errors']}" if rec.get("usb_errors") else "")
+            + aud + scr_text(rec) + (f"  {rec['usb_errors']}" if rec.get("usb_errors") else "")
             + (f"  rates {rec['usb_rates']}" if res.startswith("USB") and rec.get("usb_rates") else ""))
 
 
@@ -710,11 +855,11 @@ def cmd_report(a):
         bits = {r.get("bits", 16) for r in recs}
         print(f"\n## {lab} ({'/'.join(str(b) for b in sorted(bits))}-bit recorders)\n")
         print("| rung | result | frame us | % frame | worst us | IDLE | recorder | voices | usb out | usb in "
-              "| audio |")
-        print("|---|---|---|---|---|---|---|---|---|---|---|")
+              "| audio | screen |")
+        print("|---|---|---|---|---|---|---|---|---|---|---|---|")
         for r in recs:
             if r["result"] == "LOCKUP":
-                print(f"| {r['rung']} | LOCKUP | | | | | | | | | {r.get('detail', '')} |"); continue
+                print(f"| {r['rung']} | LOCKUP | | | | | | | | | {r.get('detail', '')} | |"); continue
             p, sh, au = r.get("profile", {}), r.get("share", {}), r.get("audio")
             f = lambda k: f"{p[k]:.1f}" if isinstance(p.get(k), (int, float)) else ""
             aud = ("" if not au else "no tone" if au.get("no_tone") else
@@ -722,7 +867,7 @@ def cmd_report(a):
             print(f"| {r['rung']} | {result_of(r)} | {r.get('frame_us', '')} | "
                   f"{100 * r.get('frame_us', 0) / FRAME_US:.1f} | {r.get('worst_us', '')} | "
                   f"{100 * sh.get('IDLE', 0):.1f}% | {f('recorder')} | {f('voices')} | "
-                  f"{f('usb out shim')} | {f('usb in frame')} | {aud} |")
+                  f"{f('usb out shim')} | {f('usb in frame')} | {aud} | {scr_text(r).strip()} |")
 
 
 def cmd_masks(a):
