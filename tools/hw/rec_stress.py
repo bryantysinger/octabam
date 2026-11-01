@@ -9,6 +9,20 @@ the tasks read over USB at every rung, a scorecard per image.
                                                   [--resume]
     python3 tools/hw/rec_stress.py report LABEL [LABEL ...]      # the scorecard; two or more labels side by side
     python3 tools/hw/rec_stress.py masks [--set REC=MASK ...]    # read (or set) REC MATRIX's masks over USB
+    python3 tools/hw/rec_stress.py hold DEST LABEL --rung "MED x3" [--usb on|in|out|off] [--minutes 5] [--repeats 3]
+                                                  [--all]          # one rung held: how often tracks stop
+    python3 tools/hw/rec_stress.py cycle DEST LABEL --from "MED x2" --to "MED x3" [--count 30] [--secs 10]
+                                                  [--usb on|in|out|off]   # the change between two rungs, repeated
+
+HOLD AND CYCLE (1 Nov 2026: on the unit, tracks 2 and up stopped partway through MTRX rungs with USB on, once at
+66% load, track 1 running on). `hold` plays one rung for --minutes, polling as `run` does plus the USB counters
+every 0.5 s; every change of a track's glyph is logged with its time after START and its bar.beat. When a track
+that should be recording shows the stopped glyph for two polls, the stop is counted, its segment written, and the
+transport restarted (STOP, the program change, START, --settle), so one hold gives a rate: stops a minute. Up to
+--repeats holds, ending after the first with a stop unless --all. `cycle` plays --from for --settle, then STOP,
+the program change and START into --to, and measures --to for --secs, --count times: stops a change. --usb in
+streams only the tone into the unit, out only takes its output, on both, off neither. One JSON line per segment or
+cycle in out/hw/stress/LABEL.jsonl (`kind` hold or cycle), with the events and every window.
 
 WHY. "Is it better than last build" and "what do we have to tell users before they rely on it" both need the same
 conditions every time, run without anyone at the panel. The ladders climb in load and stop where the unit does.
@@ -384,10 +398,12 @@ class Stream:
 
     RING_S = 90
 
-    def __init__(self, device):
+    def __init__(self, device, dirs=("in", "out")):
+        """dirs: "in" streams the tone into the unit (USB IN), "out" takes the unit's output (USB OUT)."""
         import numpy as np
         import sounddevice as sd
         self.np = np
+        self.dirs = tuple(dirs)
         devs = sd.query_devices()
         outs = [i for i, d in enumerate(devs) if device.lower() in d["name"].lower() and d["max_output_channels"] >= 2]
         ins = [i for i, d in enumerate(devs) if device.lower() in d["name"].lower() and d["max_input_channels"] >= 2]
@@ -415,11 +431,15 @@ class Stream:
                 keep = self.RING_S * FS
                 while self.chunks and self.chunks[0][0] + len(self.chunks[0][1]) < self.n_in - keep:
                     self.chunks.pop(0)
-        self.ostream = sd.OutputStream(device=outs[0], channels=self.ch, samplerate=FS, dtype="float32",
-                                       callback=out_cb)
-        self.istream = sd.InputStream(device=ins[0], channels=self.in_ch, samplerate=FS, dtype="float32",
-                                      callback=in_cb)
-        self.ostream.start(); self.istream.start()
+        self.ostream = self.istream = None
+        if "in" in self.dirs:
+            self.ostream = sd.OutputStream(device=outs[0], channels=self.ch, samplerate=FS, dtype="float32",
+                                           callback=out_cb)
+            self.ostream.start()
+        if "out" in self.dirs:
+            self.istream = sd.InputStream(device=ins[0], channels=self.in_ch, samplerate=FS, dtype="float32",
+                                          callback=in_cb)
+            self.istream.start()
 
     def mark(self):
         with self.lock:
@@ -437,7 +457,8 @@ class Stream:
 
     def close(self):
         for s in (self.ostream, self.istream):
-            s.stop(); s.close()
+            if s is not None:
+                s.stop(); s.close()
 
 
 def tone_check(lo, x, w, block=4410, slip=0.25):
@@ -527,8 +548,15 @@ class Screen:
     """Each poll's picture: how often it changes, its longest still stretch, and the tracks' glyphs against the
     rung's expectation (a mismatch must hold for two polls running: a read can catch the UI mid-draw)."""
 
-    def __init__(self, want):
+    def __init__(self, want, t_start=None, bpm=BPM, on_event=None):
         self.want = want
+        self.t_start = t_start                         # the transport's START (monotonic), for bar positions
+        self.bar_s = 240.0 / bpm
+        self.on_event = on_event
+        self.last = list(want)                         # each track's last readable glyph
+        self.events = []                               # [s after START, bar.beat, track, from, to]
+        self.stop_run = [0] * 8
+        self.stopped = []                              # tracks wanted recording that held the stopped glyph
         self.polls = self.changes = 0
         self.prev = None
         self.t_still = self.t0 = None
@@ -548,23 +576,42 @@ class Screen:
         self.prev = plane
         for t, st in enumerate(track_states(pixels(plane))):
             self.counts[t][st] = self.counts[t].get(st, 0) + 1
+            if st == "?":                              # a read caught mid-draw: neither a match nor a miss
+                continue
+            if st != self.last[t]:
+                ts = now - self.t_start if self.t_start is not None else None
+                bar = round(ts / self.bar_s + 1, 2) if ts is not None else None
+                ev = [round(ts, 2) if ts is not None else None, bar, t + 1, self.last[t], st]
+                self.events.append(ev)
+                if self.on_event:
+                    self.on_event(ev)
+                self.last[t] = st
             if st != self.want[t]:
                 self.miss_run[t] += 1
                 if self.miss_run[t] == 2:
                     self.misses[t] += 1
             else:
                 self.miss_run[t] = 0
+            if self.want[t] == "recplay" and st == "stop":
+                self.stop_run[t] += 1
+                if self.stop_run[t] == 2 and t + 1 not in self.stopped:
+                    self.stopped.append(t + 1)
+            else:
+                self.stop_run[t] = 0
 
     def result(self, now):
         secs = max(now - (self.t0 if self.t0 is not None else now), 1e-6)
         return {"polls": self.polls, "updates_s": round(self.changes / secs, 2),
                 "longest_still_s": round(self.longest, 2),
-                "tracks": [{"want": w, "seen": c, "missed": m} for w, c, m in zip(self.want, self.counts, self.misses)]}
+                "tracks": [{"want": w, "seen": c, "missed": m} for w, c, m in zip(self.want, self.counts, self.misses)],
+                "events": self.events, "stopped": self.stopped}
 
 
 # ---------------------------------------------------------------------------------------------- a measurement --
 
-def measure(unit, secs, interval=0.25, flip=None, screen=None):
+def measure(unit, secs, interval=0.25, flip=None, screen=None, usb_every=None, until=None):
+    """usb_every: snapshot the USB counters every that many seconds into series["usb"] ([t, IN packets/s, OUT
+    frames/s, {counter: delta}]). until: a callable checked each poll; True ends the measurement early."""
     """Poll for secs. -> dict with the task shares (task_meter's Accumulator), the frame interrupt's mean and worst
     frame per LOAD METER window, FRAME PROFILE's sections per window, and every window (`series`)."""
     T = unit.T
@@ -574,6 +621,7 @@ def measure(unit, secs, interval=0.25, flip=None, screen=None):
     fp_seq = None
     wins, fps = [], []                                 # (t, mean us, longest us), (t, {section: us})
     state, next_flip = 0, (t0 + flip if flip else None)
+    usb_rows, usb_prev, usb_t = [], (unit.snapshot() if usb_every else None), t0
     while True:
         led, st, fp = unit.read()
         now = time.monotonic()
@@ -594,6 +642,16 @@ def measure(unit, secs, interval=0.25, flip=None, screen=None):
                 d["usb in"] = fp["uin"] / n / CF_HZ * 1e6
                 fps.append((now - t0, d))
             fp_seq = fp["seq"]
+        if usb_every and now - usb_t >= usb_every:
+            snap = unit.snapshot()
+            if usb_prev is not None:
+                dt = now - usb_t
+                pin, pout = usb_rates(usb_prev, snap, dt)
+                usb_rows.append([round(now - t0, 2), pin and round(pin), pout and round(pout),
+                                 errors_of(AZ.usb_delta(usb_prev, snap))])
+            usb_prev, usb_t = snap, now
+        if until is not None and until():
+            break
         if next_flip and now >= next_flip:
             state ^= 1
             try:
@@ -612,7 +670,8 @@ def measure(unit, secs, interval=0.25, flip=None, screen=None):
            "profile": {k: (round(v, 2) if isinstance(v, float) else v) for k, v in (res["profile"] or {}).items()},
            "windows": len(wins),
            "series": {"lm": [[round(t, 2), round(m, 1), round(l, 1)] for t, m, l in wins],
-                      "fp": [[round(t, 2), {k: round(v, 1) for k, v in d.items()}] for t, d in fps]}}
+                      "fp": [[round(t, 2), {k: round(v, 1) for k, v in d.items()}] for t, d in fps],
+                      "usb": usb_rows}}
     if screen is not None:
         out["screen"] = sc
     if wins:
@@ -894,6 +953,206 @@ def cmd_report(a):
                   f"{f('usb out shim')} | {f('usb in frame')} | {aud} | {scr_text(r).strip()} |")
 
 
+def parse_rung(name):
+    """'MED x3', 'SELF x8', 'BASE' -> a rung as rungs() makes them."""
+    m = re.fullmatch(r"\s*(BASE|SELF|DIAG|MED|DENSE)(?:\s*X\s*(\d))?\s*", name.upper())
+    if not m or (m.group(1) != "BASE" and not m.group(2)):
+        sys.exit(f"--rung {name!r}: want BASE or SELF / DIAG / MED / DENSE x1-x8")
+    lad, n = m.group(1), int(m.group(2) or 0)
+    if lad == "BASE":
+        return {"ladder": "BASE", "n": 0, "program": 16 * SELF_BANK + BASE_PATTERN, "density": None}
+    if not 1 <= n <= 8:
+        sys.exit("x1 to x8")
+    return {"ladder": lad, "n": n, "program": prog(lad, n), "density": lad if lad in DENSITIES else None}
+
+
+def rung_name(r):
+    return "BASE" if r["ladder"] == "BASE" else f"{r['ladder']} x{r['n']}"
+
+
+def start_rung(clock, unit, plan, r, settle):
+    """STOP twice, the rung's masks, the program change, START, settle. -> START's monotonic time."""
+    clock.stop(); time.sleep(0.2); clock.stop(); time.sleep(0.5)
+    if r["density"]:
+        unit.set_masks(r["density"])
+    clock.pc(plan["pc_channel"], r["program"]); time.sleep(0.8)
+    clock.start()
+    t = time.monotonic()
+    time.sleep(settle)
+    return t
+
+
+def open_usb(a, unit):
+    """The host side for --usb on / in / out / off. -> (stream or None, IN packets/s, OUT frames/s at the start)."""
+    mode = a.usb.lower()
+    if mode not in ("on", "in", "out", "off"):
+        sys.exit("--usb on, in, out or off")
+    if mode == "off":
+        pin, pout = usb_rates(*_twice(unit), 1.0)
+        if pin or pout:
+            sys.exit(f"--usb off, but the host is streaming (IN {pin}/s, OUT {pout} frames/s): quit every app using "
+                     "the Octatrack's audio")
+        print("USB OFF: no host stream")
+        return None, None, None
+    dirs = {"on": ("in", "out"), "in": ("in",), "out": ("out",)}[mode]
+    stream = Stream(a.usb_in, dirs)
+    u0 = unit.snapshot(); time.sleep(1.0); u1 = unit.snapshot()
+    pin, pout = usb_rates(u0, u1, 1.0)
+    for d, rate in (("in", pin), ("out", pout)):
+        if d in dirs and not rate:
+            stream.close()
+            sys.exit(f"--usb {mode}: USB {d.upper()} is not moving; check the device and that it is on")
+    print(f"USB {mode.upper()}: IN {pin:.0f} packets/s, OUT {pout:.0f} frames/s" if pin is not None and pout is not None
+          else f"USB {mode.upper()}: IN {pin} packets/s, OUT {pout} frames/s")
+    return stream, (pin if "in" in dirs else None), (pout if "out" in dirs else None)
+
+
+def usb_dead(series, in_ref, out_ref):
+    """'USB IN STOPPED' / 'USB OUT STOPPED' when the last two 0.5 s rows fell under half the start's rate."""
+    rows = series.get("usb", [])[-2:]
+    if len(rows) < 2:
+        return None
+    if in_ref and all(r[1] is not None and r[1] < 0.5 * in_ref for r in rows):
+        return "USB IN STOPPED"
+    if out_ref and all(r[2] is not None and r[2] < 0.5 * out_ref for r in rows):
+        return "USB OUT STOPPED"
+    return None
+
+
+def print_event(ev):
+    t, bar, trk, old, new = ev
+    print(f"    {t:7.2f} s  bar {bar:6.2f}  T{trk}  {old} -> {new}", flush=True)
+
+
+def _context(rec):
+    """The frame windows and USB rows around a stop, for the console."""
+    lm = rec.get("series", {}).get("lm", [])[-3:]
+    us = rec.get("series", {}).get("usb", [])[-2:]
+    return (f"last windows (s, mean, worst us): {lm}; last USB rows (s, IN/s, OUT/s, counters): {us}")
+
+
+def cmd_hold(a):
+    import ot_ladder as L
+    plan = json.loads((pathlib.Path(a.dest) / PLAN_FILE).read_text())
+    r = parse_rung(a.rung)
+    OUT.mkdir(parents=True, exist_ok=True)
+    path = OUT / f"{a.label}.jsonl"
+    unit = Unit()
+    if r["density"] and not unit.has_mtrx:
+        sys.exit("no REC MATRIX test command in this image")
+    if not unit.has_peek:
+        sys.exit("no 0xc0/0x59 in this image: hold needs the screen")
+    clock = L.Clock(plan["bpm"], a.midi)
+    stream = None
+    print(f"hold {rung_name(r)}, USB {a.usb.upper()}, {a.minutes:g} min x up to {a.repeats}; writing {path}")
+    total_s = total_stops = 0.0
+    try:
+        stream, in_ref, out_ref = open_usb(a, unit)
+        for rep_i in range(1, a.repeats + 1):
+            print(f"  hold {rep_i}:")
+            t_start = start_rung(clock, unit, plan, r, a.settle)
+            held, seg, stops = 0.0, 0, 0
+            while held < a.minutes * 60:
+                seg += 1
+                scr = Screen(expected_states(r), t_start, plan["bpm"], on_event=print_event)
+                t0 = time.monotonic()
+                rec = {"kind": "hold", "rung": rung_name(r), "usb": a.usb, "hold": rep_i, "segment": seg,
+                       "time": time.strftime("%Y-%m-%d %H:%M:%S"), "bits": plan.get("bits", 16)}
+                try:
+                    rec.update(measure(unit, min(a.segment, a.minutes * 60 - held), screen=scr, usb_every=0.5,
+                                       until=lambda: bool(scr.stopped)))
+                except Lockup as e:
+                    rec.update({"result": "LOCKUP", "detail": str(e)})
+                    with path.open("a") as f:
+                        f.write(json.dumps(rec) + "\n")
+                    print(f"\nLOCKUP: {e}\nPower-cycle the unit, load the project, SRC page, then run again.")
+                    return
+                held += time.monotonic() - t0
+                dead = usb_dead(rec.get("series", {}), in_ref, out_ref)
+                stopped = rec.get("screen", {}).get("stopped", [])
+                rec["result"] = dead or ("STOP" if stopped else "CLEAN")
+                with path.open("a") as f:
+                    f.write(json.dumps(rec) + "\n")
+                if dead:
+                    print(f"  {dead} after {held:.0f} s; {_context(rec)}\n"
+                          "Power-cycle the unit, load the project, SRC page, then run again.")
+                    return
+                if stopped:
+                    stops += 1
+                    print(f"  STOP: tracks {stopped} after {held:.0f} s of this hold; {_context(rec)}")
+                    print("  restarting the transport")
+                    t_start = start_rung(clock, unit, plan, r, a.settle)
+            total_s += held; total_stops += stops
+            print(f"  hold {rep_i}: {stops} stop(s) in {held / 60:.1f} min")
+            if stops and not a.all:
+                break
+    finally:
+        try:
+            clock.stop(); time.sleep(0.2); clock.stop()
+        except Exception:  # noqa: BLE001
+            pass
+        clock.close()
+        if stream:
+            stream.close()
+    rate = total_stops / (total_s / 60) if total_s else 0
+    print(f"{rung_name(r)}, USB {a.usb.upper()}: {int(total_stops)} stop(s) in {total_s / 60:.1f} min "
+          f"({rate:.2f} a minute)")
+
+
+def cmd_cycle(a):
+    import ot_ladder as L
+    plan = json.loads((pathlib.Path(a.dest) / PLAN_FILE).read_text())
+    r_from, r_to = parse_rung(getattr(a, "from")), parse_rung(a.to)
+    OUT.mkdir(parents=True, exist_ok=True)
+    path = OUT / f"{a.label}.jsonl"
+    unit = Unit()
+    if (r_from["density"] or r_to["density"]) and not unit.has_mtrx:
+        sys.exit("no REC MATRIX test command in this image")
+    if not unit.has_peek:
+        sys.exit("no 0xc0/0x59 in this image: cycle needs the screen")
+    clock = L.Clock(plan["bpm"], a.midi)
+    stream = None
+    print(f"cycle {rung_name(r_from)} -> {rung_name(r_to)}, USB {a.usb.upper()}, {a.count} times; writing {path}")
+    stops = 0
+    try:
+        stream, in_ref, out_ref = open_usb(a, unit)
+        for i in range(1, a.count + 1):
+            rec = {"kind": "cycle", "from": rung_name(r_from), "rung": rung_name(r_to), "usb": a.usb, "cycle": i,
+                   "time": time.strftime("%Y-%m-%d %H:%M:%S"), "bits": plan.get("bits", 16)}
+            try:
+                start_rung(clock, unit, plan, r_from, a.settle)
+                t_start = start_rung(clock, unit, plan, r_to, a.settle)
+                scr = Screen(expected_states(r_to), t_start, plan["bpm"], on_event=print_event)
+                rec.update(measure(unit, a.secs, screen=scr, usb_every=0.5))
+            except Lockup as e:
+                rec.update({"result": "LOCKUP", "detail": str(e)})
+                with path.open("a") as f:
+                    f.write(json.dumps(rec) + "\n")
+                print(f"\nLOCKUP at cycle {i}: {e}\nPower-cycle the unit, load the project, SRC page, then run again.")
+                return
+            dead = usb_dead(rec.get("series", {}), in_ref, out_ref)
+            stopped = rec.get("screen", {}).get("stopped", [])
+            rec["result"] = dead or ("STOP" if stopped else "CLEAN")
+            with path.open("a") as f:
+                f.write(json.dumps(rec) + "\n")
+            print(f"  cycle {i:3d}: {rec['result']}  frame {rec.get('frame_us', 0):5.1f} us  "
+                  f"worst {rec.get('worst_us', 0):5.1f}" + (f"  tracks {stopped}" if stopped else ""), flush=True)
+            if stopped:
+                stops += 1
+            if dead:
+                print(f"  {dead}; {_context(rec)}\nPower-cycle the unit, load the project, SRC page, then run again.")
+                return
+    finally:
+        try:
+            clock.stop(); time.sleep(0.2); clock.stop()
+        except Exception:  # noqa: BLE001
+            pass
+        clock.close()
+        if stream:
+            stream.close()
+    print(f"{rung_name(r_from)} -> {rung_name(r_to)}, USB {a.usb.upper()}: {stops} stop(s) in {a.count} changes")
+
+
 def cmd_masks(a):
     unit = Unit()
     if not unit.has_mtrx:
@@ -919,8 +1178,20 @@ def main():
     p.add_argument("--audio", action="store_true", help="check MAIN L's tone (only with tracks kept off MAIN)")
     p = sub.add_parser("report"); p.add_argument("labels", nargs="+")
     p = sub.add_parser("masks"); p.add_argument("--set", nargs="*")
+    for name in ("hold", "cycle"):
+        p = sub.add_parser(name); p.add_argument("dest"); p.add_argument("label")
+        p.add_argument("--midi", default="Octatrack"); p.add_argument("--usb-in", default="Octatrack")
+        p.add_argument("--usb", default="on"); p.add_argument("--settle", type=float, default=4.0)
+        if name == "hold":
+            p.add_argument("--rung", required=True); p.add_argument("--minutes", type=float, default=5.0)
+            p.add_argument("--repeats", type=int, default=3); p.add_argument("--all", action="store_true")
+            p.add_argument("--segment", type=float, default=10.0, help="seconds a written segment")
+        else:
+            p.add_argument("--from", required=True); p.add_argument("--to", required=True)
+            p.add_argument("--count", type=int, default=30); p.add_argument("--secs", type=float, default=10.0)
     a = ap.parse_args()
-    {"plan": cmd_plan, "proj": cmd_proj, "run": cmd_run, "report": cmd_report, "masks": cmd_masks}[a.cmd](a)
+    {"plan": cmd_plan, "proj": cmd_proj, "run": cmd_run, "report": cmd_report, "masks": cmd_masks,
+     "hold": cmd_hold, "cycle": cmd_cycle}[a.cmd](a)
 
 
 if __name__ == "__main__":
