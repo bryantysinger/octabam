@@ -21,16 +21,28 @@
 | read is the value the write would replace. The other four writes would
 | need a read each to skip, which costs what the write does: left as stock.
 | SPDX-License-Identifier: MIT
+        .set    RCS_MIRROR, 1                   | 0: option 1 alone (the two writes it reads for)
         .text
         .globl  rcs_update
 | jmp'd in place of the routine's first two instructions: the whole routine.
-| Args (C): id 4(sp), len 8(sp), flag 12(sp); d2-d4/a2 saved here (stock
-| saves d2-d3; d4 and a2 are this version's).
+| Args (C): id 4(sp), len 8(sp), flag 12(sp); d2-d5/a2-a3 saved here (stock
+| saves d2-d3; the rest are this version's).
+|
+| RCS_MIRROR (option 2) skips the other four writes too ([r+276], [r+280],
+| [r+296].b, [r+304]) against a copy in DRAM, rcs_m[id] = {valid, 276, 280,
+| 304, 296, turn}, for id 0..7 (any other id writes all four, as stock). A
+| copy can go stale when other code writes CS1 (project load, the engine and
+| arm tasks: the port saw six such writers, and a static search finds 87
+| candidate stores at these offsets), so each call reads ONE of the four from
+| CS1, in turn, and a mismatch drops the copy: the next write writes all four
+| again. One read a call against up to four writes; a foreign value survives
+| at most four calls (about a millisecond at one call a frame) where stock
+| would overwrite it at the next call.
 rcs_update:
-        lea     -16(%sp),%sp
-        movem.l %d2-%d4/%a2,(%sp)
-        move.l  20(%sp),%d1                     | id
-        movea.l 24(%sp),%a1                     | len
+        lea     -24(%sp),%sp
+        movem.l %d2-%d5/%a2-%a3,(%sp)
+        move.l  28(%sp),%d1                     | id
+        movea.l 32(%sp),%a1                     | len
         tst.l   %a1
         beq.s   1f
         moveq   #64,%d0
@@ -41,7 +53,7 @@ rcs_update:
         muls.l  %d1,%d0
         lea     0x46c938c4,%a0
         move.l  %a1,16(%a0,%d0.l)
-        tst.l   28(%sp)                         | flag
+        tst.l   36(%sp)                         | flag
         bne     9f
         tst.l   %a1
         beq     9f
@@ -79,26 +91,103 @@ rcs_update:
         cmp.l   %d1,%d0
         bge.s   7f
         movea.l %d0,%a1
-7:      move.w  %sr,%d0
+| the copy: a3 = &rcs_m[id] for id 0..7, else 0; d2 = 1 when the copy is
+| valid and the field read in turn still matches it, else 0
+7:      suba.l  %a3,%a3
+        moveq   #0,%d2
+.if RCS_MIRROR
+        move.l  28(%sp),%d0
+        moveq   #8,%d5
+        cmp.l   %d5,%d0
+        bcc.s   20f                             | unsigned: 0..7 only
+        move.l  %d0,%d5                         | id * 24
+        lsl.l   #3,%d0
+        lsl.l   #4,%d5
+        add.l   %d5,%d0
+        lea     rcs_m,%a3
+        adda.l  %d0,%a3
+        move.l  (%a3),%d2                       | valid
+        move.l  20(%a3),%d5                     | turn
+        addq.l  #1,20(%a3)
+        moveq   #3,%d0
+        and.l   %d0,%d5
+        beq.s   11f
+        subq.l  #1,%d5
+        beq.s   12f
+        subq.l  #1,%d5
+        beq.s   13f
+        moveq   #0,%d0                          | turn 3: [r+296].b
+        move.b  296(%a0),%d0
+        cmp.l   16(%a3),%d0
+        bra.s   19f
+11:     move.l  276(%a0),%d0
+        cmp.l   4(%a3),%d0
+        bra.s   19f
+12:     move.l  280(%a0),%d0
+        cmp.l   8(%a3),%d0
+        bra.s   19f
+13:     move.l  304(%a0),%d0
+        cmp.l   12(%a3),%d0
+19:     beq.s   20f
+        moveq   #0,%d2                          | CS1 changed under the copy: write all four
+20:
+.endif
+        move.w  %sr,%d0
         move.w  #0x2700,%sr
         cmp.l   %d4,%d3
         beq.s   71f
         move.l  %d3,300(%a0)
-71:     move.l  %d1,304(%a0)
-        cmpa.l  %a2,%a1
+71:     tst.l   %d2
+        beq.s   73f
+        cmp.l   12(%a3),%d1
+        beq.s   74f
+73:     move.l  %d1,304(%a0)
+        move.l  %a3,%d5
+        beq.s   74f
+        move.l  %d1,12(%a3)
+74:     cmpa.l  %a2,%a1
         beq.s   72f
         move.l  %a1,308(%a0)
 72:     move.w  %d0,%sr
-        clr.b   %d1
-        move.b  %d1,296(%a0)
-        move.w  %sr,%d0
+        tst.l   %d2
+        beq.s   75f
+        tst.l   16(%a3)
+        beq.s   76f
+75:     clr.b   296(%a0)
+        move.l  %a3,%d5
+        beq.s   76f
+        clr.l   16(%a3)
+76:     move.w  %sr,%d0
         move.w  #0x2700,%sr
-        lea     0x8000181c,%a1
-        move.l  (%a1),276(%a0)
-        move.l  0x80001820,%d1
+        move.l  0x8000181c,%d1
+        tst.l   %d2
+        beq.s   77f
+        cmp.l   4(%a3),%d1
+        beq.s   78f
+77:     move.l  %d1,276(%a0)
+        move.l  %a3,%d5
+        beq.s   78f
+        move.l  %d1,4(%a3)
+78:     move.l  0x80001820,%d1
         neg.l   %d1
-        move.l  %d1,280(%a0)
-        move.w  %d0,%sr
-9:      movem.l (%sp),%d2-%d4/%a2
-        lea     16(%sp),%sp
+        tst.l   %d2
+        beq.s   79f
+        cmp.l   8(%a3),%d1
+        beq.s   80f
+79:     move.l  %d1,280(%a0)
+        move.l  %a3,%d5
+        beq.s   80f
+        move.l  %d1,8(%a3)
+80:     move.w  %d0,%sr
+        move.l  %a3,%d5
+        beq.s   9f
+        moveq   #1,%d5
+        move.l  %d5,(%a3)                       | the copy now matches CS1
+9:      movem.l (%sp),%d2-%d5/%a2-%a3
+        lea     24(%sp),%sp
         rts
+
+        .bss
+        .balign 4
+| rcs_m[8]: {valid, [r+276], [r+280], [r+304], [r+296].b, turn}; zero at boot = not valid
+rcs_m:  .space  8*24
