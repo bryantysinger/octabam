@@ -388,6 +388,8 @@ namespace ot
 		if(m_profileEvery && (m_instructions % m_profileEvery) == 0)
 			++m_profile[p];		// the RTOS phase steps through here, not run() (O9b's coverage)
 		const auto op = read16(p);
+		if(m_isrIn)
+			isrNote(p, op);
 		// The EMAC and mov3q are A-line: Musashi routes 0xAxxx to the A-line
 		// EXCEPTION, not to the illegal-instruction callback the V4e layer
 		// hooks, so they are dispatched here (see run(), same rule).
@@ -425,6 +427,8 @@ namespace ot
 		// has it). O15a read the SDRAM region's bytes directly here; the
 		// table makes that the general case.
 		const uint16_t op = read16(p);
+		if(m_isrIn)
+			isrNote(p, op);
 		if((op & 0xf000) == 0xa000)
 		{
 			setPC(p + 2);

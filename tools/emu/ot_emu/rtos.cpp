@@ -364,6 +364,7 @@ namespace ot
 			{
 				m_framePending = false;
 				++m_frameCount;
+				m_machine.isrArm();
 			}
 			if(_vec >= m_intc0.vectorBase() && _vec < m_intc0.vectorBase() + 64)
 			{

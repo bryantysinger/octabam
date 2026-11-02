@@ -420,6 +420,18 @@ namespace ot
 		const std::vector<PcHit>& pcHits() const { return m_pcHits; }
 		void notePcWatch(uint32_t _pc);
 
+		// The frame interrupt's own cost, in instructions (--isr-meter): Rtos
+		// arms it at the frame vector's acknowledge; the exception
+		// frame goes 8 bytes below A7 as the vector is read (Musashi reads
+		// the vector, then pushes); the `rte` executed at that A7 ends it. Everything between counts,
+		// nested interrupts included (as LOAD METER's timer sees them), with
+		// the PCs kept so the cost can be split by code address.
+		void setIsrMeter(bool _on) { m_isrMeter = _on; }
+		bool isrMeter() const { return m_isrMeter; }
+		void isrArm() { if(m_isrMeter && !m_isrIn) { m_isrIn = true; m_isrSp = getA7() - 8; m_isrStart = m_instructions; } }
+		void isrClear() { m_isrCosts.clear(); m_isrPcs.clear(); }
+		const std::vector<uint32_t>& isrCosts() const { return m_isrCosts; }
+		const std::unordered_map<uint32_t, uint64_t>& isrPcs() const { return m_isrPcs; }
 		void setProfile(uint32_t _every) { m_profileEvery = _every; }
 		const std::unordered_map<uint32_t, uint64_t>& profile() const { return m_profile; }
 		void clearProfile() { m_profile.clear(); }
@@ -629,6 +641,22 @@ namespace ot
 		uint64_t m_pcCount = 0;
 		std::vector<PcHit> m_pcHits;
 		uint32_t m_profileEvery = 0;
+		bool m_isrMeter = false, m_isrIn = false;
+		uint32_t m_isrSp = 0;
+		uint64_t m_isrStart = 0;
+		std::vector<uint32_t> m_isrCosts;
+		std::unordered_map<uint32_t, uint64_t> m_isrPcs;
+		void isrNote(uint32_t _pc, uint16_t _op)
+		{
+			if(!m_isrIn)
+				return;
+			++m_isrPcs[_pc];
+			if(_op == 0x4e73 && getA7() == m_isrSp)
+			{
+				m_isrCosts.push_back(static_cast<uint32_t>(m_instructions - m_isrStart));
+				m_isrIn = false;
+			}
+		}
 		std::unordered_map<uint32_t, uint64_t> m_profile;
 		std::string m_why;
 		bool m_illegal = false;

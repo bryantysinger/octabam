@@ -1246,6 +1246,7 @@ int main(int _argc, char** _argv)
 	uint64_t maxInstructions = 50'000'000;	// route A's own budget
 	bool showPeripherals = false;
 	bool profile = false;
+	bool isrMeter = false;
 	std::string golden;
 	std::string cardImage;		// a FAT16 card image built by emu_rtos.stage_project
 	std::string usbHost;		// a unix socket the USB bench listens on (usb.h); the model exists only with this or --usb-notify
@@ -1345,6 +1346,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--max" && i + 1 < _argc)	maxInstructions = std::strtoull(_argv[++i], nullptr, 0);
 		else if(a == "--periph")				showPeripherals = true;
 		else if(a == "--profile")				profile = true;
+		else if(a == "--isr-meter")			isrMeter = true;
 		else if(a == "--golden" && i + 1 < _argc)	golden = _argv[++i];
 		else if(a == "--card" && i + 1 < _argc)		cardImage = _argv[++i];
 		else if(a == "--mount")						mount = true;
@@ -1563,6 +1565,7 @@ int main(int _argc, char** _argv)
 	}
 	if(profile)
 		m.setProfile(64);
+	m.setIsrMeter(isrMeter);
 	// ⚠️ BEFORE THE BOOT RUNS. Installed after it (where it used to be, behind
 	// `rtos.install()`), a watch on a BOOT address reported zero hits whether
 	// the address ran or not -- and the only caller of the DSP program loader
@@ -2781,7 +2784,8 @@ int main(int _argc, char** _argv)
 				}
 				const auto instr0 = m.instructions();
 				if(profile)
-					m.clearProfile();		// the whole-run table below then covers the frames alone
+					m.clearProfile();
+				m.isrClear();		// the whole-run table below then covers the frames alone
 				const auto wall0 = std::chrono::steady_clock::now();
 				const auto rs2 = rtos.runUntil(livePath.empty() ? budgetMs : 1e15, [&] { seqMark(); return rtos.frameCount() >= target || live.quit; },
 					ot::Rtos::Changes::OnEvent);	// O15e: the ack hook wakes; the live poll wakes too
@@ -3356,6 +3360,25 @@ int main(int _argc, char** _argv)
 			}
 			std::printf("   %c %#08x size %u = %#x   (pc %#06x)\n", a.kind, a.addr, a.size, a.val, a.pc);
 		}
+	}
+	if(isrMeter)
+	{
+		auto c = m.isrCosts();
+		if(!c.empty())
+		{
+			uint64_t sum = 0;
+			for(auto v : c) sum += v;
+			std::vector<uint32_t> s = c;
+			std::sort(s.begin(), s.end());
+			std::printf("isr-meter: %zu frames, instructions mean %.1f p50 %u p99 %u max %u\n", c.size(),
+				static_cast<double>(sum) / static_cast<double>(c.size()), s[s.size() / 2], s[s.size() * 99 / 100], s.back());
+			std::FILE* f = std::fopen("isr_meter_costs.txt", "w");
+			if(f) { for(auto v : c) std::fprintf(f, "%u\n", v); std::fclose(f); }
+			f = std::fopen("isr_meter_pcs.txt", "w");
+			if(f) { for(const auto& kv : m.isrPcs()) std::fprintf(f, "%#08x %llu\n", kv.first, static_cast<unsigned long long>(kv.second)); std::fclose(f); }
+		}
+		else
+			std::printf("isr-meter: no frame interrupt completed\n");
 	}
 	if(profile)
 	{
