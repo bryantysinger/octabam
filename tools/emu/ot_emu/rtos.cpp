@@ -47,6 +47,7 @@ namespace ot
 		, m_ips(_ips)
 		, m_pit0("PIT0", _pitClockHz)
 		, m_pit1("PIT1", _pitClockHz)
+		, m_pit3("PIT3", _pitClockHz)
 		, m_intc0("INTC0", 64)
 		, m_intc1("INTC1", 128)
 	{
@@ -84,6 +85,7 @@ namespace ot
 			uint64_t a = 0;
 			if(m_pit0.irq()) a |= 1ull << 43;
 			if(m_pit1.irq()) a |= 1ull << 44;
+			if(m_pit3.irq()) a |= 1ull << 46;
 			if(m_usb && m_usb->irq()) a |= 1ull << 47;	// the USB device controller (vector 0xaf, the firmware installs it at level 4)
 			return a;
 		});
@@ -159,6 +161,7 @@ namespace ot
 		if(_addr >= g_intc1 && _addr < g_intc1 + 0x100) { _out = m_intc1.read(_addr - g_intc1, _size); return true; }
 		if(_addr >= g_pit0 && _addr < g_pit0 + 0x10)    { _out = m_pit0.read(_addr - g_pit0, _size, m_sample); return true; }
 		if(_addr >= g_pit1 && _addr < g_pit1 + 0x10)    { _out = m_pit1.read(_addr - g_pit1, _size, m_sample); return true; }
+		if(_addr >= g_pit3 && _addr < g_pit3 + 0x10)    { _out = m_pit3.read(_addr - g_pit3, _size, m_sample); return true; }
 		if(_addr >= g_dtim && _addr < g_dtim + 4 * 0x4000 && ((_addr - g_dtim) & 0x3fff) < 0x10)
 		{
 			_out = m_dtim[(_addr - g_dtim) >> 14].read((_addr - g_dtim) & 0xf, _size, m_sample);
@@ -236,6 +239,7 @@ namespace ot
 		else if(_addr >= g_intc1 && _addr < g_intc1 + 0x100) m_intc1.write(_addr - g_intc1, _size, _val);
 		else if(_addr >= g_pit0 && _addr < g_pit0 + 0x10) m_pit0.write(_addr - g_pit0, _size, _val, m_sample);
 		else if(_addr >= g_pit1 && _addr < g_pit1 + 0x10) m_pit1.write(_addr - g_pit1, _size, _val, m_sample);
+		else if(_addr >= g_pit3 && _addr < g_pit3 + 0x10) m_pit3.write(_addr - g_pit3, _size, _val, m_sample);
 		else if(_addr >= g_dtim && _addr < g_dtim + 4 * 0x4000 && ((_addr - g_dtim) & 0x3fff) < 0x10)
 			m_dtim[(_addr - g_dtim) >> 14].write((_addr - g_dtim) & 0xf, _size, _val, m_sample);
 		else if(_addr >= g_dspi && _addr < g_dspi + 0x100) m_dspi.write(_addr - g_dspi, _size, _val, _replay);
@@ -680,6 +684,7 @@ namespace ot
 	{
 		m_pit0.advance(m_sample);
 		m_pit1.advance(m_sample);
+		m_pit3.advance(m_sample);
 		for(auto& t : m_dtim)
 			t.advance(m_sample);
 		if(m_frame && !m_frameFromDsp)
@@ -788,7 +793,7 @@ namespace ot
 			m_horizonSrc = 1;
 		}
 		double e;
-		for(const auto* p : {&m_pit0, &m_pit1})
+		for(const auto* p : {&m_pit0, &m_pit1, &m_pit3})
 			if(p->nextExpiry(e) && e < best)
 			{
 				best = e;
@@ -839,7 +844,7 @@ namespace ot
 			best = m_ataIrqDue;
 			any = true;
 		}
-		for(const auto* p : {&m_pit0, &m_pit1})
+		for(const auto* p : {&m_pit0, &m_pit1, &m_pit3})
 		{
 			double e;
 			if(p->nextExpiry(e) && (!any || e < best))

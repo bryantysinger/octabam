@@ -53,7 +53,7 @@
 | the USB timers FRAME PROFILE reads (usb_tm) and FRAME PROFILE's window as
 | 0xc0/0x57 block 5. USB_TESTCMD (1 when LOAD METER is in a test image,
 | family "probes") adds, as USB_PROBES does too, BRAIN's task ledger as
-| block 4 and the test commands 0xc0/0x58 (REC MATRIX's masks) and 0xc0/0x59
+| block 4, PC SAMPLER's header as block 6 (USB_TESTCMD only), and the test commands 0xc0/0x58 (REC MATRIX's masks) and 0xc0/0x59
 | (read RAM) that tools/hw/rec_stress.py drives, so the stress images can
 | leave FRAME PROFILE out: it freezes a unit at full load (1 Nov 2026, eight
 | sound-on-sound loops; stock and the same image without it run). An image
@@ -2085,6 +2085,12 @@ audio_ctrl_shim:
     moveq   #96,%d1                 | block 5: FRAME PROFILE's window (24 longs, modules/frame-profile)
     movel   #FP_STATS,%d3
     cmpil   #5,%d0
+.endif
+.if USB_TESTCMD
+    beqs    3f
+    moveq   #64,%d1                 | block 6: PC SAMPLER's header (16 longs, modules/pc-sampler)
+    movel   #PCS_HDR,%d3
+    cmpil   #6,%d0
 .endif
     bne     9f
 3:  tstl    %d3

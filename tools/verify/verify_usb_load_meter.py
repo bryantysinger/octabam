@@ -9,7 +9,8 @@ the three blocks twice, a second of port time apart. Checks:
 
   blocks     wValue 0, 1, 2 read whole through wIndex offsets (20, 48 and 256 bytes); no reply is a
              multiple of 64 bytes; an offset at the end and wValue 4 STALL; wValue 3 is DLPUMP's counters when the remix has it, else STALLs
-  probes     with FRAME PROFILE (USB_PROBES), or LOAD METER in a probes remix (USB_TESTCMD): wValue 4 is BRAIN's
+  probes     with FRAME PROFILE (USB_PROBES), or LOAD METER in a probes remix (USB_TESTCMD): wValue 6 is PC
+             SAMPLER's header (magic PCS1 and its geometry) when the remix has it, else STALLs; wValue 4 is BRAIN's
              task ledger (96 bytes, sent 95 then 1); with FRAME PROFILE wValue 5 is its window (96 bytes, its
              seq rising) and wValue 6 STALLs, without it wValue 5 STALLs; with REC MATRIX as well,
              the test command 0xc0/0x58 reads recorder 1's mask, writes one, reads it back over USB and as the
@@ -185,6 +186,22 @@ def main():
             stalls("wValue 6", lambda: b.ctrl_in(0xc0, 0x57, 6, 0, 4))
         else:
             stalls("wValue 5 (no FRAME PROFILE)", lambda: b.ctrl_in(0xc0, 0x57, 5, 0, 4))
+        if testcmd and "LOAD METER" in mods and getattr(rmx, "family", None) == "probes":
+            if "PC SAMPLER" in mods:
+                h1 = load_meter.read_block(c, 6, 64)
+                cmd("run 1500")
+                h2 = load_meter.read_block(c, 6, 64)
+                w = lambda raw, i: int.from_bytes(raw[4 * i:4 * i + 4], "big")
+                # the geometry, not the counting: this bench boots without the sys task's init that starts
+                # the sampler (its total stays 0 here); the counting is checked on a project run with
+                # --mem-dump of the histograms (modules/pc-sampler/manifest.py's proof note)
+                check("wValue 6 is PC SAMPLER's header: 64 bytes, magic PCS1, about 20 kHz, 4096 x 32 B and 4096 x 128 B",
+                      len(h1) == 64 and w(h1, 0) == 0x50435331 and 19000 < w(h1, 3) < 21000
+                      and (w(h1, 5), w(h1, 6), w(h1, 9), w(h1, 10)) == (32, 4096, 128, 4096),
+                      f"magic {w(h1, 0):#x}, rate {w(h1, 3)}, lo {w(h1, 5)} x {w(h1, 6)}, hi {w(h1, 9)} x {w(h1, 10)}, "
+                      f"total {w(h1, 1)} -> {w(h2, 1)}")
+            else:
+                stalls("wValue 6 (no PC SAMPLER)", lambda: b.ctrl_in(0xc0, 0x57, 6, 0, 4))
         mask = lambda rec, val=None: int.from_bytes(bytes(serve(lambda: b.ctrl_in(
             0xc0, 0x58, (val or 0) & 0xFFFF, rec | (0x100 if val is not None else 0), 4))), "big", signed=True)
         if testcmd and "REC MATRIX" in mods:

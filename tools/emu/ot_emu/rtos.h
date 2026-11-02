@@ -122,6 +122,7 @@ namespace ot
 
 	inline constexpr uint32_t g_intc0 = 0xfc048000, g_intc1 = 0xfc04c000;
 	inline constexpr uint32_t g_pit0  = 0xfc080000, g_pit1  = 0xfc084000;
+	inline constexpr uint32_t g_pit3  = 0xfc08c000;	// PIT3: no stock code touches it; PC SAMPLER (modules/pc-sampler) does
 	inline constexpr uint32_t g_dtim  = 0xfc070000;		// DTIM0..3, 0x4000 apart; INTC0 sources 32..35
 	inline constexpr double   g_busClockHz = 132e6;		// the internal bus clock the DMA timers count (CHIP.md)
 	inline constexpr uint32_t g_dspi  = 0xfc05c000;
@@ -667,7 +668,7 @@ namespace ot
 		double m_ips;
 		double m_sample = 0.0;
 
-		Pit m_pit0, m_pit1;
+		Pit m_pit0, m_pit1, m_pit3;
 		DmaTimer m_dtim[4] = {{"DTIM0", g_busClockHz, 256.0 * g_sampleHz}, {"DTIM1", g_busClockHz}, {"DTIM2", g_busClockHz}, {"DTIM3", g_busClockHz}};
 		Edma m_edma;
 		Intc m_intc0, m_intc1;
