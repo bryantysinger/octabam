@@ -1321,7 +1321,9 @@ def cmd_cycle(a):
 def cmd_masks(a):
     unit = Unit()
     if not unit.has_mtrx:
-        sys.exit("no 0xc0/0x58 in this image (needs FRAME PROFILE and REC MATRIX)")
+        sys.exit("no 0xc0/0x58 in this image (needs REC MATRIX and LOAD METER in a probes remix)")
+    if a.density:
+        unit.set_masks(a.density.upper())
     for s in a.set or ():
         rec, val = s.split("=")
         unit.mask(int(rec) - 1, int(val, 0))
@@ -1346,6 +1348,8 @@ def main():
     p.add_argument("--audio", action="store_true", help="check MAIN L's tone (only with tracks kept off MAIN)")
     p = sub.add_parser("report"); p.add_argument("labels", nargs="+")
     p = sub.add_parser("masks"); p.add_argument("--set", nargs="*")
+    p.add_argument("--density", choices=("DIAG", "MED", "DENSE", "diag", "med", "dense"),
+                   help="every recorder's mask as that ladder sets it (live, not saved)")
     for name in ("hold", "cycle"):
         p = sub.add_parser(name); p.add_argument("dest"); p.add_argument("label")
         p.add_argument("--midi", default="Elektron Octatrack DPS-1"); p.add_argument("--usb-in", default="Octatrack")
