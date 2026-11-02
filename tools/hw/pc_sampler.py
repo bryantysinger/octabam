@@ -106,11 +106,12 @@ class Unit:
         return bytes(self.dev.ctrl_transfer(0xc0, 0x57, w, off, n, timeout=1000))
 
     def peek(self, addr, n):
+        """One USB packet a request (60 bytes): replies of 255 bytes came back with their last bytes wrong
+        now and then (1 Nov 2026: the counters either side of a 255-byte boundary, x4 and x7), so no
+        multi-packet reply is trusted until 0xc0/0x59's long replies are understood."""
         out = b""
         while len(out) < n:
-            k = min(n - len(out), 255)
-            if k % 64 == 0:
-                k -= 1
+            k = min(n - len(out), 60)
             a = addr + len(out)
             out += bytes(self.dev.ctrl_transfer(0xc0, 0x59, a & 0xFFFF, a >> 16, k, timeout=1000))
         return out
@@ -149,6 +150,9 @@ def main():
     for rng, key in ((u.lo, "lo"), (u.hi, "hi")):
         for i, (b, c) in enumerate(zip(s1[key], s0[key])):
             d = (b - c) % (1 << 32)
+            if d > n:                                  # a counter cannot rise by more than every sample: a bad read
+                print(f"  dropped {rng['base'] + i * rng['size']:#x}: {c} -> {b} (a bad read, not a count)")
+                continue
             if d:
                 buckets.append((rng["base"] + i * rng["size"], rng["size"], d))
     other = (s1["other"] - s0["other"]) % (1 << 32)
