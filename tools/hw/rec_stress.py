@@ -151,8 +151,9 @@ def prog(lad, n):
     return 16 * (SELF_BANK if lad == "SELF" else MTRX_BANK) + n - 1
 
 
-def rungs(ladders=LADDERS):
-    """The rungs of one USB phase, in run order."""
+def rungs(ladders=LADDERS, order="up", seed=0):
+    """The rungs of one USB phase, in run order. order "down" runs each ladder's x8..x1, "shuffle" a random
+    order of them (random.Random(seed), per ladder); BASE first and the drop rung last either way."""
     base = lambda tag="": {"ladder": "BASE", "n": 0, "program": 16 * SELF_BANK + BASE_PATTERN, "density": None,
                            "tag": tag}
     out = [base()]
@@ -161,7 +162,13 @@ def rungs(ladders=LADDERS):
             out.append(base(f"before {lad}"))
         dens = lad if lad in DENSITIES else None
         if lad in ("SELF",) + tuple(DENSITIES):
-            out += [{"ladder": lad, "n": n, "program": prog(lad, n), "density": dens} for n in NS]
+            steps = [{"ladder": lad, "n": n, "program": prog(lad, n), "density": dens} for n in NS]
+            if order == "down":
+                steps.reverse()
+            elif order == "shuffle":
+                import random
+                random.Random(f"{seed}/{lad}").shuffle(steps)
+            out += steps
             out.append({"ladder": lad, "n": 1, "program": prog(lad, 1), "density": dens, "drop": prog(lad, 8)})
         elif lad == "SWITCH":
             out.append({"ladder": "SWITCH", "n": SWITCH_N, "program": prog("SWITCH", SWITCH_N),
@@ -751,9 +758,16 @@ def cmd_run(a):
         sys.exit(f"{path} exists: --resume to continue it, or another LABEL")
     skip = {d["rung"] for d in done}
     base_us = {}                                       # usb -> the last BASE rung's frame mean
-    ended = {(d["usb"], d["ladder"]) for d in done if d["result"] in TERMINAL}
+    # climbing, a terminal result ends the ladder (the rungs above it would only fail harder); in any other order
+    # every rung is run, one power-cycle per terminal result
+    ended = ({(d["usb"], d["ladder"]) for d in done if d["result"] in TERMINAL} if a.order == "up" else set())
     unit = Unit()
     ladders = [x.strip().upper() for x in a.ladders.split(",") if x.strip()]
+    if a.order != "up":
+        print(f"order {a.order}" + (f" (seed {a.seed})" if a.order == "shuffle" else "") + ": "
+              + ", ".join(f"{r['ladder']} x{r['n']}" + (" drop" if r.get("drop") is not None else "")
+                          for r in rungs([x for x in ladders if x != "SWITCH"] or ladders, a.order, a.seed)
+                          if r["ladder"] != "BASE"))
     if not unit.has_mtrx:
         dropped = [x for x in ladders if x != "SELF"]
         ladders = [x for x in ladders if x == "SELF"]
@@ -789,7 +803,7 @@ def cmd_run(a):
                     sys.exit(f"USB OFF asked, but the host is streaming (IN {pin}/s, OUT {pout} frames/s): quit "
                              "every app using the Octatrack's audio (Logic, the aggregate device's users)")
                 print("USB OFF: no host stream")
-            for r in rungs(ladders):
+            for r in rungs(ladders, a.order, a.seed):
                 rid = rung_id(usb, r)
                 if rid in skip or (usb, r["ladder"]) in ended:
                     continue
@@ -854,7 +868,8 @@ def cmd_run(a):
                 if rec["result"] in TERMINAL:
                     print(f"\n{rec['result']} at {rid}{': ' + rec['detail'] if rec.get('detail') else ''}\n"
                           "Power-cycle the unit (it reloads the project), then run the same command with --resume. "
-                          f"The rest of USB {usb.upper()}/{r['ladder']} is skipped.")
+                          + (f"The rest of USB {usb.upper()}/{r['ladder']} is skipped." if a.order == "up" else
+                             "The other rungs still run (--order isn't up)."))
                     return
             if stream:
                 stream.close(); stream = None
@@ -1346,6 +1361,9 @@ def main():
     p.add_argument("--secs", type=float, default=10.0); p.add_argument("--settle", type=float, default=4.0)
     p.add_argument("--flip", type=float, default=0.5); p.add_argument("--resume", action="store_true")
     p.add_argument("--audio", action="store_true", help="check MAIN L's tone (only with tracks kept off MAIN)")
+    p.add_argument("--order", choices=("up", "down", "shuffle"), default="up",
+                   help="the rungs within a ladder: x1..x8 (up), x8..x1 (down), or shuffled with --seed")
+    p.add_argument("--seed", type=int, default=0, help="--order shuffle's seed (the order is printed)")
     p = sub.add_parser("report"); p.add_argument("labels", nargs="+")
     p = sub.add_parser("masks"); p.add_argument("--set", nargs="*")
     p.add_argument("--density", choices=("DIAG", "MED", "DENSE", "diag", "med", "dense"),
