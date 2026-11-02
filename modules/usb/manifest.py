@@ -94,17 +94,22 @@ def audio_inc(modules, remix):
     for i in range(0, XLV_WORDS, 8):
         lines.append("    .long " + ", ".join(f"0x{w:06x}" for w in words[i:i + 8]))
     lines.append(".endm")
-    return "\n".join(lines) + "\n" + probes_inc(modules) + descriptors.audio_remix_inc(modules, remix)
+    return "\n".join(lines) + "\n" + probes_inc(modules, remix) + descriptors.audio_remix_inc(modules, remix)
 
 
 def probes_inc(modules, remix=None):
     """USB_PROBES: 1 when FRAME PROFILE is in the image. It turns on the USB
-    timers FRAME PROFILE reads, 0xc0/0x57 blocks 4 (BRAIN's task ledger) and
-    5 (FRAME PROFILE's window), and the test command 0xc0/0x58 (REC MATRIX's
-    masks, tools/hw/rec_stress.py) in usbaudio.s and usbaudio_in.s. An image
-    without FRAME PROFILE assembles none of them."""
+    timers FRAME PROFILE reads and 0xc0/0x57 blocks 4 (BRAIN's task ledger)
+    and 5 (FRAME PROFILE's window) in usbaudio.s and usbaudio_in.s.
+    USB_TESTCMD: 1 when LOAD METER is in a test image (family "probes";
+    never a shipped remix). It turns on the test
+    commands 0xc0/0x58 (REC MATRIX's masks) and 0xc0/0x59 (read RAM) that
+    tools/hw/rec_stress.py drives, so the stress images can leave FRAME
+    PROFILE out (it freezes a unit at full load, 1 Nov 2026). An image with
+    neither assembles none of them."""
     keys = {getattr(m, "key", m) for m in (modules or ())}
-    return f"    .set USB_PROBES, {1 if 'FRAME PROFILE' in keys else 0}\n"
+    return (f"    .set USB_PROBES, {1 if 'FRAME PROFILE' in keys else 0}\n"
+            f"    .set USB_TESTCMD, {1 if 'LOAD METER' in keys and getattr(remix, 'family', None) == 'probes' else 0}\n")
 
 
 # ---- the linked units, in the order the four modules linked them ------------

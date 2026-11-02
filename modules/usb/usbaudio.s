@@ -50,10 +50,15 @@
 | serve the matching set (descriptors.py, cfg.s).
     .include "remix.inc"
 | USB_PROBES (remix.inc: 1 when FRAME PROFILE is in the image, else 0) adds
-| the USB timers FRAME PROFILE reads (usb_tm), BRAIN's task ledger and FRAME
-| PROFILE's window as 0xc0/0x57 blocks 4 and 5, and the test command
-| 0xc0/0x58 (REC MATRIX's masks). An image without FRAME PROFILE assembles
-| none of it: its bytes are those of the build without probes.
+| the USB timers FRAME PROFILE reads (usb_tm) and FRAME PROFILE's window as
+| 0xc0/0x57 block 5. USB_TESTCMD (1 when LOAD METER is in a test image,
+| family "probes") adds, as USB_PROBES does too, BRAIN's task ledger as
+| block 4 and the test commands 0xc0/0x58 (REC MATRIX's masks) and 0xc0/0x59
+| (read RAM) that tools/hw/rec_stress.py drives, so the stress images can
+| leave FRAME PROFILE out: it freezes a unit at full load (1 Nov 2026, eight
+| sound-on-sound loops; stock and the same image without it run). An image
+| with neither assembles none of it: its bytes are those of the build
+| without probes.
 .macro SETUP16_P hi, lo, r            | a 16-bit SETUP field (usbaudio_in.s SETUP16's shape)
     mvzb    \hi,\r
     lsll    #8,\r
@@ -1965,8 +1970,8 @@ audio_ctrl_shim:
     | reply that would be one is sent a byte short and the host asks again
     | from the new offset.
 .Lctrl_lm:
-.if USB_PROBES
-    | 0xc0/0x58, TEST ONLY (USB_PROBES images): REC MATRIX's mask for
+.if USB_PROBES + USB_TESTCMD
+    | 0xc0/0x58, TEST ONLY (USB_PROBES or USB_TESTCMD images): REC MATRIX's mask for
     | recorder wIndex low (0..7). wIndex high 1 first writes wValue (the
     | 16-bit mask, bit 0 A .. 15 CUE, sign-extended as BRAIN keeps it) to the
     | long the mixer reads (rmx_mask_ptr's entry), applied live and not
@@ -1999,7 +2004,7 @@ audio_ctrl_shim:
     moveq   #4,%d0
     bra     .Lctrl_send
 .Lctrl_lm2:
-    | 0xc0/0x59, TEST ONLY (USB_PROBES images): read memory. The address is
+    | 0xc0/0x59, TEST ONLY (USB_PROBES or USB_TESTCMD images): read memory. The address is
     | wIndex << 16 | wValue; the reply is min(wLength, 255) bytes, never a
     | multiple of 64 (as 0x57's), copied by the CPU (its cached view) into
     | lm_reply through the uncached alias. RAM only, so a read has no side
@@ -2069,11 +2074,13 @@ audio_ctrl_shim:
     moveq   #64,%d1                 | block 3: DLPUMP's counters (16 longs)
     movel   #DL_DIAG,%d3
     cmpil   #3,%d0
-.if USB_PROBES
+.if USB_PROBES + USB_TESTCMD
     beqs    3f
     moveq   #96,%d1                 | block 4: BRAIN's task ledger, brain_ts (12 x {TCB, counts})
     movel   #brain_ts,%d3
     cmpil   #4,%d0
+.endif
+.if USB_PROBES
     beqs    3f
     moveq   #96,%d1                 | block 5: FRAME PROFILE's window (24 longs, modules/frame-profile)
     movel   #FP_STATS,%d3

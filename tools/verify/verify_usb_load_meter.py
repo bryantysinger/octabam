@@ -9,12 +9,13 @@ the three blocks twice, a second of port time apart. Checks:
 
   blocks     wValue 0, 1, 2 read whole through wIndex offsets (20, 48 and 256 bytes); no reply is a
              multiple of 64 bytes; an offset at the end and wValue 4 STALL; wValue 3 is DLPUMP's counters when the remix has it, else STALLs
-  probes     with FRAME PROFILE (USB_PROBES): wValue 4 is BRAIN's task ledger (96 bytes, sent 95 then 1), wValue
-             5 FRAME PROFILE's window (96 bytes, its seq rising), wValue 6 STALLs; with REC MATRIX as well,
+  probes     with FRAME PROFILE (USB_PROBES), or LOAD METER in a probes remix (USB_TESTCMD): wValue 4 is BRAIN's
+             task ledger (96 bytes, sent 95 then 1); with FRAME PROFILE wValue 5 is its window (96 bytes, its
+             seq rising) and wValue 6 STALLs, without it wValue 5 STALLs; with REC MATRIX as well,
              the test command 0xc0/0x58 reads recorder 1's mask, writes one, reads it back over USB and as the
              long in DRAM the mixer reads (rmx_mask_ptr's first entry), restores it, and STALLs for recorder 9.
              0xc0/0x59 reads RAM as the port's peek (the UI descriptor, the screen's plane in five reads), never
-             replies a multiple of 64 and STALLs outside RAM or across a region's end. Without FRAME PROFILE,
+             replies a multiple of 64 and STALLs outside RAM or across a region's end. In any other image
              0xc0/0x58 and 0xc0/0x59 STALL
   match      lm_stats read over USB equals the same words peeked from DRAM at
              the symbol's address (runtime.elf), so the request points at the
@@ -67,7 +68,8 @@ def main():
     if not IMAGE.is_file():
         print("  [FAIL] verify_usb_load_meter: no out/mainos_bus.bin (make bus)")
         return 1
-    mods = registry.remix(os.environ.get("REMIX")).modules
+    rmx = registry.remix(os.environ.get("REMIX"))
+    mods = rmx.modules
     if "USB" not in mods or "LOAD METER" not in mods:
         print("  [SKIP] verify_usb_load_meter: the remix has no USB or no LOAD METER")
         return 0
@@ -155,6 +157,9 @@ def main():
         except Exception as e:  # noqa: BLE001
             check("an offset at the block's end STALLs", True, type(e).__name__)
         probes = "FRAME PROFILE" in mods
+        # USB_TESTCMD (modules/usb/manifest.py probes_inc): block 4 and 0xc0/0x58, 0x59 in a probes
+        # remix with LOAD METER, FRAME PROFILE or not
+        testcmd = ("LOAD METER" in mods and getattr(rmx, "family", None) == "probes") or probes
 
         def stalls(what, fn):
             try:
@@ -162,9 +167,15 @@ def main():
                 check(f"{what} STALLs", False, "a reply came back")
             except Exception as e:  # noqa: BLE001
                 check(f"{what} STALLs", True, type(e).__name__)
+        if testcmd or probes:
+            if "BRAIN" in mods:
+                led = load_meter.read_block(c, 4, 96)
+                check("wValue 4 is BRAIN's task ledger: 96 bytes", len(led) == 96, str(len(led)))
+            else:
+                stalls("wValue 4 (no BRAIN)", lambda: b.ctrl_in(0xc0, 0x57, 4, 0, 4))
+        else:
+            stalls("wValue 4", lambda: b.ctrl_in(0xc0, 0x57, 4, 0, 4))
         if probes:
-            led = load_meter.read_block(c, 4, 96)
-            check("wValue 4 is BRAIN's task ledger: 96 bytes", len(led) == 96, str(len(led)))
             f1 = load_meter.read_block(c, 5, 96)
             cmd("run 1500")
             f2 = load_meter.read_block(c, 5, 96)
@@ -173,10 +184,10 @@ def main():
                   len(f1) == 96 and seq(f2) > seq(f1), f"seq {seq(f1)} -> {seq(f2)}")
             stalls("wValue 6", lambda: b.ctrl_in(0xc0, 0x57, 6, 0, 4))
         else:
-            stalls("wValue 4", lambda: b.ctrl_in(0xc0, 0x57, 4, 0, 4))
+            stalls("wValue 5 (no FRAME PROFILE)", lambda: b.ctrl_in(0xc0, 0x57, 5, 0, 4))
         mask = lambda rec, val=None: int.from_bytes(bytes(serve(lambda: b.ctrl_in(
             0xc0, 0x58, (val or 0) & 0xFFFF, rec | (0x100 if val is not None else 0), 4))), "big", signed=True)
-        if probes and "REC MATRIX" in mods:
+        if testcmd and "REC MATRIX" in mods:
             ptr = int(cmd(f"peek {symbol('rmx_mask_ptr'):#x} 4")[1], 16)
             dram = lambda: int.from_bytes(bytes.fromhex(cmd(f"peek {ptr:#x} 4")[1]), "big", signed=True)
             was = mask(0)
@@ -188,9 +199,9 @@ def main():
             check("0xc0/0x58 restores the mask", dram() == was, f"{dram()} vs {was}")
             stalls("0xc0/0x58 for recorder 9", lambda: b.ctrl_in(0xc0, 0x58, 0, 8, 4))
         else:
-            stalls("0xc0/0x58 (no FRAME PROFILE or no REC MATRIX)", lambda: b.ctrl_in(0xc0, 0x58, 0, 0, 4))
+            stalls("0xc0/0x58 (not a test image or no REC MATRIX)", lambda: b.ctrl_in(0xc0, 0x58, 0, 0, 4))
         peek = lambda addr, n: bytes(serve(lambda: b.ctrl_in(0xc0, 0x59, addr & 0xFFFF, addr >> 16, n)))
-        if probes:
+        if testcmd:
             desc = 0x400bf10a                            # the UI surface descriptor (docs/firmware/PANEL.md)
             got = peek(desc, 16)
             want = bytes.fromhex("".join(cmd(f"peek {desc + 4 * i:#x} 4")[1] for i in range(4)))
@@ -204,7 +215,7 @@ def main():
             stalls("0xc0/0x59 outside RAM (0xfc060000, a UART)", lambda: b.ctrl_in(0xc0, 0x59, 0x0000, 0xfc06, 4))
             stalls("0xc0/0x59 across the SRAM's end", lambda: b.ctrl_in(0xc0, 0x59, 0xfff0, 0x8000, 32))
         else:
-            stalls("0xc0/0x59 (no FRAME PROFILE)", lambda: b.ctrl_in(0xc0, 0x59, 0x0400, 0x4000, 4))
+            stalls("0xc0/0x59 (not a test image)", lambda: b.ctrl_in(0xc0, 0x59, 0x0400, 0x4000, 4))
         if "DLPUMP" in mods:               # block 3 is DLPUMP's counters: 16 longs, sent a byte short of 64
             check("wValue 3 returns DLPUMP's counters (63 bytes for a 64-byte request)",
                   len(serve(lambda: b.ctrl_in(0xc0, 0x57, 3, 0, 64))) == 63)

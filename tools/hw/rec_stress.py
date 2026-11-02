@@ -329,7 +329,8 @@ class Unit:
         if not self._try(lambda: self.block(T.STATS_BLOCK, T.STATS_BYTES)):
             sys.exit("no LOAD METER in this image (block 0 STALLs): build a _bt_stress_* remix")
         if not self._try(lambda: self.block(T.LEDGER_BLOCK, T.LEDGER_BYTES)):
-            sys.exit("no task ledger (block 4 STALLs): the image needs BRAIN and FRAME PROFILE (USB_PROBES)")
+            sys.exit("no task ledger (block 4 STALLs): the image needs BRAIN and LOAD METER in a probes remix "
+                     "(USB_TESTCMD)")
 
     @staticmethod
     def _try(f):
@@ -751,13 +752,13 @@ def cmd_run(a):
     ended = {(d["usb"], d["ladder"]) for d in done if d["result"] in TERMINAL}
     unit = Unit()
     ladders = [x.strip().upper() for x in a.ladders.split(",") if x.strip()]
-    if not (unit.has_mtrx and unit.has_fp):
+    if not unit.has_mtrx:
         dropped = [x for x in ladders if x != "SELF"]
         ladders = [x for x in ladders if x == "SELF"]
         if dropped:
             print(f"no REC MATRIX test command in this image (0xc0/0x58): skipping {', '.join(dropped)}")
     if not unit.has_peek:
-        print("no 0xc0/0x59 in this image: the screen is not watched (build with FRAME PROFILE)")
+        print("no 0xc0/0x59 in this image: the screen is not watched (build a probes remix with LOAD METER)")
     else:
         sts = track_states(pixels(unit.plane()))
         if "?" in sts:
@@ -886,7 +887,8 @@ def line(rec):
                f"slips {au['slips']} drops {au['drops']}")
     return (f"{rec['rung']:26s} {res:10s} frame {rec.get('frame_us', 0):5.1f} us "
             f"({100 * rec.get('frame_us', 0) / FRAME_US:4.1f}%)  worst {rec.get('worst_us', 0):5.1f}  "
-            f"IDLE {100 * sh.get('IDLE', 0):4.1f}%  rec {p.get('recorder', 0):5.1f}  voices {p.get('voices', 0):5.1f}"
+            f"IDLE {100 * sh.get('IDLE', 0):4.1f}%  "
+            + (f"rec {p.get('recorder', 0):5.1f}  voices {p.get('voices', 0):5.1f}" if p else "rec     -  voices     -")
             + aud + scr_text(rec) + (f"  {rec['usb_errors']}" if rec.get("usb_errors") else "")
             + (f"  rates {rec['usb_rates']}" if res.startswith("USB") and rec.get("usb_rates") else ""))
 
