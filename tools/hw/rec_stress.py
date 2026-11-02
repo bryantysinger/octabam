@@ -126,6 +126,7 @@ HARD = ("LOCKUP", "USB IN STOPPED", "USB OUT STOPPED", "USB ERR", "AUDIO", "SCRE
 PLANE, PLANE_BYTES = 0x46c7e0ea, 1024                  # the screen's 1-bit plane (docs/firmware/PANEL.md)
 STILL_S = 2.0
 TERMINAL = ("LOCKUP", "USB IN STOPPED", "USB OUT STOPPED")
+IDLE_RUNG_US = 15.0      # a rung with tracks to record costs at least this much over BASE (one loop: ~40 us at x1)
 
 # REC MATRIX's masks (modules/rec-matrix README, Storage): bit 0 A, 1 B, 2 C, 3 D, 4 AB, 5 CD, 6-13 T1-T8,
 # 14 MAIN, 15 CUE
@@ -749,6 +750,7 @@ def cmd_run(a):
     if done and not a.resume:
         sys.exit(f"{path} exists: --resume to continue it, or another LABEL")
     skip = {d["rung"] for d in done}
+    base_us = {}                                       # usb -> the last BASE rung's frame mean
     ended = {(d["usb"], d["ladder"]) for d in done if d["result"] in TERMINAL}
     unit = Unit()
     ladders = [x.strip().upper() for x in a.ladders.split(",") if x.strip()]
@@ -833,6 +835,19 @@ def cmd_run(a):
                     rec["result"] = verdict(rec)
                 except Lockup as e:
                     rec.update({"result": "LOCKUP", "detail": str(e)})
+                if r["ladder"] == "BASE" and rec.get("frame_us"):
+                    base_us[usb] = rec["frame_us"]
+                if (r["n"] and rec.get("result") not in TERMINAL and base_us.get(usb) and rec.get("frame_us")
+                        and rec["frame_us"] < base_us[usb] + IDLE_RUNG_US):
+                    # 2 Nov 2026 (b94): bank B had lost its part on the unit, and every MTRX rung measured the
+                    # BASE frame with every track stopped, recorded as REC/PLAY. A rung with tracks to record
+                    # that costs no more than BASE is not a measurement: stop, and keep it out of the file so
+                    # --resume runs it again.
+                    print(line(rec), flush=True)
+                    print(f"\nNOT RECORDING at {rid}: {rec['frame_us']:.1f} us against BASE's {base_us[usb]:.1f} us, "
+                          f"so none of its {r['n']} track(s) record. Check the pattern on the unit by hand (the "
+                          "project on the card may have lost its part), then run the same command with --resume.")
+                    return
                 with path.open("a") as f:
                     f.write(json.dumps(rec) + "\n")
                 print(line(rec), flush=True)
