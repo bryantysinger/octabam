@@ -151,7 +151,7 @@ def prog(lad, n):
     return 16 * (SELF_BANK if lad == "SELF" else MTRX_BANK) + n - 1
 
 
-def rungs(ladders=LADDERS, order="up", seed=0):
+def rungs(ladders=LADDERS, order="up", seed=0, reset=False):
     """The rungs of one USB phase, in run order. order "down" runs each ladder's x8..x1, "shuffle" a random
     order of them (random.Random(seed), per ladder); BASE first and the drop rung last either way."""
     base = lambda tag="": {"ladder": "BASE", "n": 0, "program": 16 * SELF_BANK + BASE_PATTERN, "density": None,
@@ -168,6 +168,8 @@ def rungs(ladders=LADDERS, order="up", seed=0):
             elif order == "shuffle":
                 import random
                 random.Random(f"{seed}/{lad}").shuffle(steps)
+            if reset:                              # BASE before every step: what is left running shows there
+                steps = [x for st in steps for x in (base(f"reset before x{st['n']}"), st)]
             out += steps
             out.append({"ladder": lad, "n": 1, "program": prog(lad, 1), "density": dens, "drop": prog(lad, 8)})
         elif lad == "SWITCH":
@@ -763,10 +765,10 @@ def cmd_run(a):
     ended = ({(d["usb"], d["ladder"]) for d in done if d["result"] in TERMINAL} if a.order == "up" else set())
     unit = Unit()
     ladders = [x.strip().upper() for x in a.ladders.split(",") if x.strip()]
-    if a.order != "up":
+    if a.order != "up" or a.reset:
         print(f"order {a.order}" + (f" (seed {a.seed})" if a.order == "shuffle" else "") + ": "
               + ", ".join(f"{r['ladder']} x{r['n']}" + (" drop" if r.get("drop") is not None else "")
-                          for r in rungs([x for x in ladders if x != "SWITCH"] or ladders, a.order, a.seed)
+                          for r in rungs([x for x in ladders if x != "SWITCH"] or ladders, a.order, a.seed, a.reset)
                           if r["ladder"] != "BASE"))
     if not unit.has_mtrx:
         dropped = [x for x in ladders if x != "SELF"]
@@ -803,7 +805,7 @@ def cmd_run(a):
                     sys.exit(f"USB OFF asked, but the host is streaming (IN {pin}/s, OUT {pout} frames/s): quit "
                              "every app using the Octatrack's audio (Logic, the aggregate device's users)")
                 print("USB OFF: no host stream")
-            for r in rungs(ladders, a.order, a.seed):
+            for r in rungs(ladders, a.order, a.seed, a.reset):
                 rid = rung_id(usb, r)
                 if rid in skip or (usb, r["ladder"]) in ended:
                     continue
@@ -1364,6 +1366,8 @@ def main():
     p.add_argument("--order", choices=("up", "down", "shuffle"), default="up",
                    help="the rungs within a ladder: x1..x8 (up), x8..x1 (down), or shuffled with --seed")
     p.add_argument("--seed", type=int, default=0, help="--order shuffle's seed (the order is printed)")
+    p.add_argument("--reset", action="store_true", help="a BASE rung before every step (nothing, xN, nothing, ...): "
+                                                         "BASE should read the same each time if nothing is left running")
     p = sub.add_parser("report"); p.add_argument("labels", nargs="+")
     p = sub.add_parser("masks"); p.add_argument("--set", nargs="*")
     p.add_argument("--density", choices=("DIAG", "MED", "DENSE", "diag", "med", "dense"),
