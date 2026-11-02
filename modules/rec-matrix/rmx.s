@@ -33,9 +33,6 @@
 |            s >> 8, s >> 9 or nothing: no multiply.
 |   ramping  for the 64 samples after a change: the general per-path ramp
 |            loop (rmx_gain), as before, for all 18 paths.
-| The settled path groups its stereo sources four at a time (2 Nov 2026,
-| .Lrun): summed in registers, the output written once a group, so DENSE
-| is 3 passes, not 12. Integer sums, so the result is the same to the bit.
 | rmx_set holds, per recorder, the mask its gains settled on (-1 while a
 | ramp runs). A new take snaps the gains to the mask's targets, so it starts
 | settled.
@@ -494,87 +491,7 @@ rmx_mix:
 .Lrun:  move.l  %a0,%d2                     | d2 = the list's end
         lea     rmx_list,%a0
         cmp.l   %a0,%d2
-        beq.w   .Lsilent
-| Grouped (2 Nov 2026): stereo sources go through four at a time, summed in
-| registers with the output written once per group, instead of one pass
-| each (DENSE: 12 passes -> 3; PC SAMPLER on Bryan T's MKII put the stereo
-| passes and their dispatch at 36 us a frame at DENSE x4). Integer sums, so
-| the order is free and the result is the one-pass-per-source result to the
-| bit; the last operation still saturates. Used when there are two or more
-| sources and at least one is stereo; the rest keep one pass each, first.
-        moveq   #0,%d3                      | d3 = stereo sources
-        move.l  %a0,%a1
-0:      tst.l   (%a1)                       | kind 0 = stereo
-        bne.s   1f
-        addq.l  #1,%d3
-1:      addq.l  #8,%a1
-        cmp.l   %a1,%d2
-        bne.s   0b
-        tst.l   %d3
-        beq.w   .Lpass0                     | no stereo source: one pass each
-        move.l  %d2,%d0
-        sub.l   %a0,%d0
-        moveq   #8,%d1
-        cmp.l   %d1,%d0
-        beq.w   .Lpass0                     | one source: its only-one pass
-        moveq   #0,%d4                      | d4 = the mode: 0 store, then 8 add
-        lea     rmx_stv,%a3                 | a3 = the stereo segments, collected
-        move.l  %a3,rmx_stp
-| ---- the non-stereo sources first, one pass each (never the last) ---------
-2:      move.l  (%a0)+,%d0
-        move.l  (%a0)+,%a3
-        tst.l   %d0
-        bne.s   3f
-        move.l  rmx_stp,%a1                 | stereo: collect it
-        move.l  %a3,(%a1)+
-        move.l  %a1,rmx_stp
-        bra.s   4f
-3:      add.l   %d4,%d0
-        lea     rmx_pass,%a1
-        move.l  (%a1,%d0.l),%a1
-        move.l  %a4,%a5
-        move.l  %d7,%d1
-        jsr     (%a1)
-        moveq   #8,%d4
-4:      cmp.l   %a0,%d2
-        bne.s   2b
-| ---- the stereo sources, up to four a group; the last group saturates -----
-        lea     rmx_stv,%a0                 | a0 = the next segment pointer
-5:      moveq   #4,%d0
-        cmp.l   %d0,%d3
-        bge.s   6f
-        move.l  %d3,%d0                     | d0 = this group's size
-6:      sub.l   %d0,%d3
-        move.l  %d4,%d1                     | the mode: 0 store / 8 add, or for the
-        tst.l   %d3                         | last group 12 (add and saturate), or 4
-        bne.s   7f                          | (store and saturate) when it is also the
-        moveq   #12,%d1                     | first: all the sources in one group
-        tst.l   %d4
-        bne.s   7f
-        moveq   #4,%d1
-7:      subq.l  #1,%d0
-        bne.s   8f
-        move.l  (%a0)+,%a3                  | one: the stereo pass
-        lea     rmx_pass,%a1
-        move.l  (%a1,%d1.l),%a1
-        move.l  %a4,%a5
-        move.l  %d7,%d1
-        jsr     (%a1)
-        bra.s   9f
-8:      subq.l  #1,%d0                      | two to four: rmx_grp, row n - 2 (16 bytes),
-        lsl.l   #4,%d0                      | entry mode / 4 (mode is already bytes)
-        add.l   %d1,%d0
-        lea     rmx_grp,%a1
-        move.l  (%a1,%d0.l),%a1
-        move.l  %a4,%a5
-        move.l  %d7,%d1
-        jsr     (%a1)                       | a0 advances past the group
-9:      moveq   #8,%d4
-        tst.l   %d3
-        bne.s   5b
-        bra.w   .Ldone
-
-.Lpass0:                                    | as before: one pass per source
+        beq.s   .Lsilent
         moveq   #0,%d5                      | the first pass stores
 .Lpass: move.l  (%a0)+,%d0
         move.l  (%a0)+,%a3
@@ -841,103 +758,6 @@ rmx_pass:
         .long   rmx_dup_store, rmx_dup_only, rmx_dup_add, rmx_dup_sat
         .long   rmx_fold_store, rmx_fold_only, rmx_fold_add, rmx_fold_sat
 
-| ---- grouped stereo passes (see .Lrun) ------------------------------------
-| a0 = the group's segment pointers (advanced past them), a5 = the output,
-| d1 = count. n sources summed per sample in d0 / d6, then stored, added or
-| added and saturated as one source's pass would be. Keeps d2-d4, d7, a2,
-| a4; may clobber d0, d1, d5, d6, a1, a3, a5 (the pass contract) and a0.
-        .macro  GSRC r
-        move.l  (\r)+,%d5
-        asr.l   #8,%d5
-        add.l   %d5,%d0
-        move.l  (\r)+,%d5
-        asr.l   #8,%d5
-        add.l   %d5,%d6
-        .endm
-        .macro  GOUT_SAT1                   | d0 to 24 bits, to the top, out
-        cmp.l   %d3,%d0
-        ble.s   1f
-        move.l  %d3,%d0
-1:      cmp.l   %d4,%d0
-        bge.s   2f
-        move.l  %d4,%d0
-2:      lsl.l   #8,%d0
-        move.l  %d0,(%a5)+
-        .endm
-        .macro  GRP n, mode
-        lea     -20(%sp),%sp
-        movem.l %d2-%d4/%a2/%a4,(%sp)
-        move.l  (%a0)+,%a3
-        move.l  (%a0)+,%a1
-.if \n > 2
-        move.l  (%a0)+,%a2
-.endif
-.if \n > 3
-        move.l  (%a0)+,%a4
-.endif
-.if \mode & 4                        | 4 and 12 saturate (no "or" here: | starts an m68k comment)
-        move.l  #0x007fffff,%d3
-        move.l  #0xff800000,%d4
-.endif
-0:      move.l  (%a3)+,%d0
-        asr.l   #8,%d0
-        move.l  (%a3)+,%d6
-        asr.l   #8,%d6
-        GSRC    %a1
-.if \n > 2
-        GSRC    %a2
-.endif
-.if \n > 3
-        GSRC    %a4
-.endif
-.if \mode == 0
-        move.l  %d0,(%a5)+
-        move.l  %d6,(%a5)+
-.endif
-.if \mode == 8
-        add.l   %d0,(%a5)+
-        add.l   %d6,(%a5)+
-.endif
-.if \mode == 12
-        add.l   (%a5),%d0
-        GOUT_SAT1
-        move.l  %d6,%d0
-        add.l   (%a5),%d0
-        GOUT_SAT1
-.endif
-.if \mode == 4
-        GOUT_SAT1
-        move.l  %d6,%d0
-        GOUT_SAT1
-.endif
-        subq.l  #1,%d1
-        bgt.w   0b
-        movem.l (%sp),%d2-%d4/%a2/%a4
-        lea     20(%sp),%sp
-        rts
-        .endm
-
-rmx_g2_store:   GRP     2, 0
-rmx_g2_one:     GRP     2, 4
-rmx_g2_add:     GRP     2, 8
-rmx_g2_sat:     GRP     2, 12
-rmx_g3_store:   GRP     3, 0
-rmx_g3_one:     GRP     3, 4
-rmx_g3_add:     GRP     3, 8
-rmx_g3_sat:     GRP     3, 12
-rmx_g4_store:   GRP     4, 0
-rmx_g4_one:     GRP     4, 4
-rmx_g4_add:     GRP     4, 8
-rmx_g4_sat:     GRP     4, 12
-
-| row n - 2, entry mode / 4: 0 store, 4 store and saturate (the group is
-| every source), 8 add, 12 add and saturate (the last group)
-        .balign 4
-rmx_grp:
-        .long   rmx_g2_store, rmx_g2_one, rmx_g2_add, rmx_g2_sat
-        .long   rmx_g3_store, rmx_g3_one, rmx_g3_add, rmx_g3_sat
-        .long   rmx_g4_store, rmx_g4_one, rmx_g4_add, rmx_g4_sat
-
 | 0x400068f0, a "jmp" detour in the write path's prologue (every recorder,
 | both halves, every frame, recording or not): counts the calls, the clock
 | rmx_select measures gaps with. Replays `mvzb 0x100b14cf,d0`.
@@ -1006,7 +826,3 @@ rmx_moving:
         .space  4                           | a ramp still running (rmx_gain)
 rmx_list:
         .space  12 * 8                      | the settled passes: kind, segment
-rmx_stv:
-        .space  12 * 4                      | the stereo sources' segments, collected (.Lrun)
-rmx_stp:
-        .space  4                           | the next free rmx_stv slot
