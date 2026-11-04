@@ -24,8 +24,9 @@ level, 47 cue, 8 AMP BAL, 48 crossfader, 49-51 mute/solo/cue, 52-54 arm,
 `0x8000000c`. Unused: 0-6, 9-15, 62-111.
 
 Page 2 is unreachable from stock CC: `cc−16 < 30` and the writer derives
-`slot = flat % 6`. `modules/cc-map` adds CC 62-67 (FX2 page 2) and
-68-73 (FX1 page 2).
+`slot = flat % 6`. `modules/cc-map` adds CC 102-107 (FX2 page 2) and
+108-111, 14, 15 (FX1 page 2); 62-67 and 68-73 until 1 Nov 2026 (issue
+#981: the pedal CCs, 64 sustain among them).
 
 **The generic writer `FUN_40054cd8(track, flat, value)`** ✅ resolves the
 descriptor via `FUN_40031da4(track, flat/6)`, refuses disabled slots,
@@ -204,7 +205,10 @@ track bit.
 
 **Unused audio-track CCs in 0..119: 0–6, 9–15, 62–111** (50 contiguous free
 numbers from 62). They fall through every compare to the `rts` at
-`0x4000f274`. ✅
+`0x4000f274`. ✅ Unused by stock is not free of meaning: 64-69 are the
+pedals and 96-101 data entry and RPN/NRPN, and a module that maps or
+sends one reaches every synth on that channel
+(`tools/remix/midi_cc.py`, issue #981).
 
 MIDI-track channels (mask bits 16+): the CC is copied to `0x400d2e79` and
 handed to `0x40010bc8(3, buf)` (`0x4000e886`) — a pass-through, not a
@@ -347,11 +351,12 @@ writes the lane byte, sets the redraw flag `0x46c7d244[slot2*20+4] = 0x14`
 and tail-jumps to the page redraw. The FX2 dial reads the displayed value
 from the Part via the page cache.
 
-`modules/cc-map` (CC 62-67 → FX2 page 2, CC 68-73 → FX1 page 2) makes the
-FX2 editor's stores for 62-67 and the FX1 editor's for 68-73. Its first
+`modules/cc-map` (CC 102-107 → FX2 page 2, CC 108-111, 14, 15 → FX1 page
+2; 62-67 and 68-73 until 1 Nov 2026) makes the FX2 editor's stores for
+its FX2 block and the FX1 editor's for its FX1 block. Its first
 versions used the PLAYBACK editor's stores (reading `0x4003a474` as "the
 page-2 editor"), so CCs corrupted the track's PLAYBACK page-2 byte and never
-touched FX2's; confirmed fixed on image 96 (CC 63 on channel 5 moved SHMR
+touched FX2's; confirmed fixed on image 96 (CC 63, the old numbering, on channel 5 moved SHMR
 on the panel and the tail's 2-8 kHz bands). Not measured: whether an FX1
 page-2 edit at the panel reaches the DSP on a THRU track
 (`docs/contributing/FAILURE_MODES.md`).

@@ -8,8 +8,8 @@ once per UI tick (a jmp detour on the keyrepeat task's loop, 0x4005595c,
 120 Hz) and compares one track's live knob lane (0x80000810 + track*72)
 with the stock emitter's own last-sent cache (0x46c7bf2c + channel*128 +
 cc), queueing every byte that differs through the emitter 0x40033e3c: page
-1 as CC 16-45, FX1 page 2 as CC 68-73 and FX2 page 2 as CC 62-67 (CC MAP's
-numbering). Gated where stock gates: AUDIO CC OUT bit 1 (EXT), the track's
+1 as CC 16-45, FX1 page 2 as CC 108-111, 14, 15 and FX2 page 2 as CC
+102-107 (CC MAP's numbering; 68-73 and 62-67 until 1 Nov 2026, issue #981). Gated where stock gates: AUDIO CC OUT bit 1 (EXT), the track's
 trig channel, no MIDI track on that channel. See cc_feedback.s."""
 
 from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof
@@ -19,8 +19,8 @@ MODULE = Module(
     key="CC FEEDBACK",
     kind=Kind.CF_PATCH,
     category=Category.MIDI_USB, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.HARDWARE, proof_note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); " "`verify_ccfeedback` (Unicorn) and `verify_set` (the port's MIDI OUT bytes)",
-    doc="Every knob value change is transmitted as its CC (page 1: 16-45; page 2: CC MAP's 62-73), "
+    proof=Proof.HARDWARE, proof_note="cursory testing on Sam's MKII (owner report, 16 Oct 2026; page 2 on CC 62-73 then); " "`verify_ccfeedback` (Unicorn) and `verify_set` (the port's MIDI OUT bytes)",
+    doc="Every knob value change is transmitted as its CC (page 1: 16-45; page 2: CC MAP's 102-111, 14, 15), "
         "so a controller's encoders follow the unit.",
     linked=(Linked("cc_feedback", "modules/cc-feedback/cc_feedback.s", dram=True),),
     detours=(

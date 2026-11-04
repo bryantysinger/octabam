@@ -1,6 +1,8 @@
 """CC MAP -- MIDI CC numbers stock ignores, mapped to parameters stock CC
-cannot reach. Today: CC 62-67 -> the FX2 effect's page-2 slots 6-11, CC 68-73
--> the FX1 effect's. README.md lists the free CC numbers.
+cannot reach. Today: CC 102-107 -> the FX2 effect's page-2 slots 6-11, CC
+108-111, 14, 15 -> the FX1 effect's (62-67 and 68-73 until 1 Nov 2026,
+issue #981: they held the sustain and hold pedals). README.md lists the
+free CC numbers.
 
 Stock incoming CC reaches page 1 only (CC 16-45; the handler admits
 cc-16 < 30, docs/firmware/MIDI.md appendix A). The MIDI dispatch table entry
@@ -27,6 +29,14 @@ import pathlib
 import hashlib
 
 from remix.schema import Gate, Category, Proof, Kind, Linked, Module, SymbolRef
+from remix.midi_cc import refuse_stateful
+
+# The CC numbers, slot 6..11 order. cc_map.s's CAVE decodes them (102..111
+# -> cc-102, 14/15 -> 10/11), CC FEEDBACK's cf_map sends them, and the two
+# gates check both against these tuples. Every one is undefined in the MIDI
+# spec; none is in midi_cc.STATEFUL.
+FX2_CCS = refuse_stateful("CC MAP FX2 page 2", (102, 103, 104, 105, 106, 107))
+FX1_CCS = refuse_stateful("CC MAP FX1 page 2", (108, 109, 110, 111, 14, 15))
 
 # Page-2 clamp counts, slots 6..11: selects carry their count, knobs 128.
 # Must match modules/busverb and modules/busdelay.
@@ -42,26 +52,27 @@ STOCK_RTS = 0x40027e1a           # a bare `rts` in stock (the tail of 0x40027e00
 # for its two count tables; legacy_bytes(addr) patches them in. The oracle
 # the linked source is compared against every build.
 CODE = bytes.fromhex(
-    "206f000470001028000104800000003e720bb280650260064ef94000e79c4fefffe448d7"
-    "04fc28002448263946104cf44eb9400018547a001a2a000202850000007f4a3980000049"
-    "67287000101202800000000f41f946c7febe2e300c007c007001eda8c087670261125286"
-    "7008b0866eee4cd704fc4fef001c4e757206b2846f000114203946c82456720012398000"
-    "0003263c000018b24c031000d0812040d1fc0008ed88d1c6700010107206b28067107207"
-    "b28067024e7543f940bad000600643f940bad00472001231480053812405b4816f022401"
-    "203946c824567200123980000003263c000018b24c031000d0817200d0812040d1fc0008"
-    "f0842206761e4c031000d1c1d1c410822040d1fc0008f084d1c1d1c41082220676484c03"
-    "100041f980000810d1c1d1fc00000038d1c410822606721e4c013000220092b946c82456"
-    "d2830681100a51d22041d1c4108272001239800000037601e3ab207946c824562248d3fc"
-    "000950481211828312811239100b145e828313c1100b145ed1fc0009b3327201208123c1"
-    "100f8598610000ea4e75203946c824567200123980000003263c000018b24c031000d081"
-    "2040d1fc0008ed80d1c672001210670000ba43f9400d5f5822711c00260441f13c002228"
-    "009a2628006ad28353812405b4836c022403b4816f0224012206761e4c03100026045d83"
-    "2040d1c1d1c3d1fc0008f07e1082224093f946c82456d3c1d3c3d3fc100a51cc12827200"
-    "1239800000037601e3ab207946c824562248d3fc000950481211828312811239100b145e"
-    "828313c1100b145ed1fc0009b3327201208123c1100f8598220676484c03100026045d83"
-    "41f980000810d1c1d1fc00000032d1c31082610000284e754feffff048d7047024442806"
-    "7a001a39800000034eb940027e1a4cd704704fef00104e754feffff048d704702a045d85"
-    "244528067a001a39800000034eb940027e1a4cd704704fef00104e75"
+    "206f0004700010280001726690817209b28064180680000000587201b2806506720ad081"
+    "60064ef94000e79c4fefffe448d704fc28002448263946104cf44eb9400018547a001a2a"
+    "000202850000007f4a398000004967287000101202800000000f41f946c7febe2e300c00"
+    "7c007001eda8c0876702611252867008b0866eee4cd704fc4fef001c4e757206b2846f00"
+    "0114203946c824567200123980000003263c000018b24c031000d0812040d1fc0008ed88"
+    "d1c6700010107206b28067107207b28067024e7543f940bad000600643f940bad0047200"
+    "1231480053812405b4816f022401203946c824567200123980000003263c000018b24c03"
+    "1000d0817200d0812040d1fc0008f0842206761e4c031000d1c1d1c410822040d1fc0008"
+    "f084d1c1d1c41082220676484c03100041f980000810d1c1d1fc00000038d1c410822606"
+    "721e4c013000220092b946c82456d2830681100a51d22041d1c410827200123980000003"
+    "7601e3ab207946c824562248d3fc000950481211828312811239100b145e828313c1100b"
+    "145ed1fc0009b3327201208123c1100f8598610000ea4e75203946c82456720012398000"
+    "0003263c000018b24c031000d0812040d1fc0008ed80d1c672001210670000ba43f9400d"
+    "5f5822711c00260441f13c002228009a2628006ad28353812405b4836c022403b4816f02"
+    "24012206761e4c03100026045d832040d1c1d1c3d1fc0008f07e1082224093f946c82456"
+    "d3c1d3c3d3fc100a51cc128272001239800000037601e3ab207946c824562248d3fc0009"
+    "50481211828312811239100b145e828313c1100b145ed1fc0009b3327201208123c1100f"
+    "8598220676484c03100026045d8341f980000810d1c1d1fc00000032d1c3108261000028"
+    "4e754feffff048d70470244428067a001a39800000034eb940027e1a4cd704704fef0010"
+    "4e754feffff048d704702a045d85244528067a001a39800000034eb940027e1a4cd70470"
+    "4fef00104e75"
 )
 
 VCOUNT_MARK = bytes.fromhex("40bad000")
@@ -93,8 +104,8 @@ MODULE = Module(
     key="CC MAP",
     kind=Kind.CF_PATCH,
     category=Category.MIDI_USB, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.HARDWARE, proof_note="Sam's MKII (image 96, 13 Sep 2026)",
-    doc="MIDI CC 62-67 drive the FX2 engine's page-2 slots 6-11; CC 68-73 the FX1 station's.",
+    proof=Proof.HARDWARE, proof_note="Sam's MKII (image 96, 13 Sep 2026), on CC 62-73; the 1 Nov 2026 numbers are not flashed yet",
+    doc="MIDI CC 102-107 drive the FX2 engine's page-2 slots 6-11; CC 108-111, 14 and 15 the FX1 station's.",
     # A DRAM unit (8 Oct 2026; a floating ROM cave until then): the CC
     # dispatch entry points at its entry symbol.
     linked=(Linked("ccmap", "modules/cc-map/cc_map.s", dram=True,
@@ -105,6 +116,6 @@ MODULE = Module(
                    defsyms=(("CC_NEXT", STOCK_CC), ("CC_MODEDEF2", STOCK_RTS),
                             ("CC_MODEDEF1", STOCK_RTS))),),
     symbol_refs=(SymbolRef(DISPATCH_CC, STOCK_CC, "ccmap", "ccm_entry",
-                           "MIDI dispatch: the CC vector (CC 62-67 reach FX2 page 2, CC 68-73 FX1 page 2)"),),
+                           "MIDI dispatch: the CC vector (CC 102-107 reach FX2 page 2, CC 108-111, 14, 15 FX1 page 2)"),),
     gates=(Gate('tools/verify/verify_cc_map.py', remix_arg=False, venv=True),),
 )

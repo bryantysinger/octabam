@@ -18,6 +18,14 @@ The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
 
 ## Unreleased
 
+- **Site and builder version v0.3** (`tools/site/release.py`): `octabam` v0.3 is v0.2 plus the KITS list change below (PR #1004).
+- **KITS: each list names itself; FUNC+YES in LOAD KIT no longer arms the tracks** (PR #1004, a field report). LOAD KIT and SAVE KIT are both the stock list, which has no title: each now shows `LOAD KIT` / `SAVE KIT` as a message when it opens (drawn over the list's middle row, gone by ~1.9 s under the port). FUNC+YES stays SAVE KIT's quick save; in LOAD KIT it fell through to stock's FUNC+YES (ARM ALL) and now shows `LOAD KIT: NO SAVE` and does nothing else. FUNC+YES now takes a KITS list by its callbacks, not by the last-opened flag, which outlived a close by NO. Under the port only (`verify_kits` lfyes/lfyes0 against the module before, on a fresh project; CI skipped `verify_kits` for want of a project); not flashed.
+- **Site and builder version v0.2** (`tools/site/release.py`): the tag the web builder's patches are built from, and the version the site pages and `gen_pages.py` print. `octabam` v0.2 is v0.1 plus VARISPEED, minus FX2 LOCK (PR #1000).
+- **`octabam`: VARISPEED in, FX2 LOCK out.** FX2 LOCK made the FX2 chooser's YES close without selecting (it was written for bottleservice's fixed engines); picking an effect on FX2 did nothing. It stays in `octabam-bus`. VARISPEED returns: in the 32-transition loader soak of 2 Nov 2026 on Sam's MKII, `octabam` without it left 3 unapplied (`C0`), with it 4 (`V1`), with VARISPEED, SCOPE, MIDI SCALES and RND NAME 5 (`V4`); `bad 0` throughout; one run per image. STEM REC, SCOPE, MIDI SCALES and RND NAME stay out. Image `OCTABAMV5` on Sam's MKII, 2 Nov 2026: FX2 picks take effect; loader soak, VARISPEED and the other gates not run on it.
+- **Site for v0.1** (`tools/site/release.py`): only `octabam` v0.1 is published. The manual is `Octabam Remix Manual`: one page per module in sections (effects, machines, sequencer, Parts and scenes, MIDI and USB, utilities, fixes, behind the scenes), BRAIN as its own section with a page per part, the controls on each effect's page, no test status and no command lines; the bus and CX OSC Core manuals, the remix chooser and the screenshot-coverage page are gone from the site (the remixes stay in the repository); the module reference is the Feature Directory under More: what is in v0.1 by the manual's sections, then every other module by category. Stock effects read `stock` in the author column. The web builder offers `octabam` only, locked to the `v0.1` tag (patch built at `c02fec6c`, `BUILD=01`, reads `OCTABAM01`); `tools/web/publish.py` builds at a release tag and `--tree` names the checkout.
+- **`octabam` 0.1 scope:** TRANSIENT, DISTORX and SIDECHAIN_COMPRESSOR (with SC LOAD METER BRIDGE) are out of `remixes/octabam`; the demand loader carries SPECTRUM, CHARACTER and MODULATION, and COMPRESSOR is stock. CX OSC is out as well: with a host reading the unit's USB audio, a continuous MIDI clock and a program change before START, every image that had it stopped the DSP frame loop within 5 cycles (`OCTABAMS1`, `T3`, `P1`, `Q1`, `Q2` on Sam's MKII, 1 Nov 2026) and none of the images without it did in 20 cycles (`F1`, `L1`, `H1`, `Q3`, `X1`, `Y1`); the mechanism is not established. STEM REC, VARISPEED, SCOPE, MIDI SCALES and RND NAME are out as well: in a loader soak (32 program-change transitions between MODULATION, PLATE REV and BASE) the images with them left 2 to 5 of 32 program changes unapplied (`H1`, `B1`, `C1`, `R2`) and `R1`, with all of them, stopped answering within 3 and 10 transitions, while the images without them applied all 32 (`F1`, `L1`, `A1`, `H2`, `K1`); which of the five do it individually is only known for STEM REC. DLCOPY moves to `0x33DBB` (three demand entries). The modules stay in the repository.
+- **CC MAP / CC FEEDBACK** (issue #981): page 2 moves off the pedal CCs. FX2 page 2 is CC 102–107 (was 62–67), FX1 page 2 CC 108–111, 14, 15 (was 68–73). The old range held CC 64 (sustain) to 69 (hold 2): CC FEEDBACK's sweep at every project load sent CC 64 = 127 on channels 1–8, and a Tonverk on that MIDI out held every note, and a keyboard's sustain pedal moved an FX2 knob. Controller presets for page 2 (the BCR2000's, `tools/hw/bcr2000.py`) need the new numbers. `tools/remix/midi_cc.py` lists the CCs no module may map or send. Not flashed: the decode at CC MAP's entry is new; its write paths are image 96's.
+- `octabam` carries DISTORX, demand-loaded like SPECTRUM, CHARACTER, MODULATION and TRANSIENT: window `0x3b820` (1,629 words, v10), second home `0x3f820`, on FX1 and FX2. DISTORX moves from `0x05` (`replaces="SPATIALIZER"`) to the free id `0x1b`; stock SPATIALIZER stays in `octabam`. DLCOPY moves to `0x33dd3` and the loader to `0x33e66` (six demand entries of eight words). Builds under `make bus REMIX=octabam`. Not on a unit; slot cost of v10 not read (COSTS.md: v9 9.45 % against a 9.07 % core 0 ceiling).
 - DISTORX v10 (`modules/distorx`): the RAT and SD-1 sample loops split into settled (MIX 127, the wet alone), calm (d = 0, the MIX blend) and fading, with a leaner stage; bit for bit v9 in the emulator, static cost 291 → 223 (RAT, settled) and 227 → 181 (SD-1). Not flashed: v9's 9.45 % of core 0 at its dearest is the only unit figure, and `dear` is now MIX 126.
 - **USB** (`modules/usb`): less ColdFire time per frame. USB IN writes the
   DSP's block to on-chip SRAM (`0x80007880`) instead of SDRAM through the
@@ -36,6 +44,18 @@ The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
   track 8 (the old producer stored the pair into the next frame's track 8
   field).
 - SIDECHAIN_COMPRESSOR (`modules/sidechain-compressor`, `b0d49bf`): on the author's MKI as OCTABAM33 (`remixes/test/sidechain-compressor`, mainos `6cfe4121…`, 26 Oct 2026): KBAS and KWID across their range with MON on and off, MON's switch and its OFF on a project saved with an earlier version, KEY's pressed turn, the MON and KEY fades, all good. The module's proof is now hardware.
+- STORE: optional native Part access replaces MIDI PART STATE. Registered clients share edited/playing context lookup, bounded native field writes with dirty/CS1 updates, outgoing snapshots during native replacement and per-Part replacement counters. MIDI Follow, Loopback and Scales integrations use the service; saved bytes are unchanged. Existing STORE selections without these clients gain no Part hooks or snapshot storage. Emulator qualification and limited MKII Part save/reload and power-cycle checks (MFOL29U/FA); broader hardware coverage remains unverified.
+- MIDI Follow: per-track RFOL source, FIXED/GRAV/SOURCE register and TRIG/LIVE
+  updates. Followers inherit the source's native N1–4 notes and KEY/scale,
+  keeping their own rhythm, velocity, note lengths and TRAN. Inherited KEY
+  correction follows TRAN, matching stock; KEY is read-only while following.
+  Settings belong to the Part. Requires STORE native Part access and EVENTS;
+  test remixes only, no standard remix gains it. Linked-code and full-firmware
+  emulator checks; on MKII USB MIDI (MFOL30U/FB), seven four-note GRAV LIVE
+  followers at 200 BPM / 1× passed ten minutes each in direct and chained
+  routing, plus five minutes with eight audio tracks and responsive controls.
+  STOP released held notes. Earlier MFOL29U/FA Part save/reload and power-cycle
+  checks passed; MKI, DIN output/timing and maximum load remain unverified.
 - SIDECHAIN_COMPRESSOR (`modules/sidechain-compressor`, submodule `554ca1c` → `b0d49bf`): KBAS and KWID work in this form. The key-filter table's base came from `lua (r1+$10),r1` after the gain store had already moved r1, so the filters read their coefficients from unrelated P memory: silence, level jumps and squeals on the author's MKI (OCTABAM31, 24 Oct 2026). The table is now the module's `ptable2`, loaded by its own literal as in the standalone image; the image changes in two DSP words per core. MON shows OFF on the left and ON on the right (it stores 2 / 3; `sc_norm` turns any other value OFF, so a COMPRESSOR saved with an earlier version comes up with MON OFF); KEY gets its own step handler (`word_12a`), so a pressed turn moves one position per detent instead of stock's 7; switching MON, or changing KEY while MON is on, fades over 256 samples (was 64). `sc_cf` grows to 698 B. On the author's MKI: the table fix as OCTABAM32 (25 Oct 2026); MON, KEY and the fades in the author's standalone image `140C_SCKD3` (25 Oct 2026), not yet in this form.
 - **EVENTS** replaces SEQUENCER EVENTS with separate transport,
   MIDI notification and editor contracts. EUCLID and PLOCKS P2 register as
@@ -157,6 +177,35 @@ Docs
 - ColdFire load on a unit: Bryan T's CF METER takes (4 Oct; `docs/firmware/ARCHITECTURE.md` section 6): ~16.5 µs per playing voice at CPI ~4.4 against the port, no first-voice premium (the morning's +37 µs retracted the same evening), the USB stack ~14 µs idle / ~25 µs playing, no crossbar contention; OUT TRACKS MAIN CUE costs 27–50 µs of frame interrupt over OUT MAIN CUE, most of it with no host connected; TSTR and the stock DELAY not measurable; interrupt levels from the ICR writes in `KERNEL.md`.
 - Removed: `PLAN.md`, `docs/TIMESTRETCH_PIPELINE.md` (27 Sep).
 - Demand loader (`modules/dlpump`, `modules/dlcopy`, `modules/dlprobe`; `docs/proposals/DEMAND_LOAD.md`): `octabam` copies SPECTRUM, CHARACTER, MODULATION and TRANSIENT into the DSP's shared window while a track uses them and withdraws them 10 s after the last use. All 14 stock effects stay; the stock reverbs run behind a guard that keeps them off loaded code. A block is held by whoever has it first: the FX1 and FX2 choosers refuse an effect whose block is under PLATE, DARK or SPRING REV, and a reverb on the block of a loaded effect a track uses, each with a toast (`NEEDS Tn FX2 FREE`, `Tn HOLDS <effect>`); other routes toast at the next page key. `octabam` lists the stations on FX1 (it offered SPECTRUM and CHARACTER on FX2 only, where they render dry). GATE VERB is not in `octabam`. New builder fields `Remix.window_demand`, `window_guard`, `window_loader`; the build refuses an uploaded window record above `0x37f00`. DLPROBE and `tools/hw/dl_state.py` (USB `0xc0/0x57` block 3) read the counters on a unit. Gates `verify_dlstub`, `verify_dlwrap`, `verify_dlload`, `verify_dlprobe`.
+
+## STEMS11 — 28 Oct 2026 (local remix `lm-stems`, branch `stems-next`, PR #965)
+
+On the unit (Yves's MKII, flash K): each take wrote its own folder.
+Eleven files at 24 bits, every track a Static machine with every trig
+filled, ran 49 s with the ring at most 34% full, and no take reached 100%
+(his report). The logs hold one eleven-file take, so the peak from take
+to take isn't measured on the unit yet. The `.ot`
+files hold the take's tempo and +12 dB. `lm-stems` is `octabam` plus STEM
+REC and MEMORY, with LOAD METER's refusal of STEM REC lifted in that build
+only; it isn't committed (`modules/stems/FLASH.md` flash K).
+- STEM REC: a folder for each take, `<set>/AUDIO/!STEMS/<take>/<take>-<source>.wav`; T1 alone at 24 bits at boot.
+
+## STEMS10 — 27 Oct 2026 (local remix `lm-stems`, branch `stems-next`)
+
+On the unit (flash J): twelve takes, "everything looking good". The double
+tap armed (`yes gap` 160 to 171 ms), and split pairs wrote `A.wav` to
+`D.wav`. With every take's files in one `!STEMS` folder, each take's start
+slowed as it filled: eleven files at 24 bits peaked at 36%, 37%, 60% and
+89%, then `RING FULL` after 2.9 s with 88 files there.
+- STEM REC: STEMS drawn as SYSTEM > PERSONAL SETTINGS (15 rows, a row for each input pair, LEFT and RIGHT pick a checkbox), the folder `!STEMS` (it sorts first), no flicker, the double tap within 0.5 s and the `yes gap` log line (flash I's fixes; STEMS9 never went on the unit).
+
+## STEMS8 — 27 Oct 2026 (`stems`, branch `stems-next`)
+
+On the unit (flash H): the `.ot` files' tempo and gain, and the naming,
+were right. Four faults, fixed in STEMS10: `_STEMS` sorted after the
+letter folders, a column of pixels flickered each second, BRAIN was
+missing (`stems` doesn't carry it), and the double tap of YES didn't arm.
+- STEM REC, Yves's six notes of 26 Oct: a `.ot` beside each WAV (the take's tempo, +12 dB), the log in `/BRAIN/STEMS/<take>.TXT`, a flatter folder, a window that redraws itself and no reset on open, a double tap of YES on the main page to arm.
 
 ## Images DLPROBEJ1..K1 (26 Oct 2026, `remixes/test/dl-probe` and `dl-probe-any`)
 

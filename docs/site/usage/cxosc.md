@@ -8,31 +8,40 @@ SYNTH MACHINE submodule.
 **FUNC + SRC** or **SELECT MACHINE TYPE** → **CX OSC** (after the stock
 five). No marker sample. The Part stores FLEX with signature `"CX", 1`.
 At most one CX OSC track per Part (one sounding CX OSC track on the active
-Part). It cannot share an image with **SYNTH MACHINE**, **ANALOG BD** or
-**BLACKPYRAMIDS_303**, which use the same machine list.
+Part). It cannot share an image with **SYNTH MACHINE** or
+**BLACKPYRAMIDS_303**, which use the same machine list. Beside **ANALOG BD**
+or **OCTA-303** it shares the list: CX OSC is the row after theirs, and the
+list scrolls.
 
 ![SRC SETUP: CX OSC selected in the machine list.](../../img/cxosc/setup.png)
 
 ## Operation
 
-![CX OSC PLAYBACK: PTCH RATO INDX FOLD SYMM FDBK.](../../img/cxosc/source.png)
+![CX OSC PLAYBACK: PTCH RATO INDX FOLD SYMM DEC.](../../img/cxosc/source.png)
 
 
-- PLAYBACK reads PTCH RATO INDX FOLD SYMM FDBK.
+- PLAYBACK reads PTCH RATO INDX FOLD SYMM DEC.
 - PTCH is semitones (−64..+63). Pitch is PTCH alone (no FINE).
 - RATO is free 0.25..4 on the knob; FUNC snaps the classic ratio table
   (exact Q8 at those detents, including 1.01 / 1.41).
-- INDX is FM index and holds (drone with the knob; LFO / p-lock for motion).
-  No DEC envelope on the index.
+- INDX is FM index; DEC is its envelope (**127 = HOLD**, 0 = shortest —
+  Tim’s polarity, not hold-at-zero).
 - FOLD is a sine waveshape (dry/wet). Drive rises with the knob; bass
   level is not monotonic (fold order).
-- SYMM biases the fold (DC into the folder). Needs some FOLD to matter;
-  0 is centered.
-- FDBK is modulator feedback (up to about one cycle at 127).
+- SYMM is bipolar **half-wave amplitude skew** into the folder (not a second
+  waveshape). **64 = even**; below/above tilts opposite polarities (~mute one
+  side / boost the other). Needs FOLD — at FOLD 0 you will not hear it.
+- Modulator feedback is a fixed mid (no FDBK knob).
 - Mono only. Stock LFO page (all three LFOs). No VOIC / CHRD.
+- AMP ATK / HOLD / REL are owned by the engine (the DSP sees an open envelope).
+  Scenes and LFOs on those knobs apply (Tim FM SYNTH **v2.22** AMP snapshot).
+- **Older Parts:** slot F used to be FDBK and SYMM's even centre was 0. New
+  seeds (FOLD 40, SYMM 64, DEC 127) apply only when CX OSC is chosen. A Part
+  saved with FDBK 0 / SYMM 0 loads as DEC 0 (shortest index decay) and SYMM 0
+  (one half-wave muted). Re-select CX OSC, or set DEC 127 and SYMM 64.
 
 ## Parameters
 
 | Page | A | B | C | D | E | F |
 |---|---|---|---|---|---|---|
-| PLAYBACK | PTCH | RATO | INDX | FOLD | SYMM | FDBK |
+| PLAYBACK | PTCH | RATO | INDX | FOLD | SYMM | DEC |

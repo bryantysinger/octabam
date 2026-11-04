@@ -1281,10 +1281,12 @@ class Linked:
             reference_shape(self.label, self.reference)
 
     def reference_for(self, modules) -> tuple[int, str] | None:
-        """(address, sha256) of the author's build for this selection."""
+        """(address, sha256) of the author's build, if this selection has one."""
         if self.reference is None:
             return None
         ref = self.reference(modules) if callable(self.reference) else self.reference
+        if ref is None:
+            return None
         return reference_shape(self.label, ref)
 
 
@@ -1465,17 +1467,32 @@ class DramRegion:
 @dataclass(frozen=True)
 class Override:
     """This module's own claim at `site` stands in for another module's
-    Detour there -- the way two mods that hook one stock instruction get to
-    share it. A BRIDGE module carries a stub that does what both hooks did,
-    in an order that respects each one's protocol, and declares an
-    Override per detour it replaces: `module` is the other module's key.
-    The build skips the overridden detour; the ledger treats the site as
-    the bridge's; the overridden module must be in the remix, or the
+    Detour, SymbolRef, Poke or TableGrow ref there -- the way two mods that
+    hook one stock instruction, or repoint one stock word, get to share it.
+    A BRIDGE module carries a stub (or a table) that does what both did, in
+    an order that respects each one's protocol, and declares an Override per
+    write it replaces: `module` is the other module's key. The build skips
+    the overridden write; the ledger treats the site as the bridge's; the
+    overridden module must be in the remix and must claim `site`, or the
     override is refused.
     """
 
     site: int
     module: str
+
+
+SELECTABLE = frozenset({"linked", "detours", "symbol_refs", "overrides", "pokes", "claims", "gates"})
+
+
+def apply_select(m, keys):
+    """`m` with its Module.select applied for a selection of module `keys`.
+    The same keys give the same module, so applying it twice is harmless."""
+    if m.select is None:
+        return m
+    over = m.select(frozenset(keys))
+    if set(over) - SELECTABLE:
+        raise ValueError(f"{m.name}: select may only set {', '.join(sorted(SELECTABLE))}")
+    return dataclasses.replace(m, **over)
 
 
 @dataclass(frozen=True)
@@ -1606,9 +1623,12 @@ class Module:
     # chosen code without asking (modules/usb is the first).
     variant: object | None = None
     # Optional build-time subscription selection: select(frozenset(module keys))
-    # returns only linked/detours. registry.bound applies it after settings, so
-    # claims, linking, installation and image gates all see the same subset.
-    # It must be deterministic and must not modify the registry or filesystem.
+    # returns linked, detours, symbol_refs, overrides, pokes, claims and gates (SELECTABLE).
+    # registry.bound applies it after settings, and ledger.check applies it to
+    # any selection it is given, so claims, linking, installation, image gates,
+    # the matrix and the remixer all see the same subset. It must be
+    # deterministic, depend only on the keys, and must not modify the registry
+    # or filesystem.
     select: object | None = None
     # CODE THAT THE BUILD DROPS WHEN IT CANNOT BE NEEDED: dsp_if(fixed) ->
     # bool, given {setting name: value} of the module's settings that are

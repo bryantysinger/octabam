@@ -1,17 +1,28 @@
 | CC MAP -- the MIDI CC dispatch entry (0x400d64a0) is repointed here.
 | Each CC block maps CC numbers stock ignores onto one page's slots:
-|   62-67  FX2 page-2 slot (cc-62), the FX2 page-2 editor 0x4003aab2's
-|          stores, on BusDelay/BusVerb tracks, clamped by VCOUNT/DCOUNT
-|   68-73  FX1 page-2 slot (cc-68), the FX1 page-2 editor 0x4003abe4's
-|          stores (Part +0x8f07e, shadow 0x100a51cc, lane +0x32, the four
-|          dirty flags), clamped by the FX1 descriptor's min/count
-| Every other CC tail-calls CC_NEXT with the argument intact. A new block
-| needs a range test at CAVE and its own write path.
+|   102-107          FX2 page-2 slots 6..11, the FX2 page-2 editor
+|                    0x4003aab2's stores, on BusDelay/BusVerb tracks,
+|                    clamped by VCOUNT/DCOUNT
+|   108-111, 14, 15  FX1 page-2 slots 6..11, the FX1 page-2 editor
+|                    0x4003abe4's stores (Part +0x8f07e, shadow
+|                    0x100a51cc, lane +0x32, the four dirty flags),
+|                    clamped by the FX1 descriptor's min/count
+| CAVE turns the CC into d4, the page-2 slot index: 0..5 FX2, 6..11 FX1
+| (102..111 -> cc-102, 14/15 -> 10/11). Every other CC tail-calls CC_NEXT
+| with the argument intact. A new block needs a test at CAVE and its own
+| write path.
 |
-| CC_NEXT is where anything but 62-73 goes: the stock CC handler
+| The numbers (1 Nov 2026; 62-73 until then, issue #981): every one is
+| undefined in the MIDI spec, so the spec gives none of them a fixed
+| meaning and keyboards do not send them unasked. A synth may still map
+| one to a parameter of its own. 62-73 held the pedals (64 sustain .. 69
+| hold 2), and CC FEEDBACK's load sweep sent a held sustain to every synth
+| on channels 1-8. tools/remix/midi_cc.py lists the CCs no module may use.
+|
+| CC_NEXT is where every other CC goes: the stock CC handler
 | (0x4000e79c). The build defines it (CavePatch.defsyms); it is not set
 | here.
-        .set    P1WRITE,  0x40054cd8   | stock page-1 writer (canary, CC 67 only)
+        .set    P1WRITE,  0x40054cd8   | stock page-1 writer (unused)
         .set    MAPBUILD, 0x40001854   | fills the channel->track map
         .set    MAPGLOB,  0x46104cf4   | long stock loads to d3 before MAPBUILD
         .set    CHANMASK, 0x46c7febe   | [16] u32, one mask per channel
@@ -54,16 +65,23 @@ ccm_entry:
 CAVE:   movel   %sp@(4),%a0            | a0 = msg {status, cc, value}
         moveq   #0,%d0
         moveb   %a0@(1),%d0            | d0 = CC number
-        subil   #62,%d0                | d0 = cc - 62
-        moveq   #11,%d1
-        cmpl    %d0,%d1                | 11 - (cc-62); carry if 11 < (cc-62)
-        bcs.s   tostk                  | not 62..73 (also catches cc < 62)
+        moveq   #102,%d1
+        subl    %d1,%d0                | d0 = cc - 102
+        moveq   #9,%d1
+        cmpl    %d0,%d1                | 9 - (cc-102); carry if 9 < (cc-102)
+        bcc.s   mine                   | 102..111: slot index cc-102 (0..9)
+        addil   #88,%d0                | d0 = cc - 14
+        moveq   #1,%d1
+        cmpl    %d0,%d1                | 1 - (cc-14); carry if 1 < (cc-14)
+        bcs.s   tostk                  | not 14/15 either (also catches cc < 14)
+        moveq   #10,%d1
+        addl    %d1,%d0                | 14/15: slot index 10/11
         bra.s   mine
 tostk:  jmp     (CC_NEXT).l            | tail-call the next handler, argument intact
 
 mine:   lea     %sp@(-28),%sp
         movem.l %d2-%d7/%a2,%sp@
-        movel   %d0,%d4                | d4 = cc-62: 0..5 = FX2 slot2, 6..11 = FX1 slot2+6 -- MAPBUILD preserves d2-d4/a2 only
+        movel   %d0,%d4                | d4 = slot index: 0..5 = FX2 slot2, 6..11 = FX1 slot2+6 -- MAPBUILD preserves d2-d4/a2 only
         moveal  %a0,%a2                | a2 = msg (preserved across MAPBUILD)
         movel   MAPGLOB,%d3            | mimic stock register environment
         jsr     MAPBUILD               | rebuild CHANMASK[16]. ⚠️ CLOBBERS d5-d7: it
@@ -95,7 +113,7 @@ done:   movem.l %sp@,%d2-%d7/%a2
 
 | ---- wtrack: write page-2 slot d4 = value d5 for track d6 ----------------
 | reads d4/d5/d6, preserves d4/d5/d6/d7/a2; scratches d0-d3/a0/a1.
-| d4 >= 6 is an FX1 CC (68-73): the block at the end of this file.
+| d4 >= 6 is an FX1 CC (108-111, 14, 15): the block at the end of this file.
 wtrack: moveq   #6,%d1
         cmpl    %d4,%d1                | 6 - d4: le when d4 >= 6
         ble.w   wtrk1
@@ -226,7 +244,7 @@ wtrk1:  movel   DBPTR,%d0
                                        | not 0, so an id test is the honest guard.)
         lea     DESC1,%a1
         moveal  %a1@(0,%d1:l:4),%a1    | a1 = its descriptor (0x4003ac2c)
-        movel   %d4,%d3                | d3 = (cc-62) = slot2 + 6: the page-2 slot index 6..11
+        movel   %d4,%d3                | d3 = d4 = slot2 + 6: the page-2 slot index 6..11
         lea     %a1@(0,%d3:l:4),%a0    | a0 = desc + 4*(slot2+6)
         movel   %a0@(154),%d1          | count  (desc+0x9a+4*(slot2+6), 0x4003ac80)
         movel   %a0@(106),%d3          | min    (desc+0x6a+4*(slot2+6), 0x4003ac68)
@@ -306,7 +324,7 @@ modedef1:
         movem.l %d4-%d6/%a2,%sp@
         movel   %d4,%d5
         subql   #6,%d5
-        moveal  %d5,%a2                | slot2 = (cc-62) - 6
+        moveal  %d5,%a2                | slot2 = d4 - 6
         movel   %d6,%d4                | track
         moveq   #0,%d5
         moveb   PARTB,%d5              | part

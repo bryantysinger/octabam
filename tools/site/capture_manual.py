@@ -140,6 +140,16 @@ def capture_morph(p,r):
     p.key('t1',False);p.run(300)
 
 
+def capture_free_loop(p,r):
+    # The project is modules/free-loop/make_template.py's (T1 FREE, POPUP ON).
+    p.key('t1',True);p.run(60);p.press('up',settle=120)
+    shot(p,'free-loop','window','T1 + UP: the FREE LOOP window for T1, ROLE FREE, 4/4, BARS AUTO, 70-160 BPM.',r)
+    p.key('t1',False);p.press('no',settle=200)
+    p.proc.command('midi b0 5a 7f','ok');p.run(60);p.proc.command('midi b0 5a 00','ok')
+    p.run(3000)
+    shot(p,'free-loop','popup','CC 90 on channel 1, 3 s into the free take: T1\'s REC popup, FIRST LOOP.',r)
+
+
 def capture_features(p,r):
     p.chord('t1','page')
     shot(p,'euclid-fill','fill','Euclidean trig fill: STEPS, PULSE, ROT, RAND VEL, RAND PTCH.',r)
@@ -217,9 +227,11 @@ def capture_usb(p,r):
     # (CUE, IN, MAIN, MASTER, MIDI, TRACKS). YES changes the selected value.
     p.open_menu();press(p,'up',5);press(p,'down',4);press(p,'right');press(p,'down',2);press(p,'yes')
     press(p,'down',3)
-    shot(p,'usb','settings','BRAIN > SETTINGS, the USB group: CUE, IN and MAIN. A value that ends in * takes effect at the next boot.',r)
+    shot(p,'usb','settings','BRAIN > SETTINGS, the USB group: CUE, IN and MAIN. A change to a value that takes effect at the next boot shows a popup when SETTINGS is left.',r)
     press(p,'down',7)
-    shot(p,'usb','settings-end','The end of the USB group: TRACKS, with * AT NEXT BOOT under the list.',r)
+    shot(p,'usb','settings-end','The end of the USB group: TRACKS.',r)
+    press(p,'yes');press(p,'no')
+    shot(p,'usb','reboot-popup','Leaving SETTINGS after TRACKS was changed: the popup says to reboot.',r)
 
 
 def capture_analog(p,r):
@@ -270,10 +282,10 @@ def capture_cxosc(p,r):
     press(p,'yes')
     close(p)
     press(p,'pg_playback')
-    enc(p,3,40)   # FOLD
-    enc(p,4,24)   # SYMM
-    enc(p,5,16)   # FDBK
-    shot(p,'cxosc','source','CX OSC PLAYBACK: PTCH RATO INDX FOLD SYMM FDBK.',r)
+    enc(p,3,40)   # FOLD default 40 → ~80: mid-high zig-zags
+    enc(p,4,36)   # SYMM default 64 → ~100: upper half dominates (skew off-center)
+    enc(p,5,-64)  # DEC: from HOLD (127) toward mid so the envelope icon shows a fall
+    shot(p,'cxosc','source','CX OSC PLAYBACK: PTCH RATO INDX FOLD SYMM DEC.',r)
     p.chord('func','pg_playback')
     shot(p,'cxosc','setup','SRC SETUP: CX OSC selected in the machine list.',r)
 
@@ -339,6 +351,15 @@ def capture_midi_scales(p,r):
     shot(p,'midi-scales','c-dorian','MIDI ARP SETUP: C Dorian selected with encoder F.',r)
     for _ in range(3): enc(p,5,4)
     shot(p,'midi-scales','c-mixolydian','MIDI ARP SETUP: C Mixolydian selected with encoder F.',r)
+
+
+def capture_midi_follow(p,r):
+    press(p,'midi');press(p,'t2');p.chord('func','pg_playback')
+    shot(p,'midi-follow','source-off','MIDI NOTE SETUP: RFOL OFF uses native notes.',r)
+    enc(p,3,4)
+    shot(p,'midi-follow','source-t1','MIDI NOTE SETUP: RFOL T1 follows MIDI track 1.',r)
+    press_encoder(p,3)
+    shot(p,'midi-follow','fixed','FOLLOW: FIXED octave 3 and TRIG update.',r)
 
 
 def prepare(remix,project,assignments):
@@ -409,7 +430,7 @@ def prepare(remix,project,assignments):
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','utilities','varispeed','usb','octa303','distorx','devilish','morph'])
+    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','midi-follow','utilities','varispeed','usb','octa303','cxosc','distorx','devilish','morph','free-loop'])
     cfg=Path.home()/'.octabam_project'
     ap.add_argument('--project',default=os.environ.get('OT_PROJECT') or (cfg.read_text().strip() if cfg.is_file() else ''))
     a=ap.parse_args();OUT.mkdir(parents=True,exist_ok=True)
@@ -417,28 +438,32 @@ def main():
         assignments=[]
         if group=='core': jobs=[('octabam',capture_core,[])]
         elif group=='midi-loopback':jobs=[('midi-loopback',capture_midi_loopback,[])]
+        elif group=='midi-follow':jobs=[('midi-follow',capture_midi_follow,[])]
         elif group=='plocks': jobs=[('octabam',capture_plocks,[(1,'fx2','PLATE REV')])]
         elif group=='midi-scales':jobs=[('midi-scales',capture_midi_scales,[])]
         elif group=='features':
-            # A scratch selection: THR and REC_TRIG_MUTE share a hook and cannot coexist.
+            # A scratch selection: THR and REC_TRIG_MUTE share a hook and cannot coexist, and
+            # LOAD METER declares a conflict with STEM REC (11 Oct 2026); its screens are the bus group's.
             scratch=OUT/'features.py'
-            scratch.write_text('import dataclasses,runpy\nbase=runpy.run_path("remixes/octabam/remix.py")["REMIX"]\nREMIX=dataclasses.replace(base,name="manual-features",modules=tuple(k for k in base.modules if k!="REC_TRIG_MUTE")+("REC THRESHOLD","EUCLID FILL","RND NAME","STEM REC"))\n')
+            scratch.write_text('import dataclasses,runpy\nbase=runpy.run_path("remixes/octabam/remix.py")["REMIX"]\nREMIX=dataclasses.replace(base,name="manual-features",modules=tuple(k for k in base.modules if k not in ("REC_TRIG_MUTE","LOAD METER"))+("REC THRESHOLD","EUCLID FILL","RND NAME","STEM REC"),window=tuple(w for w in base.window if not w[0].startswith("LOAD METER")))\n')
             jobs=[('../out/manual-captures/features',capture_features,[])]
         elif group=='inserts':
-            assignments=[(i+1,'fx1' if i<4 else 'fx2',key) for i,key in enumerate(('SPECTRUM','CHARACTER','MODULATION','TRANSIENT','GATE VERB','DELAY'))]
+            assignments=[(1,'fx1','SPECTRUM'),(2,'fx1','CHARACTER'),(3,'fx1','MODULATION'),(4,'fx2','DELAY')]
             jobs=[('octabam',capture_fx,assignments)]
         elif group=='bus':jobs=[('octabam-bus',capture_bus,[])]
         elif group=='usb':jobs=[('octabam-bus',capture_usb,[])]
         elif group=='octa303':jobs=[('octa303',capture_octa303,[])]
+        elif group=='cxosc':jobs=[('cxosc',capture_cxosc,[])]
         elif group=='distorx':jobs=[('distorx',capture_fx,[(2,'fx2','DISTORX')])]
         elif group=='morph':jobs=[('morph',capture_morph,[])]
+        elif group=='free-loop':jobs=[('free-loop',capture_free_loop,[])]
         elif group=='machines':jobs=[('analog-bassdrum',capture_analog,[]),('octatrick',capture_synth,[]),('blackpyramids-303',capture_blackpyramids,[]),('octa303',capture_octa303,[]),('cxosc',capture_cxosc,[])]
         elif group=='devilish':jobs=[('devilish',capture_fx,[(2,'fx2','DEVILISH')])]
         elif group=='probes':jobs=[('cfmeter',capture_fx,[(8,'fx2','CF METER')])]
         elif group=='utilities':jobs=[('buffer-saver',capture_buffer_saver,[])]
         elif group=='varispeed':jobs=[('varispeed',capture_varispeed,[])]
         else:
-            jobs=[(r,capture_fx,[(2,'fx1' if r in ('character-txtr','testgen','resonator') else 'fx2',k)]) for r,k in [('character-txtr','CHARACTER TXTR'),('testgen','TESTGEN'),('resonator','RESONATOR'),('sidechain-compressor','SIDECHAIN_COMPRESSOR'),('miniverb','MINIVERB'),('bbd','BBD'),('tapeecho','TAPE ECHO'),('vocoder','VOCODER'),('wave','WAVE'),('shatter','SHATTER'),('void','VOID'),('stuttr','STUTTR'),('distorx','DISTORX'),('devilish','DEVILISH')]]
+            jobs=[(r,capture_fx,[(2,'fx1' if r in ('character-txtr','testgen','resonator') else 'fx2',k)]) for r,k in [('character-txtr','CHARACTER TXTR'),('testgen','TESTGEN'),('resonator','RESONATOR'),('sidechain-compressor','SIDECHAIN_COMPRESSOR'),('miniverb','MINIVERB'),('bbd','BBD'),('tapeecho','TAPE ECHO'),('vocoder','VOCODER'),('wave','WAVE'),('shatter','SHATTER'),('void','VOID'),('stuttr','STUTTR'),('distorx','DISTORX'),('devilish','DEVILISH'),('transient','TRANSIENT'),('gateverb','GATE VERB')]]
         for remix,fn,assignments in jobs:
             # Paths use a separate stable label even when registry selects a scratch file.
             label='manual-features' if remix.startswith('../') else remix

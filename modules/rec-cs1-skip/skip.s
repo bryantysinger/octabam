@@ -1,7 +1,7 @@
-| REC CS1 SKIP -- stock 0x4000432c (the recorder control-record update the
-| write path calls, ~1.5 times a recording track a frame) with two of its
-| six CS1 writes skipped when CS1 already holds the value. Everything else is
-| stock's, instruction for instruction (RECORDER.md; 1 Nov 2026):
+| REC CS1 SKIP -- stock 0x4000432c, the recorder control-record update the
+| write path calls about 1.5 times a recording track a frame, with its CS1
+| writes skipped when CS1 already holds the value. The arithmetic is stock's,
+| instruction for instruction (docs/firmware/RECORDER.md):
 |
 |   a1 = len, floored at 64 when non-zero; [0x46c938c4 + 44*id + 16] = a1
 |   unless flag or len == 0: with r = 0x100d38f0 + 1096*id (CS1),
@@ -10,34 +10,41 @@
 |     under 0x2700: [r+300] = d3, [r+304] = d1, [r+308] = a1
 |     [r+296].b = 0; under 0x2700: [r+276] = [0x8000181c], [r+280] = -[0x80001820]
 |
-| CS1 is slow (PC SAMPLER on Bryan T's MKII: about 0.5 us a read or a write,
-| reads and writes alike), and in steady play the port saw 358,300 of
-| 358,316 of these writes store the value already there. [r+300] and [r+308]
-| are already read for the arithmetic, so comparing them costs nothing: the
-| write is skipped when the read value equals the new one, and the memory
-| ends as stock leaves it. Nothing above level 5 writes these fields (the
-| port's writers: this routine, the write path, project load, the engine
-| and arm tasks, which cannot run inside the frame interrupt), so the value
-| read is the value the write would replace. The other four writes would
-| need a read each to skip, which costs what the write does: left as stock.
+| CS1 is slow: about 0.5 us a read or a write on a MKII (a PC sampler on
+| Bryan T's unit, 1 Nov 2026), and in steady play under the ColdFire port
+| 358,300 of 358,316 of these writes stored the value already there.
+|
+| [r+300] and [r+308]: stock reads both for the arithmetic, so the write is
+| skipped when the value read equals the new one, and CS1 ends as stock
+| leaves it. Between the read and the write only a level-6 or level-7
+| handler could store there, and none does (the port's writers of these
+| fields are this routine, the write path, project load and the engine and
+| arm tasks, none of which runs inside the frame interrupt).
+|
+| [r+276], [r+280], [r+296].b and [r+304]: RCS_MIRROR keeps a copy in DRAM,
+| rcs_m[id] = {valid, 276, 280, 304, 296, turn}, for id 0..7 (any other id
+| writes all four, as stock), and skips a write the copy says is already
+| there. Other code also writes these fields (project load, the engine and
+| arm tasks), so each call reads ONE of the four from CS1, in turn, and a
+| mismatch drops the copy: that call writes all four again. A value another
+| writer stores therefore stands for at most four calls of that track (about
+| a millisecond at one call a frame) where stock would overwrite it at the
+| next call. With RCS_MIRROR 0 only the [r+300]/[r+308] skips remain, and CS1
+| is stock's after every call.
+|
+| tools/verify/verify_rec_cs1_skip.py runs this routine and stock's side by
+| side and holds it to exactly that.
 | SPDX-License-Identifier: MIT
-        .set    RCS_MIRROR, 1                   | 0: option 1 alone (the two writes it reads for)
+        .set    RCS_MIRROR, 1                   | 0: only the two writes it reads for ([r+300], [r+308])
         .text
         .globl  rcs_update
 | jmp'd in place of the routine's first two instructions: the whole routine.
 | Args (C): id 4(sp), len 8(sp), flag 12(sp); d2-d5/a2-a3 saved here (stock
 | saves d2-d3; the rest are this version's).
 |
-| RCS_MIRROR (option 2) skips the other four writes too ([r+276], [r+280],
-| [r+296].b, [r+304]) against a copy in DRAM, rcs_m[id] = {valid, 276, 280,
-| 304, 296, turn}, for id 0..7 (any other id writes all four, as stock). A
-| copy can go stale when other code writes CS1 (project load, the engine and
-| arm tasks: the port saw six such writers, and a static search finds 87
-| candidate stores at these offsets), so each call reads ONE of the four from
-| CS1, in turn, and a mismatch drops the copy: the next write writes all four
-| again. One read a call against up to four writes; a foreign value survives
-| at most four calls (about a millisecond at one call a frame) where stock
-| would overwrite it at the next call.
+| RCS_MIRROR: the copy and its one check read a call (above). Under the port
+| six other writers stored into these fields; a static search finds 87
+| candidate stores at these offsets.
 rcs_update:
         lea     -24(%sp),%sp
         movem.l %d2-%d5/%a2-%a3,(%sp)

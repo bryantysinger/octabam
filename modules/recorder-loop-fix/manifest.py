@@ -40,7 +40,7 @@ ColdFire writes the quotient.
 
 import hashlib
 
-from remix.schema import Category, Proof, Detour, Kind, Linked, Module
+from remix.schema import Category, Proof, Detour, Gate, Kind, Linked, Module
 
 # The audio arena base, stock; the build resolves ARENA_BASE to the moved base.
 _ARENA = (("ARENA_BASE", 0x40a955e0),)
@@ -81,8 +81,10 @@ SPACING_CAVE_BYTES_V1 = bytes.fromhex(
     "4cd7030f" "4fef0018" "4e75")            # restore, rts
 
 # Memoised (2 Nov 2026, spacing_cave.s): the same arithmetic, skipped when the
-# track's (L, tempo24, arm) match the last call's; the port's runs match the
-# cave above in every recorder record and length they leave (STRESS_INT, 2 Nov 2026).
+# track's (L, tempo24, arm) match the last call's. verify_recorder_loop_fix runs
+# both byte strings call for call; under the port, a project recording through
+# pattern changes, a stop and a start leaves every recorder record and length
+# in CS1 as the cave above leaves them.
 SPACING_CAVE_BYTES = bytes.fromhex(
     "28005284e2844fefffe048d7072f223980001814670000ce2a0495ca202f00ac7408b082642ce98845fa00c6d5c0e48841f946c7fa8424300800ba926614b2aa0004660eb4aa00086608282a000c6000009420044c010000068000791fd0243c00f23fa04c420000670000584c02000026004c4100006700004a24004c01000096806700002c202f00ace58841f946c7fa84203008004c4200004c0300002240d08326094c4100004c4130039083d4802002908452800c8000000002620000042802200a671e248525410004202f00ace58841f946c7fa8420300800254000082544000c4cd7072f4fef00204e7500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")
 
@@ -92,10 +94,13 @@ MODULE = Module(
     kind=Kind.CF_PATCH,
     category=Category.FIXES, author="sambanks", author_url="https://github.com/sambanks",
     proof=Proof.HARDWARE,
-    proof_note="OCTABAM83, 12 Sep 2026 (self-loop); Bryan T's MKII, sos-capture BUILD=95, 3 Oct 2026 (sound-on-sound)",
+    proof_note="OCTABAM83, 12 Sep 2026 (self-loop); Bryan T's MKII, sos-capture BUILD=95, 3 Oct 2026 (sound-on-sound); "
+               "the spacing cave's memo (2 Nov 2026): verify_recorder_loop_fix, call for call against the ratified "
+               "cave under unicorn, and Bryan T's MKII recording up to eight tracks at once",
     doc="ColdFire caves: the recorder loop click -- seek on a same-sample FLEX re-bind, keep its "
         "counter, record exactly the arm spacing, and repeat the last sample where sound-on-sound "
         "would play a zero.",
+    gates=(Gate("tools/verify/verify_recorder_loop_fix.py", remix_arg=False, venv=True),),
     # DRAM units since 8 Oct 2026 (floating ROM caves until then). Each is
     # linked alone at 0x400d7000 with ARENA_BASE at stock's 0x40a955e0 and
     # compared against its ratified bytes; the image carries ARENA_BASE at

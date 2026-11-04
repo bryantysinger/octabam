@@ -427,6 +427,16 @@ class PlanTests(unittest.TestCase):
         self.assertIn("tools/verify/verify_usb_post.py", scripts)
         self.assertIn("tools/verify/verify_usb_align.py", scripts)
 
+    def test_selection_only_store_gate_reaches_its_actual_clients(self):
+        context = reach.Context.from_registry()
+        script = "tools/verify/verify_store_part_selection.py"
+        self.assertEqual(context.gate_owners[script], ["STORE"])
+        self.assertEqual(context.gate_remixes[script],
+                         {"hooks-boot", "midi-follow", "midi-follow-events", "midi-loopback"})
+        rows = reach.classify([script], context)
+        self.assertEqual(reach.remixes_reached(rows),
+                         ["hooks-boot", "midi-follow", "midi-follow-events", "midi-loopback"])
+
     def test_remixes_reached(self):
         rows = reach.classify(["modules/character/a.asm", "remixes/miniverb/remix.py"], ctx())
         self.assertEqual(reach.remixes_reached(rows), ["bamsep26", "miniverb", "usb"])
@@ -525,9 +535,12 @@ class TestRemixTests(unittest.TestCase):
         c.remixes = [r for r in c.remixes if r != "miniverb"]
         return c
 
-    def test_a_module_only_in_test_remixes_is_not_checked(self):
+    def test_a_module_only_in_test_remixes_runs_its_own_gates_there(self):
+        # #953: a green run must not read as a checked module when only the selftest ran
         rows = reach.classify(["modules/miniverb/engine.asm"], self.ctx_without_tests())
-        self.assertEqual([cmd for _, g, _ in rows for _, cmd in g], ["python3 tools/remix/selftest.py"])
+        self.assertEqual([cmd for _, g, _ in rows for _, cmd in g],
+                         ['make check-shared REMIXES="miniverb" MODULES="MINIVERB"',
+                          'make check-remix REMIX=miniverb MODULES="MINIVERB"'])
         self.assertIn("carried only by test remixes", rows[0][2])
 
     def test_a_test_remix_edit_is_not_checked(self):

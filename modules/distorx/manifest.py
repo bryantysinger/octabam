@@ -331,11 +331,10 @@ MODULE = Module(
     proof_note="the owner's MKI, image DTXPR3 (BUILD 96, remix distorx, on 0x05), 22 Oct 2026: DISTORX on T1 for more "
                "than four minutes with four DISTORX at once on both cores (T1 and T2 kicks with DISTORX, T3 hats and T4 claps dry, T5 COMB FILTER + DISTORX, T6 COMB FILTER + DARK REV, T7 COMB FILTER + DISTORX, T8 MASTER), MODE changed while playing, OFF on "
                "re-selection, no clicks, by ear. Before, on 0x0a, image DTXPR1 (21 Oct): every knob in every MODE, "
-               "FX1 and FX2, an LFO, a scene, save and reload. v10's loops (28 Oct) are not flashed",
+               "FX1 and FX2, an LFO, a scene, save and reload. v10's loops and the move to id 0x1b (28 Oct) are not flashed",
     doc="SD-1 + RAT + Turbo RAT in one insert: MODE picks the pedal (OFF first), a 3 ms fade between them.",
     menu=MenuEntry(
-        fx2_id=0x05,                  # SPATIALIZER's (README "FX id"): every non-stock id is a module's
-        replaces="SPATIALIZER",
+        fx2_id=0x1b,                  # a free id (README "FX id"); stock SPATIALIZER keeps 0x05
         donor_desc=0x400d58b8,        # DARK REV: 12 active slots
         abbr=b"DTX",
         fullname=b"DISTORX",

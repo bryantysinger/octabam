@@ -18,7 +18,7 @@ Each module's own page has the technical detail and the measurements.
 | Kits | [KITS](../../../modules/kits/README.md) | 255 named Kits per project; each pattern plays its Kit through the stock Part slots |
 | Scenes | [MIDI SCENES](../../../modules/midi-scenes/README.md) (bkkbrls-del, [midisc](https://github.com/bkkbrls-del/midisc)) | scene locks driven over MIDI: hold, morph, save, reload, clear, copy, paste |
 | Patterns | [DIRECT_JUMP_KYOTI](../../../modules/direct-jump-kyoti/README.md), [RELOAD_FROM_PROJECT](../../../modules/reload-from-project/README.md) (Zac Kyoti) | an immediate pattern change ([PTN] + [YES]); reload from the project |
-| MIDI | [CC MAP](../../../modules/cc-map/README.md) | CC 62–67 reach the FX2 effect's page-2 knobs, CC 68–73 the FX1 effect's (stock reaches page 1 only) |
+| MIDI | [CC MAP](../../../modules/cc-map/README.md) | CC 102–107 reach the FX2 effect's page-2 knobs, CC 108–111, 14 and 15 the FX1 effect's (stock reaches page 1 only) |
 | Recorder | [RECORDER LOOP FIX](../../../modules/recorder-loop-fix/README.md) | the recorder loop click fixed: a fixed-RLEN take is exactly as long as the gap to the next arm, a re-trig on the buffer seeks the voice instead of restarting it, and sound-on-sound repeats the last sample where it played a zero |
 | | [RLEN PLEN](../../../modules/rlen-plen/README.md) | RLEN value PLEN: one loop of the track's pattern, so TRIG ONE + QREC PLEN records the next pass and stops |
 | Fixes | [LOFI AMF FIX](../../../modules/lofi-amf-fix/README.md) (Bryan T) | stock LO-FI's AMF knob no longer jumps the pitch backwards |

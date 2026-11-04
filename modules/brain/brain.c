@@ -1582,8 +1582,9 @@ void brain_midi_log(const u8 *m)
 	dbg_seq++;
 }
 
-/* Text without stock's sprintf, which does not take %02X or field widths. */
-static u32 put_s(char *o, const char *s) { u32 n = 0; while (s[n]) { o[n] = s[n]; n++; } return n; }
+/* Text without stock's sprintf, which does not take %02X or field widths. Ends the text with a NUL
+ * (not counted in the return value, so a following put_s overwrites it). */
+static u32 put_s(char *o, const char *s) { u32 n = 0; while (s[n]) { o[n] = s[n]; n++; } o[n] = 0; return n; }
 static u32 put_hex2(char *o, u32 v) { const char *h = "0123456789ABCDEF"; o[0] = h[(v >> 4) & 15]; o[1] = h[v & 15]; return 2; }
 static u32 put_dec(char *o, u32 v, u32 width)
 {
@@ -4442,13 +4443,6 @@ static void set_value(u32 i)
 		n += put_dec(o + n, (u32)v, 0);
 		o[n] = 0;
 	}
-	if (e->apply == 2) {			/* takes effect at the next boot */
-		u32 k = 0;
-		while (o[k])
-			k++;
-		o[k++] = '*';
-		o[k] = 0;
-	}
 }
 
 /* The usb module's pair rule: IN needs an output stream beside it (EP3 IN
@@ -4560,6 +4554,18 @@ static int usb_move_ok(u32 i, int v)
 	return 1;
 }
 
+/* a setting that takes effect at the next boot was changed: leaving SETTINGS says so */
+static u8 boot_pend;
+static int boot_timer DATA = -1;
+
+static void boot_toast_cb(void)
+{
+	timer_off(&boot_timer);
+	msg[0] = "REBOOT TO";
+	msg[1] = "APPLY CHANGES";
+	POPUP("SETTINGS", 2, msg, 0, 0);
+}
+
 /* LEFT and RIGHT: one step down or up, stopping at the ends */
 static void set_move(u32 i, int dir)
 {
@@ -4572,6 +4578,7 @@ static void set_move(u32 i, int dir)
 	if (!usb_move_ok(i, v))
 		return;
 	brain_values[i] = v;
+	boot_pend |= e->apply == 2;
 	brain_post_settings();
 }
 
@@ -4584,6 +4591,7 @@ static void set_step(u32 i)
 	if (!usb_move_ok(i, v))
 		return;
 	brain_values[i] = v;
+	boot_pend |= e->apply == 2;
 	brain_post_settings();
 }
 
@@ -4595,7 +4603,7 @@ static int own_setting(const struct set_ent *e)
 static void build_set(void)
 {
 	const char *group = 0;
-	u32 head = 0, boot = 0;
+	u32 head = 0;
 	add(K_HEAD, "BRAIN", 0, 0);
 	add(K_TOGGLE, "APPLY DEFAULTS", tog_apply, 0)->on = (u8)brain_v_octabam_brain_2;
 	u32 own = sn;
@@ -4614,12 +4622,10 @@ static void build_set(void)
 			add(K_HEAD, h, 0, 0);
 		}
 		set_value(i);
-		struct srow *r = add(K_VALUE, e->name, set_step, i);
+		struct srow *r = add(e->type == 1 ? K_TOGGLE : K_VALUE, e->name, set_step, i);
 		r->val = setval[i];
-		boot |= e->apply == 2;
+		r->on = e->type == 1 && brain_values[i];
 	}
-	if (boot)
-		add(K_TEXT, "* AT NEXT BOOT", 0, 0);
 	if (sn == own)
 		add(K_TEXT, "NO MODULE SETTINGS", 0, 0);
 }
@@ -4642,7 +4648,7 @@ static u32 tab_of_entry(u32 e)
 static void build_tpl(void)
 {
 	static void (*const newf[TPL_TABS])(u32) = { tpl_new_part, tpl_new_fx, tpl_new_midi, tpl_new_project };
-	static const char *const newl[TPL_TABS] = { "NEW PART TEMPLATE", "NEW FX TEMPLATE", "NEW MIDI TEMPLATE", "NEW PROJECT TPL" };
+	static const char *const newl[TPL_TABS] = { "<NEW PART TEMPLATE>", "<NEW FX TEMPLATE>", "<NEW MIDI TEMPLATE>", "<NEW PROJECT TEMPLATE>" };
 	add(K_ITEM, newl[tpl_tab], newf[tpl_tab], 0);
 	if (del_e != 0xffff) {			/* the deleted template gone from the card: nothing left out */
 		u32 j = 0;
@@ -4667,7 +4673,7 @@ static void build_tpl(void)
 		if (pick == 0xffff || sn + 2 > SR_MAX)
 			break;
 		done[pick] = 1;
-		if (tpl_tab == 1) {			/* the tab with several targets: a heading each */
+		{					/* a heading per target; the other tabs have one target each */
 			char *h = slab[name++];
 			u32 k = 0;
 			for (const char *c = ent_name(pick); *c && k < 15; c++)
@@ -5258,6 +5264,7 @@ static void build_events(void)
 {
 	static const char *const what[EV_N] = { "FRAME OVER", "CPU FULL", "CARD SLOW" };
 	add(K_TOGGLE, "EVENT LOG", tog_ev, 0)->on = (u8)brain_v_octabam_brain_3;
+	add(K_HEAD, "EVENTS", 0, 0);
 	if (!ev_count) {
 		add(K_TEXT, "NO EVENTS YET", 0, 0);
 		return;
@@ -5284,6 +5291,7 @@ static void build_midilog(void)
 {
 	add(K_TOGGLE, "MIDI LOG", tog_log, 0)->on = (u8)brain_v_octabam_brain_1;
 	add(K_ITEM, "WRITE DEBUG LOG", midi_write, 0);
+	add(K_HEAD, "MESSAGES", 0, 0);
 	mon_update();
 	if (!mon_n)
 		add(K_TEXT, mon_buf[0], 0, 0);
@@ -5323,7 +5331,7 @@ static char perf_title[16];
 
 static void build_perf(void)
 {
-	for (u32 i = 0; i < 8; i++)			/* put_s does not end its text */
+	for (u32 i = 0; i < 8; i++)
 		for (u32 j = 0; j < 20; j++)
 			tv[i][j] = 0;
 	switch (perf_tab) {
@@ -5513,6 +5521,10 @@ void brain_scr_exit(void)
 		UNTIMER(live_timer);
 		live_timer = -1;
 	}
+	if (sc_now() == SC_SET && boot_pend && boot_timer < 0) {
+		boot_pend = 0;
+		boot_timer = TIMER(2, boot_toast_cb);
+	}
 	if (sc_now() == SC_TED && !ted_gone && back_timer < 0) {	/* NO, or the menu closing: back_cb tells */
 		back_mode = ted_grp == G_TOP ? 0 : 2;
 		back_timer = TIMER(2, back_cb);
@@ -5595,7 +5607,7 @@ void brain_scr_enc(u32 index, int delta)
 		sc_move(delta < 0 ? -1 : 1);
 }
 
-/* the checkbox: a 7 x 7 square, its middle filled when on */
+/* the checkbox: a 7 x 7 square, crossed when on (stock's mark) */
 static void checkbox(void *ctx, int x, int y, int on)
 {
 	RULE(ctx, x, y - 1, x + 6, 1);
@@ -5603,8 +5615,10 @@ static void checkbox(void *ctx, int x, int y, int on)
 	VLINE(ctx, x, y - 1, y + 5, 1);
 	VLINE(ctx, x + 6, y - 1, y + 5, 1);
 	if (on)
-		for (int k = 2; k <= 4; k++)
-			VLINE(ctx, x + k, y + 1, y + 3, 1);
+		for (int k = 0; k < 5; k++) {
+			RULE(ctx, x + 1 + k, y + k, x + 1 + k, 1);
+			RULE(ctx, x + 5 - k, y + k, x + 5 - k, 1);
+		}
 }
 
 /* OTOP page 0: a bar per processor (the peak a mark on it), then two readouts */
@@ -5657,6 +5671,7 @@ void brain_scr_draw(void *ctx)
 		DRAWSTR(FONT, ctx, w - 6 - (int)TEXT_W(FONT, -1, title), a2 + 2, -1, title);
 	ICON(brain_icon, ctx, 6, a2);
 	RULE(ctx, 4, a2 - 1, w - 6, 1);
+	int rx = w - MARGIN - (sn > VISIBLE ? 4 : 0);	/* the right edge of the rows: the scroll bar is to its right */
 	for (u32 j = 0; j < VISIBLE; j++) {
 		u32 i = stop + j;
 		if (i >= sn)
@@ -5664,23 +5679,46 @@ void brain_scr_draw(void *ctx)
 		const struct srow *r = &sr[i];
 		int y = a2 - 9 - PITCH * (int)j;
 		int x = MARGIN;
-		DRAWSTR(FONT, ctx, x, y, -1, r->label);
+		if (r->kind == K_HEAD) {		/* ... NAME ........ as stock's separators */
+			DOTH(ctx, x, y + 2, x + 8);
+			x += 12;
+		}
+		if ((r->kind == K_VALUE || r->kind == K_COST || r->kind == K_LINE) && r->val) {
+			/* the label gives way to the value at the right */
+			char cut[24];
+			u32 n = 0;
+			int room = rx - (int)TEXT_W(FONT, -1, r->val) - 6 - x;
+			while (r->label[n] && n < 23) {
+				cut[n] = r->label[n];
+				cut[n + 1] = 0;
+				if ((int)TEXT_W(FONT, -1, cut) > room) {
+					cut[n] = 0;
+					break;
+				}
+				n++;
+			}
+			cut[n] = 0;
+			DRAWSTR(FONT, ctx, x, y, -1, r->label[n] ? cut : r->label);
+		} else
+			DRAWSTR(FONT, ctx, x, y, -1, r->label);
 		if (r->kind == K_BAR) {
 			DRAWSTR(FONT, ctx, BAR_X - 4 - (int)TEXT_W(FONT, -1, r->val), y, -1, r->val);
 			load_bar(ctx, w, y, load_now[r->arg], load_pk[r->arg]);
 		} else if (r->kind == K_HEAD)
-			DOTH(ctx, x + (int)TEXT_W(FONT, -1, r->label) + 4, y + 2, w - MARGIN);
+			DOTH(ctx, x + (int)TEXT_W(FONT, -1, r->label) + 4, y + 2, rx);
 		else if (r->kind == K_TOGGLE)
-			checkbox(ctx, w - MARGIN - 8, y, r->on);
+			checkbox(ctx, rx - 6, y, r->on);
 		else if ((r->kind == K_VALUE || r->kind == K_COST || r->kind == K_LINE) && r->val)
-			DRAWSTR(FONT, ctx, w - MARGIN - (int)TEXT_W(FONT, -1, r->val), y, -1, r->val);
+			DRAWSTR(FONT, ctx, rx - (int)TEXT_W(FONT, -1, r->val), y, -1, r->val);
 		if (i == scur && selectable(i))
-			INVERT(ctx, MARGIN - 2, y - 1, w - MARGIN + 1, y + 5, -1);
+			INVERT(ctx, MARGIN - 2, y - 1, rx + 1, y + 5, -1);
 	}
 	if (sn > VISIBLE) {			/* the scroll thumb on the right edge */
 		int lo = a2 - 9 - PITCH * (VISIBLE - 1) - 1, hi = a2 - 4, span = hi - lo;
 		int len = span * VISIBLE / (int)sn, top = hi - (span - len) * (int)stop / (int)(sn - VISIBLE);
-		VLINE(ctx, w - 3, top - len, top, 1);
+		VLINE(ctx, w - 6, lo, hi, 1);		/* the track; the window's border is at w - 3 */
+		for (int k = -1; k <= 1; k++)
+			VLINE(ctx, w - 6 + k, top - len, top, 1);
 	}
 }
 

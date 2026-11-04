@@ -127,7 +127,7 @@
       "caption": "The STEM REC recording window.",
       "remix": "manual-features",
       "source": "emulator panel UART",
-      "firmware_sha256": "64122fb623b81885b532e646b06ea81ab72ecab3db0a0130c1cf640bfabae750"
+      "firmware_sha256": "fdb1ba5f644079d738e46d80b7ebe8b2da0b75c055eeae199896dc2288fda0a0"
     }
   },
   "rnd-name": {
@@ -273,21 +273,21 @@
       "caption": "DELAY SERVER: the DELAY box in the TEMPO window, first rows.",
       "remix": "octabam-bus",
       "source": "emulator panel UART",
-      "firmware_sha256": "df70af456ba5405b9674fe4bac2d837c64feaa7b4addc2d381e1c76ec625905c"
+      "firmware_sha256": "8ad3f1a82ddf866a6be12d24bc23a61b9563abc5f800a911faf445a11a28b5f6"
     },
     "tempo-bottom": {
       "image": "busdelay/tempo-bottom.png",
       "caption": "DELAY SERVER: the DELAY box in the TEMPO window, last rows.",
       "remix": "octabam-bus",
       "source": "emulator panel UART",
-      "firmware_sha256": "df70af456ba5405b9674fe4bac2d837c64feaa7b4addc2d381e1c76ec625905c"
+      "firmware_sha256": "8ad3f1a82ddf866a6be12d24bc23a61b9563abc5f800a911faf445a11a28b5f6"
     },
     "fx2": {
       "image": "busdelay/fx2.png",
       "caption": "DELAY SERVER on track 1: the FX2 page (DEL and REV).",
       "remix": "octabam-bus",
       "source": "emulator panel UART",
-      "firmware_sha256": "df70af456ba5405b9674fe4bac2d837c64feaa7b4addc2d381e1c76ec625905c"
+      "firmware_sha256": "8ad3f1a82ddf866a6be12d24bc23a61b9563abc5f800a911faf445a11a28b5f6"
     }
   },
   "send": {
@@ -296,14 +296,14 @@
       "caption": "SEND: main parameter page.",
       "remix": "octabam-bus",
       "source": "emulator panel UART",
-      "firmware_sha256": "df70af456ba5405b9674fe4bac2d837c64feaa7b4addc2d381e1c76ec625905c"
+      "firmware_sha256": "8ad3f1a82ddf866a6be12d24bc23a61b9563abc5f800a911faf445a11a28b5f6"
     },
     "setup": {
       "image": "send/setup.png",
       "caption": "SEND: effect selection and setup parameters.",
       "remix": "octabam-bus",
       "source": "emulator panel UART",
-      "firmware_sha256": "df70af456ba5405b9674fe4bac2d837c64feaa7b4addc2d381e1c76ec625905c"
+      "firmware_sha256": "8ad3f1a82ddf866a6be12d24bc23a61b9563abc5f800a911faf445a11a28b5f6"
     }
   },
   "busverb": {
@@ -312,21 +312,21 @@
       "caption": "REVERB SERVER: the REVERB box in the TEMPO window, first rows.",
       "remix": "octabam-bus",
       "source": "emulator panel UART",
-      "firmware_sha256": "df70af456ba5405b9674fe4bac2d837c64feaa7b4addc2d381e1c76ec625905c"
+      "firmware_sha256": "8ad3f1a82ddf866a6be12d24bc23a61b9563abc5f800a911faf445a11a28b5f6"
     },
     "tempo-bottom": {
       "image": "busverb/tempo-bottom.png",
       "caption": "REVERB SERVER: the REVERB box in the TEMPO window, last rows.",
       "remix": "octabam-bus",
       "source": "emulator panel UART",
-      "firmware_sha256": "df70af456ba5405b9674fe4bac2d837c64feaa7b4addc2d381e1c76ec625905c"
+      "firmware_sha256": "8ad3f1a82ddf866a6be12d24bc23a61b9563abc5f800a911faf445a11a28b5f6"
     },
     "fx2": {
       "image": "busverb/fx2.png",
       "caption": "REVERB SERVER on track 5: the FX2 page (DEL and REV).",
       "remix": "octabam-bus",
       "source": "emulator panel UART",
-      "firmware_sha256": "df70af456ba5405b9674fe4bac2d837c64feaa7b4addc2d381e1c76ec625905c"
+      "firmware_sha256": "8ad3f1a82ddf866a6be12d24bc23a61b9563abc5f800a911faf445a11a28b5f6"
     }
   },
   "fx2-lock": {
@@ -335,7 +335,7 @@
       "caption": "Locked FX2 selection on the delay host.",
       "remix": "octabam-bus",
       "source": "emulator panel UART",
-      "firmware_sha256": "4bc3318b76dae9399a48bfda9a792ac0fc77d6e968b97256b2e36c852e2b9af3"
+      "firmware_sha256": "8ad3f1a82ddf866a6be12d24bc23a61b9563abc5f800a911faf445a11a28b5f6"
     }
   },
   "tempo-bus": {
@@ -344,7 +344,7 @@
       "caption": "Delay and reverb controls in the TEMPO window.",
       "remix": "octabam-bus",
       "source": "emulator panel UART",
-      "firmware_sha256": "4bc3318b76dae9399a48bfda9a792ac0fc77d6e968b97256b2e36c852e2b9af3"
+      "firmware_sha256": "8ad3f1a82ddf866a6be12d24bc23a61b9563abc5f800a911faf445a11a28b5f6"
     }
   },
   "load-meter": {
@@ -353,14 +353,14 @@
       "caption": "BRAIN performance: load display.",
       "remix": "octabam-bus",
       "source": "emulator panel UART",
-      "firmware_sha256": "4bc3318b76dae9399a48bfda9a792ac0fc77d6e968b97256b2e36c852e2b9af3"
+      "firmware_sha256": "8ad3f1a82ddf866a6be12d24bc23a61b9563abc5f800a911faf445a11a28b5f6"
     },
     "dsp": {
       "image": "load-meter/dsp.png",
       "caption": "BRAIN performance: DSP display.",
       "remix": "octabam-bus",
       "source": "emulator panel UART",
-      "firmware_sha256": "4bc3318b76dae9399a48bfda9a792ac0fc77d6e968b97256b2e36c852e2b9af3"
+      "firmware_sha256": "8ad3f1a82ddf866a6be12d24bc23a61b9563abc5f800a911faf445a11a28b5f6"
     }
   },
   "memory": {
@@ -369,7 +369,7 @@
       "caption": "BRAIN performance: sample and recorder memory.",
       "remix": "octabam-bus",
       "source": "emulator panel UART",
-      "firmware_sha256": "4bc3318b76dae9399a48bfda9a792ac0fc77d6e968b97256b2e36c852e2b9af3"
+      "firmware_sha256": "8ad3f1a82ddf866a6be12d24bc23a61b9563abc5f800a911faf445a11a28b5f6"
     }
   },
   "usb": {
@@ -378,21 +378,28 @@
       "caption": "BRAIN performance: USB counters.",
       "remix": "octabam-bus",
       "source": "emulator panel UART",
-      "firmware_sha256": "4bc3318b76dae9399a48bfda9a792ac0fc77d6e968b97256b2e36c852e2b9af3"
+      "firmware_sha256": "8ad3f1a82ddf866a6be12d24bc23a61b9563abc5f800a911faf445a11a28b5f6"
     },
     "settings": {
       "image": "usb/settings.png",
-      "caption": "BRAIN > SETTINGS, the USB group: CUE, IN and MAIN. A value that ends in * takes effect at the next boot.",
+      "caption": "BRAIN > SETTINGS, the USB group: CUE, IN and MAIN. A change to a value that takes effect at the next boot shows a popup when SETTINGS is left.",
       "remix": "octabam-bus",
       "source": "emulator panel UART",
-      "firmware_sha256": "a152ef060937eee73ca056adb804144d9fcafdb644d0de890e959cb447f29acf"
+      "firmware_sha256": "ff5fe74bd052386cd9512d7968cf87cde803dd2e68c7771ee6752c192d170c9a"
     },
     "settings-end": {
       "image": "usb/settings-end.png",
-      "caption": "The end of the USB group: TRACKS, with * AT NEXT BOOT under the list.",
+      "caption": "The end of the USB group: TRACKS.",
       "remix": "octabam-bus",
       "source": "emulator panel UART",
-      "firmware_sha256": "a152ef060937eee73ca056adb804144d9fcafdb644d0de890e959cb447f29acf"
+      "firmware_sha256": "ff5fe74bd052386cd9512d7968cf87cde803dd2e68c7771ee6752c192d170c9a"
+    },
+    "reboot-popup": {
+      "image": "usb/reboot-popup.png",
+      "caption": "Leaving SETTINGS after TRACKS was changed: the popup says to reboot.",
+      "remix": "octabam-bus",
+      "source": "emulator panel UART",
+      "firmware_sha256": "ff5fe74bd052386cd9512d7968cf87cde803dd2e68c7771ee6752c192d170c9a"
     }
   },
   "character-txtr": {
@@ -909,17 +916,17 @@
   "cxosc": {
     "source": {
       "image": "cxosc/source.png",
-      "caption": "CX OSC PLAYBACK: PTCH RATO INDX FOLD SYMM FDBK.",
+      "caption": "CX OSC PLAYBACK: PTCH RATO INDX FOLD SYMM DEC.",
       "remix": "cxosc",
       "source": "emulator panel UART",
-      "firmware_sha256": "47560f6033490386b25b9ff3feac5502b3de03dc70f9faaec7d17a463f249a99"
+      "firmware_sha256": "4e612b3b898b1002d7428f6c1dae7808e7d852a766616a996f0fb27eb392743a"
     },
     "setup": {
       "image": "cxosc/setup.png",
       "caption": "SRC SETUP: CX OSC selected in the machine list.",
       "remix": "cxosc",
       "source": "emulator panel UART",
-      "firmware_sha256": "47560f6033490386b25b9ff3feac5502b3de03dc70f9faaec7d17a463f249a99"
+      "firmware_sha256": "4e612b3b898b1002d7428f6c1dae7808e7d852a766616a996f0fb27eb392743a"
     }
   },
   "morph": {
@@ -968,6 +975,45 @@
       "remix": "scope",
       "source": "emulator panel UART (live_shots.py + scope.script)",
       "firmware_sha256": "1c63417e490ed070ee86170461b3740f4536b4bad89ad17e2fb546e49f841949"
+    }
+  },
+  "free-loop": {
+    "window": {
+      "image": "free-loop/window.png",
+      "caption": "T1 + UP: the FREE LOOP window for T1, ROLE FREE, 4/4, BARS AUTO, 70-160 BPM.",
+      "remix": "free-loop",
+      "source": "emulator panel UART",
+      "firmware_sha256": "bb0b4c6080a8ab36cdbec79a2409660f8bc8bc7516a5977fe40b3df3eef9cd2a"
+    },
+    "popup": {
+      "image": "free-loop/popup.png",
+      "caption": "CC 90 on channel 1, 3 s into the free take: T1's REC popup, FIRST LOOP.",
+      "remix": "free-loop",
+      "source": "emulator panel UART",
+      "firmware_sha256": "bb0b4c6080a8ab36cdbec79a2409660f8bc8bc7516a5977fe40b3df3eef9cd2a"
+    }
+  },
+  "midi-follow": {
+    "source-off": {
+      "image": "midi-follow/source-off.png",
+      "caption": "MIDI NOTE SETUP: RFOL OFF uses native notes.",
+      "remix": "midi-follow",
+      "source": "emulator panel UART",
+      "firmware_sha256": "1fdf5741dd9155ee3fde885d6ba16f8e1b6214d3561c4d215aa50a5eab7f25b8"
+    },
+    "source-t1": {
+      "image": "midi-follow/source-t1.png",
+      "caption": "MIDI NOTE SETUP: RFOL T1 follows MIDI track 1.",
+      "remix": "midi-follow",
+      "source": "emulator panel UART",
+      "firmware_sha256": "1fdf5741dd9155ee3fde885d6ba16f8e1b6214d3561c4d215aa50a5eab7f25b8"
+    },
+    "fixed": {
+      "image": "midi-follow/fixed.png",
+      "caption": "FOLLOW: FIXED octave 3 and TRIG update.",
+      "remix": "midi-follow",
+      "source": "emulator panel UART",
+      "firmware_sha256": "1fdf5741dd9155ee3fde885d6ba16f8e1b6214d3561c4d215aa50a5eab7f25b8"
     }
   }
 }

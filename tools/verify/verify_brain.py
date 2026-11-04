@@ -153,6 +153,11 @@ def main():
     # T2's FX1 is SPECTRUM, so the FX1 chooser opens on its row and one DOWN lands CHARACTER. The
     # project's own bytes name an effect by id, and which one that is depends on the remix.
     import ot_project
+    # The save/menu probes below require BusDelay on T1, even when the
+    # supplied project is MIDI-only. Seed the disposable copy explicitly.
+    bd = mods["DELAY SERVER"]
+    ot_project.set_fx(copy, "fx2", 1, "DELAY SERVER", page=[p.default for p in bd.params[:6]],
+                      page2=[p.default for p in bd.params[6:12]], guard=False)
     spm = mods["SPECTRUM"]
     ot_project.set_fx(copy, "fx1", 2, "SPECTRUM", page=[p.default or 0 for p in spm.params[:6]],
                       page2=[p.default or 0 for p in spm.params[6:12]], guard=False)
@@ -1047,7 +1052,7 @@ def main():
     ps_keys = [1 + o for o in range(0x70) if o == 0x24 or 0x28 <= o <= 0x37 or 0x3f <= o <= 0x54
                or 0x56 <= o <= 0x6a]
     keys = [(0x32, 400), (0x1c, 1200)] + [(0x20, 400)] * 4 + [(0x21, 800)] + [(0x31, 800)] + [(0x34, 400)] * 6 + [(0x21, 400)] * 6 + [
-        (0x31, 1200), (0x31, 4000), (0x20, 400), (0x31, 2500)]  # PROJECT tab: NEW PROJECT TPL, YES on the name; its screen: APPLY TO PROJECT, SET AS DEFAULT
+        (0x31, 1200), (0x31, 4000), (0x20, 400), (0x31, 2500)]  # PROJECT tab: <NEW PROJECT TEMPLATE>, YES on the name; its screen: APPLY TO PROJECT, SET AS DEFAULT
     files, _, (ram,) = ui_run("pset_save", keys, dumps=((0x80000000, 0x70),))
     work_ = card_file(files, "BRAIN/CARD.WORK")
     prec = [r for r in brainfile.parse(work_).records
@@ -1135,7 +1140,15 @@ def main():
     log_at = symbol("brain_post_log")
     lcard, lafter, llog, lmidi = OUT / "log.img", OUT / "log_after.img", OUT / "log.txt", OUT / "log.midi"
     lmidi.write_text("40 B0 07 14\n60 C0 02\n80 B1 28 40\n")
-    r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(copy), a.set_name, a.name,
+    # This probe asserts that CH1 program change queues pattern 2. Other
+    # probes keep the supplied project's MIDI receive configuration.
+    import ot_matrix
+    logcopy = OUT / "project_log"
+    shutil.rmtree(logcopy, ignore_errors=True)
+    shutil.copytree(copy, logcopy)
+    ot_matrix.stamp_text(logcopy, {"MIDI_PROGRAM_CHANGE_RECEIVE": 1,
+                                 "MIDI_PROGRAM_CHANGE_RECEIVE_CH": 0}, {})
+    r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(logcopy), a.set_name, a.name,
                         "--tree", str(OUT / "tree_log"), "--out", str(lcard),
                         "--root-file", f"{logon}:BRAIN/card.work"], cwd=ROOT, capture_output=True, text=True)
     if r.returncode:

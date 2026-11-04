@@ -17,14 +17,11 @@ Author: MaMarko (Marko Brajković, [braikomarko-hub](https://github.com/braikoma
 DISTORX can be put on a track in the middle of a set and a pedal faded in
 when wanted.
 
-**FX id `0x05`, SPATIALIZER's, with `replaces="SPATIALIZER"`** (since 22 Oct
-2026): every non-stock id is a module's, and SPATIALIZER, a stereo widener,
-is the stock effect an acid line misses least of the three no module had
-taken (DELAY and FLANGER the others). A remix with DISTORX gives up
-SPATIALIZER on both menus. In the author's images DISTORX sat on `0x1b`
-(until 20 Oct) and `0x0a` (DTXPR1, 21 Oct), so a part saved there needs
-DISTORX chosen again. A part saved before v8 reads its MODE one step lower:
-SD-1 → OFF, RAT → SD-1, TURB → RAT.
+**FX id `0x1b`** (28 Oct 2026): a free id; stock SPATIALIZER keeps `0x05`. From
+22 Oct to 28 Oct 2026 DISTORX held `0x05` with `replaces="SPATIALIZER"` (image
+DTXPR3), and before that `0x1b` (until 20 Oct) and `0x0a` (DTXPR1, 21 Oct). A
+part saved on one of those ids needs DISTORX chosen again. A part saved before v8
+reads its MODE one step lower: SD-1 → OFF, RAT → SD-1, TURB → RAT.
 
 **Beside the other drives in octabam:** CHARACTER's SAT (TAPE / TUBE / INFL,
 JClones' models) is a saturation stage inside an FX1 station; SHATTER is a

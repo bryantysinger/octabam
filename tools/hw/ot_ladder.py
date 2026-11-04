@@ -658,8 +658,9 @@ def _cc_for(mods, layout, t, fx, name):
     slot = m.knob_map_all().get(name)
     if slot is None:
         return None
-    if slot >= 6:                          # page 2: CC MAP's CC 62-67 (FX2), 68-73 (FX1)
-        return (68 if fx == "fx1" else 62) + slot - 6
+    if slot >= 6:                          # page 2: CC MAP's numbers (tools/remix/midi_cc.py)
+        from remix.midi_cc import ccmap_cc
+        return ccmap_cc(fx, slot)
     return (34 if fx == "fx1" else 40) + slot
 
 

@@ -17,8 +17,11 @@ in µs, the interrupts a second, and the peaks since the view opened.
 | `0x4000aad0` | `lea %sp@(-252),%sp / moveml %d0-%fp,%sp@`, the handler's prologue | `lm_in`: the prologue replayed, the entry stamp |
 | `0x4000d9a6` | `moveml %sp@,%d0-%fp / lea %sp@(252),%sp / rte`, the epilogue | `lm_out`: the duration summed, the window published, the epilogue replayed |
 
-The sites are BOOT TRACE's entry and CF METER's epilogue, so the ledger
-refuses LOAD METER beside either by name. The share counts the frame
+The sites are BOOT TRACE's entry and CF METER's epilogue: beside either, the
+registry adds [HOOKS](../hooks/README.md), which replays the prologue and the
+epilogue once and calls each module's routine (BOOT TRACE's note first at the
+entry, so LOAD METER's stamp excludes it; LOAD METER first at the epilogue).
+That pairing has run under Unicorn only (verify_hooks), not on a unit. The share counts the frame
 interrupt alone: the other interrupts and the tasks are not in it.
 
 ## The DSP cores
@@ -72,7 +75,10 @@ reader sees stock's bytes; it runs once per frame interrupt (its pass
 count equals the interrupt count, `verify_load_meter` every), ahead of the
 recorder's call at `0x4000d340` and USB's audio producer's at `0x4000d9a0`. STEM
 REC reads MAIN from the transfer routine (`0x40004b12`), outside that
-order, so the two are refused together (`conflicts`) until measured. A record whose magic, sum, period (20,000 to
+order, and needs none: the meter's bytes are only in the low byte of MAIN's
+longs, which STEM REC never writes to a file (its 16-bit path keeps the top
+16 bits, its 24-bit path shifts the low byte off). Either order gives the
+same files; the two share `octabam` since 28 Oct 2026. A record whose magic, sum, period (20,000 to
 60,000 counts; nominal 36,256) or busy (at most its period) is wrong is
 counted as bad and changes nothing. CF METER's page-lane route (an FX2
 insert printing values as audio) was the alternative; it takes a track and

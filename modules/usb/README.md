@@ -133,6 +133,9 @@ The port's flush completes at once and ignores the overlay; the controller's
 behaviour on the flush/re-prime sequence is not measured. Hardware status:
 port only.
 
+`usbmidi_rx_sysex` (usbmidi_rx.s) is set to 1 whenever the decoder enqueues an `F0`. SCREENSHOT reads and
+clears it at every SysEx to answer on the transport the request came on (`modules/screenshot/README.md`).
+
 ### Clock (6 Oct 2026)
 
 Reported by Kazeko (MKI, Discord, 6 Oct 2026): with USB MIDI clock the
@@ -160,6 +163,40 @@ build number and which of the three were checked are not recorded.
 - DTIN0's clock is inferred: the handler's constant gives BPM × 24 only for
   256 fs (11.2896 MHz). The port counts DTCN0 at that rate (`rtos.h`);
   before this change it held at 0 and no MIDI clock tempo ran under the port.
+
+### One clock source, DIN first (#944, 1 Nov 2026)
+
+Measured under the port (#944, `origin/main` `3b62cdef`, no project
+loaded, CLOCK RECEIVE set): DIN and USB clock at the same 120 BPM put
+5267 to 6424 in `0x80001818` (want 2880); with USB bunched 4 per packet
+it read the clamp, 7320. Both sources reach the one FIFO, framer and clock
+handler, so together they are one stream of 48 ticks per beat: the
+handler's interval ring reads the gaps between the two sources' ticks, and
+the clocked tempo is copied into the project's `TEMPOx24` (`0x80000020`,
+CS1 mirror `0x100b1480`) at each clock start (stock; a single source
+moves it too). That the sequencer also steps on both is inferred; no
+project was playing.
+
+`usbmidi_rx_decode` now drops a USB clock or transport event (`0xF8`,
+`0xFA`, `0xFB`, `0xFC`, `0xF2`) whole, counted in `usbmidi_rx_dropped`,
+while DIN is clocking. That means `CLK_T` (`0x46c8345a`) differs from
+`usbmidi_rx_clk_t`, the last stamp the decoder wrote, and is under
+1,881,600 DTCN0 counts (167 ms, the clock handler's resync gap) old.
+The first USB tick taken after DIN stops carries a delta past that gap,
+so the handler starts a fresh ring. A stale foreign `CLK_T` is adopted,
+so a DTCN0 wrap (380 s) cannot make an old DIN tick look recent. DIN
+needs no detour: it wins whenever both run. The cost: a DIN device that
+sends clock all the time locks USB clock out.
+
+`verify_usb_midi_clock`: a DIN + USB run at DIN's rate (each USB tick
+half a tick after a DIN one) must read DIN's tempo, with all 48 USB ticks
+dropped; the USB runs after it start 250 ms after DIN's last tick and must
+read USB's tempo; a USB STOP sent while DIN clocks must leave the transport
+playing. Measured under the port (`test/usb-midi`, 1 Nov 2026): DIN + USB
+at 1324 samples per tick read 1994 (want 1998), 48 of 48 USB ticks dropped,
+the USB STOP left the transport at 1. With the previous `usbmidi_rx.s` the
+same run read 4048, dropped none, and the USB STOP stopped the sequencer
+(transport 2). Hardware status: port only.
 
 ### Bus reset and session end (9 Oct 2026)
 

@@ -8,16 +8,22 @@ stores at 0x46c83466 for each 0xF8 (0x4001070a). A USB 0xF8 that skips that
 stamp steps the sequencer and leaves the tempo where it was.
 
 Boots out/mainos_bus.bin with the USB device model under --interactive (time
-advances only on `run`), sets CLOCK RECEIVE, and plays three runs of 48 ticks
-after a START, each at a different spacing: DIN, then USB, then USB again.
-The spacing is the port's sample count when each 0xF8 was handed over, over
-the last 24 ticks. After each run,
-0x80001818 must be within 1% of 60 * 44100 / spacing (BPM * 24). Without
-the stamp both USB runs read 2400, the DIN run's tempo.
+advances only on `run`), sets CLOCK RECEIVE, and plays four runs of 48 ticks
+after a START: DIN; DIN and USB together at DIN's rate, each USB tick half a
+tick after a DIN one; then USB at two other spacings, each starting 250 ms
+after DIN's last tick. The spacing is the port's sample count when each DIN
+(or, in the USB runs, USB) 0xF8 was handed over, over the last 24 ticks.
+After each run, 0x80001818 must be within 1% of 60 * 44100 / spacing
+(BPM * 24). Without the stamp both USB runs read 2400, the DIN run's tempo.
+In the DIN + USB run every USB tick must be dropped (usbmidi_rx_dropped,
++48); without the arbitration (#944) the handler's ring takes both sources
+and reads about twice DIN's tempo.
 
 Then, with TRANSPORT RECEIVE set (0x80000029), a START, 48 clocks and a STOP
 over DIN and over USB: the transport word (0x800065b8) must read 1 after the
 START and not 1 after the STOP, and USB's two readings must equal DIN's.
+Then a DIN START and 48 DIN clocks with a USB STOP after the 24th: the
+transport must still read 1 (DIN owns the transport while it clocks).
 
 Depends on the port counting DTCN0 at 256 fs (rtos.h; inferred from the
 handler's constant). SKIPs when the remix has no USB or the port is not
@@ -27,6 +33,7 @@ packet (each tick here is its own transfer), and USB timing on the unit.
 """
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 import threading
@@ -39,13 +46,22 @@ from remix import registry  # noqa: E402
 
 EMU = ROOT / "out/emu/ot_emu"
 IMAGE = ROOT / "out/mainos_bus.bin"
+ELF = ROOT / "out/platform/runtime/runtime.elf"
 CLOCK_RECEIVE = 0x80000028      # byte, bit 0 (the handler's gate, 0x40005a50)
 TEMPO = 0x80001818              # BPM * 24, clamped 600..7320
 TRANSPORT_RECEIVE = 0x80000029  # byte, nonzero: START/STOP are taken (docs/firmware/STORAGE.md)
 TRANSPORT = 0x800065b8          # longword: 1 = the sequencer plays, 0 = stopped and rewound (docs/firmware/STEM_REC.md 1.7)
 CLK_DT = 0x46c83466             # DTCN0 delta between the last two 0xF8
 TICKS = 48
-RUNS = [("DIN", 25.0), ("USB", 50.0), ("USB", 37.5)]     # ms per tick asked; the port lands them at 25.0, 50.0, 40.0 ms (100, 50, 62.5 BPM)
+RUNS = [("DIN", 25.0), ("DIN+USB", 25.0), ("USB", 50.0), ("USB", 37.5)]     # ms per tick asked; the port lands them at 25.0, 30.0 (two 12.5 ms halves), 50.0, 40.0 ms (100, 83.3, 50, 62.5 BPM)
+
+
+def symbols():
+    nm = shutil.which("m68k-elf-nm") or shutil.which("m68k-linux-gnu-nm")
+    if not nm:
+        return None
+    out = subprocess.run([nm, str(ELF)], capture_output=True, text=True).stdout
+    return {p[2]: int(p[0], 16) for p in (l.split() for l in out.splitlines()) if len(p) == 3}
 
 
 def main():
@@ -58,6 +74,11 @@ def main():
     if "USB" not in registry.remix(os.environ.get("REMIX")).modules:
         print("  [SKIP] verify_usb_midi_clock: the remix has no USB")
         return 0
+    sym = symbols()
+    if not sym or "usbmidi_rx_dropped" not in sym:
+        print(f"  [FAIL] verify_usb_midi_clock: no usbmidi_rx_dropped in {ELF.relative_to(ROOT)} (m68k-elf-nm on PATH?)")
+        return 1
+    dropped = sym["usbmidi_rx_dropped"]
     sock = f"/tmp/ot-usbclk-{os.getpid()}.sock"     # sun_path is 104 bytes on macOS
     emu = subprocess.Popen([str(EMU), "--image", str(IMAGE), "--interactive", "--usb-host", sock, "--main-level", "off"],
                            cwd=ROOT, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
@@ -125,17 +146,26 @@ def main():
         b = res["b"]
         cmd(f"poke {CLOCK_RECEIVE:#x} {peek(CLOCK_RECEIVE, 1) | 1:02x}")
         for src, ms in RUNS:
-            send(b, src, 0xfa, 1)
+            both = src == "DIN+USB"
+            lead = "DIN" if both else src
+            send(b, lead, 0xfa, 1)
             stamps = []
+            drop0 = peek(dropped)
             for _ in range(TICKS):
                 stamps.append(now())
-                send(b, src, 0xf8, ms)
+                if both:
+                    send(b, "DIN", 0xf8, ms / 2)
+                    send(b, "USB", 0xf8, ms / 2)
+                else:
+                    send(b, src, 0xf8, ms)
             spacing = (stamps[-1] - stamps[-25]) / 24
             want = 60 * 44100 / spacing
             got = peek(TEMPO)
             check(f"{src} clock at {spacing:.1f} samples/tick: tempo {got} (BPM*24), want {want:.0f} +-1%",
                   abs(got - want) <= 0.01 * want, f"0x46c83466 = {peek(CLK_DT)}")
-            send(b, src, 0xfc, 250)    # > 1,881,600 DTCN0 counts (167 ms): the handler's resync gap (0x40005a96), so no run inherits the last one's ring
+            n = peek(dropped) - drop0
+            check(f"{src}: USB clock events dropped {n}, want {TICKS if both else 0}", n == (TICKS if both else 0))
+            send(b, lead, 0xfc, 250)    # > 1,881,600 DTCN0 counts (167 ms): the handler's resync gap (0x40005a96), so no run inherits the last one's ring
         cmd(f"poke {TRANSPORT_RECEIVE:#x} {peek(TRANSPORT_RECEIVE, 1) | 1:02x}")
         seen = {}
         for src in ("DIN", "USB"):
@@ -149,6 +179,16 @@ def main():
               seen["DIN"][0] == 1 and seen["DIN"][1] != 1)
         check(f"USB START and STOP leave the transport as DIN's: {seen['USB']} against {seen['DIN']}",
               seen["USB"] == seen["DIN"])
+        send(b, "DIN", 0xfa, 1)
+        for i in range(TICKS):
+            send(b, "DIN", 0xf8, 12.5)
+            if i == TICKS // 2 - 1:
+                send(b, "USB", 0xfc, 12.5)    # the second half-tick: a 1 ms run after a 12.5 ms one can advance no port time, and the transfer is never taken
+            else:
+                run(12.5)
+        playing = peek(TRANSPORT)
+        send(b, "DIN", 0xfc, 250)
+        check(f"a USB STOP while DIN clocks leaves the sequencer playing: transport {playing}", playing == 1)
     except Exception as e:  # noqa: BLE001 -- a hang or a stall is the finding
         check(f"the probe completed ({type(e).__name__}: {e})", False)
     finally:

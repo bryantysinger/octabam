@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
-"""Prove the CC->FX2 (CC 62-67) and CC->FX1 (CC 68-73) page-2 cave (modules/cc-map) in the emulator.
+"""Prove the CC->FX2 (CC 102-107) and CC->FX1 (CC 108-111, 14, 15) page-2 cave (modules/cc-map) in the emulator.
 
 1. Re-assemble modules/cc-map/cc_map.s and check it matches the pinned
    CODE in the manifest (drifted source cannot pass).
 2. Place the emitted cave at a test address; for each audio track 0..7 on its
-   own trig channel, feed a CC 62 (slot 6 = page-2 MODE) message and confirm
+   own trig channel, feed FX2_CCS[0] (slot 6 = page-2 MODE) and confirm
    the value lands, count-clamped, at the traced Part / live / mirror bytes.
 3. Feed an over-count value into a select slot and confirm it clamps (the
    over-count store is the sequencer-stall trap).
 4. Feed a page-1 CC (40) and confirm the cave tail-calls the stock handler
    (reached via a stub) and writes no page-2 byte.
+5. Every CC outside FX2_CCS + FX1_CCS -- the old 62-73 among them --
+   tail-calls stock and writes no page-2 byte (issue #981).
 
 Single-core emu: this proves the WRITE and the DECISION. The CC->queue->main
--task->DSP path runs under the ColdFire port: verify_set sends CC 68 over
+-task->DSP path runs under the ColdFire port: verify_set sends FX1_CCS[0] over
 UART0 and reads the FX1 page-2 lane and the DSP record back (15 Sep 2026;
 hardware-confirmed on image 96/97 before that).
 """
@@ -172,7 +174,7 @@ def main():
             uc.mem_write(IDLIVE + t, b"\x00")
         uc.mem_write(TRIG_CH + track, bytes([channel]))
         uc.mem_write(IDLIVE + track, bytes([effect_id]))
-        pa, la, ma = _addrs(uc, track, cc - 62 if cc >= 62 else 0)
+        pa, la, ma = _addrs(uc, track, m.FX2_CCS.index(cc) if cc in m.FX2_CCS else 0)
         for a in (pa, la, ma):
             uc.mem_write(a, b"\x00")
         uc.mem_write(MSG_AT, bytes([0xB0 | channel, cc & 0x7f, value & 0x7f]))
@@ -182,21 +184,22 @@ def main():
 
     ok = True
 
-    # 1. every track, CC 62 (slot 6 = MODE, count 3) value 1 -> lands as 1
-    print("CC 62 (page-2 slot 6) on each track's own channel:")
+    FX2, FX1 = m.FX2_CCS, m.FX1_CCS
+    # 1. every track, FX2[0] (slot 6 = MODE, count 3) value 1 -> lands as 1
+    print(f"CC {FX2[0]} (FX2 page-2 slot 6) on each track's own channel:")
     for track in range(8):
         eid = 6 if track % 2 else 7
-        pa, la, ma = send(track, eid, 62, 1)
+        pa, la, ma = send(track, eid, FX2[0], 1)
         p, l, mm = uc.mem_read(pa, 1)[0], uc.mem_read(la, 1)[0], uc.mem_read(ma, 1)[0]
         good = (p == 1 and l == 1 and mm == 1 and not reached["stock"])
         ok &= good
         print(f"  t{track} id{eid}: Part={p} live={l} mirror={mm} "
               f"stock={reached['stock']}  {'ok' if good else 'FAIL'}")
 
-    # 2. over-count clamp: CC 62 (MODE, count 3 -> max 2) value 99 -> clamps to 2
+    # 2. over-count clamp: FX2[0] (MODE, count 3 -> max 2) value 99 -> clamps to 2
     print("clamp (select over-count):")
     for eid, cnts in ((7, VERB_COUNTS), (6, DLY_COUNTS)):
-        pa, la, ma = send(4 if eid == 7 else 1, eid, 62, 99)
+        pa, la, ma = send(4 if eid == 7 else 1, eid, FX2[0], 99)
         want = cnts[0] - 1
         l = uc.mem_read(la, 1)[0]
         good = (l == want)
@@ -204,7 +207,7 @@ def main():
         print(f"  id{eid} slot6 value 99 -> live={l} (want {want})  "
               f"{'ok' if good else 'FAIL'}")
     # a knob slot (count 128) passes full range
-    pa, la, ma = send(4, 7, 63, 120)   # slot 7 = knob
+    pa, la, ma = send(4, 7, FX2[1], 120)   # slot 7 = knob
     l = uc.mem_read(la, 1)[0]
     good = (l == 120)
     ok &= good
@@ -221,10 +224,10 @@ def main():
     ok &= good
     print(f"  stock={reached['stock']} page2-live={l}  {'ok' if good else 'FAIL'}")
 
-    # 4. FX1 page 2 via CC 68-73: every track, Character
-    #    on FX1, CC 68 (page-2 slot 6 = SAT, count 3; top left since 16 Sep
+    # 4. FX1 page 2 via FX1_CCS: every track, Character
+    #    on FX1, FX1[0] (page-2 slot 6 = SAT, count 3; top left since 16 Sep
     #    2026) value 1 -> lands as 1
-    print("CC 68 (FX1 page-2 slot 6) on each track's own channel, FX1 = Character:")
+    print(f"CC {FX1[0]} (FX1 page-2 slot 6) on each track's own channel, FX1 = Character:")
     CHAR = registry.bound(registry.remix(FIXTURE_REMIX))["CHARACTER"].menu.fx2_id   # the id the fixture build gave it
     def send1(track, fx1_id, cc, value, channel=3):
         emu.assign_fx2(r, track=track, effect_id=9)             # SEND on FX2, irrelevant here
@@ -233,42 +236,64 @@ def main():
         for t in range(8):
             uc.mem_write(TRIG_CH + t, b"\xff")
         uc.mem_write(TRIG_CH + track, bytes([channel]))
-        pa, la, ma = _addrs1(uc, track, cc - 68)
+        pa, la, ma = _addrs1(uc, track, FX1.index(cc))
         for a in (pa, la, ma):
             uc.mem_write(a, b"\x00")
         # the FX2 lane of the same slot must stay untouched
-        _, la2, _ = _addrs(uc, track, cc - 68)
+        _, la2, _ = _addrs(uc, track, FX1.index(cc))
         uc.mem_write(la2, b"\x00")
         uc.mem_write(MSG_AT, bytes([0xB0 | channel, cc & 0x7f, value & 0x7f]))
         reached["stock"] = False
         emu._call(uc, CAVE_AT, (MSG_AT,), count=5_000_000)
         return pa, la, ma, la2
     for track in range(8):
-        pa, la, ma, la2 = send1(track, CHAR, 68, 1)
+        pa, la, ma, la2 = send1(track, CHAR, FX1[0], 1)
         p, l, mm, l2 = (uc.mem_read(a, 1)[0] for a in (pa, la, ma, la2))
         good = (p == 1 and l == 1 and mm == 1 and l2 == 0 and not reached["stock"])
         ok &= good
         print(f"  t{track} Character: Part={p} live={l} mirror={mm} fx2lane={l2} "
               f"stock={reached['stock']}  {'ok' if good else 'FAIL'}")
     # the clamp from the DESCRIPTOR: SAT (slot 6, count 3) -> 99 clamps to 2; TONE (slot 7, count 128) passes 120
-    pa, la, ma, _ = send1(2, CHAR, 68, 99)
+    pa, la, ma, _ = send1(2, CHAR, FX1[0], 99)
     l = uc.mem_read(la, 1)[0]; good = (l == 2); ok &= good
     print(f"  clamp: Character SAT (count 3) value 99 -> live={l} (want 2)  {'ok' if good else 'FAIL'}")
-    pa, la, ma, _ = send1(2, CHAR, 70, 120)
+    pa, la, ma, _ = send1(2, CHAR, FX1[2], 120)
     l = uc.mem_read(la, 1)[0]; good = (l == 120); ok &= good
     print(f"  knob: Character KLVL (slot 8, count 128) value 120 -> live={l} (want 120)  {'ok' if good else 'FAIL'}")
-    pa, la, ma, _ = send1(2, CHAR, 69, 99)
+    pa, la, ma, _ = send1(2, CHAR, FX1[1], 99)
     l = uc.mem_read(la, 1)[0]; good = (l == 1); ok &= good
     print(f"  clamp: Character KEY (slot 7, count 2) value 99 -> live={l} (want 1)  {'ok' if good else 'FAIL'}")
     # FX1 = NONE (id 0): nothing written anywhere
-    pa, la, ma, _ = send1(5, 0x00, 69, 77)
+    pa, la, ma, _ = send1(5, 0x00, FX1[1], 77)
     vals = [uc.mem_read(a, 1)[0] for a in (pa, la, ma)]
     good = (vals == [0, 0, 0]); ok &= good
-    print(f"  FX1 NONE: CC 69 writes nothing  Part/live/mirror={vals}  {'ok' if good else 'FAIL'}")
-    # CC 74 (past the range) tail-calls stock
-    pa, la, ma, _ = send1(2, CHAR, 74, 5)
-    good = reached["stock"]; ok &= good
-    print(f"  CC 74 -> stock={reached['stock']}  {'ok' if good else 'FAIL'}")
+    print(f"  FX1 NONE: CC {FX1[1]} writes nothing  Part/live/mirror={vals}  {'ok' if good else 'FAIL'}")
+    # the last CC of the FX1 block lands in slot 11. Character's slot 11 is
+    # blank and its descriptor clamps to 0..1, so 1 is the value that shows
+    # the write (the lane is zeroed first).
+    pa, la, ma, _ = send1(2, CHAR, FX1[5], 1)
+    l = uc.mem_read(la, 1)[0]; good = (l == 1 and not reached["stock"]); ok &= good
+    print(f"  CC {FX1[5]} -> FX1 page-2 slot 11 live={l} (want 1)  {'ok' if good else 'FAIL'}")
+
+    # 5. every other CC tail-calls stock and writes no page-2 byte on T3,
+    #    FX1 = Character and FX2 = BusVerb (the old 62-73 among them, #981)
+    print("every CC outside the blocks -> stock, no page-2 write:")
+    lanes = [0x80000810 + 2 * 72 + 0x32 + i for i in range(12)]
+    bad = []
+    for cc in range(128):
+        if cc in FX1 or cc in FX2:
+            continue
+        send1(2, CHAR, FX1[0], 0)                 # FX1 = Character on T3, channel 3
+        emu.assign_fx2(r, track=2, effect_id=7)
+        for a in lanes:
+            uc.mem_write(a, b"\x00")
+        uc.mem_write(MSG_AT, bytes([0xB3, cc, 0x7f]))
+        reached["stock"] = False
+        emu._call(uc, CAVE_AT, (MSG_AT,), count=5_000_000)
+        if not reached["stock"] or any(uc.mem_read(a, 1)[0] for a in lanes):
+            bad.append(cc)
+    good = not bad; ok &= good
+    print(f"  {128 - 12} CCs checked; wrong: {bad}  {'ok' if good else 'FAIL'}")
 
     print("\nALL PASS" if ok else "\nFAILURES ABOVE")
     selected = os.environ.get("REMIX")

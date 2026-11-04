@@ -22,7 +22,7 @@ the machine back:
             port's MIDI IN (UART0) moves T2's record halfword 12 to 100;
             for EUCLID, checks the base FREQ lane instead because its
             final writer modulates that outgoing halfword each frame;
-            with CC MAP in the remix, CC 68 at 77 on T1's channel lands
+            with CC MAP in the remix, FX1_CCS[0] at 77 on T1's channel lands
             in T1's FX1 page-2 lane and record halfword 18 (the queue ->
             main -> DSP leg verify_cc_map cannot run); on a bus remix each
             engine's host track must then carry T2's send (the wet comes
@@ -52,6 +52,10 @@ from remix import registry, stock  # noqa: E402
 import ot_project as otp  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+
+from remix.midi_cc import ccmap_ccs  # noqa: E402
+FX2_CCS, FX1_CCS = ccmap_ccs()          # CC MAP's page-2 numbers, slot 6..11 order
 EMU = ROOT / "out/emu/ot_emu"
 PY = ROOT / ".venv/bin/python3"
 OUT = ROOT / "out/setverify"
@@ -226,7 +230,7 @@ def main():
              f"40 B{chans[1] & 0xf:X} 29 64"]      # CC 41: REV (slot 1), so T2 reaches both hosts
     ccmap = ccmap and part["fx1"][0] != 0          # the cave guards FX1 id 0 (NONE)
     if ccmap:
-        lines.append(f"40 B{chans[0] & 0xf:X} 44 4D")
+        lines.append(f"40 B{chans[0] & 0xf:X} {FX1_CCS[0]:02X} 4D")     # FX1 page-2 slot 6 = 77
     # the bus engines' hosts: each prints its wet on its own track, so T2's
     # send must reach every host's chain output. Payload A serves T5-8 and
     # B T1-4 (measured 10 Aug 2026); an engine picked on the other core runs
@@ -242,15 +246,15 @@ def main():
                 sys.exit(f"{key} on T{t + 1}: payload {'A' if t >= 4 else 'B'} does not carry it "
                          f"(it runs as SEND there); host it on T{cores[0] + 1}-T{cores[-1] + 1}")
             hosts.append((key, t))
-    # BusVerb's DLY (FX2 page-2 slot 10 = CC 66 under CC MAP) at 55 on its
+    # BusVerb's DLY (FX2 page-2 slot 10 = FX2_CCS[4] under CC MAP) at 55 on its
     # host's channel: the reverb publishes the knob field to the shared word
     # the delay reads (Y:0x982, 0x36082 under XBUS), read back on both cores.
     dly_host = next((t for key, t in hosts if key == "REVERB SERVER"), None) \
         if "CC MAP" in mods else None
     if dly_host is not None:
-        lines.append(f"40 B{chans[dly_host] & 0xf:X} 42 37")
+        lines.append(f"40 B{chans[dly_host] & 0xf:X} {FX2_CCS[4]:02X} 37")
     # The hosts' own sends (26 Sep 2026: DEL / REV on page-1 slots 0 / 1, as
-    # SEND's) and the delay's TIME on page-2 slot 11 (CC 67 under CC MAP):
+    # SEND's) and the delay's TIME on page-2 slot 11 (FX2_CCS[5] under CC MAP):
     # each must reach its engine's own word, read back from the DSP --
     # a slot can draw a knob and publish nothing.
     verb_host = next((t for key, t in hosts if key == "REVERB SERVER"), None)
@@ -258,7 +262,7 @@ def main():
     if del_host is not None:
         lines.append(f"40 B{chans[del_host] & 0xf:X} 29 32")      # CC 41: T1's REV = 50
         if "CC MAP" in mods:
-            lines.append(f"40 B{chans[del_host] & 0xf:X} 43 28")  # CC 67: T1's TIME = 40
+            lines.append(f"40 B{chans[del_host] & 0xf:X} {FX2_CCS[5]:02X} 28")  # T1's TIME = 40
     if verb_host is not None:
         lines.append(f"40 B{chans[verb_host] & 0xf:X} 28 46")     # CC 40: T5's DEL = 70
         lines.append(f"40 B{chans[verb_host] & 0xf:X} 29 1E")     # CC 41: T5's REV = 30
@@ -376,11 +380,11 @@ def main():
         cnt = (fx1_mod.params[6].count or 128) if fx1_mod is not None and fx1_mod.params else 128
         want = min(77, cnt - 1)
         lane_v, rec_v = lanes[0x32], recs[2 * 18]
-        check(f"midi: CC 68 = 77 on T1's channel reached T1's FX1 page-2 slot 6 (CC MAP; count {cnt} -> {want})",
+        check(f"midi: CC {FX1_CCS[0]} = 77 on T1's channel reached T1's FX1 page-2 slot 6 (CC MAP; count {cnt} -> {want})",
               lane_v == want and rec_v == want, f"lane +0x32 = {lane_v}, record halfword 18 high byte = {rec_v}")
     if dly_host is not None:
         pk = dict(re.findall(r"core (\d) Y:0x36082: ([0-9a-f]{6})", text))
-        check(f"midi: CC 66 = 55 on T{dly_host + 1}'s channel reached BusVerb's DLY, published to "
+        check(f"midi: CC {FX2_CCS[4]} = 55 on T{dly_host + 1}'s channel reached BusVerb's DLY, published to "
               f"Y:0x36082 on both cores", pk.get("0") == pk.get("1") == "370000",
               f"core 0 {pk.get('0', '?')}, core 1 {pk.get('1', '?')}")
     # the hosts' sends and the delay's TIME, as their engines read them
@@ -394,7 +398,7 @@ def main():
             v = peek.get(("1", "X", 0x6275))
             n = int(v, 16) if v else -1
             want = 64 + 40 * 256                      # 10,304 samples; the sticky
-            check(f"midi: CC 67 = 40 on T{del_host + 1}'s channel reached BusDelay's TIME "  # snap may pull
+            check(f"midi: CC {FX2_CCS[5]} = 40 on T{del_host + 1}'s channel reached BusDelay's TIME "  # snap may pull
                   f"(page-2 slot 11; X:0x6275 on core 1, samples)",                           # it within free/16
                   abs(n - want) <= want // 16, f"{n} (want {want} +-{want // 16})")
     if verb_host is not None:
@@ -413,8 +417,8 @@ def main():
         # queued per (channel, CC), its bitmap the CCs not yet on the wire,
         # and the drainer paces the wire to MIDI bandwidth (DTIM2 re-armed
         # for the batch's wire time). The module's contract is the CACHE:
-        # every mapped Part knob byte (page 1 = CC 16-45, FX1 page 2 = 68-73,
-        # FX2 page 2 = 62-67) equals it within eight UI ticks while the
+        # every mapped Part knob byte (page 1 = CC 16-45, FX1 page 2 = FX1_CCS,
+        # FX2 page 2 = FX2_CCS) equals it within eight UI ticks while the
         # engine is idle. The wire is checked for shape: every CC sent is a
         # mapped slot on a track's channel, with the cache's value at the
         # time (the stream carries only values the cache held).
@@ -423,7 +427,7 @@ def main():
         cfmap = ([(0, i, 16 + i) for i in range(6)]
                  + [(1, 6 + i, 22 + i) for i in range(6)] + [(1, i, 28 + i) for i in range(6)]
                  + [(1, 12 + i, 34 + i) for i in range(6)] + [(1, 18 + i, 40 + i) for i in range(6)]
-                 + [(2, 12 + i, 68 + i) for i in range(6)] + [(2, 18 + i, 62 + i) for i in range(6)])
+                 + [(2, 12 + i, FX1_CCS[i]) for i in range(6)] + [(2, 18 + i, FX2_CCS[i]) for i in range(6)])
         cache, bits, engq = dumps["cccache"].read_bytes(), dumps["ccbits"].read_bytes(), dumps["engq"].read_bytes()
         dbptr = int.from_bytes(dumps["dbptr"].read_bytes(), "big")
         partix = dumps["partix"].read_bytes()[3]

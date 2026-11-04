@@ -830,6 +830,10 @@ def main():
     if _dram_clones:
         _span = CLONE_STRIDE * len(CLONED_ORDER)
         _stage_base = (BASE + _img_len + 0xffff) & ~0xffff
+        # a run of this build that found a staging-range word in the linked
+        # runtime asks for staging this many 64 KiB steps higher (the check
+        # after the clones' repoint, below); 0 for every build that passes
+        _stage_base += 0x10000 * int(os.environ.get("OCTABAM_STAGE_SHIFT", "0"))
         _pristine = IMG.read_bytes()
         while any(_stage_base <= int.from_bytes(_pristine[o:o + 4], "big") < _stage_base + _span
                   for o in range(0, len(_pristine) - 3, 2)):
@@ -1133,7 +1137,8 @@ def main():
                       and c.registers_formatter.module in BLANKED)]
     _plan = [(_c, _c.pinned) for _c in _caves]
     # ---- overrides (schema.Override): a bridge stands in at a shared site --
-    # Collected before anything is written: which detours to skip.
+    # Collected before anything is written: which detours, symbol refs, pokes
+    # and table refs to skip.
     _ovr_detours: set[tuple[int, str]] = set()          # (site, module key)
     for _k in REMIX.modules:
         for _o in getattr(remix_modules()[_k], "overrides", ()):
@@ -1684,7 +1689,11 @@ def main():
                 sys.exit(f"{_u.label}: resident bytes changed before runtime reference link")
             img[_at - BASE:_at - BASE + len(_after)] = _after
             _sym[_u.label] = _syms
-            _exports.update(_glob)
+            # --defsym imports also appear in nm's global table. They may
+            # contain staging addresses (notably CLONE_*); retain the final
+            # provider exports installed above, publishing only this unit's own.
+            _imports = dict(_rest)
+            _exports.update({n: v for n, v in _glob.items() if n not in _imports})
             print(f"  {_u.label}: {len(_resolved)} runtime references resolved; resident layout unchanged")
         # DRAM label formatters (Linked.registers_formatter), as the cave
         # registration above: skipped for a module not cloned or BLANKED,
@@ -1719,6 +1728,10 @@ def main():
 
     for _m, _t in [(remix_modules()[_k], _t) for _k in REMIX.modules
                    for _t in getattr(remix_modules()[_k], "tables", ())]:
+        if _t.refs and all((_ra, _m.key) in _ovr_detours for _ra, _old in _t.refs):
+            print(f"  {_m.key}: table {_t.label} bridged -- another module stands in for "
+                  f"every ref; not placed")
+            continue
         _ents = _t.entries([rd32(_t.old + i * 4) for i in range(_t.count)],
                            [_sym[u][s] for u, s in _t.symbols])
         _blob = b"".join(v.to_bytes(4, "big") for v in _ents)
@@ -1738,6 +1751,9 @@ def main():
         else:
             _ovf_top = (_at + len(_blob) + 3) & ~3
         for _ra, _old in _t.refs:
+            if (_ra, _m.key) in _ovr_detours:
+                print(f"    ref 0x{_ra:08x}: bridged -- another module stands in for it")
+                continue
             if rd32(_ra) != _old:
                 sys.exit(f"{_m.key} table {_t.label}: ref 0x{_ra:08x} holds "
                          f"0x{rd32(_ra):08x}, not 0x{_old:08x}; refusing")
@@ -1773,6 +1789,10 @@ def main():
 
     for _m, _r in [(remix_modules()[_k], _r) for _k in REMIX.modules
                    for _r in getattr(remix_modules()[_k], "symbol_refs", ())]:
+        if (_r.addr, _m.key) in _ovr_detours:
+            print(f"    ref 0x{_r.addr:08x}: {_m.key}:{_r.symbol} bridged -- another "
+                  f"module stands in for it")
+            continue
         _got = rd32(_r.addr)
         if _got != _r.expect:
             sys.exit(f"{_m.key} symbol ref {_r.note or _r.symbol} at "
@@ -1788,6 +1808,10 @@ def main():
 
     for _m, _p in [(remix_modules()[_k], _p) for _k in REMIX.modules
                    for _p in getattr(remix_modules()[_k], "pokes", ())]:
+        if (_p.addr, _m.key) in _ovr_detours:
+            print(f"    poke 0x{_p.addr:08x}: {_m.key} bridged -- another module stands "
+                  f"in for it")
+            continue
         _got = bytes(img[_p.addr - BASE:_p.addr - BASE + len(_p.expect)])
         if _got != _p.expect:
             sys.exit(f"{_m.key} poke {_p.note} at 0x{_p.addr:08x} finds {_got.hex()}, "
@@ -4087,9 +4111,35 @@ hostquit:
         _appends[_platform_at] = (
             "octabam loader + payloads (" + ", ".join(_pnames) + ")", _pappend)
         _raw = pathlib.Path("out/platform/runtime.raw").read_bytes()
-        if any(_lo <= int.from_bytes(_raw[_o:_o + 4], "big") < _hi
-               for _o in range(0, len(_raw) - 3, 2)):
-            sys.exit("descriptor clones: the DRAM runtime still holds a staging address")
+        _held = [_o for _o in range(0, len(_raw) - 3, 2)
+                 if _lo <= int.from_bytes(_raw[_o:_o + 4], "big") < _hi]
+        if _held:
+            # A stale staging pointer comes from the link (a CLONE_* staging
+            # export) and moves with the staging range; a coincidence is the
+            # runtime's own bytes spelling the range (OCTA303's o3_over:
+            # o3_names's low half 0x4011 then .short 0x05f read 0x4011005f
+            # against staging 0x40110000, 1 Nov 2026) and does not. So build
+            # again with staging 64 KiB higher: the image does not depend on
+            # where staging was (it is cut off before the write), and a word
+            # still in range after the move is refused.
+            _shift = int(os.environ.get("OCTABAM_STAGE_SHIFT", "0"))
+            if _shift < 2:
+                print(f"\nSTAGING: {len(_held)} runtime word(s) in the staging range "
+                      f"0x{_lo:08x}..0x{_hi:08x}: building again with staging "
+                      f"{_shift + 1} x 64 KiB higher", flush=True)
+                os.execve(sys.executable, [sys.executable] + sys.argv,
+                          {**os.environ, "OCTABAM_STAGE_SHIFT": str(_shift + 1)})
+            # name each word: its runtime address and the symbol at or below it
+            _rbase = json.loads(pathlib.Path("out/platform", platform_build.LAYOUT).read_text())["base"]
+            _by = sorted((_v, _n) for _n, _v in _psyms2.items() if _rbase <= _v < _rbase + len(_raw))
+            for _o in _held[:8]:
+                _a = _rbase + _o
+                _sym = max(((_v, _n) for _v, _n in _by if _v <= _a), default=(_rbase, "?"))
+                print(f"  0x{_a:08x} ({_sym[1]}+0x{_a - _sym[0]:x}): "
+                      f"0x{int.from_bytes(_raw[_o:_o + 4], 'big'):08x}, staging is "
+                      f"0x{_lo:08x}..0x{_hi:08x}")
+            sys.exit(f"descriptor clones: the DRAM runtime still holds a staging address "
+                     f"({len(_held)} word(s), above)")
 
     # A DSP source machine (Module.dsp_source: ANALOG BD, BLACKPYRAMIDS_303)
     # replaces the source renderer on both cores. Its integrate step must see

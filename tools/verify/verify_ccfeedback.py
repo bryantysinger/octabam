@@ -59,10 +59,12 @@ ENGQ_WAITER, ENGINE_TCB = 0x460d17ce + 0xc, 0x460ddde4   # the engine blocked on
 # The unit's map, as cc_feedback.s: (region, offset, CC); region 0 = the
 # machine's PLAYBACK page-1 block, 1 = the page-1 array (LFO AMP FX1 FX2),
 # 2 = the page-2 row (FX1 +12, FX2 +18)
+from remix.midi_cc import ccmap_ccs  # noqa: E402
+FX2_CCS, FX1_CCS = ccmap_ccs()          # the sweep sends what CC MAP reads
 MAP = ([(0, i, 16 + i) for i in range(6)]
        + [(1, 6 + i, 22 + i) for i in range(6)] + [(1, i, 28 + i) for i in range(6)]
        + [(1, 12 + i, 34 + i) for i in range(6)] + [(1, 18 + i, 40 + i) for i in range(6)]
-       + [(2, 12 + i, 68 + i) for i in range(6)] + [(2, 18 + i, 62 + i) for i in range(6)])
+       + [(2, 12 + i, FX1_CCS[i]) for i in range(6)] + [(2, 18 + i, FX2_CCS[i]) for i in range(6)])
 UNMAPPED = [(2, 0), (2, 5), (2, 6), (2, 11), (2, 24), (2, 29)]      # page-2 LFO PMTR/WAVE, AMP, LFO MULT/TRIG
 
 
@@ -204,8 +206,9 @@ def main():
     # 3. one mapped byte
     uc.mem_write(part_addr(3, 2, 18), b"\x05")              # FX2 page-2 slot 0 on T4
     got = sweeps()
-    check("diff: one FX2 page-2 byte on T4 -> one message, CC 62 = 5", got == [(3, 62, 5)], f"{got}")
-    check("diff: the cache follows", cache(3, 62) == 5)
+    check(f"diff: one FX2 page-2 byte on T4 -> one message, CC {FX2_CCS[0]} = 5",
+          got == [(3, FX2_CCS[0], 5)], f"{got}")
+    check("diff: the cache follows", cache(3, FX2_CCS[0]) == 5)
 
     # 4. unmapped Part bytes, and the live lane (locks, slides, scenes write it every step)
     for region, off in UNMAPPED:

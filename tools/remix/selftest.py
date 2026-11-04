@@ -22,7 +22,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 from remix import ledger, registry, schema, state, stock  # noqa: E402
 from remix.schema import (BusRole, CavePatch, Claims, Detour, DramRegion, DspHook,  # noqa: E402
                           DspRange, DspSection, Formatter, Keep, Kind, Linked, MenuEntry,
-                          Module, Param, Poke, Proof, Remix, SymbolRef, TableGrow, YBase)
+                          Module, Override, Param, Poke, Proof, Remix, SymbolRef, TableGrow, YBase)
 
 
 _PRIORITY = iter(range(100, 1000))      # distinct unless a case sets one
@@ -194,6 +194,10 @@ CASES = [
     ("a detour's pad_to span over another's site",
      [_cf("alpha", detours=(Detour(0x40079816, b"\x00" * 8, "u", "a", pad_to=8),)),
       _cf("beta", detours=(Detour(0x4007981c, b"\x00" * 6, "u", "b"),))], "hook site"),
+    ("an override naming a site the overridden module does not claim",
+     [_cf("alpha", pokes=(_poke(0x40100000),)),
+      _cf("beta", pokes=(_poke(0x40100010),), overrides=(Override(0x40100020, "ALPHA"),))],
+     "override"),
     # ---- kept bytes ------------------------------------------------------
     ("a poke on bytes another module keeps",
      [_cf("alpha", keeps=(Keep(0x4001f322, bytes.fromhex("48780064"), "pea 0x64"),)),
@@ -279,6 +283,18 @@ CLEAN_CLAIMS = [_cf("alpha", pokes=(_poke(0x4001f322, 4),),
                 _ranged("delta", DspRange("y", 0x0800, 0x100, "buf", half_relative=True),
                         DspRange("x", 0x6000, 0x10, "table"), payloads=frozenset({"B"}))]
 
+# A bridge standing in for another module's symbol ref, poke and table ref
+# (schema.Override): each pair below collides without the overrides.
+CLEAN_OVERRIDES = [
+    _cf("alpha", symbol_refs=(SymbolRef(0x400d6438, 0x40004008, "u", "a"),),
+        pokes=(_poke(0x40100000, 4),),
+        tables=(TableGrow("t", 0x40100100, 4, (("u", "s"),), ((0x40065bd8, 0x40100100),)),)),
+    _cf("beta", symbol_refs=(SymbolRef(0x400d6438, 0x40004008, "u", "b"),),
+        pokes=(_poke(0x40100000, 4),),
+        tables=(TableGrow("t2", 0x40100100, 4, (("u", "s"),), ((0x40065bd8, 0x40100100),)),),
+        overrides=(Override(0x400d6438, "ALPHA"), Override(0x40100000, "ALPHA"),
+                   Override(0x40065bd8, "ALPHA")))]
+
 
 def _submodule_preflight() -> int:
     """Refuse early, with the fix, if a module's upstream submodule is not checked out.
@@ -359,7 +375,9 @@ def main():
                         ("two DSP sections hooking one site on different payloads",
                          CLEAN_HOOK_PAIR),
                         ("adjacent pokes, agreeing keepers, ranges on different payloads",
-                         CLEAN_CLAIMS)):
+                         CLEAN_CLAIMS),
+                        ("a bridge's symbol ref, poke and table ref overriding another's",
+                         CLEAN_OVERRIDES)):
         found = ledger.check(mods)
         if found:
             bad += 1
@@ -984,7 +1002,7 @@ def main():
     _rig = ("FILTER", "SPATIALIZER", "EQUALIZER", "PHASER", "FLANGER", "CHORUS",
                  "PLATE REV", "SPRING REV", "DARK REV", "COMPRESSOR", "LO-FI",
                  "DJ EQ", "COMB FILTER")
-    _want = {"midi-loopback": (), "midi-scales": (), "mods": (), "ata-write-guard": (), "usb-out-tracks-main-cue": ("PLATE REV",), "usb-out-tracks": (), "usb-out-master": (),
+    _want = {"midi-follow": (), "midi-loopback": (), "midi-scales": (), "mods": (), "ata-write-guard": (), "usb-out-tracks-main-cue": ("PLATE REV",), "usb-out-tracks": (), "usb-out-master": (),
              "usb-out-tracks-post": (),
              "remix-switch": (), "remix-switch-trace": (),   # REMIX SWITCH's park in dead vectors, no region words
              "rs64": (),   # remix-switch with BBD placed in the shared window: no region words
@@ -994,6 +1012,13 @@ def main():
              "octa303": (), "rec-threshold": (), "buffer-saver": (), "plocks-p2": (), "scenes-midisc": (), "kits": (),
              "persistent-buffers": (),   # STORE + PERSISTENT BUFFERS on the stock effects, no DSP words
              "morph": (),   # STORE + MORPH on the stock effects, no DSP words
+             # HOOKS's fixtures (modules/hooks): ColdFire bridges, no DSP words of their own
+             "hooks": (), "hooks-boot": (), "hooks-chrom-303": (),
+             "hooks-chrom-bp": ("SPRING REV",),   # BLACKPYRAMIDS's voice in SPRING's words, as blackpyramids-303
+             "hooks-core": ("PHASER", "DARK REV"),   # LOAD METER's DSP half in PHASER's (as stock-meter-a), CF METER's readout in DARK's (as cfmeter)
+             "hooks-machines": ("SPRING REV",),   # ANALOG BD's voices in SPRING's words, as analog-bassdrum
+             "hooks-machines-all": ("SPRING REV",),   # the same, with CX OSC
+             "hooks-machines-cx": (),   # OCTA303 + CX OSC: ColdFire, no DSP words
              "analog-bassdrum": ("SPRING REV",),
               "blackpyramids-303": ("SPRING REV",),   # its DSP voice in SPRING's words, as ANALOG BD's
              "sidechain-compressor": ("SPRING REV",), "kyoti-mute-sidechain": ("SPRING REV",),   # its DSP section in SPRING's words
@@ -1002,16 +1027,21 @@ def main():
                                   "quantize-live-rec-toggle", "erase-empty-trigless-locks",
                                   "mute-modes", "kyoti-mute-jump", "kyoti-fixes", "rec-trig-mute",
                                   "euclid-fill", "varispeed", "copy-project",
+                                  "pattern-mute-modes",  # PATTERN MUTE beside MUTE_MODES, stock effects
                                   "scope",  # SCOPE: ColdFire window, no DSP words
-                                  "cxosc", "cxosc-core")},  # CX OSC (+ CORE handoff); ColdFire, no DSP words
+                                  "cxosc", "cxosc-core",
+                                  "screenshot", "screenshot-usb")},  # CX OSC (+ CORE handoff); ColdFire, no DSP words
              "trackpatterns": (),   # pgstath's ColdFire module on the stock effects, no DSP words
              "trackpatterns-core": (),   # TRACK PATTERNS on the core modules and the 14 stock effects, which gives up nothing
+             "free-loop": (),   # FREE LOOP: ColdFire, no DSP words, on the 14 stock effects
+             "rec-cs1-skip": (),   # REC CS1 SKIP: ColdFire, no DSP words, on the 14 stock effects
              # the twelve io remixes: the IN module's RX inject is placed in SPATIALIZER's words
              **{f"usb-io-{o}-{i}": ("SPATIALIZER",) for o in ("tracks", "tracks-main-cue", "main-cue", "main") for i in ("ab", "cd", "abcd")},
              "octatrick": ("SPATIALIZER",),   # USB's ABCD input inject, as in the io remixes
              "pext-probe": ("EQUALIZER", "PLATE REV", "SPRING REV"),   # the probe takes EQUALIZER's id and the two reverbs' words
              "window-mod": ("CHORUS", "PLATE REV", "SPRING REV", "DARK REV"), "window-ctl": ("CHORUS", "PLATE REV", "SPRING REV", "DARK REV"),   # MODULATION takes CHORUS's id; the reverbs' words hold LOAD METER and CORE
              "octabam": (),   # all 14 stock effects stay; ours and LOAD METER run from the window
+             "octabam-full": (),   # octabam with TRANSIENT, DISTORX and SIDECHAIN_COMPRESSOR as well
              "dlspike": (),   # all 14 stock effects stay; MODULATION is loaded on demand
              "dl-probe": ("EQUALIZER",), "dl-probe-any": ("EQUALIZER",),   # DLPROBE takes EQUALIZER's id
              "ext-probe": ("EQUALIZER",),   # EXTPROBE takes EQUALIZER's id
@@ -1037,6 +1067,8 @@ def main():
              "events-empty": ("SPRING REV", "DARK REV"),
              "events-clients": ("SPATIALIZER", "EQUALIZER", "PHASER", "FLANGER", "CHORUS",
                                 "SPRING REV", "DARK REV", "LO-FI", "DJ EQ", "COMB FILTER"),
+             "midi-follow-events": ("SPATIALIZER", "EQUALIZER", "PHASER", "FLANGER", "CHORUS",
+                                     "SPRING REV", "DARK REV", "LO-FI", "DJ EQ", "COMB FILTER"),
              "euclid": ("SPATIALIZER", "FLANGER", "CHORUS", "COMB FILTER"),
              "rig": _rig,
              "character-txtr": _rig,   # octabam-bus with the TXTR station

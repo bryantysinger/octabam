@@ -10,6 +10,13 @@ block); with the entry's words written into a copy of the dump. Then the copier 
 an init over a staged block: with the doorbell it publishes the code and the stub runs it, without the doorbell it
 leaves the stub dry, and a block with a wrong sum is not published, and a withdraw message (N = 0) makes the stub dry again. dsp_host maps P and X separately outside
 the window's alias, so this proves the stub's and the copier's logic and register handling, not the hardware.
+
+ON FX2. An effect that is live on an FX2 slot (its Claims.fx1_only lifted: the stations with SLOTS FX1+FX2, as in octabam) is
+also rendered at the FX2 position (-r7 2 -alloc 1, as verify_stations_fx2 does): its own code there renders what it renders on
+FX1 and is not the dry pass; its stub bound renders that; and the copier-loaded code renders it from block 0. What this cannot
+see: dsp_host places the FX2 slot by its own model of the dispatcher (AGENTS.md, trap-dispatcher-model), and it maps P apart
+from the window's alias, so whether an FX2 instance's own buffer overlaps the code loaded into the window of one of the four
+FX2 buffer slots is the port's (verify_dlload) and the unit's to show, not this gate's.
 """
 import json
 import math
@@ -43,6 +50,7 @@ REMIX = sys.argv[1] if len(sys.argv) > 1 else "test/dlspike"
 R = registry.remix(REMIX)
 DLC = dict(R.window)["DLCOPY"]           # DLCOPY's hook entry, called as an init
 IMAGE = dlbuild.build(REMIX, "dlstub")
+BOUND = registry.bound(R)
 mem = send_probe.dump_mem(str(IMAGE), TMP / "A.mem", "A")
 RECS = json.loads(pathlib.Path("out/dsp/demand_records.json").read_text())
 init_n, proc_n = send_probe.entry_points(mem, 0x08)      # an unassigned id: the stock null stub
@@ -76,9 +84,10 @@ def write_records(path, recs):
 base_recs = records(mem)
 
 
-def run(memfile, init, proc, tag, vals):
+def run(memfile, init, proc, tag, vals, slot="fx1"):
+    r7, alloc = {"fx1": ("1", "0"), "fx2": ("2", "1")}[slot]
     out = TMP / f"{tag}.raw"
-    cmd = [HOST, "-mem", str(memfile), "-init", f"{init:x}", "-proc", f"{proc:x}", "-inst", "1", "-r7", "1", "-alloc", "0",
+    cmd = [HOST, "-mem", str(memfile), "-init", f"{init:x}", "-proc", f"{proc:x}", "-inst", "1", "-r7", r7, "-alloc", alloc,
            "-inmask", "1", "-frames", str(FRAMES), "-blocks", str(BLOCKS), "-in", str(TMP / "in.raw"),
            "-out", str(out), "-params", ",".join(str(v) for v in vals)]
     r = subprocess.run(cmd, capture_output=True, text=True)
@@ -152,6 +161,21 @@ for k, key in enumerate(R.window_demand):
     write_records(TMP / f"badsum{k}.mem", gone + [(1, STAGE, bad)])
     check("staged with one bit wrong: the copier does not publish it, the stub stays dry",
           run(TMP / f"badsum{k}.mem", DLC, proc_s, f"badsum{k}", vals) == dry)
+    claims = BOUND[key].claims
+    if claims is not None and claims.fx1_only:
+        print("  (FX1 only here: no FX2 render)")
+    else:
+        direct2 = run(mem, init_m, proc_m, f"direct2_{k}", vals, "fx2")
+        dry2 = run(mem, init_n, proc_n, f"null2_{k}", vals, "fx2")
+        check("FX2: the effect's own code renders what it renders on FX1, sample for sample", direct2 == direct,
+              f"{sum(a != b for a, b in zip(direct2, direct))} of {len(direct)} samples differ")
+        check("FX2: the render is not the dry pass", direct2 != dry2)
+        check("FX2: bound, the stub runs the real code",
+              run(TMP / f"bound{k}.mem", init_s, proc_s, f"bound2_{k}", vals, "fx2") == direct2)
+        loaded2 = run(variant(f"loaded2_{k}"), DLC, proc_s, f"loaded2_{k}", vals, "fx2")
+        check("FX2: staged with the doorbell, the copier binds it and the stub runs the real code from block 0",
+              loaded2 == direct2, f"{sum(x != y for x, y in zip(loaded2, direct2))} of {len(direct2)} samples differ")
+        check("FX2: unbound, the stub is the dry pass", run(mem, init_s, proc_s, f"unbound2_{k}", vals, "fx2") == dry2)
     others = [(1, ENTRY + 8 * j, [MAGIC, 1, 2, 3, 4]) for j in range(len(R.window_demand)) if j != k]
     write_records(TMP / f"withdraw{k}.mem", base_recs + [(1, entry, [MAGIC, init_m, proc_m, code_at, code_at + n])]
                   + others + [(1, STAGE, [0xA55A, k, 0, 0, 0, 0])])

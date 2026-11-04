@@ -7,8 +7,17 @@ Stock incoming CC reaches page 1 only (CC 16–45): the handler admits
 
 | block | target |
 |---|---|
-| CC 62–67 | FX2 page 2, slots 6–11 |
-| CC 68–73 | FX1 page 2, slots 6–11 |
+| CC 102–107 | FX2 page 2, slots 6–11 |
+| CC 108–111, 14, 15 | FX1 page 2, slots 6–11 |
+
+The blocks were CC 62–67 and 68–73 until 1 Nov 2026 (issue #981). That
+range holds the pedal CCs, 64 sustain to 69 hold 2. A keyboard's sustain
+pedal on a track's channel wrote an FX2 page-2 knob, and CC FEEDBACK's
+sweep at every project load sent CC 64 = 127 to each synth on channels
+1–8, which held its notes. Every number now is undefined in the MIDI
+standard. `FX2_CCS` / `FX1_CCS` in the manifest are the numbers;
+`tools/remix/midi_cc.py` refuses a stateful CC (pedals, bank select, data
+entry, RPN/NRPN, channel mode) at import.
 
 `Kind.CF_PATCH`: one cave (`cc_map.s`, linked where the ColdFire free region
 places it) and one poke. Named CC PAGE 2 (`modules/ccpage2`) until
@@ -16,18 +25,25 @@ places it) and one poke. Named CC PAGE 2 (`modules/ccpage2`) until
 
 ## Measured
 
-- `tools/verify/verify_cc_map.py` (in `make check`): for each track 0–7
-  on its own channel, CC 62 lands count-clamped at the traced Part, live
-  and shadow bytes; an over-count value clamps; CC 40 reaches the next
-  handler and writes no page-2 byte. This runs single-core under Unicorn, so
+- `tools/verify/verify_cc_map.py` (in `make check`; on the new numbers
+  since 1 Nov 2026, measured by the PR's CI run): for each track 0–7
+  on its own channel, CC 102 (FX2) and CC 108 (FX1) land count-clamped at
+  the traced Part, live and shadow bytes; an over-count value clamps; CC 15
+  reaches FX1 slot 11; every CC outside the blocks, 62–73 among them,
+  reaches the next handler and writes no page-2 byte. This runs single-core under Unicorn, so
   it proves the write and the decision.
 - Under the ColdFire port (`verify_set`, `OT_PROJECT=<dir> make check`):
-  CC 68 over UART0 reaches the FX1 page-2 lane and the DSP record
-  (15 Sep 2026).
-- MODE DEFAULTS over CC, under the port: CC 62 = 1 on T1's channel lands
-  GRAIN's view in the lane; a CC 63 in the same frame then sets SCTR.
+  CC 68 over UART0 reached the FX1 page-2 lane and the DSP record
+  (15 Sep 2026, the old numbers; the gate sends CC 108 since 1 Nov 2026).
+- MODE DEFAULTS over CC, under the port: CC 62 = 1 on T1's channel landed
+  GRAIN's view in the lane; a CC 63 in the same frame then set SCTR (the
+  old numbers: CC 102 and 103 now).
 
 ## On the unit
+
+Both images ran the old numbers (62–73). The 1 Nov 2026 numbers change
+only the decode at `CAVE`; the write paths are the same bytes. They have
+not run on a unit.
 
 - Image 96: CC 63 on channel 5 moved SHMR on the panel and raised the
   reverb tail's 2–8 kHz bands 5–8 dB. Images before 96 wrote the PLAYBACK
@@ -36,10 +52,13 @@ places it) and one poke. Named CC PAGE 2 (`modules/ccpage2`) until
 
 ## Open
 
+- The new numbers on a unit: CC 102 and CC 108 moving their knobs, and a
+  sustain pedal (CC 64) on a track's channel moving nothing.
+
 - FX2 page 2 of any FX2 effect other than BusDelay/BusVerb: the cave skips
   those tracks.
-- MIDI CC through the SCENES KITS chain on hardware (under the port CC 68
-  reaches page 2 through the chain, above).
+- MIDI CC through the SCENES KITS chain on hardware (under the port CC 68,
+  the old FX1 number, reached page 2 through the chain, above).
 - An FX1 page-2 edit reaching the DSP on a THRU track, on hardware
   (measured under the port: `docs/contributing/FAILURE_MODES.md`, image 24).
 
@@ -70,8 +89,8 @@ addresses are `0x80000810 + track*72 + lane + slot2`.
 
 | block | editor | written when | clamp | Part | shadow | lane |
 |---|---|---|---|---|---|---|
-| 62–67 | FX2 page 2, `0x4003aab2` | the Part's FX2 id is BusDelay (6) or BusVerb (7); other ids skip the track | count tables in the cave (`VCOUNT`/`DCOUNT`) | DB `+0x8f084` | `0x100a51d2` | `+0x38` |
-| 68–73 | FX1 page 2, `0x4003abe4` | the Part's FX1 id is not 0 (NONE) | the FX1 descriptor's min/count (`0x400d5f58[id]`, `+0x6a`/`+0x9a`) | DB `+0x8f07e` | `0x100a51cc` | `+0x32` |
+| 102–107 | FX2 page 2, `0x4003aab2` | the Part's FX2 id is BusDelay (6) or BusVerb (7); other ids skip the track | count tables in the cave (`VCOUNT`/`DCOUNT`) | DB `+0x8f084` | `0x100a51d2` | `+0x38` |
+| 108–111, 14, 15 | FX1 page 2, `0x4003abe4` | the Part's FX1 id is not 0 (NONE) | the FX1 descriptor's min/count (`0x400d5f58[id]`, `+0x6a`/`+0x9a`) | DB `+0x8f07e` | `0x100a51cc` | `+0x32` |
 
 Both blocks then set the editor's four dirty flags: `DB+0x95048 |= 1<<part`,
 `0x100b145e |= 1<<part`, `DB+0x9b332 = 1`, `0x100f8598 = 1`. The cave leaves
@@ -95,30 +114,32 @@ Stock audio-track CC map (handler `0x4000e79c`, `docs/firmware/MIDI.md`
 section 1): 7, 8, 16–61 and 112–127 are used. 0–6, 9–15 and 62–111 fall through
 to the handler's `rts`.
 
-| range | count | holder |
-|---|---|---|
-| 62–73 | 12 | this module |
-| 74–111 | 38 | free |
-| 0–6, 9–15 | 14 | free |
+| CC | holder |
+|---|---|
+| 102–107 | this module, FX2 page 2 |
+| 108–111, 14, 15 | this module, FX1 page 2 |
+| 80 | REC TRIG MUTE |
+| 83–89 (PROG CH channel), 90–93 | FREE LOOP |
+| 0, 6, 32, 38, 64–69, 96–101, 120–127 | never: they hold state on the receiving synth (`tools/remix/midi_cc.py`) |
+| 3, 9 | free, undefined in the MIDI standard |
+| 70–79, 81, 82 | free, but sound controllers and general-purpose CCs that synths map |
+| 1, 2, 4, 5, 10, 11, 84 | free, but keyboards send them unasked (mod wheel, breath, foot, portamento time, pan, expression, portamento control) |
 
-
-Controllers send some numbers in these ranges without being asked, for
-their standard MIDI meanings:
-
-- 64–67 (sustain, portamento, sostenuto, soft pedal) are in the FX2 block.
-  A sustain pedal on a track's channel writes FX2 page-2 slot 8 on a bus
-  host.
-- 96–101 are data increment/decrement and NRPN/RPN select.
-- 0 is bank select, 1 mod wheel, 6 data entry, 10 pan, 11 expression.
+A synth may map any CC to a parameter of its own, undefined ones too.
+CC FEEDBACK sends these numbers on every audio track's channel, so an
+external synth on one of those channels hears them; keeping it on a
+channel of its own is the user's part.
 
 ## Adding a block
 
-1. Take CC numbers from the free list below.
+1. Take CC numbers from the table above, outside `midi_cc.STATEFUL`, and
+   declare them in the manifest beside `FX2_CCS` / `FX1_CCS` through
+   `refuse_stateful`.
 2. Trace the target page's editor: its Part, shadow and lane stores, its
    clamp, and its dirty flags. `docs/firmware/MIDI.md` section 6 has the table for
    the three page-2 editors traced so far (PLAYBACK `0x4003a474`, FX2, FX1).
-3. Widen the range test at `CAVE` (today `cc−62 ≤ 11`) and add a write path
-   for the block.
+3. Extend the decode at `CAVE` (today `cc−102 ≤ 9`, then `cc−14 ≤ 1`) to
+   give the new block its slot index, and add a write path for it.
 4. Regenerate the oracle (`manifest.CODE`), and extend
    `tools/verify/verify_cc_map.py` to prove the new stores on all eight
    tracks against the editor.

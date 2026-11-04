@@ -26,6 +26,8 @@ Where each doc is, by who reads it. A module's own page is
 | [contributing/TOOLING.md](contributing/TOOLING.md) | every tool by pipeline stage, and which README each tool directory has |
 | [contributing/HARDWARE_TESTING.md](contributing/HARDWARE_TESTING.md) | testing a remix on your own unit: the session step by step, stress sequences, recovering from a failure |
 | [contributing/HARDWARE_MATRIX.md](contributing/HARDWARE_MATRIX.md) | one remix in many configurations on a unit over one USB cable: project generation, the run, the flags, the limits |
+| [contributing/HARDWARE_SUITE.md](contributing/HARDWARE_SUITE.md) | the `octabam` remix's hardware suite: projects with generated audio, the phases over the one cable, what each measures |
+| [contributing/HARDWARE_MANUAL.md](contributing/HARDWARE_MANUAL.md) | the manual test plan for what the cable cannot reach: panel gestures, listening, card, MIDI controllers |
 | [contributing/SCREENSHOTS.md](contributing/SCREENSHOTS.md) | re-capturing the manual site's LCD screenshots: when, `capture_manual.py` groups, the records and coverage page, the probe scripts, FX page behaviour |
 | [contributing/FAILURE_MODES.md](contributing/FAILURE_MODES.md) | what has gone wrong on a unit: symptom, cause, fix, the gate that catches it |
 | [contributing/TRAPS.md](contributing/TRAPS.md) | the trap register: what has cost real work in the code, build, emulators and harness — symptom, fix, the gate that catches it |
@@ -61,6 +63,9 @@ implemented): [OTX_PROJECT_PROPOSAL.md](proposals/OTX_PROJECT_PROPOSAL.md)
 and [OTX_MODULE_GUIDELINES.md](proposals/OTX_MODULE_GUIDELINES.md), and
 [USB.md](proposals/USB.md), merging the four USB modules into one with
 run-time settings held by the brain (14 Oct 2026).
+[SHARED_HOOKS.md](proposals/SHARED_HOOKS.md): one owner per contested
+ColdFire site (STORE, EVENTS and a new PARTS), so conflicting modules can
+share an image (28 Oct 2026, not implemented).
 
 [proposals/remixes/](proposals/remixes/README.md): remix proposals, each
 taken on hardware to verified stable before it lands under `remixes/`.
