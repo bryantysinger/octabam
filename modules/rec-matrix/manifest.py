@@ -68,6 +68,7 @@ LEDS_SITE, LEDS_STOCK = 0x40043FDC, H("4fefffbc" "48d73c7c")    # lea -68(sp),sp
 CLOSE_SITE, CLOSE_STOCK = 0x4002EE88, H("2f0a" "4ab9460d10cc")  # move.l a2,-(sp); tst.l 0x460d10cc
 PAINT_SITE, PAINT_STOCK = 0x400346A4, H("4fefff48" "48d77cfc")    # lea -184(sp),sp; movem.l d2-d7/a2-fp,(sp): the track-key painter
 PAINT2_SITE, PAINT2_STOCK = 0x40034880, H("4fefff78" "48d77cfc")  # lea -136(sp),sp; movem.l d2-d7/a2-fp,(sp): its lock-scan form
+TKEYS_SITE, TKEYS_STOCK = 0x40083EB0, H("4fefffd4" "48d77cfc")    # lea -44(sp),sp; movem.l d2-d7/a2-fp,(sp): the track keys' painter
 PULSE_SITE, PULSE_STOCK = 0x4003442E, H("48780002" "2613")        # pea 2; move.l (a3),d3: a track key's green pulse
 KNOB_E_MKII = 0x400BA4D4 + 9 * 0x1A + 2   # RECORDING SETUP's MKII key layer, knob E's press (0)
 KNOB_E_MKI = 0x400BA60C + 9 * 0x1A + 2    # the MKI layer's
@@ -186,6 +187,9 @@ MODULE = Module(
                     kind="jmp", pad_to=8),
              Detour(PAINT2_SITE, PAINT2_STOCK, "rmxed", "rmx_on_paint2",
                     "stock's track-key painter, lock-scan form: skipped while the editor shows the buffers",
+                    kind="jmp", pad_to=8),
+             Detour(TKEYS_SITE, TKEYS_STOCK, "rmxed", "rmx_on_tkeys",
+                    "the track keys' painter: skipped while the editor shows the buffers on the track keys",
                     kind="jmp", pad_to=8),
              Detour(PULSE_SITE, PULSE_STOCK, "rmxed", "rmx_on_pulse",
                     "a track key's green pulse: skipped while the editor shows the buffers on the track keys",

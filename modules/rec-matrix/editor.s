@@ -75,6 +75,7 @@
         .equ    FLASH_BIT,  26              | its bit 26: ~0.5 s lit, ~0.5 s dark
         .equ    PAINT_CONT, 0x400346ac      | stock's track-key painter after its lea/movem
         .equ    PAINT2_CONT, 0x40034888     | its second form (the lock scan), after its lea/movem
+        .equ    TKEYS_CONT, 0x40083eb8      | the track keys' own painter (0x40083eb0) after its lea/movem
 | A panel LED is lit while its steady bit (0x460ba98c, a bit per id) is set
 | or its set_led countdown runs (0x460ba9cc, 120 Hz). Stock paints the track
 | keys with the steady bits; so does the editor, its countdowns held at 0.
@@ -728,6 +729,21 @@ rmx_on_paint2:
 1:      lea     -136(%sp),%sp
         movem.l %d2-%d7/%a2-%a6,(%sp)
         jmp     (PAINT2_CONT).l
+
+| 0x40083eb0, a "jmp" detour: the track keys' painter (selection on the
+| first die, the others on the second, both steady bits at once through
+| 0x400132c4; ids from 0x400a9670). Measured on the unit with the matrix
+| open: it repaints after the editor, so the editor's colours never showed.
+| Open: skipped. Closed: the displaced `lea -44(sp),sp; movem.l
+| d2-d7/a2-fp,(sp)` and on.
+        .global rmx_on_tkeys
+rmx_on_tkeys:
+        tst.l   rmx_editing
+        beq.s   1f
+        rts
+1:      lea     -44(%sp),%sp
+        movem.l %d2-%d7/%a2-%a6,(%sp)
+        jmp     (TKEYS_CONT).l
 
 | 0x4003442e, a "jmp" detour inside the loop that pulses a track key's green
 | LED for 2 ticks (set_led(id + 1, 2), ids from 0x400a759e). Open: that
