@@ -73,6 +73,9 @@
         .equ    MUTE_BYTE,  0x8000000a      | the audio tracks' mute, bit n = track n
         .equ    DTCN3,      0xfc07c00c      | DMA timer 3: free-running at the 132 MHz bus (PANEL.md)
         .equ    FLASH_BIT,  26              | its bit 26: ~0.5 s lit, ~0.5 s dark
+        .equ    PAINT_CONT, 0x400346ac      | stock's track-key painter after its lea/movem
+        .equ    PULSE_CONT, 0x40034434      | the track keys' green pulse, after pea 2; move.l (a3),d3
+        .equ    PULSE_SKIP, 0x4003443c      | the same loop's next track
         .equ    ICON_X,     104             | the title's icon: its 7 x 5 cell's left, clear of the title tab's corners
         .equ    ICON_Y,     56              | and bottom (y up): rows 3..7, the title bar's band
 
@@ -535,9 +538,11 @@ rmx_ctx:
         rts
 
 | The track keys show the buffers: playing green, recording red, both amber
-| (the trigs' red full, green part way), stopped off; a muted track's
-| colour flashes (DTCN3's FLASH_BIT). A key is written only when what it
-| shows changes; after stock relit the keys (rmx_ctx changed), all of them.
+| (the trigs' red full, green part way), stopped off; the active track
+| bright, the others dim; a muted track's colour flashes (DTCN3's
+| FLASH_BIT). Stock's own writers are gated while the editor is open
+| (rmx_on_paint, rmx_on_pulse), so a key is written only when what it shows
+| changes, and all of them after a track, solo, mute or cue change.
 rmx_trk_leds:
         lea     -16(%sp),%sp
         movem.l %d2-%d5,(%sp)
@@ -555,10 +560,17 @@ rmx_trk_leds:
 2:      move.l  %d2,%d0
         bsr     rmx_state
         btst    %d2,%d4
-        beq.s   3f
+        beq.s   31f
         btst    #FLASH_BIT,%d5
-        bne.s   3f
+        bne.s   31f
         moveq   #0,%d0                      | muted, the dark half
+31:     tst.l   %d0
+        beq.s   3f                          | dark: no level to choose
+        moveq   #0,%d1
+        move.b  (CUR_TRACK).l,%d1
+        cmp.l   %d2,%d1
+        beq.s   3f                          | the active track: bright
+        addq.l  #4,%d0                      | the others: dim
 3:      lea     rmx_trk_shown,%a0
         moveq   #0,%d1
         move.b  (%a0,%d2.l),%d1
@@ -574,7 +586,7 @@ rmx_trk_leds:
         lea     16(%sp),%sp
         rts
 
-| Track d2's key shows colour d0 (0..3, rmx_trk_col). Keeps d2.
+| Track d2's key shows colour d0 (0..7, rmx_trk_col). Keeps d2.
 rmx_trk_write:
         lea     -12(%sp),%sp
         movem.l %d3-%d4/%a2,(%sp)
@@ -626,12 +638,17 @@ rmx_trk_leds_off:
         move.l  (%sp)+,%d2
         rts
 
-| {red, green} per state: stopped, playing, recording, both
+| {red, green}: stopped, playing, recording, both; bright (the active
+| track), then dim (the others: the levels the swatch test read clearly)
 rmx_trk_col:
         .byte   0, 0
         .byte   0, 15
         .byte   15, 0
         .byte   15, GREEN_LEVEL
+        .byte   0, 0
+        .byte   0, 6
+        .byte   6, 0
+        .byte   6, 2
         .balign 2
 
 | Every trig LED off; stock's refresh redraws its own on its next pass.
@@ -673,6 +690,31 @@ rmx_on_leds:
 1:      lea     -68(%sp),%sp
         movem.l %d2-%d6/%a2-%a5,(%sp)
         jmp     (LEDS_CONT).l
+
+| 0x400346a4, a "jmp" detour: stock's track-key painter (selection, mutes,
+| cues, scene locks; its LED ids from 0x400a75be). Open: skipped, the
+| editor owns the track keys. Closed: the displaced `lea -184(sp),sp;
+| movem.l d2-d7/a2-fp,(sp)` and on.
+        .global rmx_on_paint
+rmx_on_paint:
+        tst.l   rmx_editing
+        beq.s   1f
+        rts
+1:      lea     -184(%sp),%sp
+        movem.l %d2-%d7/%a2-%a6,(%sp)
+        jmp     (PAINT_CONT).l
+
+| 0x4003442e, a "jmp" detour inside the loop that pulses a track key's green
+| LED for 2 ticks (set_led(id + 1, 2), ids from 0x400a759e). Open: that
+| track skipped. Closed: the displaced `pea 2; move.l (a3),d3` and on.
+        .global rmx_on_pulse
+rmx_on_pulse:
+        tst.l   rmx_editing
+        beq.s   1f
+        jmp     (PULSE_SKIP).l
+1:      pea     2
+        move.l  (%a3),%d3
+        jmp     (PULSE_CONT).l
 
 | ---- the screen -------------------------------------------------------------
 

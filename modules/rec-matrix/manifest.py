@@ -66,6 +66,8 @@ SCREEN_STOCK = H("2e84" "487af558")                    # move.l d4,(sp); pea pc(
 DRAW_SITE, DRAW_STOCK = 0x4002F2F8, H("4e56ff98" "48d73cfc")    # link fp,#-104; movem.l d2-d7/a2-a5,(sp)
 LEDS_SITE, LEDS_STOCK = 0x40043FDC, H("4fefffbc" "48d73c7c")    # lea -68(sp),sp; movem.l d2-d6/a2-a5,(sp)
 CLOSE_SITE, CLOSE_STOCK = 0x4002EE88, H("2f0a" "4ab9460d10cc")  # move.l a2,-(sp); tst.l 0x460d10cc
+PAINT_SITE, PAINT_STOCK = 0x400346A4, H("4fefff48" "48d77cfc")    # lea -184(sp),sp; movem.l d2-d7/a2-fp,(sp): the track-key painter
+PULSE_SITE, PULSE_STOCK = 0x4003442E, H("48780002" "2613")        # pea 2; move.l (a3),d3: a track key's green pulse
 KNOB_E_MKII = 0x400BA4D4 + 9 * 0x1A + 2   # RECORDING SETUP's MKII key layer, knob E's press (0)
 KNOB_E_MKI = 0x400BA60C + 9 * 0x1A + 2    # the MKI layer's
 
@@ -177,7 +179,13 @@ MODULE = Module(
              Detour(LEDS_SITE, LEDS_STOCK, "rmxed", "rmx_on_leds",
                     "the trig-LED refresh: the recorder's row while the editor is open", kind="jmp", pad_to=8),
              Detour(CLOSE_SITE, CLOSE_STOCK, "rmxed", "rmx_on_close",
-                    "RECORDING SETUP's close: the editor closed first", kind="jmp", pad_to=8),),
+                    "RECORDING SETUP's close: the editor closed first", kind="jmp", pad_to=8),
+             Detour(PAINT_SITE, PAINT_STOCK, "rmxed", "rmx_on_paint",
+                    "stock's track-key painter: skipped while the editor shows the buffers on the track keys",
+                    kind="jmp", pad_to=8),
+             Detour(PULSE_SITE, PULSE_STOCK, "rmxed", "rmx_on_pulse",
+                    "a track key's green pulse: skipped while the editor shows the buffers on the track keys",
+                    kind="jmp"),),
     symbol_refs=(SymbolRef(KNOB_E_MKII, 0, "rmxed", "rmx_knob_e",
                            "RECORDING SETUP (MKII layer): knob E's push opens the matrix editor"),
                  SymbolRef(KNOB_E_MKI, 0, "rmxed", "rmx_knob_e",
