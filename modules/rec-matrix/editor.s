@@ -73,7 +73,7 @@
         .equ    MUTE_BYTE,  0x8000000a      | the audio tracks' mute, bit n = track n
         .equ    DTCN3,      0xfc07c00c      | DMA timer 3: free-running at the 132 MHz bus (PANEL.md)
         .equ    FLASH_BIT,  26              | its bit 26: ~0.5 s lit, ~0.5 s dark
-        .equ    PULSE_TICKS, 60             | a muted key's lit half: one set_led countdown, 0.5 s at 120 Hz
+        .equ    PULSE_TICKS, 60             | (unused since the beat drives the flash)
         .equ    PAINT_CONT, 0x400346ac      | stock's track-key painter after its lea/movem
         .equ    PAINT2_CONT, 0x40034888     | its second form (the lock scan), after its lea/movem
         .equ    TKEYS_CONT, 0x40083eb8      | the track keys' own painter (0x40083eb0) after its lea/movem
@@ -561,7 +561,7 @@ rmx_trk_leds:
         moveq   #-1,%d0                     | every key rewritten
         move.l  %d0,rmx_trk_shown
         move.l  %d0,rmx_trk_shown+4
-1:      move.l  (DTCN3).l,%d5               | d5 = the flash phase
+1:      move.l  rmx_beat_phase,%d5          | d5 = the flash phase (bit 0, flipped each beat)
         moveq   #0,%d4
         move.b  (MUTE_BYTE).l,%d4           | d4 = the muted tracks
         moveq   #0,%d2                      | d2 = the track
@@ -583,21 +583,15 @@ rmx_trk_leds:
         moveq   #3,%d1
         and.l   %d0,%d1
         beq.s   3f
-        btst    #FLASH_BIT,%d5
-        beq.s   26f
-        moveq   #0x10,%d1                   | the lit half: one countdown pulse
-        or.l    %d1,%d0
-        bra.s   3f
-26:     moveq   #0x20,%d0                   | the dark half: the pulse runs out by itself
+        btst    #0,%d5
+        bne.s   3f                          | the lit beat: its colour
+        moveq   #0x20,%d0                   | the dark beat: off (index 0), kept apart
 3:      lea     rmx_trk_shown,%a0
         moveq   #0,%d1
         move.b  (%a0,%d2.l),%d1
         cmp.l   %d1,%d0
         beq.s   4f
         move.b  %d0,(%a0,%d2.l)
-        moveq   #0x20,%d1
-        cmp.l   %d1,%d0
-        beq.s   4f
         bsr     rmx_trk_write
 4:      addq.l  #1,%d2
         moveq   #8,%d0
@@ -694,7 +688,7 @@ rmx_trk_col:
         .byte   0, 6
         .byte   6, 0
         .byte   6, 2
-        .byte   1, 1                        | 8: the active track, stopped: a pilot glow
+        .byte   6, 6                        | 8: the active track, stopped: a pilot glow
         .balign 2
 
 | Every trig LED off; stock's refresh redraws its own on its next pass.
@@ -776,6 +770,23 @@ rmx_on_tkeys:
 1:      lea     -44(%sp),%sp
         movem.l %d2-%d7/%a2-%a6,(%sp)
         jmp     (TKEYS_CONT).l
+
+| 0x40056f24, a "jsr" detour: the UI task's clock handler lighting the beat
+| LED, set_led(38, 3), on the first of each beat's 24 clocks. Stock's call
+| first, then the muted keys' flash flips: lit one beat, dark the next,
+| switched on the beat. Stopped, no beats come and the keys hold.
+        .global rmx_on_beat
+rmx_on_beat:
+        move.l  8(%sp),-(%sp)               | stock's (id, ticks)
+        move.l  8(%sp),-(%sp)
+        jsr     (SET_LED).l
+        addq.l  #8,%sp
+        moveq   #1,%d0
+        eor.l   %d0,rmx_beat_phase
+        tst.l   rmx_editing
+        beq.s   9f
+        bsr     rmx_trk_leds
+9:      rts
 
 | 0x4003442e, a "jmp" detour inside the loop that pulses a track key's green
 | LED for 2 ticks (set_led(id + 1, 2), ids from 0x400a759e). Open: that
@@ -1126,6 +1137,8 @@ rmx_icon_drawn:
         .long   -1                          | the state the title's icon shows
 rmx_in_wincb:
         .long   0                           | 1 inside rmx_win_closed (the manager's callback)
+rmx_beat_phase:
+        .long   1                           | bit 0: the muted keys' lit beat
 rmx_trk_ctx:
         .long   -1                          | rmx_ctx when the track keys were last written in full
 rmx_trk_shown:
