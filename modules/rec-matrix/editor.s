@@ -73,6 +73,7 @@
         .equ    MUTE_BYTE,  0x8000000a      | the audio tracks' mute, bit n = track n
         .equ    DTCN3,      0xfc07c00c      | DMA timer 3: free-running at the 132 MHz bus (PANEL.md)
         .equ    FLASH_BIT,  26              | its bit 26: ~0.5 s lit, ~0.5 s dark
+        .equ    PULSE_TICKS, 60             | a muted key's lit half: one set_led countdown, 0.5 s at 120 Hz
         .equ    PAINT_CONT, 0x400346ac      | stock's track-key painter after its lea/movem
         .equ    PAINT2_CONT, 0x40034888     | its second form (the lock scan), after its lea/movem
         .equ    TKEYS_CONT, 0x40083eb8      | the track keys' own painter (0x40083eb0) after its lea/movem
@@ -565,25 +566,38 @@ rmx_trk_leds:
         move.b  (MUTE_BYTE).l,%d4           | d4 = the muted tracks
         moveq   #0,%d2                      | d2 = the track
 2:      move.l  %d2,%d0
-        bsr     rmx_state
-        btst    %d2,%d4
-        beq.s   31f
-        btst    #FLASH_BIT,%d5
-        bne.s   31f
-        moveq   #0,%d0                      | muted, the dark half
-31:     tst.l   %d0
-        beq.s   3f                          | dark: no level to choose
+        bsr     rmx_state                   | d0 = 0..3
         moveq   #0,%d1
         move.b  (CUR_TRACK).l,%d1
         cmp.l   %d2,%d1
-        beq.s   3f                          | the active track: bright
-        addq.l  #4,%d0                      | the others: dim
+        beq.s   21f
+        tst.l   %d0                         | another track: dim, stopped dark
+        beq.s   25f
+        addq.l  #4,%d0
+        bra.s   25f
+21:     tst.l   %d0                         | the active track: bright, and
+        bne.s   25f                         | stopped, a pilot glow
+        moveq   #8,%d0
+25:     btst    %d2,%d4                     | muted and sounding: it flashes
+        beq.s   3f
+        moveq   #3,%d1
+        and.l   %d0,%d1
+        beq.s   3f
+        btst    #FLASH_BIT,%d5
+        beq.s   26f
+        moveq   #0x10,%d1                   | the lit half: one countdown pulse
+        or.l    %d1,%d0
+        bra.s   3f
+26:     moveq   #0x20,%d0                   | the dark half: the pulse runs out by itself
 3:      lea     rmx_trk_shown,%a0
         moveq   #0,%d1
         move.b  (%a0,%d2.l),%d1
         cmp.l   %d1,%d0
         beq.s   4f
         move.b  %d0,(%a0,%d2.l)
+        moveq   #0x20,%d1
+        cmp.l   %d1,%d0
+        beq.s   4f
         bsr     rmx_trk_write
 4:      addq.l  #1,%d2
         moveq   #8,%d0
@@ -593,12 +607,19 @@ rmx_trk_leds:
         lea     16(%sp),%sp
         rts
 
-| Track d2's key shows colour d0 (0..7, rmx_trk_col), with the steady bits as
+| Track d2's key shows colour d0 & 15 (rmx_trk_col), with the steady bits as
 | stock paints these keys: each die's countdown stopped, its level set and
-| its steady bit set when lit, cleared when not. Keeps d2.
+| its steady bit set when lit, cleared when not. With d0 bit 4 (a muted
+| key's lit half) a lit die is one set_led countdown of PULSE_TICKS instead
+| of the steady bit, so every pulse lasts the same, timed by stock's LED
+| tick. Keeps d2.
 rmx_trk_write:
-        lea     -12(%sp),%sp
-        movem.l %d3-%d4/%a2,(%sp)
+        lea     -16(%sp),%sp
+        movem.l %d3-%d5/%a2,(%sp)
+        moveq   #0x10,%d5
+        and.l   %d0,%d5                     | d5 = the pulse flag
+        moveq   #15,%d1
+        and.l   %d1,%d0
         lea     rmx_trk_col,%a2
         add.l   %d0,%d0
         add.l   %d0,%a2                     | a2 = its {red, green} levels
@@ -617,17 +638,27 @@ rmx_trk_write:
         move.l  %d3,-(%sp)
         jsr     (LED_LEVEL).l
         addq.l  #8,%sp
+        tst.l   %d5
+        beq.s   11f
+        move.l  %d3,-(%sp)                  | a pulse: steady off, one countdown
+        jsr     (LED_OFF).l
+        addq.l  #4,%sp
+        pea     PULSE_TICKS
         move.l  %d3,-(%sp)
+        jsr     (SET_LED).l
+        addq.l  #8,%sp
+        bra.s   4f
+11:     move.l  %d3,-(%sp)
         jsr     (LED_ON).l
         bra.s   3f
 2:      move.l  %d3,-(%sp)
         jsr     (LED_OFF).l
 3:      addq.l  #4,%sp
-        addq.l  #1,%d3
+4:      addq.l  #1,%d3
         subq.l  #1,%d4
         bne.s   1b
-        movem.l (%sp),%d3-%d4/%a2
-        lea     12(%sp),%sp
+        movem.l (%sp),%d3-%d5/%a2
+        lea     16(%sp),%sp
         rts
 
 | The track keys' LEDs off at stock's level, for stock's select to relight.
@@ -663,6 +694,7 @@ rmx_trk_col:
         .byte   0, 6
         .byte   6, 0
         .byte   6, 2
+        .byte   1, 1                        | 8: the active track, stopped: a pilot glow
         .balign 2
 
 | Every trig LED off; stock's refresh redraws its own on its next pass.
