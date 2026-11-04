@@ -82,7 +82,7 @@ Five fields are the README's module table, rendered by `make docs`
 ```
 
 `category` is where the module sits in the table, the index and the
-remixer's AVAILABLE pane. `proof` is the vocabulary of the last column:
+index. `proof` is the vocabulary of the last column:
 `CHECK` builds and boots under the port, `RENDER` was heard or measured
 locally and never flashed, `PORT` has a gate under the ColdFire port that
 pins its behaviour, `HARDWARE` ran on a unit. The selftest refuses a
@@ -108,7 +108,7 @@ remix (a ColdFire module's port scenarios). An
 `"isolated"` gate (the default) builds its own scratch image or none and
 runs before the selected image is restored; an `"image"` gate reads
 `out/mainos_bus.bin` and runs after `make bus` and the shared set gates
-(`verify_tempobus` reads the card `verify_set` staged). A script that
+(`verify_tempo_bus` reads the card `verify_set` staged). A script that
 does not exist fails; the gates every remix gets (the ledger selftest,
 the docs, the knob census, the dirty-state render, the menu, the set
 under the port) stay in the Makefile (`docs/contributing/TESTING.md`). Until 27 Sep 2026 the Makefile listed every
@@ -123,8 +123,7 @@ by name, for a remix with a DSP module that has none. The schema checks
 each name against `params` when the manifest loads, so a knob rename
 refuses the build rather than failing a fixture after the merge.
 
-`make remix` opens the remixer (`tools/remix/app.py`, Textual, provisioned
-by `make emu-setup`; manual `docs/guide/REMIXER.md`). It derives a
+`tools/remix/rig.py` derives a
 placement role and a track range for every module (`tools/remix/rig.py`):
 
 - **bus effect** (`harness.is_server`): one payload, declared in
@@ -141,8 +140,8 @@ Every effect is auditionable through `tools/remix/audition.py`, and
 through its own `knob_map()`. Every render and A/B mark is journalled to
 `out/_audition/log.jsonl` (track, effect, source, every knob).
 
-Two `Param` fields exist for the remixer (the build never reads them):
-`doc`, one line shown under the knob cursor, and `labels`, one short label
+Two `Param` fields exist for display (the build never reads them):
+`doc`, one line describing the knob, and `labels`, one short label
 per value of a stepped select (length pinned to `count`). The selftest
 requires a `doc` on every named, drawn param of every menu-bearing module.
 
@@ -201,8 +200,7 @@ state things you might assume:
   (int exact, symbol non-zero and not the donor's, `None` the donor's) in
   place of the count rule. The stock formatters and widgets are in
   `docs/firmware/PARAM_PAGES.md` section 7. The build emits no label
-  formatter for such a slot; its `labels` are display-only (the remixer's
-  help row, the BCR map).
+  formatter for such a slot; its `labels` are display-only (the BCR map).
 - **`active` writes the slot's enable nibble.** `True` draws it, `False`
   hides it. `None` (the default) hides it too, except on a
   `MenuEntry(stock_dsp=True)` clone, where it keeps the donor's nibble,
@@ -287,13 +285,41 @@ the two DSP dispatch tables are indexed by the raw id and shared between
 FX1 and FX2, so a module on a stock id replaces that effect's code wherever
 the id is selected, FX1 included, and a remix that omits the module then
 aliases the id to SEND, which takes the stock effect away from FX1 too.
-Free ids: `0x06 0x07 0x09 0x0a 0x0b 0x0e 0x0f 0x17 0x1a 0x1b 0x1d 0x1e
+Free ids (`schema.FREE_FX2_IDS`): `0x06 0x07 0x09 0x0a 0x0b 0x0e 0x0f 0x17 0x1a 0x1b 0x1d 0x1e
 0x1f`. EUCLID holds `0x1d` and LOFI2 `0x1f`; the selftest's placement
 probes build scratch fixtures on `0x1e`, so a module there fails them.
+STUTTR replaces MULTIBCOMP (`0x19`, stock null stub, not a free-pool id).
 
-The registry is the arbiter: `registry.modules()` refuses two modules on
-one id at import, whether or not any remix selects both. `make modules`
-prints what is claimed.
+`fx2_id` is the id a module prefers. `registry.assign_ids` settles the ids
+of a remix's modules, and `registry.bound(remix)` returns the modules with
+the settled ids. Stock rows and modules with `replaces` keep their stock
+id. Of the other modules, one preferring an id nobody else in the remix
+prefers keeps it. Where several prefer one id, the first by key keeps it and
+the others take the lowest free id; a remix with more such modules than free
+ids is refused. A remix whose modules prefer distinct ids is unchanged, and
+two modules that never share a remix may prefer one id.
+
+A project stores the raw id, so a project saved on one remix opens whichever
+module holds that id on another, or the fallback if none does.
+`Remix.ids` pins a module to an id in that remix (`ids={"BBD": 0x25}`), so a
+project saved on the remix keeps its meaning whatever the registry gains.
+
+Anything that needs a module's id in a remix reads it from the bound module
+(`registry.bound(remix)`, never `registry.modules()`): a linked unit takes it
+from `Linked.include` (`modules/bbd`, `rig-hosts`), not from a `defsyms`
+value or a literal. `make modules` prints the preferred ids.
+
+**The id space: `Remix.id_space`.** Stock holds 32 ids. `id_space=64` builds
+an image with 64: the DSP dispatch tables and `FX2_IDS` / `ID2POS` grow, and
+free ids are `0x04`..`0x3f` but stock's. A module in `Remix.fx1` keeps an id
+below `0x20` (FX1's own tables keep 32 entries). The default, 32, builds the
+stock layout and every existing image is bit-identical. What the 64-id layout
+changes is in `PLACEMENT.md`, "The 64-id layout"; it has not run on hardware.
+A module that reads the FX2 id table in its own ColdFire code takes its
+address from the build too (`idspace.fx2_ids(remix)` in a `Linked.include`:
+`brain`, `plocks-p2`, `scenes-p2`, `rig-hosts`, `tempo-bus`), because the
+table moves in a 64-id image; `0x400d5fdc` stays right only for 32 ids.
+`remixes/test/ids64` is the test remix.
 
 ### Per-mode knob names and defaults: `ModeView`
 
@@ -312,15 +338,15 @@ Both maps are sparse and optional. `names` renames a slot for that mode
 (four characters); `defaults` is where the other knobs land when the
 operator arrives at this mode.
 
-| | the remixer | the unit |
-|---|---|---|
-| `names` | the UNIT pane's rows follow the current MODE (`Module.knob_map_in`); `send_probe --set SCTR=40` resolves the alias | `tools/build/mode_names.py` emits a MODE formatter that rewrites the descriptor's name fields before printing its own word |
-| `defaults` | applied the moment MODE changes | `modules/mode-defaults` (in octabam-bus): the FX1 and FX2 page-2 editors are detoured, and a MODE turned on the panel writes the view -- page 1 through the stock page-1 writer, page 2 with the editor's own stores; without the module, `stamp-defaults` writes them; a MODE over CC MAP goes through the same unit (the cave calls it) |
+| | the unit |
+|---|---|
+| `names` | `tools/build/mode_names.py` emits a MODE formatter that rewrites the descriptor's name fields before printing its own word |
+| `defaults` | `modules/mode-defaults` (in octabam-bus): the FX1 and FX2 page-2 editors are detoured, and a MODE turned on the panel writes the view -- page 1 through the stock page-1 writer, page 2 with the editor's own stores; without the module, `stamp-defaults` writes them; a MODE over CC MAP goes through the same unit (the cave calls it) |
 
 The unit half needs no new hook: a descriptor carries its twelve parameter
 names as 12 × 6 bytes at `E+0x4e`, the clones are writable RAM, and every
 stepped select already has a formatter cave the panel calls as `fmt(buf,
-value)` with the value in hand. `tools/verify/verify_modenames.py` (in
+value)` with the value in hand. `tools/verify/verify_mode_names.py` (in
 `make check`) calls each MODE formatter on the emulated ColdFire and reads
 the names back out of the clone.
 
@@ -395,7 +421,7 @@ Two rules, both enforced:
   from stock's fifteen-row list; no image with more than seven rows has
   been flashed.
 
-Stock rows appear in the remixer with their real knobs: `stock.py` reads
+Stock rows carry their real knobs: `stock.py` reads
 each descriptor's names, defaults, value counts and enable bitmap out of
 the pristine image (`out/raw/section_3_MAIN_OS.bin`); a duplicated label
 gets a `2` suffix on the later slot. A select carries the firmware's own
@@ -616,6 +642,17 @@ value. A name the source itself defines (a label or `.equ`) is refused;
 two DRAM units resolving one name to different values are refused (one
 link). A switch that depends on another module being in the image is
 `include`'s job, not a defsym's.
+
+For resident code that must publish runtime callbacks,
+`Linked.runtime_refs=(("NAME", "runtime_unit", "symbol"), ...)` explicitly
+defers selected `defsyms` until the runtime has linked. Each name still has a
+declared author-reference value for the first placement and oracle links.
+The final link must resolve the named symbol from that specific DRAM unit;
+missing providers never fall back to the reference value. Reference values
+are not exported to other units. Final linking must preserve the resident
+unit's size and exported addresses, because the runtime and neighboring units
+already depend on them. This is available only to resident units, not DRAM
+or loader units. The build's ordinary `defsyms` behavior is unchanged.
 
 DRAM units are assembled for the chip itself (`-mcpu=54455`, ISA C):
 GNU ld refuses to link an ISA-C object beside ISA-B ones, and an ISA-C
@@ -1089,8 +1126,8 @@ never listed, and a key with no FX2 chooser row of its own.
 
 #### Only a buffer-free insert may take an FX1 row
 
-`state.fx1_hazard()` is the single statement of the rule, read by the
-remixer and by `build_bus.py`. Refused:
+`state.fx1_hazard()` is the single statement of the rule, read by
+`build_bus.py`. Refused:
 
 | refused | why |
 |---|---|
@@ -1140,7 +1177,7 @@ For an eligible module: the slot size and the state block.
 | | FX1 | FX2 |
 |---|---|---|
 | buffer slot | `0x1000 0x1c00 0x2800 0x3400`, 3,072 words each | `0x4000 0x8000` + the shared-window pair, 16,384 |
-| state block (`r7`) | instance *k* → `0x6000 + (1 + 2k) * 0x100` | instance *k* → `0x6000 + (2 + 2k) * 0x100` |
+| state block (`r7`) | instance *k* → `0x6100 + 0x300 * k` | instance *k* → `0x6200 + 0x300 * k` (✅ measured 20 Oct 2026, issue #815; ❌ retracted: `0x6000 + (1 + 2k) * 0x100` and `0x6000 + (2 + 2k) * 0x100`, right only for k = 0) |
 | in the chain | first | second: it processes what FX1 produced |
 | cycles | 4 slots per core | 4 slots per core; both are paid |
 
@@ -1148,3 +1185,24 @@ Seen in the emulator: the firmware's own draw puts a module on FX1's
 chooser with its own knob names; a replacement on LO-FI's id draws in
 LO-FI's slot on the FX1 chooser with its own page. `verify_replaces.py`
 checks both tables in both directions.
+
+## Shared native events
+
+Use [EVENTS](../../modules/events/README.md) for transport notifications,
+accepted-note notifications, held-step ownership and native copy notifications.
+Register by event family and select `EVENTS`; clients must not also claim its
+native detours. STORE continues to own project/Part persistence.
+
+For native Part settings, edited/playing context lookup and replacement
+history, use [STORE native Part access](../../modules/store/README.md#native-part-access).
+Register the smallest read windows and writable offsets, keep field semantics
+in the client, and let STORE own native Part copy/reset hooks.
+
+An optional `Module.select(frozenset(module_keys))` returns any of `linked`,
+`detours`, `symbol_refs`, `overrides`, `pokes`, `claims` and `gates` for that selection. It runs in `registry.bound()` after build settings,
+so the claims ledger, linker, installer and image gates share the same result.
+It must be deterministic, have no side effects and may not change identity,
+dependencies or settings. Unselected modules are not specialized. Optional
+gates are discovered from bound selections and reach only their actual carriers.
+EVENTS uses it to omit unsubscribed boundaries, with independent assembly guards
+omitting unused entry points within a selected unit.

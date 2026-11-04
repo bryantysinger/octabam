@@ -33,7 +33,7 @@ WORK=out/_unicorn_src
 OUT=.venv/lib/unicorn-emac
 PY=${PY:-.venv/bin/python3}
 
-command -v cmake >/dev/null || { echo "cmake not found (brew install cmake)" >&2; exit 1; }
+command -v cmake >/dev/null || { echo "cmake not found (install cmake)" >&2; exit 1; }
 [ -x "$PY" ] || { echo "$PY not found -- run 'make emu-setup' first" >&2; exit 1; }
 ARCH=$("$PY" -c 'import platform; print(platform.machine())')
 

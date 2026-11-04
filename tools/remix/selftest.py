@@ -14,6 +14,7 @@ import re
 import shutil
 import subprocess
 import sys
+from types import SimpleNamespace
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -21,7 +22,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 from remix import ledger, registry, schema, state, stock  # noqa: E402
 from remix.schema import (BusRole, CavePatch, Claims, Detour, DramRegion, DspHook,  # noqa: E402
                           DspRange, DspSection, Formatter, Keep, Kind, Linked, MenuEntry,
-                          Module, Param, Poke, SymbolRef, TableGrow, YBase)
+                          Module, Override, Param, Poke, Proof, Remix, SymbolRef, TableGrow, YBase)
 
 
 _PRIORITY = iter(range(100, 1000))      # distinct unless a case sets one
@@ -193,6 +194,10 @@ CASES = [
     ("a detour's pad_to span over another's site",
      [_cf("alpha", detours=(Detour(0x40079816, b"\x00" * 8, "u", "a", pad_to=8),)),
       _cf("beta", detours=(Detour(0x4007981c, b"\x00" * 6, "u", "b"),))], "hook site"),
+    ("an override naming a site the overridden module does not claim",
+     [_cf("alpha", pokes=(_poke(0x40100000),)),
+      _cf("beta", pokes=(_poke(0x40100010),), overrides=(Override(0x40100020, "ALPHA"),))],
+     "override"),
     # ---- kept bytes ------------------------------------------------------
     ("a poke on bytes another module keeps",
      [_cf("alpha", keeps=(Keep(0x4001f322, bytes.fromhex("48780064"), "pea 0x64"),)),
@@ -204,6 +209,8 @@ CASES = [
     ("two keepers expecting different stock",
      [_cf("alpha", keeps=(Keep(0x4001f322, bytes.fromhex("48780064")),)),
       _cf("beta", keeps=(Keep(0x4001f322, bytes.fromhex("48780070")),))], "kept bytes"),
+    ("a cave over the stock DELAY's table read (issue #771)",
+     [registry.by_key("DELAY"), _cave("alpha", 0x400d24d0)], "kept bytes"),
     # ---- grown tables ----------------------------------------------------
     ("two modules growing one stock array",
      [_cf("alpha", tables=(TableGrow("t", 0x40100000, 4, (("u", "a"),), ((0x40065bd8, 0x40100000),)),)),
@@ -276,6 +283,18 @@ CLEAN_CLAIMS = [_cf("alpha", pokes=(_poke(0x4001f322, 4),),
                 _ranged("delta", DspRange("y", 0x0800, 0x100, "buf", half_relative=True),
                         DspRange("x", 0x6000, 0x10, "table"), payloads=frozenset({"B"}))]
 
+# A bridge standing in for another module's symbol ref, poke and table ref
+# (schema.Override): each pair below collides without the overrides.
+CLEAN_OVERRIDES = [
+    _cf("alpha", symbol_refs=(SymbolRef(0x400d6438, 0x40004008, "u", "a"),),
+        pokes=(_poke(0x40100000, 4),),
+        tables=(TableGrow("t", 0x40100100, 4, (("u", "s"),), ((0x40065bd8, 0x40100100),)),)),
+    _cf("beta", symbol_refs=(SymbolRef(0x400d6438, 0x40004008, "u", "b"),),
+        pokes=(_poke(0x40100000, 4),),
+        tables=(TableGrow("t2", 0x40100100, 4, (("u", "s"),), ((0x40065bd8, 0x40100100),)),),
+        overrides=(Override(0x400d6438, "ALPHA"), Override(0x40100000, "ALPHA"),
+                   Override(0x40065bd8, "ALPHA")))]
+
 
 def _submodule_preflight() -> int:
     """Refuse early, with the fix, if a module's upstream submodule is not checked out.
@@ -314,7 +333,7 @@ def _harness_preflight() -> int:
     `make setup` builds both, but its step 4 used to (a) swallow a failed
     cmake build behind an echo and (b) decide "already built" from the
     DISASSEMBLER alone, so a machine whose first setup got that far and no
-    further passed every later `make setup` and then died in verify_twocore
+    further passed every later `make setup` and then died in verify_two_core
     as a FileNotFoundError traceback on dsp_host -- the second wall Bryan T
     hit on a fresh clone. And a missing dsp_host is not only a
     crash later: the FLANGER passthrough probe below silently SKIPS without
@@ -356,7 +375,9 @@ def main():
                         ("two DSP sections hooking one site on different payloads",
                          CLEAN_HOOK_PAIR),
                         ("adjacent pokes, agreeing keepers, ranges on different payloads",
-                         CLEAN_CLAIMS)):
+                         CLEAN_CLAIMS),
+                        ("a bridge's symbol ref, poke and table ref overriding another's",
+                         CLEAN_OVERRIDES)):
         found = ledger.check(mods)
         if found:
             bad += 1
@@ -370,6 +391,66 @@ def main():
         print("  [FAIL] a module on a stock FX2 id (0x0c, EQUALIZER) was accepted")
     except ValueError:
         print("  [PASS] a module on a stock FX2 id is refused")
+
+    # FX2 ids are settled per remix: modules preferring one id do not
+    # refuse each other, one of them moves, and a full id space refuses.
+    from remix.schema import FREE_FX2_IDS
+
+    def _ids(*effects, space=32, fx1=()):
+        mods = {m.key: m for m in effects}
+        r = SimpleNamespace(name="fixture", modules=list(mods), id_space=space, fx1=fx1)
+        out = registry.assign_ids(r, mods)
+        return {k: m.menu.fx2_id for k, m in out.items()}
+
+    got = _ids(_effect("beta", 0x07), _effect("alpha", 0x07))
+    if got != {"ALPHA": 0x07, "BETA": FREE_FX2_IDS[0]}:
+        bad += 1
+        print(f"  [FAIL] two modules preferring 0x07 resolved to {got}")
+    else:
+        print("  [PASS] two modules preferring one FX2 id: the first by key keeps it, the other moves")
+    got = _ids(_effect("alpha", 0x07), _effect("beta", 0x09))
+    if got != {"ALPHA": 0x07, "BETA": 0x09}:
+        bad += 1
+        print(f"  [FAIL] modules preferring distinct ids resolved to {got}")
+    else:
+        print("  [PASS] modules preferring distinct FX2 ids keep them")
+    got = _ids(*[_effect(f"m{i:02d}", 0x07) for i in range(len(FREE_FX2_IDS) + 1)], space=64)
+    if len(set(got.values())) != len(got) or max(got.values()) < 0x20:
+        bad += 1
+        print(f"  [FAIL] a 64-id remix did not spread its modules past 0x1f: {got}")
+    else:
+        print("  [PASS] a 64-id remix gives modules ids above 0x1f")
+    got = _ids(_effect("a", 0x07), _effect("b", 0x07), _effect("c", 0x07), space=64, fx1=("B", "C"))
+    if got != {"A": 0x07, "B": 0x06, "C": 0x09}:
+        bad += 1
+        print(f"  [FAIL] fx1 modules in a 64-id remix resolved to {got}")
+    else:
+        print("  [PASS] fx1 modules in a 64-id remix keep ids below 0x20")
+    for label, kw in (("a pin above 0x1f in a 32-id remix", dict(id_space=32, ids={"ALPHA": 0x25})),
+                      ("a pin on a stock id", dict(id_space=64, ids={"ALPHA": 0x0c})),
+                      ("a pin on a module outside the remix", dict(id_space=64, ids={"NOPE": 0x25})),
+                      ("a pin above 0x1f for a module in fx1", dict(id_space=64, ids={"ALPHA": 0x25}, fx1=("ALPHA",))),
+                      ("two modules pinned to one id", dict(id_space=64, ids={"ALPHA": 0x25, "BETA": 0x25}))):
+        try:
+            Remix(family="effects", proof=Proof.CHECK, proof_note="fixture", name="pins", doc="fixture",
+                  modules=("ALPHA", "BETA"), fallback="NONE", **kw)
+            bad += 1
+            print(f"  [FAIL] {label} was accepted")
+        except ValueError:
+            print(f"  [PASS] {label} is refused")
+    pinned = SimpleNamespace(name="fixture", modules=["ALPHA", "BETA"], id_space=64, fx1=(), ids={"BETA": 0x25})
+    got = registry.assign_ids(pinned, {m.key: m for m in (_effect("alpha", 0x07), _effect("beta", 0x07))})
+    if (got["ALPHA"].menu.fx2_id, got["BETA"].menu.fx2_id) != (0x07, 0x25):
+        bad += 1
+        print("  [FAIL] a pinned id was not honoured")
+    else:
+        print("  [PASS] a pinned id is honoured and the other module keeps its preference")
+    try:
+        _ids(*[_effect(f"m{i:02d}", 0x07) for i in range(len(FREE_FX2_IDS) + 1)])
+        bad += 1
+        print("  [FAIL] more effects than free FX2 ids were accepted")
+    except SystemExit:
+        print("  [PASS] more effects than free FX2 ids is refused")
 
     for label, make in (
             ("a module keeping bytes it pokes",
@@ -457,6 +538,34 @@ def main():
     else:
         bad += 1
         print(f"  [FAIL] stock instance buffer: LOAD METER clashes with {_lm_hits}; SEND does not with {_send_hits}")
+
+    # SIDECHAIN_COMPRESSOR's cross-core window (half-relative: the tail of T7's and
+    # T3's FX2 slot, +$3DFE..) against each buffered effect's extent: refused exactly
+    # where the extent reaches +$3DFE (stock.SLOT_EXTENT, else a module's
+    # buffer_words). Every stock effect stops short (DARK REV at +$3DA2), and so does
+    # every module that keeps the rule under SLOT_EXTENT.
+    _sc = registry.by_key("SIDECHAIN_COMPRESSOR")
+    _cands = _buf + sorted(k for k, m in registry.modules().items()
+                           if k not in _buf and getattr(m, "claims", None) is not None
+                           and m.claims.stock_instance_buffer and not m.claims.fx1_only)
+
+    def _reaches(k):
+        ext = _stk_ext.SLOT_EXTENT.get(k)
+        if ext is None:
+            ext = (registry.by_key(k).claims.buffer_words or 16384) - 1
+        return ext >= 0x3DFE
+
+    _sc_want = sorted(k for k in _cands if _reaches(k))
+    _sc_hits = sorted(k for k in _cands
+                      if any("stock instance buffer" in x
+                             for x in ledger.check([_sc, registry.by_key(k)])))
+    if _sc_hits == _sc_want and not set(_sc_hits) & set(_buf):
+        print("  [PASS] SIDECHAIN_COMPRESSOR's window clashes with exactly the buffered effects that "
+              f"reach +$3DFE ({', '.join(_sc_want) or 'none'}), with no stock effect")
+    else:
+        bad += 1
+        print(f"  [FAIL] stock instance buffer: SIDECHAIN_COMPRESSOR's window clashes with {_sc_hits}, "
+              f"expected {_sc_want}")
 
     try:
         Param(b"SIXSIX")
@@ -787,6 +896,26 @@ def main():
         _probe.unlink(missing_ok=True)
         for junk in (ROOT / "remixes/__pycache__").glob("_selftest_nofb*"):
             junk.unlink(missing_ok=True)
+    # A stock effect is refused as the fallback, bus or no bus.
+    _probe = ROOT / "remixes/_selftest_stockfb.py"
+    try:
+        _probe.write_text(
+            "from remix.schema import Remix\n\n"
+            "REMIX = Remix(name='_selftest_stockfb', doc='scratch',\n"
+            "              modules=('FILTER', 'SPECTRUM'), fallback='FILTER')\n")
+        registry.remix("_selftest_stockfb")
+        bad += 1
+        print("  [FAIL] fallback='FILTER' (a stock effect) was accepted")
+    except SystemExit as e:
+        if "is a stock effect" in str(e):
+            print("  [PASS] a stock effect is refused as the fallback")
+        else:
+            bad += 1
+            print(f"  [FAIL] fallback='FILTER' was refused for the wrong reason: {e}")
+    finally:
+        _probe.unlink(missing_ok=True)
+        for junk in (ROOT / "remixes/__pycache__").glob("_selftest_stockfb*"):
+            junk.unlink(missing_ok=True)
 
     # And the same rule read off the SHIPPED remixes, which is where it would
     # actually go wrong: nothing may pair NO_FALLBACK with a bus module.
@@ -873,34 +1002,76 @@ def main():
     _rig = ("FILTER", "SPATIALIZER", "EQUALIZER", "PHASER", "FLANGER", "CHORUS",
                  "PLATE REV", "SPRING REV", "DARK REV", "COMPRESSOR", "LO-FI",
                  "DJ EQ", "COMB FILTER")
-    _want = {"mods": (), "ata-write-guard": (), "octabam-core": (), "usb-out-tracks-main-cue": (), "usb-out-tracks": (), "usb-out-master": (),
+    _want = {"midi-follow": (), "midi-loopback": (), "midi-scales": (), "scales": (), "scales-quantizer": (), "mods": (), "ata-write-guard": (), "usb-out-tracks-main-cue": ("PLATE REV",), "usb-out-tracks": (), "usb-out-master": (),
              "usb-out-tracks-post": (),
              "remix-switch": (), "remix-switch-trace": (),   # REMIX SWITCH's park in dead vectors, no region words
+             "rs64": (),   # remix-switch with BBD placed in the shared window: no region words
+             "usb-io-stock14": (),   # USB's RX inject at payload A's tail (DspSection.tail), no region words
              "usb-out-main-cue": (), "usb-out-main": (), "usb-midi": (), "stems": (),     # stock effects + ColdFire modules, no DSP words
              "stems-brain": (),   # STEM REC under PROJECT + BRAIN/REMIX SWITCH; no DSP words
-             "rec-threshold": (), "plocks-p2": (), "scenes-midisc": (), "kits": (), "analog-bassdrum": ("SPRING REV",),
+             "octa303": (), "rec-threshold": (), "buffer-saver": (), "plocks-p2": (), "scenes-midisc": (), "kits": (),
+             "persistent-buffers": (),   # STORE + PERSISTENT BUFFERS on the stock effects, no DSP words
+             "morph": (),   # STORE + MORPH on the stock effects, no DSP words
+             # HOOKS's fixtures (modules/hooks): ColdFire bridges, no DSP words of their own
+             "hooks": (), "hooks-boot": (), "hooks-chrom-303": (),
+             "hooks-chrom-bp": ("SPRING REV",),   # BLACKPYRAMIDS's voice in SPRING's words, as blackpyramids-303
+             "hooks-core": ("PHASER", "DARK REV"),   # LOAD METER's DSP half in PHASER's (as stock-meter-a), CF METER's readout in DARK's (as cfmeter)
+             "hooks-machines": ("SPRING REV",),   # ANALOG BD's voices in SPRING's words, as analog-bassdrum
+             "hooks-machines-all": ("SPRING REV",),   # the same, with CX OSC
+             "hooks-machines-cx": (),   # OCTA303 + CX OSC: ColdFire, no DSP words
+             "analog-bassdrum": ("SPRING REV",),
+              "blackpyramids-303": ("SPRING REV",),   # its DSP voice in SPRING's words, as ANALOG BD's
              "sidechain-compressor": ("SPRING REV",), "kyoti-mute-sidechain": ("SPRING REV",),   # its DSP section in SPRING's words
              # Zac Kyoti's ColdFire modules on the stock effects, no DSP words
              **{_k: () for _k in ("direct-jump-kyoti", "batch-bugfixes", "reload-from-project",
                                   "quantize-live-rec-toggle", "erase-empty-trigless-locks",
                                   "mute-modes", "kyoti-mute-jump", "kyoti-fixes", "rec-trig-mute",
-                                  "euclid-fill")},
+                                  "euclid-fill", "varispeed", "copy-project",
+                                  "pattern-mute-modes",  # PATTERN MUTE beside MUTE_MODES, stock effects
+                                  "scope",  # SCOPE: ColdFire window, no DSP words
+                                  "cxosc", "cxosc-core")},  # CX OSC (+ CORE handoff); ColdFire, no DSP words
+             "trackpatterns": (),   # pgstath's ColdFire module on the stock effects, no DSP words
+             "trackpatterns-core": (),   # TRACK PATTERNS on the core modules and the 14 stock effects, which gives up nothing
+             "free-loop": (),   # FREE LOOP: ColdFire, no DSP words, on the 14 stock effects
+             "rec-cs1-skip": (),   # REC CS1 SKIP: ColdFire, no DSP words, on the 14 stock effects
              # the twelve io remixes: the IN module's RX inject is placed in SPATIALIZER's words
              **{f"usb-io-{o}-{i}": ("SPATIALIZER",) for o in ("tracks", "tracks-main-cue", "main-cue", "main") for i in ("ab", "cd", "abcd")},
              "octatrick": ("SPATIALIZER",),   # USB's ABCD input inject, as in the io remixes
+             "pext-probe": ("EQUALIZER", "PLATE REV", "SPRING REV"),   # the probe takes EQUALIZER's id and the two reverbs' words
+             "window-mod": ("CHORUS", "PLATE REV", "SPRING REV", "DARK REV"), "window-ctl": ("CHORUS", "PLATE REV", "SPRING REV", "DARK REV"),   # MODULATION takes CHORUS's id; the reverbs' words hold LOAD METER and CORE
+             "octabam": (),   # all 14 stock effects stay; ours and LOAD METER run from the window
+             "octabam-full": (),   # octabam with TRANSIENT, DISTORX and SIDECHAIN_COMPRESSOR as well
+             "dlspike": (),   # all 14 stock effects stay; MODULATION is loaded on demand
+             "dl-probe": ("EQUALIZER",), "dl-probe-any": ("EQUALIZER",),   # DLPROBE takes EQUALIZER's id
+             "ext-probe": ("EQUALIZER",),   # EXTPROBE takes EQUALIZER's id
+             "stock-meter-a": ("PHASER",), "stock-meter-b": ("SPATIALIZER",),   # LOAD METER's DSP half in the given-up effect's words
              "sos-capture": ("SPATIALIZER",),   # usb-io-tracks-ab + the recorder fixes
              "cfmeter": ("DARK REV",), "cfmeter-port": ("DARK REV",), "cfmeter-post": ("DARK REV",), "cfmeter-tracks": ("DARK REV",),   # the readout insert's words
              "waveload": ("DARK REV",), "waveload-port": ("DARK REV",),   # CF METER's readout insert, as cfmeter
              "wave": ("SPRING REV", "DARK REV"),   # WAVE runs in their words
+             "usb-out-tracks-main-cue": ("PLATE REV",),   # USB's inject is placed in its words (the remix lists 13)
              "transient": ("PLATE REV",),   # TRANSIENT runs in its words; the other 13 stay
+             "void": ("PLATE REV",),        # VOID SCRAPE runs in its words; the other 13 stay
              "lofi2": ("PLATE REV", "SPRING REV"),   # LOFI2's 1,372 words with its table; PLATE alone is 594
+             "bbd": ("PLATE REV", "SPRING REV"),   # BBD's 1,112 words from PLATE's start, clear of the SPRING words DARK calls
+             "distorx": ("SPATIALIZER", "CHORUS", "PLATE REV", "SPRING REV"),   # DISTORX on SPATIALIZER's id; its 1,586 words in one run; DARK REV stays
+             "shatter": ("PLATE REV",),   # SHATTER runs in its words; the other 13 stay
+             "stuttr": ("PLATE REV",),   # STUTTR runs in its words; the other 13 stay
+             "devilish": ("PHASER",),   # dEVILish is on PHASER's id; its pass-through runs in PHASER's words
+             "ids64": ("PLATE REV", "SPRING REV"),   # the bbd remix with id_space=64 and BBD pinned to 0x25
              "testgen": ("PLATE REV",),     # TESTGEN runs in its words; the other 13 stay
+             "resonator": ("PLATE REV",),   # RESONATOR runs in its words; the other 13 stay
              "vocoder": ("PLATE REV", "DJ EQ"),   # VOCODER runs in PLATE's words; DJ EQ out so the tables sit in X
+             "vocoder-usb": ("PLATE REV", "DJ EQ"),   # the vocoder remix + USB MIDI and USB AUDIO (ColdFire, no DSP words)
+             "events-empty": ("SPRING REV", "DARK REV"),
+             "events-clients": ("SPATIALIZER", "EQUALIZER", "PHASER", "FLANGER", "CHORUS",
+                                "SPRING REV", "DARK REV", "LO-FI", "DJ EQ", "COMB FILTER"),
+             "midi-follow-events": ("SPATIALIZER", "EQUALIZER", "PHASER", "FLANGER", "CHORUS",
+                                     "SPRING REV", "DARK REV", "LO-FI", "DJ EQ", "COMB FILTER"),
              "euclid": ("SPATIALIZER", "FLANGER", "CHORUS", "COMB FILTER"),
              "rig": _rig,
              "character-txtr": _rig,   # octabam-bus with the TXTR station
-             "octabam-bus": _rig,
-             "octabam-inserts": _rig,   # COMPRESSOR's id is undisturbed since SIDECHAIN_COMPRESSOR was dropped (4dacb61d)
+             "octabam-bus": _rig,   # FX1 lists only the three stations: the 13 stock effects give up their DSP code (FX2 is locked, so no row for the reverbs)
              "stations-fx2": _rig}
     for _n in registry.remix_names():
         _r = registry.remix(_n)
@@ -937,7 +1108,7 @@ def main():
     _probe.write_text(
         "from remix.schema import Remix\n\n"
         "REMIX = Remix(name='_selftest_scattered', doc='scratch',\n"
-        "              modules=('EUCLID', 'MINIVERB', 'PLATE REV'),\n"
+        "              modules=('EUCLID', 'EVENTS', 'MINIVERB', 'PLATE REV'),\n"
         "              fallback='NONE',\n"
         "              fx1=('FILTER', 'EQUALIZER', 'DJ EQ', 'PHASER',\n"
         "                   'SPATIALIZER', 'COMPRESSOR', 'LO-FI',\n"
@@ -1059,7 +1230,8 @@ def main():
         (_fx_dir / "manifest.py").write_text(
             "from remix.schema import DspSection, Kind, MenuEntry, Module, Param, YBase\n"
             "MODULE = Module(name='xhfixture', key='XHFIXTURE', kind=Kind.DSP_EFFECT,\n"
-            "    doc='fixture', menu=MenuEntry(fx2_id=0x1e, donor_desc=0x400d58b8,\n"
+            "    doc='fixture', menu=MenuEntry(fx2_id=0x08, replaces='DELAY',\n"
+            "    donor_desc=0x400d4a96,\n"
             "    abbr=b'XHF', fullname=b'XhFixture'),\n"
             "    params=tuple([Param(b'A', 0, active=True)] + [Param()] * 11),\n"
             "    dsp=DspSection(asm='modules/xhfixture/fixture.asm', priority=40,\n"
@@ -1127,7 +1299,8 @@ def main():
         (_pf_dir / "manifest.py").write_text(
             "from remix.schema import Claims, DspSection, Kind, MenuEntry, Module, Param, YBase\n"
             "MODULE = Module(name='pbfixture', key='PBFIXTURE', kind=Kind.DSP_EFFECT,\n"
-            "    doc='fixture', menu=MenuEntry(fx2_id=0x1e, donor_desc=0x400d58b8,\n"
+            "    doc='fixture', menu=MenuEntry(fx2_id=0x08, replaces='DELAY',\n"
+            "    donor_desc=0x400d4a96,\n"
             "    abbr=b'PBF', fullname=b'PbFixture'),\n"
             "    params=tuple([Param(b'A', 0, active=True)] + [Param()] * 11),\n"
             "    claims=Claims(owns_fx2_buffers=True),\n"
@@ -1166,7 +1339,7 @@ def main():
             if m:
                 _pl = m.group(1)
             if (_pl and "NOT PLACED" not in line
-                    and re.match(r"\s+PBFIXTURE\s.*\bid 0x1e\b", line)):
+                    and re.match(r"\s+PBFIXTURE\s.*\bid 0x08\b", line)):
                 _placed.setdefault(_pl, []).append(line)
             if _pl and re.match(r"\s+PBFIXTURE\s+NOT PLACED", line):
                 _alias[_pl] = line

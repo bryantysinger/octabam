@@ -1,8 +1,7 @@
 """sos-capture -- the recorder loop fix with a digital test signal in and the track outputs out over USB.
 
 RECORDER LOOP FIX on usb-io-tracks-ab: the host plays a signal into inputs
-A/B (USB INPUTS AB) and records the sixteen track channels (USB LAYOUT
-TRACKS), so a sound-on-sound loop is captured sample-exact on the unit and
+A/B (USB IN AB) and records the sixteen track channels (USB TRACKS), so a sound-on-sound loop is captured sample-exact on the unit and
 compared with the same input under the port
 (`tools/hw/sos_capture.py`).
 """
@@ -21,5 +20,7 @@ REMIX = Remix(
     fx1=("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
          "COMB FILTER", "COMPRESSOR", "LO-FI"),
     fallback="NONE",
-    settings={("octabam.usb", "LAYOUT"): "TRACKS", ("octabam.usb", "INPUTS"): "AB"},
+    settings={("octabam.usb", "TRACKS"): "PRE", ("octabam.usb", "MAIN"): 0,
+              ("octabam.usb", "CUE"): 0, ("octabam.usb", "MASTER"): 0,
+              ("octabam.usb", "IN"): "AB"},
 )

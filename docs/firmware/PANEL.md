@@ -179,11 +179,40 @@ record before it.) Record, 0x1a bytes: `+0 code, +2 press, +6 release,
 14 ticks. LEVEL press `0x3e` special-cased at `0x4004ecfc`. Popups: yes/no
 `0x4006d57c(title, n, lines[], 3, handler)`; scrolling list
 `0x4006d94c(count, sel, arg3, labels[], handlers[])` / close `0x4006d754`
-/ refresh `0x4006d784`; labels pointer `0x460e5e2c`. Grid recording
+/ refresh `0x4006d784`; live object `0x460e5e28` = `{callbacks, labels,
+object, &selection}` (labels pointer also `0x460e5e2c`). Grid recording
 `0x460d1736 != 0`; audio editor `0x4006de34(type, slot)` + `0x4006e160()`.
 Measured under
 the port: `0x24 0x08` (row 4 bit 3 = `0x23`) switched the page kind to 2
 and the plane redrew as AMP.
+
+### CHANGE project list → FUNC+BANK (RENAME / DELETE) ✅
+
+On **PROJECT → CHANGE** (`CHOOSE PROJECT`, string `0x400b5ce0`), with a
+project row selected (not `<CREATE EMPTY PROJECT>`), **FUNC+BANK** opens a
+2-row `LISTPOP` (RENAME / DELETE) instead of PATTERN SETTINGS / SELECT BANK.
+Measured under the port 27 Oct 2026 (`MenuPort.chord("func","bank")` on the
+CHANGE list; a bare `press("bank")` loads the project / shows CHECKING
+PROJECT; `press("func"); press("bank")` without a hold can fall through to
+SELECT BANK).
+
+| piece | address | notes |
+|---|---|---|
+| opener (gated) | `0x40064180` | `tst.l 0x460e435a`; beq skips when no selection name |
+| `LISTPOP` call | `0x400641a4` | `pea #2` count at `0x400641a0` (`4878 0002`) |
+| handlers[] | `0x400cbaac` | `[0]=0x40064290` RENAME, `[1]=0x400641b0` DELETE |
+| labels[] | `0x400cbab4` | `[0]=0x400b46c0` `"RENAME"`, `[1]=0x400b3891` `"DELETE"` |
+| selection word | `0x460e1348` | passed as sel and `&sel` |
+| selection name gate | `0x460e435a` | nonzero before the list opens |
+| BANK key record | `0x400cbbcc` | code `0x2f`, press → `0x40064180` |
+
+Labels are tails of longer stock strings (no abs refs to the short forms):
+`"RENAME"` is the tail of `"ARR RENAME"`, `"DELETE"` of `"DIRECTORY DELETE"`.
+A usable `"COPY"` tail sits at `0x400b3882` (`"DIRECTORY COPY"`). RENAME's
+handler pea's `"RENAME PROJECT"` (`0x400b5c5c`) into `POPUP` `0x4006d57c`;
+DELETE pea's `"DELETE PROJECT"` (`0x400b3984`). Growing this popup 2→3 is two
+4-byte pointer slots plus the count immediate — see issue #931 / module
+`copy-project`.
 
 Key codes (octalab's list, plus the probe of 18 Sep 2026 under the
 port, each code alone in a fresh session): trigs `0x00..0x0f`, tracks

@@ -47,7 +47,7 @@ osw_dsp:
 ; DMA4 and DMA5 are NOT stopped: ✅ measured from the user's own image (29
 ; Sep 2026, tools/build/dsp_disasm_all.py), neither payload writes M_DCR4 or
 ; M_DCR5 anywhere, so 1.40C never enables them and the two stores were two
-; words spent on nothing. verify_dspvectors' peripheral allowlist refuses a
+; words spent on nothing. verify_dsp_vectors' peripheral allowlist refuses a
 ; payload that starts writing either, which is what keeps this true.
         movep   r3,x:<<$ffffb5          ; ESAI transmitter off
         movep   r3,x:<<$ffffb7          ; ESAI receiver off

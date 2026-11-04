@@ -6,7 +6,7 @@
  * /BRAIN/card.work (or card.strd, by the pair rule of section 6.2) and
  * writes each valid default record over its effect's descriptor bytes
  * (P+0x5e). The choosers and the new-part initialiser read those bytes when
- * they run (tools/verify/verify_descdefaults.py).
+ * they run (tools/verify/verify_desc_defaults.py).
  *
  * A record with a mode writes into MODE DEFAULTS' view table (its
  * MODEDEF_TABLE, 0 when that module is not in the remix): the values of the
@@ -37,11 +37,14 @@ extern const u32 brain_fx_n;
  * 0xff ends it (modules/mode-defaults/manifest.py table_inc) */
 extern u8 *const brain_modedef;		/* MODEDEF_TABLE or 0 (hooks.s) */
 #define MODEDEF_TABLE brain_modedef
+extern u8 *const brain_cs1_early;	/* CS1_EARLY_BASE (hooks.s) */
+#define CS1_EARLY_BASE brain_cs1_early
 
 #define F_OPEN   ((int (*)(void *, const char *, const char *, void *, u32))0x40016864)
 #define F_READ   ((int (*)(void *, void *, u32))0x40016564)
 #define F_CLOSE  ((int (*)(void *))0x4001677c)
-#define FX2_IDS  ((u8 **)0x400d5fdc)
+extern u8 *const brain_fx2_ids[];	/* remix.inc: the FX2 descriptor table (0x400d5fdc; moves in a 64-id image) */
+#define FX2_IDS  ((u8 **)brain_fx2_ids)
 #define FX1_IDS  ((u8 **)0x400d5f58)
 
 #define MAX_FX    32
@@ -343,6 +346,7 @@ struct set_ent {
 	u8 id_len, type, apply, nlabels;	/* type 1 Binary, 2 Option, 3 Number */
 	u16 key, step;
 	int min, max, def;
+	u32 cs1_off;				/* the value's CS1 address when early, 0 otherwise (settings_inc) */
 	const char *const *labels;
 	const char *name, *group;
 	u32 scope;				/* 0 CARD (card.work), 1 PROJECT (the project's brain.work) */
@@ -730,6 +734,7 @@ static u8 pset_have;
 static u32 def_sig[MAX_FX], pset_sig;
 static u32 pairs_sig(const u8 *pay, u32 from, u32 plen);
 static void cache_defaults(int have);
+static void write_early_block(void);
 
 static void load_card(void)
 {
@@ -737,6 +742,7 @@ static void load_card(void)
 	int st = pair_load("/BRAIN/card.work", "/BRAIN/card.strd", &n);
 	brain_counts[C_STATE] = (u32)st;
 	load_settings(st == 1 || st == 2, 0);
+	write_early_block();		/* CS1 mirrors the table after every load */
 	cache_templates(st == 1 || st == 2);
 	cache_defaults(st == 1 || st == 2);
 	if ((st == 1 || st == 2) && brain_v_octabam_brain_2)
@@ -1144,11 +1150,46 @@ static int write_set_file(u32 scope, int project)
 	return write_store(w, scope ? 2 : 0, at, kept) < 0 ? 4 : 0;
 }
 
+/* The CS1 early block (BRAIN.md section 6.4): at CS1_EARLY_BASE a 4-byte
+ * header (magic 0xea, version 1, the 16-bit sum of the value bytes), then
+ * each early setting's value at its cs1_off (type 1/2: one byte; type 3:
+ * two, big-endian). The sum is over the value bytes of every early entry,
+ * so the reader (the usb unit's cfgsel) checks the same sum over the table
+ * its include emits; the order does not matter, addition is commutative. */
+#define EARLY_MAGIC 0xea
+#define EARLY_VER   1
+
+static void write_early_block(void)
+{
+	volatile u8 *b = CS1_EARLY_BASE;
+	u32 sum = 0;
+	for (u32 i = 0; i < brain_set_n && i < MAX_SET; i++) {
+		const struct set_ent *e = &brain_set[i];
+		if (e->apply != 2 || !e->cs1_off)
+			continue;
+		volatile u8 *p = (volatile u8 *)e->cs1_off;
+		if (e->type == 3) {
+			p[0] = (u8)(brain_values[i] >> 8);
+			p[1] = (u8)brain_values[i];
+			sum += p[0] + p[1];
+		} else {
+			p[0] = (u8)brain_values[i];
+			sum += p[0];
+		}
+	}
+	b[0] = EARLY_MAGIC;
+	b[1] = EARLY_VER;
+	b[2] = (u8)(sum >> 8);
+	b[3] = (u8)sum;
+}
+
 /* SETTINGS edit: card.work, and the project's brain.work when a PROJECT
  * setting exists and a project is named. */
 static int write_settings(void)
 {
 	int err = write_set_file(0, 0), proj = 0;
+	if (!err)
+		write_early_block();		/* CS1 mirrors the table (BRAIN.md 6.4) */
 	for (u32 e = 0; e < brain_set_n && e < MAX_SET; e++)
 		proj |= in_scope(e, 1);
 	if (proj) {
@@ -1541,8 +1582,9 @@ void brain_midi_log(const u8 *m)
 	dbg_seq++;
 }
 
-/* Text without stock's sprintf, which does not take %02X or field widths. */
-static u32 put_s(char *o, const char *s) { u32 n = 0; while (s[n]) { o[n] = s[n]; n++; } return n; }
+/* Text without stock's sprintf, which does not take %02X or field widths. Ends the text with a NUL
+ * (not counted in the return value, so a following put_s overwrites it). */
+static u32 put_s(char *o, const char *s) { u32 n = 0; while (s[n]) { o[n] = s[n]; n++; } o[n] = 0; return n; }
 static u32 put_hex2(char *o, u32 v) { const char *h = "0123456789ABCDEF"; o[0] = h[(v >> 4) & 15]; o[1] = h[v & 15]; return 2; }
 static u32 put_dec(char *o, u32 v, u32 width)
 {
@@ -4389,9 +4431,9 @@ static void set_value(u32 i)
 	int v = brain_values[i];
 	char *o = setval[i];
 	if (e->type == 1)
-		put_s(o, v ? "ON" : "OFF");
+		o[put_s(o, v ? "ON" : "OFF")] = 0;
 	else if (e->type == 2)
-		put_s(o, (u32)v < e->nlabels ? e->labels[v] : "?");
+		o[put_s(o, (u32)v < e->nlabels ? e->labels[v] : "?")] = 0;
 	else {
 		u32 n = 0;
 		if (v < 0) {
@@ -4401,13 +4443,127 @@ static void set_value(u32 i)
 		n += put_dec(o + n, (u32)v, 0);
 		o[n] = 0;
 	}
-	if (e->apply == 2) {			/* takes effect at the next boot */
-		u32 k = 0;
-		while (o[k])
-			k++;
-		o[k++] = '*';
-		o[k] = 0;
+}
+
+/* The usb module's pair rule: IN needs an output stream beside it (EP3 IN
+ * is its implicit-feedback source). A move of entry i to value v is
+ * refused when it leaves IN not OFF while TRACKS, MAIN, CUE and MASTER are
+ * all off. The check is on the labels ("OFF") and the binary values (0),
+ * not the indexes, which the store's lock file owns; no usb module in the
+ * remix, no rule. */
+static int label_is(const struct set_ent *e, int v, const char *s)
+{
+	const char *l = (u32)v < e->nlabels ? e->labels[v] : 0;
+	if (!l)
+		return 0;
+	while (*s && *l == *s) {
+		l++;
+		s++;
 	}
+	return !*s && !*l;
+}
+
+/* A usb setting is off at value v: 0 for the Binary ones (MAIN, CUE,
+ * MASTER), the "OFF" label for the Options (TRACKS, IN). */
+static int usb_off(const struct set_ent *e, int v)
+{
+	if (e->type == 1)
+		return v == 0;
+	return label_is(e, v, "OFF");
+}
+
+/* the setting keys of modules/usb/manifest.py */
+#define USB_KEY_TRACKS 7
+#define USB_KEY_MAIN 8
+#define USB_KEY_CUE 9
+#define USB_KEY_MASTER 10
+#define USB_KEY_IN 11
+
+static int usb_pair_ok(u32 i, int v)
+{
+	int tr = -1, ma = -1, cu = -1, ms = -1, in = -1;
+	for (u32 k = 0; k < brain_set_n && k < MAX_SET; k++) {
+		const struct set_ent *e = &brain_set[k];
+		if (!same_id(e->id, e->id_len, "octabam.usb", 11))
+			continue;
+		if (e->key == USB_KEY_TRACKS)
+			tr = (int)k;
+		else if (e->key == USB_KEY_MAIN)
+			ma = (int)k;
+		else if (e->key == USB_KEY_CUE)
+			cu = (int)k;
+		else if (e->key == USB_KEY_MASTER)
+			ms = (int)k;
+		else if (e->key == USB_KEY_IN)
+			in = (int)k;
+	}
+	if (in < 0)
+		return 1;
+	int iv = i == (u32)in ? v : brain_values[in];
+	if (usb_off(&brain_set[in], iv))
+		return 1;
+	if (tr >= 0 && !usb_off(&brain_set[tr], i == (u32)tr ? v : brain_values[tr]))
+		return 1;
+	if (ma >= 0 && !usb_off(&brain_set[ma], i == (u32)ma ? v : brain_values[ma]))
+		return 1;
+	if (cu >= 0 && !usb_off(&brain_set[cu], i == (u32)cu ? v : brain_values[cu]))
+		return 1;
+	if (ms >= 0 && !usb_off(&brain_set[ms], i == (u32)ms ? v : brain_values[ms]))
+		return 1;
+	return 0;
+}
+
+/* TRACKS and MASTER: MASTER is track 8's L/R, which TRACKS already carries
+ * (the usb module's descriptors.py and cfgsel refuse the pair too). A move
+ * of entry i to value v is refused when it leaves both on. */
+static int usb_master_ok(u32 i, int v)
+{
+	int tr = -1, ms = -1;
+	for (u32 k = 0; k < brain_set_n && k < MAX_SET; k++) {
+		const struct set_ent *e = &brain_set[k];
+		if (!same_id(e->id, e->id_len, "octabam.usb", 11))
+			continue;
+		if (e->key == USB_KEY_TRACKS)
+			tr = (int)k;
+		else if (e->key == USB_KEY_MASTER)
+			ms = (int)k;
+	}
+	if (tr < 0 || ms < 0)
+		return 1;
+	if (usb_off(&brain_set[tr], i == (u32)tr ? v : brain_values[tr]))
+		return 1;
+	return usb_off(&brain_set[ms], i == (u32)ms ? v : brain_values[ms]);
+}
+
+/* The usb rules for a move of entry i to v: 1 when allowed, else 0 with the
+ * popup shown. */
+static int usb_move_ok(u32 i, int v)
+{
+	if (!usb_pair_ok(i, v)) {
+		msg[0] = "IN NEEDS AN";
+		msg[1] = "OUTPUT STREAM";
+		POPUP("USB SETTINGS", 2, msg, 0, 0);
+		return 0;
+	}
+	if (!usb_master_ok(i, v)) {
+		msg[0] = "TRACKS HAS T8:";
+		msg[1] = "NO MASTER";
+		POPUP("USB SETTINGS", 2, msg, 0, 0);
+		return 0;
+	}
+	return 1;
+}
+
+/* a setting that takes effect at the next boot was changed: leaving SETTINGS says so */
+static u8 boot_pend;
+static int boot_timer DATA = -1;
+
+static void boot_toast_cb(void)
+{
+	timer_off(&boot_timer);
+	msg[0] = "REBOOT TO";
+	msg[1] = "APPLY CHANGES";
+	POPUP("SETTINGS", 2, msg, 0, 0);
 }
 
 /* LEFT and RIGHT: one step down or up, stopping at the ends */
@@ -4419,7 +4575,10 @@ static void set_move(u32 i, int dir)
 		v = e->min;
 	if (v > e->max)
 		v = e->max;
+	if (!usb_move_ok(i, v))
+		return;
 	brain_values[i] = v;
+	boot_pend |= e->apply == 2;
 	brain_post_settings();
 }
 
@@ -4429,7 +4588,10 @@ static void set_step(u32 i)
 	int v = brain_values[i] + (e->type == 3 ? e->step : 1);
 	if (v > e->max)
 		v = e->min;
+	if (!usb_move_ok(i, v))
+		return;
 	brain_values[i] = v;
+	boot_pend |= e->apply == 2;
 	brain_post_settings();
 }
 
@@ -4441,7 +4603,7 @@ static int own_setting(const struct set_ent *e)
 static void build_set(void)
 {
 	const char *group = 0;
-	u32 head = 0, boot = 0;
+	u32 head = 0;
 	add(K_HEAD, "BRAIN", 0, 0);
 	add(K_TOGGLE, "APPLY DEFAULTS", tog_apply, 0)->on = (u8)brain_v_octabam_brain_2;
 	u32 own = sn;
@@ -4460,12 +4622,10 @@ static void build_set(void)
 			add(K_HEAD, h, 0, 0);
 		}
 		set_value(i);
-		struct srow *r = add(K_VALUE, e->name, set_step, i);
+		struct srow *r = add(e->type == 1 ? K_TOGGLE : K_VALUE, e->name, set_step, i);
 		r->val = setval[i];
-		boot |= e->apply == 2;
+		r->on = e->type == 1 && brain_values[i];
 	}
-	if (boot)
-		add(K_TEXT, "* AT NEXT BOOT", 0, 0);
 	if (sn == own)
 		add(K_TEXT, "NO MODULE SETTINGS", 0, 0);
 }
@@ -4488,7 +4648,7 @@ static u32 tab_of_entry(u32 e)
 static void build_tpl(void)
 {
 	static void (*const newf[TPL_TABS])(u32) = { tpl_new_part, tpl_new_fx, tpl_new_midi, tpl_new_project };
-	static const char *const newl[TPL_TABS] = { "NEW PART TEMPLATE", "NEW FX TEMPLATE", "NEW MIDI TEMPLATE", "NEW PROJECT TPL" };
+	static const char *const newl[TPL_TABS] = { "<NEW PART TEMPLATE>", "<NEW FX TEMPLATE>", "<NEW MIDI TEMPLATE>", "<NEW PROJECT TEMPLATE>" };
 	add(K_ITEM, newl[tpl_tab], newf[tpl_tab], 0);
 	if (del_e != 0xffff) {			/* the deleted template gone from the card: nothing left out */
 		u32 j = 0;
@@ -4513,7 +4673,7 @@ static void build_tpl(void)
 		if (pick == 0xffff || sn + 2 > SR_MAX)
 			break;
 		done[pick] = 1;
-		if (tpl_tab == 1) {			/* the tab with several targets: a heading each */
+		{					/* a heading per target; the other tabs have one target each */
 			char *h = slab[name++];
 			u32 k = 0;
 			for (const char *c = ent_name(pick); *c && k < 15; c++)
@@ -5104,6 +5264,7 @@ static void build_events(void)
 {
 	static const char *const what[EV_N] = { "FRAME OVER", "CPU FULL", "CARD SLOW" };
 	add(K_TOGGLE, "EVENT LOG", tog_ev, 0)->on = (u8)brain_v_octabam_brain_3;
+	add(K_HEAD, "EVENTS", 0, 0);
 	if (!ev_count) {
 		add(K_TEXT, "NO EVENTS YET", 0, 0);
 		return;
@@ -5130,6 +5291,7 @@ static void build_midilog(void)
 {
 	add(K_TOGGLE, "MIDI LOG", tog_log, 0)->on = (u8)brain_v_octabam_brain_1;
 	add(K_ITEM, "WRITE DEBUG LOG", midi_write, 0);
+	add(K_HEAD, "MESSAGES", 0, 0);
 	mon_update();
 	if (!mon_n)
 		add(K_TEXT, mon_buf[0], 0, 0);
@@ -5169,7 +5331,7 @@ static char perf_title[16];
 
 static void build_perf(void)
 {
-	for (u32 i = 0; i < 8; i++)			/* put_s does not end its text */
+	for (u32 i = 0; i < 8; i++)
 		for (u32 j = 0; j < 20; j++)
 			tv[i][j] = 0;
 	switch (perf_tab) {
@@ -5359,6 +5521,10 @@ void brain_scr_exit(void)
 		UNTIMER(live_timer);
 		live_timer = -1;
 	}
+	if (sc_now() == SC_SET && boot_pend && boot_timer < 0) {
+		boot_pend = 0;
+		boot_timer = TIMER(2, boot_toast_cb);
+	}
 	if (sc_now() == SC_TED && !ted_gone && back_timer < 0) {	/* NO, or the menu closing: back_cb tells */
 		back_mode = ted_grp == G_TOP ? 0 : 2;
 		back_timer = TIMER(2, back_cb);
@@ -5441,7 +5607,7 @@ void brain_scr_enc(u32 index, int delta)
 		sc_move(delta < 0 ? -1 : 1);
 }
 
-/* the checkbox: a 7 x 7 square, its middle filled when on */
+/* the checkbox: a 7 x 7 square, crossed when on (stock's mark) */
 static void checkbox(void *ctx, int x, int y, int on)
 {
 	RULE(ctx, x, y - 1, x + 6, 1);
@@ -5449,8 +5615,10 @@ static void checkbox(void *ctx, int x, int y, int on)
 	VLINE(ctx, x, y - 1, y + 5, 1);
 	VLINE(ctx, x + 6, y - 1, y + 5, 1);
 	if (on)
-		for (int k = 2; k <= 4; k++)
-			VLINE(ctx, x + k, y + 1, y + 3, 1);
+		for (int k = 0; k < 5; k++) {
+			RULE(ctx, x + 1 + k, y + k, x + 1 + k, 1);
+			RULE(ctx, x + 5 - k, y + k, x + 5 - k, 1);
+		}
 }
 
 /* OTOP page 0: a bar per processor (the peak a mark on it), then two readouts */
@@ -5503,6 +5671,7 @@ void brain_scr_draw(void *ctx)
 		DRAWSTR(FONT, ctx, w - 6 - (int)TEXT_W(FONT, -1, title), a2 + 2, -1, title);
 	ICON(brain_icon, ctx, 6, a2);
 	RULE(ctx, 4, a2 - 1, w - 6, 1);
+	int rx = w - MARGIN - (sn > VISIBLE ? 4 : 0);	/* the right edge of the rows: the scroll bar is to its right */
 	for (u32 j = 0; j < VISIBLE; j++) {
 		u32 i = stop + j;
 		if (i >= sn)
@@ -5510,23 +5679,46 @@ void brain_scr_draw(void *ctx)
 		const struct srow *r = &sr[i];
 		int y = a2 - 9 - PITCH * (int)j;
 		int x = MARGIN;
-		DRAWSTR(FONT, ctx, x, y, -1, r->label);
+		if (r->kind == K_HEAD) {		/* ... NAME ........ as stock's separators */
+			DOTH(ctx, x, y + 2, x + 8);
+			x += 12;
+		}
+		if ((r->kind == K_VALUE || r->kind == K_COST || r->kind == K_LINE) && r->val) {
+			/* the label gives way to the value at the right */
+			char cut[24];
+			u32 n = 0;
+			int room = rx - (int)TEXT_W(FONT, -1, r->val) - 6 - x;
+			while (r->label[n] && n < 23) {
+				cut[n] = r->label[n];
+				cut[n + 1] = 0;
+				if ((int)TEXT_W(FONT, -1, cut) > room) {
+					cut[n] = 0;
+					break;
+				}
+				n++;
+			}
+			cut[n] = 0;
+			DRAWSTR(FONT, ctx, x, y, -1, r->label[n] ? cut : r->label);
+		} else
+			DRAWSTR(FONT, ctx, x, y, -1, r->label);
 		if (r->kind == K_BAR) {
 			DRAWSTR(FONT, ctx, BAR_X - 4 - (int)TEXT_W(FONT, -1, r->val), y, -1, r->val);
 			load_bar(ctx, w, y, load_now[r->arg], load_pk[r->arg]);
 		} else if (r->kind == K_HEAD)
-			DOTH(ctx, x + (int)TEXT_W(FONT, -1, r->label) + 4, y + 2, w - MARGIN);
+			DOTH(ctx, x + (int)TEXT_W(FONT, -1, r->label) + 4, y + 2, rx);
 		else if (r->kind == K_TOGGLE)
-			checkbox(ctx, w - MARGIN - 8, y, r->on);
+			checkbox(ctx, rx - 6, y, r->on);
 		else if ((r->kind == K_VALUE || r->kind == K_COST || r->kind == K_LINE) && r->val)
-			DRAWSTR(FONT, ctx, w - MARGIN - (int)TEXT_W(FONT, -1, r->val), y, -1, r->val);
+			DRAWSTR(FONT, ctx, rx - (int)TEXT_W(FONT, -1, r->val), y, -1, r->val);
 		if (i == scur && selectable(i))
-			INVERT(ctx, MARGIN - 2, y - 1, w - MARGIN + 1, y + 5, -1);
+			INVERT(ctx, MARGIN - 2, y - 1, rx + 1, y + 5, -1);
 	}
 	if (sn > VISIBLE) {			/* the scroll thumb on the right edge */
 		int lo = a2 - 9 - PITCH * (VISIBLE - 1) - 1, hi = a2 - 4, span = hi - lo;
 		int len = span * VISIBLE / (int)sn, top = hi - (span - len) * (int)stop / (int)(sn - VISIBLE);
-		VLINE(ctx, w - 3, top - len, top, 1);
+		VLINE(ctx, w - 6, lo, hi, 1);		/* the track; the window's border is at w - 3 */
+		for (int k = -1; k <= 1; k++)
+			VLINE(ctx, w - 6 + k, top - len, top, 1);
 	}
 }
 

@@ -1,4 +1,4 @@
-Chooses what a muted or soloed-out audio track does. Default OT, stock's
+Chooses what a muted or soloed-out audio track does. The default, OT, is stock's
 behaviour.
 
 ## Access
@@ -18,4 +18,4 @@ setting survives a power cycle.
 ## Notes
 
 - A muted track that a COMPRESSOR uses as its KEY keeps feeding it, as on
-  stock (where SIDECHAIN COMPRESSOR is in the image).
+  stock, including SIDECHAIN COMPRESSOR where the image has it.

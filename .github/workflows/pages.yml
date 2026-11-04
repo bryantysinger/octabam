@@ -3,7 +3,7 @@
 # checked in: the generator renders them from this commit's manifests, so
 # the site and the tree cannot drift. PRs build the same site without
 # deploying (ci.yml, the site job).
-name: Pages
+name: 📖 Pages
 on:
   push:
     branches: [main]

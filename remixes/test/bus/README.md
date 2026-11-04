@@ -1,6 +1,6 @@
 # `bus` — the plain two-server image, for the bus gates
 
-The fixture `verify_twocore` and `scripts/refhash.sh` build: BusVerb + BusDelay + SEND + TEMPO SYNC with nothing hidden or locked, so the DEV one-core hatch and the SPEC two-core build run the same code paths (a hidden engine's host guard would pass the delay dry in the hatch). Not a remix to flash: `bottleservice` is the bus as it ships.
+The fixture `verify_two_core` and `scripts/refhash.sh` build: BusVerb + BusDelay + SEND + TEMPO SYNC with nothing hidden or locked, so the DEV one-core hatch and the SPEC two-core build run the same code paths (a hidden engine's host guard would pass the delay dry in the hatch). Not a remix to flash: `bottleservice` is the bus as it ships.
 
 BusVerb + BusDelay + Send + tempo sync. The build's bit-identity subject.
 

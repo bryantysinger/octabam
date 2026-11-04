@@ -37,7 +37,7 @@ UNCACHED = 0x08000000
 STAGE = ArenaReserve("image stage", _OSW["OSW_MBOX"] - UNCACHED, _OSW["OSW_END"] - _OSW["OSW_MBOX"])
 
 
-def _include(_modules):
+def _include(_modules, remix):
     """osw.inc, the TRACE switch and this image's own name."""
     # the image's own name (remix.brain.image_name: `<REMIX> <BUILD>`, the
     # name BRAIN's heading shows and make image gives the .RMX)
@@ -64,7 +64,7 @@ MODULE = Module(
     proof_note="an MKII, 29 Sep 2026 (OCTABAM14 with BOOT TRACE): switched to its own "
                "image and to stock 1.40C, audio and play working; and with the park "
                "moved into the dead vector run (BSRETVEC) booted, played and switched "
-               "away again -- 40 region words down to 18; `verify_remixswitch`. The list in "
+               "away again -- 40 region words down to 18; `verify_remix_switch`. The list in "
                "BRAIN's pane and /BRAIN/REMIXES/ (8 Oct 2026), and the persisted selection (#743): under the port only",
     doc="MAIN MENU > BRAIN lists the raw OS images (.RMX) in /BRAIN/REMIXES/ and boots the one "
         "picked without writing the flash; remembers the choice across reboots.",
@@ -93,7 +93,7 @@ MODULE = Module(
         # error) and $04 (illegal instruction) are deliberately left as
         # stock's freeze-traps: those two fire when something is already
         # wrong, and a frozen core is more diagnosable than one running park
-        # words. verify_dspvectors audits every slot on every build.
+        # words. verify_dsp_vectors audits every slot on every build.
         pins=(0x20, 0x06),
         pin_split_label="osw_tail",
     ),
@@ -110,12 +110,12 @@ MODULE = Module(
     # the list is BRAIN's REMIXES sub-list (brain_rmx_rows, brain_rmx_n)
     requires=("BRAIN", "MEMORY"),
     arena_reserves=(STAGE,),
-    gates=(Gate("tools/verify/verify_remixswitch.py", venv=True),
+    gates=(Gate("tools/verify/verify_remix_switch.py", venv=True),
            # The park's 40 words could come out of the DSP's unused
            # interrupt vectors instead of the effect region. That is only
            # safe while nothing arms an interrupt in those runs, and once
            # code lives there the freeze that would announce one is gone --
            # so the audit runs on every build, not in a session nobody
            # repeats.
-           Gate("tools/verify/verify_dspvectors.py"),),
+           Gate("tools/verify/verify_dsp_vectors.py"),),
 )

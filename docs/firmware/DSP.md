@@ -85,10 +85,20 @@ records. The X/Y data blocks differ in address between payloads: curve bank
 a dispatch table.
 
 Internal P is contiguous with no gaps: A 66 modules, 8,159 words, top
-`P:0x01fdf`; B 46 modules, 7,583 words, top `P:0x01d9f`. `P:0x2000` is
+`P:0x01fdf`; B 46 modules, 7,583 words, top `P:0x01d9f`. P ends at
+`P:0x1fff` on the default map ✅ (PEXT PROBE, 25 Oct 2026, `modules/pextprobe`,
+on the unit): a control at the spare `P:0x1fe0` wrote and read back on both
+cores, and `P:0x2000`, `0x2100`, `0x2400`, `0x2800`, `0x3000`, `0x3800` did not
+hold a written word on either; `P:0x3fe0`, `0x5fe0` .. `0xffe0` did not on
+either core, and nothing wrapped onto `P:0x1fe0`. ❌ Retracted: "`P:0x2000` is
 executable (CHORUS relocated there ran on the unit,
-`git show dc788d3a:tools/build_dsptest.py`); upper bound unmeasured. No external memory; the shared
-window runs at internal speed (`CHIP.md`).
+`git show dc788d3a:tools/build_dsptest.py`)": a direct write and read-back
+at `P:0x2000` finds no memory there, and the CHORUS result is not
+reproduced. No external memory; the shared window runs at internal speed
+(`CHIP.md`). Code written at runtime into the shared window runs ✅: PEXT PROBE
+wrote a three-word routine at `P:0x30100`, `0x35900`, `0x36300`, `0x36800`,
+`0x37000`, `0x37800` and `0x37e00` from each core, called it and read its
+result, on core 0 and on core 1 (the words are in payload A's half).
 
 Non-effect modules (payload A): `0x2bf` summing mixdown, `0x3a1` voice
 playback engine (2-tap linear interpolator over a 128-word ring), `0x5cb`
@@ -157,7 +167,7 @@ Two 32-entry pointer tables in X, indexed by the raw id, one load record
 menus index the same tables (`contributing/TRAPS.md`, "an FX2 id is also an FX1 id").
 The FX1 dispatcher keeps the id in r1 across the init call (`P:0x4c8..0x4d7`);
 an init that moves r1 sends the proc call through P:0 (`contributing/TRAPS.md`,
-`verify_initregs`).
+`verify_init_regs`).
 
 | id | init | process | effect |
 |---|---|---|---|
@@ -515,14 +525,14 @@ advanced in `P:0x0041e` before process is called. Base table `X:0x255`
 (8 words): `0x01000 0x04000 0x01c00 0x08000 0x02800 0x30000 0x03400
 0x34000`, interleaved FX1/FX2 (FX1 stride `0xc00`, FX2 `0x4000`). Payload B
 takes `0x38000`/`0x3c000` for its shared-window slots. FX2 instance *k* =
-table entry `1 + 2k`, `r7 = 0x6000 + (2 + 2k)·0x100`:
+table entry `1 + 2k`, `r7 = 0x6200 + 0x300·k` (the dispatcher bumps r7 three times per track: FX1, FX2, then once more unconditionally). ✅ measured 20 Oct 2026 with an r7 canary in `ot_emu` (OTDEMO; Zac Kyoti, issue #815). ❌ retracted 21 Oct 2026: `0x6000 + (2 + 2k)·0x100`, right only for k = 0:
 
 | | entry | base A | base B | r7 |
 |---|---|---|---|---|
 | bank track 1 FX2 | 1 | `0x04000` | `0x04000` | `0x6200` |
-| bank track 2 FX2 | 3 | `0x08000` | `0x08000` | `0x6400` |
-| bank track 3 FX2 | 5 | `0x30000` | `0x38000` | `0x6600` |
-| bank track 4 FX2 | 7 | `0x34000` | `0x3c000` | `0x6800` |
+| bank track 2 FX2 | 3 | `0x08000` | `0x08000` | `0x6500` |
+| bank track 3 FX2 | 5 | `0x30000` | `0x38000` | `0x6800` |
+| bank track 4 FX2 | 7 | `0x34000` | `0x3c000` | `0x6B00` |
 
 Read the base in init (`move x:>$213,r4 / move x:(r4),x0`) and carry it to
 process; in process the pointer is another instance's (one effect works by
@@ -539,7 +549,7 @@ isolated. A per-instance stash at `Y:(0x735 + (r7 >> 8))` works on payload A and
 lands inside a live coefficient table on payload B. `dsp_host -inst N
 -guard` names a write over a loaded module. Bring-up hangs (three
 attempts, cause not isolated): executing at `P:0x2000` with low X as delay
-memory (🟡 P/X alias), a `do` loop-end assembled at the wrong org, a
+memory (🟡 P/X alias; `P:0x2000` is not memory on the default map, above), a `do` loop-end assembled at the wrong org, a
 hardcoded entry offset.
 
 ## 8. Standing rules

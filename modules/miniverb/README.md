@@ -128,14 +128,18 @@ with a 1/256 coefficient (about 5.8 ms time constant). Feedback stays below
 ## Ownership and initialization
 
 Every instance captures its stock allocator buffer during init and uses only
-that 16K Y ring and X:(r7+$20..$3f). The current layout occupies 13,750 ring
-positions, including interpolation slack. No global writable scratch. Four
+a 15,870-word Y ring in it and X:(r7+$20..$3f). The ring stops at `+$3DFD`, so the
+slot's last `$202` words stay free (octabam's FX2 rule, #785: in T3's and T7's slot
+they are SIDECHAIN_COMPRESSOR's cross-core window); until 19 Oct 2026 the ring was
+the whole 16K slot. The current layout occupies 13,750 ring positions, including
+interpolation slack, so the shorter ring changes no delay or tap. No global writable scratch. Four
 instances per DSP core, eight total, include all four shared-window buffers.
 The ledger refuses combinations with modules that hardcode those buffers.
 
 Init clears every persistent scalar unconditionally, then clears 128 delay
-words per process call. Audio passes dry until the whole 16K ring is clean
-(128 unsplit blocks, about 46 ms; split calls shorten this). MIX=0 from init
+words per process call, under the ring's own modulus (the last of the 124 calls
+wraps 2 words to the start). Audio passes dry until the whole ring is clean
+(124 unsplit blocks, about 45 ms; split calls shorten this). MIX=0 from init
 is bit-exact dry; changes to MIX settle through the smoother.
 
 The phase is explicitly masked to 17 bits. An earlier prototype mistakenly

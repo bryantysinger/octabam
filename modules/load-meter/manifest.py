@@ -8,8 +8,9 @@ entry 0x4000aad0, where the stub replays the prologue and stamps DMA timer
 3's count, and its epilogue 0x4000d9a6, where the duration is summed and
 the longest kept; every 0.5 s the window is published to lm_stats
 {seq, window, sum, count, longest} in DMA timer 3 counts (132 MHz). The
-sites are CF METER's epilogue and BOOT TRACE's entry, so the ledger refuses
-LOAD METER beside either by name. meter.s has the arithmetic.
+sites are CF METER's epilogue and BOOT TRACE's entry: beside either, HOOKS
+owns them and calls lm_in and lm_out built to return (modules/hooks,
+frame_entry and frame_tail). meter.s has the arithmetic.
 """
 
 import os
@@ -24,20 +25,26 @@ SOURCE = "modules/load-meter/dsp_meter.asm"
 
 
 def _dsp_asm():
-    """The DSP source; for tools/verify/verify_loadmeter.py's builds a copy
+    """The DSP source; for tools/verify/verify_load_meter.py's builds a copy
     under out/: LM_BURN=N burns N iterations of a one-cycle `nop` DO loop at
     each core's frame end, before the busy stamp (the calibration); LM_NOPUB=1
-    leaves out core 0's publish and LM_NOOT=1 OTOP's stamps (the bit-identity references)."""
+    leaves out core 0's publish and LM_NOOT=1 OTOP's stamps (the bit-identity references);
+    LM_FRAME0=N starts core 0's frame count at N (the wrap at 2^23)."""
     n = int(os.environ.get("LM_BURN", "0") or 0)
     nopub = os.environ.get("LM_NOPUB") == "1"
     noot = os.environ.get("LM_NOOT") == "1"
-    if not n and not nopub and not noot:
+    frame0 = int(os.environ.get("LM_FRAME0", "0") or 0)
+    if not n and not nopub and not noot and not frame0:
         return SOURCE
     if n and not 0 < n < 4096:
         raise ValueError(f"LM_BURN={n}: 1..4095 (the short DO count)")
     src = (ROOT / SOURCE).read_text()
     if n:
         src = src.replace("; LM_BURN\n", f"        do      #{n},lm_burned\n        nop\nlm_burned:\n", 1)
+    if frame0:
+        if not 0 < frame0 < 1 << 23:
+            raise ValueError(f"LM_FRAME0={frame0}: 1..2^23-1")
+        src = src.replace("; LM_FRAME0\n", f"        move    #>{frame0},x0\n        move    x0,x:(r1+6)\n", 1)
     if nopub:
         src = src.replace("; LM_PUB\n", "        bra     lmp_x\n", 1)
     if noot:
@@ -50,12 +57,20 @@ def _dsp_asm():
     out.write_text(src)
     return str(out.relative_to(ROOT))
 
+
+def _hooks_inc(modules, remix):
+    """HOOKS's flags (modules/hooks): beside another module on one of its
+    frame interrupt or boot sites, the routine returns and HOOKS replays the
+    stock instructions once; alone, its own bytes."""
+    from remix import hooks_flags
+    return hooks_flags.inc("LOAD METER", modules)
+
 MODULE = Module(
     name="load-meter", key="LOAD METER", kind=Kind.HYBRID,
     category=Category.REFERENCE, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.HARDWARE, proof_note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); " "the window and both DSP cores' figures under the port (verify_loadmeter, verify_brain)",
+    proof=Proof.HARDWARE, proof_note="cursory testing on Sam's MKII (owner report, 16 Oct 2026); " "the window and both DSP cores' figures under the port (verify_load_meter, verify_brain)",
     doc="The frame interrupt's share of the ColdFire, each DSP core's busy time per frame and each effect call's cost, for BRAIN's OTOP screen.",
-    linked=(Linked("loadmeter", "modules/load-meter/meter.s", cpu="5475", dram=True),),
+    linked=(Linked("loadmeter", "modules/load-meter/meter.s", cpu="5475", dram=True, include=_hooks_inc),),
     # Each core's busy time per frame (dsp_meter.asm): stamps of timer 0 at
     # its frame start and frame end, published by core 0 in MAIN's low bytes.
     dsp=DspSection(
@@ -92,8 +107,12 @@ MODULE = Module(
                "the frame interrupt, before the recorder reads MAIN: the DSP meter's bytes taken and zeroed"),
     ),
     # STEM REC reads MAIN at its frame hook in the transfer routine (0x40004b12),
-    # outside the order lm_scrub is measured against: refused until measured.
-    conflicts=(("STEM REC", "reads MAIN before lm_scrub's place in the frame interrupt is shown to precede it"),),
-    gates=(Gate("tools/verify/verify_loadmeter.py", remix_arg=False, venv=True, stage="image"),
-           Gate("tools/verify/verify_dspvectors.py"),),
+    # outside the order lm_scrub runs in. It needs no order: the meter's bytes are
+    # only in the low byte of MAIN's longs, which STEM REC never writes to a file
+    # (stems_bus16 keeps the top 16 bits, stems_bus24 shifts the low byte off), so
+    # either order gives the same files. verify_stems checks MAIN.wav against the
+    # DSP's own output on an image with both (28 Oct 2026; the conflict is gone).
+    gates=(Gate("tools/verify/verify_load_meter.py", remix_arg=False, venv=True, stage="image"),
+           Gate("tools/verify/verify_dsp_vectors.py"),
+           Gate("tools/verify/verify_usb_load_meter.py", venv=True, stage="image"),),
 )

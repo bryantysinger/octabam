@@ -5,7 +5,7 @@
 
 Builds remix `gateverb`, dumps payload A and runs one instance at track 1's
 FX2 slot (`-r7 2 -alloc 1`, Y:0x4000). Gates:
-  clear     the first 52 calls (the ring is cleared 310 words a call) pass the
+  clear     the first 77 calls (the ring is cleared 206 words a call) pass the
             input through untouched
   dry       AMNT 0 is bit-exact dry
   model     an impulse and a noise burst through the module, against a float
@@ -13,7 +13,7 @@ FX2 slot (`-r7 2 -alloc 1`, Y:0x4000). Gates:
             phases and offsets, the same parameter laws and smoothing); the
             difference is the 24-bit arithmetic
   tail      the impulse response decays (TIME up -> longer), stays below full scale
-  bounds    -guard 16120: no write outside the ring (the top 256 words of the
+  bounds    -guard 15862: no write outside the ring (the top 256 words of the
             slot stay clear for the mailbox and LOAD METER), no stray write
   dirty     X and Y filled with garbage before the first call: the output
             from silence is silent
@@ -33,8 +33,8 @@ REMIX = "gateverb"
 IMAGE, MEM = "out/mainos_bus.bin", "out/dsp/_gateverb_A.mem"
 TMP = pathlib.Path("out/_cvgate"); TMP.mkdir(parents=True, exist_ok=True)
 FRAMES = 16
-CLEAR_CALLS = 52
-LEN = [111, 159, 237, 393, 1627, 2005, 3356, 1882, 1636, 4705]
+CLEAR_CALLS = 77
+LEN = [109, 157, 233, 386, 1600, 1973, 3303, 1852, 1610, 4630]
 BASE = []
 _b = 0
 for _l in LEN:
@@ -117,8 +117,8 @@ def model(samples, params, blocks_skip):
         ph1 = s24(ph1 + 190 * FRAMES); ph2 = s24(ph2 + 114 * FRAMES)
         t1 = mulf(parab(ph1), 0x03C000) + 0x00A000
         kint1, fr1 = t1 >> 12, (t1 & 0xFFF) << 11
-        t2 = mulf(parab(ph2), 0x062000)
-        kint2, fr2 = 4605 + (t2 >> 12), (t2 & 0xFFF) << 11
+        t2 = mulf(parab(ph2), 0x061000)
+        kint2, fr2 = 4531 + (t2 >> 12), (t2 & 0xFFF) << 11
         K, G, R, L = kap / Q, gc / Q, krt / Q, klp / Q
         A = amt / Q
         def cell(j, kk): return (p - BASE[j] - kk) % N
@@ -189,7 +189,7 @@ def main():
         imp[i] = int(0.3 * Q * (random.random() - 0.5))
     params = [64, 51, 80, 100, 90, 0]
     L, R, _ = host(imp, params + [0] * 6)
-    check("clear: the first 52 calls pass the input untouched",
+    check(f"clear: the first {CLEAR_CALLS} calls pass the input untouched",
           all(L[i] == imp[i] for i in range(CLEAR_CALLS * FRAMES)))
     L0, R0, _ = host(imp, [0] + params[1:] + [0] * 6)
     check("dry: AMNT 0 is bit-exact dry", L0 == imp and R0 == imp)
@@ -230,7 +230,7 @@ def main():
     check(f"gate: left against the float model, {sg:.1f} dB", sg > 50)
     # bounds
     _, _, log = host(imp[:200 * FRAMES], params + [0] * 6, extra=["-guard", str(N), "-guard-shared"])
-    check("bounds: -guard 16120, no write outside the ring", "0 stray write regions, 0 CLOBBERING" in log, log.strip().splitlines()[-1][:100] if log.strip() else "")
+    check(f"bounds: -guard {N}, no write outside the ring", "0 stray write regions, 0 CLOBBERING" in log, log.strip().splitlines()[-1][:100] if log.strip() else "")
     # dirty: garbage in X (state block) and Y (the ring), silent input
     data = pathlib.Path(MEM).read_bytes()
     body, term = data[:-9], data[-9:]

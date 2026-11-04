@@ -8,7 +8,7 @@
 ; through two 2 ms one-poles, is the envelope. So PTCH, the CHROMATIC keys,
 ; SCALE QUANTIZER, p-locks and AMP play the synth.
 ;
-; The FX2 buffer (Y, 16,384 words) holds eight 2,048-sample frames, written
+; The FX2 buffer (Y, 8,192 of its 16,384 words) holds eight 1,024-sample frames, written
 ; 256 samples a call after init (sine, triangle, saw, square, pulses 1/4 ..
 ; 1/32, zero-mean, peak 0.45); the output is silent until they are done.
 ;
@@ -124,7 +124,7 @@ wv10:
 
 proc:
         move    x:(r7+$01),a
-        move    #>$004000,x0
+        move    #>$002000,x0
         cmp     x0,a
         blt     wv01
         move    x:(r6),a
@@ -249,8 +249,8 @@ wv11:
         move    a,x0
         mac     x0,y1,a                     ; x (1 + spread)
         move    a,x:(r7+$28)
-        move    #>$0007ff,m2
-        move    #>$0007ff,m3
+        move    #>$0003ff,m2
+        move    #>$0003ff,m3
         move    #>$000001,n0
         do      n7,>wv98
         move    x:(r0),a
@@ -533,11 +533,11 @@ wv22:
         move    b1,x0
         move    x0,x:(r7+$34)
         asr     #$14,a,a
-        asl     #$b,a,a
+        asl     #$a,a,a
         move    x:(r7+$00),x0
         add     x0,a
         move    a1,x:(r7+$35)
-        add     #>$000800,a
+        add     #>$000400,a
         move    a1,x:(r7+$36)
         move    x:(r7+$10),a
         move    x:(r7+$2f),x0
@@ -575,12 +575,12 @@ wv22:
         beq     wv23
 ; voice 0
         move    x:(r7+$11),a
-        lsr     #$d,a
+        lsr     #$e,a
         move    a1,n2
         move    a1,n3
         move    x:(r7+$11),b
-        and     #>$001fff,b
-        asl     #$a,b,b
+        and     #>$003fff,b
+        asl     #$9,b,b
         move    b1,y1                       ; frac
         move    x:(r7+$35),r2
         move    (r2)+n2
@@ -665,12 +665,12 @@ wv22:
         move    a1,x:(r7+$11)
 ; voice 1
         move    x:(r7+$16),a
-        lsr     #$d,a
+        lsr     #$e,a
         move    a1,n2
         move    a1,n3
         move    x:(r7+$16),b
-        and     #>$001fff,b
-        asl     #$a,b,b
+        and     #>$003fff,b
+        asl     #$9,b,b
         move    b1,y1                       ; frac
         move    x:(r7+$35),r2
         move    (r2)+n2
@@ -755,12 +755,12 @@ wv22:
         move    a1,x:(r7+$16)
 ; voice 2
         move    x:(r7+$1b),a
-        lsr     #$d,a
+        lsr     #$e,a
         move    a1,n2
         move    a1,n3
         move    x:(r7+$1b),b
-        and     #>$001fff,b
-        asl     #$a,b,b
+        and     #>$003fff,b
+        asl     #$9,b,b
         move    b1,y1                       ; frac
         move    x:(r7+$35),r2
         move    (r2)+n2
@@ -845,12 +845,12 @@ wv22:
         move    a1,x:(r7+$1b)
 ; voice 3
         move    x:(r7+$20),a
-        lsr     #$d,a
+        lsr     #$e,a
         move    a1,n2
         move    a1,n3
         move    x:(r7+$20),b
-        and     #>$001fff,b
-        asl     #$a,b,b
+        and     #>$003fff,b
+        asl     #$9,b,b
         move    b1,y1                       ; frac
         move    x:(r7+$35),r2
         move    (r2)+n2
@@ -977,7 +977,7 @@ wv01:
         move    a1,r4
         move    #>$ffffff,m4
         move    x:(r7+$01),a
-        asr     #$b,a,a                     ; frame
+        asr     #$a,a,a                     ; frame
         move    a1,n4
         move    n4,a
         move    #>$000001,x0
@@ -1008,7 +1008,7 @@ wv01:
         cmp     x0,a
         beq     wv32
 wv25:
-        move    #>$006488,y1
+        move    #>$00c910,y1
         do      #$100,>wv33
         move    x:(r7+$02),a
         move    a,y:(r4)+
@@ -1024,24 +1024,24 @@ wv33:
         bra     wv02
 wv26:
         move    x:(r7+$01),a
-        and     #>$0007ff,a
+        and     #>$0003ff,a
         move    a1,r5
         do      #$100,>wv37
         move    r5,a                        ; i
-        move    #>$000200,x0
+        move    #>$000100,x0
         cmp     x0,a
         blt     wv34
-        move    #>$000600,x0
+        move    #>$000300,x0
         cmp     x0,a
         blt     wv35
-        sub     #>$000800,a
+        sub     #>$000400,a
         bra     wv34
 wv35:
         move    a,x0
-        move    #>$000400,a
+        move    #>$000200,a
         sub     x0,a
 wv34:
-        asl     #$d,a,a                     ; t / 1024: half scale
+        asl     #$e,a,a                     ; t / 512: half scale
         move    a,x0
         move    #>$733333,y1
         mpy     x0,y1,a
@@ -1052,16 +1052,16 @@ wv37:
         bra     wv02
 wv27:
         move    x:(r7+$01),a
-        and     #>$0007ff,a
+        and     #>$0003ff,a
         move    a1,r5
         do      #$100,>wv39
         move    r5,a                        ; i
-        move    #>$000400,x0
+        move    #>$000200,x0
         cmp     x0,a
         blt     wv38
-        sub     #>$000800,a
+        sub     #>$000400,a
 wv38:
-        asl     #$c,a,a                     ; t / 2048: half scale
+        asl     #$d,a,a                     ; t / 1024: half scale
         move    a,x0
         move    #>$733333,y1
         mpy     x0,y1,a
@@ -1072,11 +1072,11 @@ wv39:
         bra     wv02
 wv28:
         move    x:(r7+$01),a
-        and     #>$0007ff,a
+        and     #>$0003ff,a
         move    a1,r5
         do      #$100,>wv42
         move    r5,a                        ; i
-        move    #>$000400,x0
+        move    #>$000200,x0
         cmp     x0,a
         blt     wv40
         move    #>$c66666,a
@@ -1091,11 +1091,11 @@ wv42:
         bra     wv02
 wv29:
         move    x:(r7+$01),a
-        and     #>$0007ff,a
+        and     #>$0003ff,a
         move    a1,r5
         do      #$100,>wv45
         move    r5,a                        ; i
-        move    #>$000200,x0
+        move    #>$000100,x0
         cmp     x0,a
         blt     wv43
         move    #>$eccccd,a
@@ -1110,11 +1110,11 @@ wv45:
         bra     wv02
 wv30:
         move    x:(r7+$01),a
-        and     #>$0007ff,a
+        and     #>$0003ff,a
         move    a1,r5
         do      #$100,>wv48
         move    r5,a                        ; i
-        move    #>$000100,x0
+        move    #>$000080,x0
         cmp     x0,a
         blt     wv46
         move    #>$f7c57c,a
@@ -1129,11 +1129,11 @@ wv48:
         bra     wv02
 wv31:
         move    x:(r7+$01),a
-        and     #>$0007ff,a
+        and     #>$0003ff,a
         move    a1,r5
         do      #$100,>wv51
         move    r5,a                        ; i
-        move    #>$000080,x0
+        move    #>$000040,x0
         cmp     x0,a
         blt     wv49
         move    #>$fc28f6,a
@@ -1148,11 +1148,11 @@ wv51:
         bra     wv02
 wv32:
         move    x:(r7+$01),a
-        and     #>$0007ff,a
+        and     #>$0003ff,a
         move    a1,r5
         do      #$100,>wv54
         move    r5,a                        ; i
-        move    #>$000040,x0
+        move    #>$000020,x0
         cmp     x0,a
         blt     wv52
         move    #>$fe2456,a

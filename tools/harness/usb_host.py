@@ -105,6 +105,10 @@ class Bench:
     def poke(self, addr, data):
         self.cmd(f"poke {addr:#x} {data.hex()}", "poke")
 
+    def peek(self, addr, length):
+        r = self.cmd(f"peek {addr:#x} {length}", "peek")
+        return bytes.fromhex(r.split()[1])
+
     def call(self, addr, *args, timeout=None):
         r = self.cmd("call " + " ".join(f"{v:#x}" for v in (addr, *args)), "call", timeout)
         parts = r.split()

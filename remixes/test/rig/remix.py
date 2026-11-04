@@ -3,8 +3,8 @@ build it.
 
 octabam-bus without USB, Octakit and the scene modules:
 the bus, the three stations, TEMPO SYNC, CC MAP, MODE DEFAULTS, RIG HOSTS.
-registry.fixture picks it for verify_ccmap and verify_ccfeedback (CC MAP on
-the hosts under unicorn, no Runtime), verify_character and verify_onebus.
+registry.fixture picks it for verify_cc_map and verify_ccfeedback (CC MAP on
+the hosts under unicorn, no Runtime), verify_character and verify_one_bus.
 Until 30 Sep 2026 the `usb` remix was this selection plus USB MIDI.
 """
 

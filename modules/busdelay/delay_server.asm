@@ -26,7 +26,7 @@
 ;     LineR   base+0x4000 .. base+0x7fff   16384 words
 ; A knob value means the same TIME in both (64 + value*256 samples, clamped
 ; to the line), so at any TIME the hatch can reach the two render
-; bit-identically (verify_twocore). REVERSE's 32K mono ring is LineL's
+; bit-identically (verify_two_core). REVERSE's 32K mono ring is LineL's
 ; space in both.
 ;
 ; Input enters LineL, and LineR scaled by 1-PING; PING is a continuous 2x2
@@ -898,7 +898,7 @@ slewdn:
 ; Page-1 slot 1's KNOB field; its bits 8-15 carry the held MIDI note
 ; (tempo-sync's cave, id 6), so the field is masked. SEND's recipe
 ; (modules/send/send_client.asm), so T1's REV lands exactly as a SEND
-; track's (verify_onebus): the level ramped per sample from where the ramp
+; track's (verify_one_bus): the level ramped per sample from where the ramp
 ; stands toward this call's knob (a sixteenth of the gap per sample),
 ; written with 3 bits of headroom into the REV accumulator at this block's
 ; write offset plus this call's frame offset, and counted as a REV client,

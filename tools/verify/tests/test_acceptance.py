@@ -74,6 +74,11 @@ class GateTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.out = pathlib.Path(self.tmp.name)
+        # These synthetic commands must not claim the checkout's output lock:
+        # reach runs this suite alongside real firmware gates in that checkout.
+        root_patch = patch.object(a, "ROOT", self.out)
+        root_patch.start()
+        self.addCleanup(root_patch.stop)
 
     def run_child(self, code, timeout=5):
         with contextlib.redirect_stdout(io.StringIO()):

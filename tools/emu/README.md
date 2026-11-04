@@ -8,10 +8,9 @@ There are two ways to run the Octatrack's OS without flashing it:
   emu-live`.
 - **Tier-0** (`tools/emu/emu_bringup.py`, Unicorn). It boots to the RTOS
   handoff and calls the firmware's draw and formatter code directly. It is used by:
-  - the label gates in `make check` (`verify_labels`, `verify_modenames`,
-    `verify_hidden`) and CC MAP's `verify_ccmap`;
+  - the label gates in `make check` (`verify_labels`, `verify_mode_names`,
+    `verify_hidden`) and CC MAP's `verify_cc_map`;
   - `tools/build/stock_labels.py`;
-  - the remixer's UNIT pane.
 
 The records of how they were built:
 - the port: `git show 3ceba41:docs/history/COLDFIRE_PORT.md` (O1–O14) and
@@ -139,7 +138,7 @@ out/emu/ot_emu --image out/mainos_bus.bin --card out/card.img --set OCTABAM --pr
   before the mount, as a unit that has run a project has them, and posts
   nothing itself: the one LOAD PROJECT is the firmware's own (sys's media
   case, through `0x4002574c`). With a short `--load-ms` the run goes on to
-  `--live-script` while the load is still held (`verify_remixswitch`'s boot
+  `--live-script` while the load is still held (`verify_remix_switch`'s boot
   cases).
 - **Three things the DSP emulator does that the chip does not** (found
   bringing up REMIX SWITCH's DSP park, 29 Sep 2026): `dsp peek <core> P <addr>`
@@ -194,7 +193,7 @@ a real project. It is part of `make verify` when `OT_PROJECT` or
 - every track's record halfwords 18–26 equal its page-2 lane;
 - every track with record audio has a chain output;
 - CC 40 over MIDI IN moves T2's SEND;
-- (CC MAP) CC 68 reaches T1's FX1 page 2;
+- (CC MAP) CC 108 reaches T1's FX1 page 2 (CC 68 until 1 Nov 2026);
 - on a bus remix, each engine's host carries T2's send on its chain
   output, and an engine on the wrong core is refused;
 - the load rewrote no project file;
@@ -346,7 +345,8 @@ commands' reply formats are the header comment of `main.cpp`
   load the port prints `ready sample=<n> frames=<n>` and answers one line
   per command on stdin. Integers are decimal or `0x..` (a leading zero is
   not octal). Anything malformed answers `err <message>` and the loop
-  continues; EOF exits 0. `--main-level` defaults to 64 here; the batch
+  continues; EOF exits 0, and so does a dead parent (`ot_emu: parent <pid> is
+  gone: exiting`, status 3) even while a `run` is executing. `--main-level` defaults to 64 here; the batch
   posts no level unless asked.
   - `run <ms> [wall <s>]` is the only command that advances emulated time;
     `stop=` in its reply is `time`, `gate`, `fault`, `illegal` or `wall`.
@@ -519,7 +519,7 @@ O15a-O24, M5 Mac, 12-13 Sep) is the history of what the port already does:
 - 18 verifiers start the cores. A grep for the lockstep-only instruments
   (`--dsp-writes`, `--dsp-peek`, `--block-dump`, `--audio-out` and the
   others) finds none in `stems_panel`, `verify_analog_bassdrum_ui`,
-  `verify_boottrace`, `verify_kits`, `verify_plocksp2`, `verify_scenesp2`,
+  `verify_boot_trace`, `verify_kits`, `verify_plocks_p2`, `verify_scenes_p2`,
   `verify_usb_post`; the other eleven use at least one. This was not audited
   per gate.
 
@@ -548,9 +548,9 @@ that third.
    `DspPair::rtAfterFork`, called in the child after `fork()`), the children's
    host-port traffic equals lockstep's (192,890 words in, 61,660 out, 720
    commands) and the JIT's code ran in the child without trouble on the M3.
-   `verify_scenesp2`, whose one load and forked scenarios use `--dsp`, gave
+   `verify_scenes_p2`, whose one load and forked scenarios use `--dsp`, gave
    the same verdict twice (28 ok, 0 fail) in 15-16 s against 29-30 s in
-   lockstep. `verify_plocksp2` gave no change (98 s either way): it runs
+   lockstep. `verify_plocks_p2` gave no change (98 s either way): it runs
    `--dsp` in one `play` scenario only, and its time is ColdFire-bound loads
    and power cycles. `verify_kits`' main fork runs without the cores at all
    (`--dsp` is only on its strand boot), so the JIT does nothing there.
@@ -560,10 +560,10 @@ that third.
    repeated enough to call it deterministic; nothing but arm64 macOS. The
    gates that run the cores in one process without an instrument are
    `verify_kits`' strand boot (106 s, already beside the fork since #670, so
-   it saves CPU and not wall time), `verify_boottrace`,
+   it saves CPU and not wall time), `verify_boot_trace`,
    `verify_analog_bassdrum_ui`, `stems_panel` and `verify_usb_post` (not
-   measured). The whole-gate wall gain is about 15 s on `verify_scenesp2`
-   (a 39-48 s job beside `verify_plocksp2`'s 98-147 s). Lockstep stays the
+   measured). The whole-gate wall gain is about 15 s on `verify_scenes_p2`
+   (a 39-48 s job beside `verify_plocks_p2`'s 98-147 s). Lockstep stays the
    default and the reference.
 2. **A PGO build in the port store** (`tools/emu/port_store.py`). Done 12 Oct:
    `make emu-pgo` (or `python3 tools/emu/port_store.py pgo`) builds it once
@@ -581,43 +581,33 @@ that third.
    DSP-write census, memory dumps and command log are byte-identical, and the
    oracle's 25 checks agree (the render's `cpu` line differs only in its
    wall-clock figures).
-3. **Re-pin `vendor/dsp56300` to the 9 Oct tip (7a5390e7, 49 commits past
-   8ccdd843).** Scoped 12 Oct in scratch trees; not done.
-   - By title: timers 6, JIT fixes 8, ESAI 7, DMA 5, host interface (HDI08,
-     SHI, the host-command queue) 7, interpreter semantics 8 (undefined
-     opcodes run as ILLEGAL, MOVEP, the DO-loop end, the signed modulo bounds,
-     scale-up limits), interrupts 2, memory, GPIO and build 6.
-   - Our patch (59 hunks) on the tip: 51 hunks apply, 8 are rejected in six
-     files. The AGU hunk is covered by upstream's signed compare (`fdd98fc5`;
-     equal for the base-0 pre-decrement, not tested over the whole space).
-     The masked-interrupt peripheral hunk is `823e697c`. Our unmapped-register
-     hooks are upstream's `setIoExtension`; `ot_emu`'s one call changes name.
-     Three hunks only need new context (`pendingInterruptCount`,
-     `peekStatusRegister`, `m_txFifoDepth`).
-   - `ot_emu` builds against the tip with those fix-ups and nothing else; the
-     `dsp_host`/`dsp_asm` build and upstream's `dsp56kTestRunner` were not
-     tried.
-   - Speed: none. The load phase of the gate command (853,049,038 ColdFire
-     instructions in both) took 22.4 s on the tip against 22.9 s on the pin,
-     the same flags, three paired runs.
-   - Behaviour: the first run after the load halts the firmware at frame 8
-     (`halt` at `0x4000ab40`; core 0 spins 3.88 G instructions on 53 host
-     commands). Bisected over the 49 commits (patch re-applied with the same
-     fix-ups at each): good to `2afc1c4f`, first bad `3cee91c9` ("DMA: a
-     channel enabled together with a new request source waits for the next
-     request"), which reworks the request semantics our DMA hunks also
-     change (the ESAI input feed, DCR2 rewritten every idle pass). The port
-     is to reconcile our DMA hunks with it.
-   - Estimate (not measured): half a day to a day to reconcile the DMA
-     hunks and pass the gate command, then the gates of the 22 Sep re-pin
-     (`scripts/refhash.sh check`, `verify-bus`, `verify-twocore`, every DSP
-     gate) and `ci-dsp` from the main checkout. The gain is a smaller patch
-     (about 60 lines fewer) and eight JIT fixes that matter to `--dsp-rt`
-     only.
+3. **Re-pin `vendor/dsp56300`.** Done in PR #943: 8ccdd843 to 8b731966
+   (66 commits), the patch 1417 to 1146 lines. CI on the PR head, all green:
+   DSP Toolchain and ColdFire Port Unit Tests (ubuntu, macos), `ci-dsp`,
+   `ci-emu`, `emu-cf`, `verify-bus`, `check-shared` (both), `check-remix
+   octabam` (plain, long, project) and `make reach`.
+   - Dropped from the patch: the AGU modulo hunk (upstream `fdd98fc`), the
+     masked-interrupt peripheral service, the unmapped-register hooks
+     (upstream `setIoExtension`), the request-source guard, the dual-counter
+     reload, the same-value DCR renewal (no observed effect) and the ESAI
+     LOG lines.
+   - The 12 Oct halt did not recur as a halt. What was measured: with
+     upstream's `3cee91c9` rule unchanged, `verify_remix_switch` failed in
+     CI (`ok d0=0`: neither core took the park command; then `callAsMain`
+     did not return in 400000000 steps). With the pre-`3cee91c9` arming rule
+     behind `DSP::setDmaTriggerOnArm` (set by `ot_emu` in both modes) the
+     gate passes. Not measured: why the rule matters to that gate, and
+     whether the 12 Oct halt at frame 8 is the same failure; neither was
+     run under the firmware here.
+   - Also changed: upstream names `M_PCRE` and `M_PRRE` in the disassembler
+     (`2dee93df`), so `verify_dsp_vectors` lists them. Inferred, not
+     measured: the payloads wrote those addresses before and only the name
+     is new.
+   - Not run: `scripts/refhash.sh check`.
 4. **Snapshot the machine after LOAD PROJECT** and restore it per gate.
    Removes about 23 s per boot of the same image and project; a bottleservice
-   half boots at least seven times (`set`, `verify_scenesp2`,
-   `verify_plocksp2`, TEMPO BUS, USB MIDI twice, FX2 LOCK). `--scenario`
+   half boots at least seven times (`set`, `verify_scenes_p2`,
+   `verify_plocks_p2`, TEMPO BUS, USB MIDI twice, FX2 LOCK). `--scenario`
    already forks after one load inside one gate. Needs the ColdFire RAM, both
    DSP cores' state, the peripherals and the card serialised: a large change;
    proof is a restored run's outputs byte-identical to a fresh boot's.
@@ -741,7 +731,7 @@ The helpers:
 - `render_fx2(r, track, effect_id)` and `render_fx1(...)` render an FX
   parameter page with the effect assigned.
 - `tools/build/stock_labels.py`, `verify_labels.py` and
-  `verify_modenames.py` call the display formatters through the same
+  `verify_mode_names.py` call the display formatters through the same
   machine.
 
 Descending into a menu item needs the real key handler `FUN_40064e64`.

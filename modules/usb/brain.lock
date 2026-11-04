@@ -2,31 +2,46 @@
  "params": {},
  "retired": {
   "params": [],
-  "settings": []
+  "settings": [
+   1,
+   2
+  ]
  },
  "settings": {
-  "1": {
-   "labels": [
-    "TRACKS MAIN CUE",
-    "TRACKS",
-    "MASTER",
-    "MAIN CUE",
-    "MAIN",
-    "TRACKS POST",
-    "OFF"
-   ],
-   "name": "LAYOUT",
-   "type": "option"
+  "10": {
+   "name": "MASTER",
+   "type": "binary"
   },
-  "2": {
+  "11": {
    "labels": [
+    "OFF",
     "AB",
     "CD",
-    "ABCD",
-    "OFF"
+    "ABCD"
    ],
-   "name": "INPUTS",
+   "name": "IN",
    "type": "option"
+  },
+  "12": {
+   "name": "MIDI",
+   "type": "binary"
+  },
+  "7": {
+   "labels": [
+    "OFF",
+    "PRE",
+    "POST"
+   ],
+   "name": "TRACKS",
+   "type": "option"
+  },
+  "8": {
+   "name": "MAIN",
+   "type": "binary"
+  },
+  "9": {
+   "name": "CUE",
+   "type": "binary"
   }
  },
  "store": {

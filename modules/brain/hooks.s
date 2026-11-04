@@ -31,6 +31,9 @@ brain_lmo: .long LM_OT
 | stock base is 0x40a955e0, where the runtime is linked) and the runtime's end
         .globl  brain_dram
 brain_dram: .long ARENA_BASE, _end
+| the CS1 early-settings block's base (build override: remix.brain.early_layout)
+        .globl  brain_cs1_early
+brain_cs1_early: .long CS1_EARLY_BASE
 
         .text
         .globl  brain_on_load, brain_on_bankload

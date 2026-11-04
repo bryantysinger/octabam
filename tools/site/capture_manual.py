@@ -116,9 +116,43 @@ def capture_core(p,r):
     shot(p,'reload-from-project','status','Track 1 sequence reload from the saved project.',r)
 
 
+def capture_plocks(p,r):
+    """PLATE REV slot A: a held lock and the normal Part value on release."""
+    press(p,'t1');p.press('pg_fx2',hold=180,settle=180)
+    if not setup_window_open(p.rt.uc):
+        p.press('pg_fx2',hold=30,settle=30)
+        p.press('pg_fx2',hold=180,settle=180)
+    assert setup_window_open(p.rt.uc), 'PLOCKS capture did not reach FX2 SETUP'
+    # Establish a visible Part value through the encoder, regardless of defaults.
+    enc(p,0,-127);enc(p,0,20)
+    press(p,'rec');press(p,'trig1')
+    p.key('trig1',True);p.run(180);enc(p,0,30)
+    shot(p,'plocks-p2','lock','Trig 1 held: GVOL is locked to 50 with the value area highlighted.',r)
+    p.key('trig1',False);p.run(350)
+    shot(p,'plocks-p2','released','Trig released: GVOL shows the Part value 20; the step keeps its lock.',r)
+
+
+def capture_morph(p,r):
+    p.key('t1',True);p.run(60);p.press('up',settle=120)
+    shot(p,'morph','window','T1 + UP: the MORPH window, T1 armed; STEPS, x and MODE on A, B and C.',r)
+    enc(p,0,-8);enc(p,1,-6);p.run(120)
+    shot(p,'morph','settings','STEPS 8 and x 2: a cycle of 16 steps.',r)
+    p.key('t1',False);p.run(300)
+
+
+def capture_free_loop(p,r):
+    # The project is modules/free-loop/make_template.py's (T1 FREE, POPUP ON).
+    p.key('t1',True);p.run(60);p.press('up',settle=120)
+    shot(p,'free-loop','window','T1 + UP: the FREE LOOP window for T1, ROLE FREE, 4/4, BARS AUTO, 70-160 BPM.',r)
+    p.key('t1',False);p.press('no',settle=200)
+    p.proc.command('midi b0 5a 7f','ok');p.run(60);p.proc.command('midi b0 5a 00','ok')
+    p.run(3000)
+    shot(p,'free-loop','popup','CC 90 on channel 1, 3 s into the free take: T1\'s REC popup, FIRST LOOP.',r)
+
+
 def capture_features(p,r):
     p.chord('t1','page')
-    shot(p,'euclid-fill','fill','Euclidean trig fill: pattern length, pulses, and rotation.',r)
+    shot(p,'euclid-fill','fill','Euclidean trig fill: STEPS, PULSE, ROT, RAND VEL, RAND PTCH.',r)
     close(p)
     p.chord('func','recab');enc(p,3,12);close(p)
     p.chord('func','recab')
@@ -135,6 +169,18 @@ def capture_features(p,r):
     shot(p,'rnd-name','name','Random project name after FUNC + CUE.',r)
 
 
+def capture_buffer_saver(p,r):
+    # TRIG to HOLD in RECORDING SETUP 1 (two steps of encoder D), a one-second
+    # take on track 1 (TRACK 1 + REC AB held), then FUNC + PROJ: the module asks
+    # before stock's SAVE runs.
+    p.chord('func','recab');enc(p,3,8);close(p)
+    p.key('t1',True);p.run(60);p.key('recab',True);p.run(1000)
+    p.key('recab',False);p.run(60);p.key('t1',False);p.run(3000)
+    p.chord('func','proj');p.run(3000)
+    shot(p,'buffer-saver','ask','After a take, SAVE PROJECT asks SAVE SAMPLES? first.',r)
+    close(p)
+
+
 def capture_fx(p,r,assignments):
     for track,slot,key in assignments:
         m=registry.modules()[key]
@@ -147,7 +193,19 @@ def capture_fx(p,r,assignments):
 
 
 def capture_bus(p,r):
-    capture_fx(p,r,[(1,'fx2','DELAY SERVER'),(2,'fx2','SEND'),(5,'fx2','REVERB SERVER')])
+    capture_fx(p,r,[(2,'fx2','SEND')])
+    # The servers draw DEL and REV on their host track's FX2 page; the rest is in the TEMPO window,
+    # a scrolling list per box: the top rows, then the bottom rows.
+    for track,key,box,last in ((1,'DELAY SERVER','DELAY',5),(5,'REVERB SERVER','REVERB',9)):
+        m=registry.modules()[key]
+        press(p,f't{track}');press(p,'pg_fx2')
+        shot(p,m.name,'fx2',f'{key} on track {track}: the FX2 page (DEL and REV).',r)
+        press(p,'tempo')
+        if box=='REVERB':press(p,'right')
+        shot(p,m.name,'main',f'{key}: the {box} box in the TEMPO window, first rows.',r)
+        press(p,'down',last)
+        shot(p,m.name,'tempo-bottom',f'{key}: the {box} box in the TEMPO window, last rows.',r)
+        close(p)
     press(p,'t1');p.chord('func','pg_fx2')
     shot(p,'fx2-lock','chooser','Locked FX2 selection on the delay host.',r)
     close(p)
@@ -164,6 +222,18 @@ def capture_bus(p,r):
     shot(p,'usb','performance','BRAIN performance: USB counters.',r)
 
 
+def capture_usb(p,r):
+    # PROJ > BRAIN > SETTINGS; the list is BRAIN, APPLY DEFAULTS, then the USB group
+    # (CUE, IN, MAIN, MASTER, MIDI, TRACKS). YES changes the selected value.
+    p.open_menu();press(p,'up',5);press(p,'down',4);press(p,'right');press(p,'down',2);press(p,'yes')
+    press(p,'down',3)
+    shot(p,'usb','settings','BRAIN > SETTINGS, the USB group: CUE, IN and MAIN. A change to a value that takes effect at the next boot shows a popup when SETTINGS is left.',r)
+    press(p,'down',7)
+    shot(p,'usb','settings-end','The end of the USB group: TRACKS.',r)
+    press(p,'yes');press(p,'no')
+    shot(p,'usb','reboot-popup','Leaving SETTINGS after TRACKS was changed: the popup says to reboot.',r)
+
+
 def capture_analog(p,r):
     press(p,'t1')
     p.chord('func','pg_playback')
@@ -174,6 +244,50 @@ def capture_analog(p,r):
     shot(p,'analog-bassdrum','source','Analog BD source controls.',r)
     p.chord('func','pg_playback')
     shot(p,'analog-bassdrum','setup','Analog BD source setup.',r)
+
+
+def capture_blackpyramids(p,r):
+    # BLKPYRAMD is the sixth row of the machine list (STATIC + 5).
+    press(p,'t1')
+    p.chord('func','pg_playback')
+    press(p,'down',5)
+    press(p,'yes')
+    close(p)
+    press(p,'pg_playback')
+    shot(p,'blackpyramids-303','source','BLKPYRAMD source controls: PTCH, CUT, RES, ENV, DEC, ACC.',r)
+    p.chord('func','pg_playback')
+    shot(p,'blackpyramids-303','setup','SRC SETUP with BLKPYRAMD: WAVE, TUNE, SLID, GATE, VOL.',r)
+
+
+def capture_octa303(p,r):
+    # OCTA-303 is the sixth row of the machine list (STATIC + 5), as BLKPYRAMD.
+    press(p,'t1')
+    p.chord('func','pg_playback')
+    press(p,'down',5)
+    press(p,'yes')
+    close(p)
+    press(p,'pg_playback')
+    shot(p,'octa303','source','OCTA-303 source controls: TUNE, CUT, RES, ENV, DEC, ACC.',r)
+    p.chord('func','pg_playback')
+    shot(p,'octa303','setup','SRC SETUP with OCTA-303: WAVE, GATE, FINE, SLID, DRIV, ACCV.',r)
+
+
+def capture_cxosc(p,r):
+    # Same choreography as blackpyramids: pick the sixth row, then reopen
+    # SRC SETUP so the list highlights the assigned machine (visible 6 keeps
+    # STATIC..CX OSC on screen). Right-hand knobs stay stock FLEX.
+    press(p,'t1')
+    p.chord('func','pg_playback')
+    press(p,'down',5)
+    press(p,'yes')
+    close(p)
+    press(p,'pg_playback')
+    enc(p,3,40)   # FOLD default 40 → ~80: mid-high zig-zags
+    enc(p,4,36)   # SYMM default 64 → ~100: upper half dominates (skew off-center)
+    enc(p,5,-64)  # DEC: from HOLD (127) toward mid so the envelope icon shows a fall
+    shot(p,'cxosc','source','CX OSC PLAYBACK: PTCH RATO INDX FOLD SYMM DEC.',r)
+    p.chord('func','pg_playback')
+    shot(p,'cxosc','setup','SRC SETUP: CX OSC selected in the machine list.',r)
 
 
 def capture_synth(p,r):
@@ -189,6 +303,65 @@ def capture_synth(p,r):
     shot(p,'direct-jump','settings','CHAIN AFTER set to DIRECT in sequencer settings.',r)
 
 
+def capture_varispeed(p,r):
+    # Track 1 to FLEX (the machine list on SRC SETUP), TSTR to VARI: a 5-position
+    # select, so a long turn of encoder E lands on the last position.
+    press(p,'t1')
+    p.chord('func','pg_playback')
+    press(p,'down')
+    press(p,'yes')
+    enc(p,4,40)
+    shot(p,'varispeed','setup','SRC SETUP on a FLEX track: TSTR set to VARI.',r)
+    close(p)
+    press(p,'pg_playback')
+    enc(p,0,3)  # one detent a ratio: 1/1 -> 5/4 -> 4/3 -> 3/2
+    shot(p,'varispeed','quan','The SRC page of a VARI track: PTCH is QUAN, here 3/2.',r)
+
+
+def press_encoder(p, n):
+    # Encoder push switches are panel matrix row 0x27, A-F = bits 0-5.
+    p.proc.command(f'key 0x27 {1 << n:#x}', 'ok');p.run(40)
+    p.proc.command('key 0x27 0', 'ok');p.run(80)
+
+
+def capture_midi_loopback(p,r):
+    # Sample-free fixture starts in audio mode, with MIDI channel 1, DEST EXT.
+    press(p,'midi');press(p,'t1');p.chord('func','pg_playback')
+    shot(p,'midi-loopback','channel-ext','MIDI NOTE SETUP: CHAN 1 uses external output.',r)
+    press_encoder(p,0)
+    shot(p,'midi-loopback','routing-ext','ROUTING: EXT sends to external MIDI.',r)
+    enc(p,0,4)
+    shot(p,'midi-loopback','routing-int','ROUTING: INT sends to the internal MIDI receiver.',r)
+    press_encoder(p,0)
+    shot(p,'midi-loopback','channel-int','MIDI NOTE SETUP: CHAN 1I indicates internal routing.',r)
+    press_encoder(p,0);enc(p,0,4)
+    shot(p,'midi-loopback','routing-both','ROUTING: BOTH sends internally and externally.',r)
+    press_encoder(p,0)
+    shot(p,'midi-loopback','channel-both','MIDI NOTE SETUP: CHAN 1B indicates both destinations.',r)
+
+
+def capture_midi_scales(p,r):
+    # Sample-free fixture starts in audio mode with MIDI KEY OFF.
+    press(p,'midi');press(p,'t1');p.chord('func','pg_amp')
+    shot(p,'midi-scales','key-off','MIDI ARP SETUP: KEY OFF bypasses scale correction.',r)
+    press_encoder(p,5)
+    enc(p,5,4)
+    shot(p,'midi-scales','c-major','MIDI ARP SETUP: C Major selected with encoder F.',r)
+    enc(p,5,4)
+    shot(p,'midi-scales','c-dorian','MIDI ARP SETUP: C Dorian selected with encoder F.',r)
+    for _ in range(3): enc(p,5,4)
+    shot(p,'midi-scales','c-mixolydian','MIDI ARP SETUP: C Mixolydian selected with encoder F.',r)
+
+
+def capture_midi_follow(p,r):
+    press(p,'midi');press(p,'t2');p.chord('func','pg_playback')
+    shot(p,'midi-follow','source-off','MIDI NOTE SETUP: RFOL OFF uses native notes.',r)
+    enc(p,3,4)
+    shot(p,'midi-follow','source-t1','MIDI NOTE SETUP: RFOL T1 follows MIDI track 1.',r)
+    press_encoder(p,3)
+    shot(p,'midi-follow','fixed','FOLLOW: FIXED octave 3 and TRIG update.',r)
+
+
 def prepare(remix,project,assignments):
     label='manual-features' if remix.startswith('../') else remix
     work=OUT/label;work.mkdir(parents=True,exist_ok=True)
@@ -198,8 +371,24 @@ def prepare(remix,project,assignments):
         subprocess.run([sys.executable,'tools/build/build_bus.py'],cwd=ROOT,env=env,stdout=f,stderr=subprocess.STDOUT,check=True)
     shutil.copy2(ROOT/'out/mainos_bus.bin',work/'image.bin')
     fixture=work/'project'
-    shutil.copytree(project,fixture,dirs_exist_ok=True)
-    if remix=='octabam-core':
+    if fixture.exists():
+        shutil.rmtree(fixture)
+    shutil.copytree(project,fixture)
+    # Hybrid/card dumps often land read-only; .strd copies and ot_project writes need u+w.
+    for root, dirs, files in __import__('os').walk(fixture):
+        __import__('os').chmod(root, 0o755)
+        for name in files:
+            fp=__import__('os').path.join(root, name)
+            try: __import__('os').chmod(fp, 0o644)
+            except OSError: pass
+    # A SET folder nests the project one level (!DEF_N1 etc.); set_fx and
+    # stage_card need the directory that actually holds bank*.work.
+    if not any(fixture.glob('bank*.work')):
+        nested=[d for d in fixture.iterdir() if d.is_dir() and (d/'project.work').is_file()]
+        if len(nested)!=1:
+            raise SystemExit(f'{fixture}: no bank*.work and no unique nested project')
+        fixture=nested[0]
+    if remix=='octabam':
         values=otp.module_defaults(registry.modules()['DELAY'])
         otp.set_fx(fixture,'fx2',1,'DELAY',page=values[:6],page2=values[6:],guard=False)
     if remix=='octabam-bus':
@@ -208,6 +397,8 @@ def prepare(remix,project,assignments):
         m=registry.modules()[key]
         values=otp.module_defaults(m)
         otp.set_fx(fixture,slot,track,key,page=values[:6],page2=values[6:],guard=False)
+    if assignments and not any(fixture.glob('bank*.work')):
+        raise SystemExit(f'{fixture}: set_fx had no banks to write')
     audio=[]
     if remix=='octatrick':
         import re,wave
@@ -239,26 +430,40 @@ def prepare(remix,project,assignments):
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('groups',nargs='+',choices=['core','features','inserts','bus','extras','machines','probes'])
+    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','midi-follow','utilities','varispeed','usb','octa303','cxosc','distorx','devilish','morph','free-loop'])
     cfg=Path.home()/'.octabam_project'
     ap.add_argument('--project',default=os.environ.get('OT_PROJECT') or (cfg.read_text().strip() if cfg.is_file() else ''))
     a=ap.parse_args();OUT.mkdir(parents=True,exist_ok=True)
     for group in a.groups:
         assignments=[]
-        if group=='core': jobs=[('octabam-core',capture_core,[])]
+        if group=='core': jobs=[('octabam',capture_core,[])]
+        elif group=='midi-loopback':jobs=[('midi-loopback',capture_midi_loopback,[])]
+        elif group=='midi-follow':jobs=[('midi-follow',capture_midi_follow,[])]
+        elif group=='plocks': jobs=[('octabam',capture_plocks,[(1,'fx2','PLATE REV')])]
+        elif group=='midi-scales':jobs=[('midi-scales',capture_midi_scales,[])]
         elif group=='features':
-            # A scratch selection: THR and REC_TRIG_MUTE share a hook and cannot coexist.
+            # A scratch selection: THR and REC_TRIG_MUTE share a hook and cannot coexist, and
+            # LOAD METER declares a conflict with STEM REC (11 Oct 2026); its screens are the bus group's.
             scratch=OUT/'features.py'
-            scratch.write_text('import dataclasses,runpy\nbase=runpy.run_path("remixes/octabam-core/remix.py")["REMIX"]\nREMIX=dataclasses.replace(base,name="manual-features",modules=tuple(k for k in base.modules if k!="REC_TRIG_MUTE")+("REC THRESHOLD","EUCLID FILL","RND NAME","STEM REC"))\n')
+            scratch.write_text('import dataclasses,runpy\nbase=runpy.run_path("remixes/octabam/remix.py")["REMIX"]\nREMIX=dataclasses.replace(base,name="manual-features",modules=tuple(k for k in base.modules if k not in ("REC_TRIG_MUTE","LOAD METER"))+("REC THRESHOLD","EUCLID FILL","RND NAME","STEM REC"),window=tuple(w for w in base.window if not w[0].startswith("LOAD METER")))\n')
             jobs=[('../out/manual-captures/features',capture_features,[])]
         elif group=='inserts':
-            assignments=[(i+1,'fx1' if i<5 else 'fx2',key) for i,key in enumerate(('SPECTRUM','CHARACTER','MODULATION','TRANSIENT','EUCLID','LOFI2','GATE VERB','DELAY'))]
-            jobs=[('octabam-inserts',capture_fx,assignments)]
+            assignments=[(1,'fx1','SPECTRUM'),(2,'fx1','CHARACTER'),(3,'fx1','MODULATION'),(4,'fx2','DELAY')]
+            jobs=[('octabam',capture_fx,assignments)]
         elif group=='bus':jobs=[('octabam-bus',capture_bus,[])]
-        elif group=='machines':jobs=[('analog-bassdrum',capture_analog,[]),('octatrick',capture_synth,[])]
+        elif group=='usb':jobs=[('octabam-bus',capture_usb,[])]
+        elif group=='octa303':jobs=[('octa303',capture_octa303,[])]
+        elif group=='cxosc':jobs=[('cxosc',capture_cxosc,[])]
+        elif group=='distorx':jobs=[('distorx',capture_fx,[(2,'fx2','DISTORX')])]
+        elif group=='morph':jobs=[('morph',capture_morph,[])]
+        elif group=='free-loop':jobs=[('free-loop',capture_free_loop,[])]
+        elif group=='machines':jobs=[('analog-bassdrum',capture_analog,[]),('octatrick',capture_synth,[]),('blackpyramids-303',capture_blackpyramids,[]),('octa303',capture_octa303,[]),('cxosc',capture_cxosc,[])]
+        elif group=='devilish':jobs=[('devilish',capture_fx,[(2,'fx2','DEVILISH')])]
         elif group=='probes':jobs=[('cfmeter',capture_fx,[(8,'fx2','CF METER')])]
+        elif group=='utilities':jobs=[('buffer-saver',capture_buffer_saver,[])]
+        elif group=='varispeed':jobs=[('varispeed',capture_varispeed,[])]
         else:
-            jobs=[(r,capture_fx,[(2,'fx1' if r in ('character-txtr','testgen') else 'fx2',k)]) for r,k in [('character-txtr','CHARACTER TXTR'),('testgen','TESTGEN'),('sidechain-compressor','SIDECHAIN_COMPRESSOR'),('miniverb','MINIVERB'),('tapeecho','TAPE ECHO'),('vocoder','VOCODER'),('wave','WAVE')]]
+            jobs=[(r,capture_fx,[(2,'fx1' if r in ('character-txtr','testgen','resonator') else 'fx2',k)]) for r,k in [('character-txtr','CHARACTER TXTR'),('testgen','TESTGEN'),('resonator','RESONATOR'),('sidechain-compressor','SIDECHAIN_COMPRESSOR'),('miniverb','MINIVERB'),('bbd','BBD'),('tapeecho','TAPE ECHO'),('vocoder','VOCODER'),('wave','WAVE'),('shatter','SHATTER'),('void','VOID'),('stuttr','STUTTR'),('distorx','DISTORX'),('devilish','DEVILISH'),('transient','TRANSIENT'),('gateverb','GATE VERB')]]
         for remix,fn,assignments in jobs:
             # Paths use a separate stable label even when registry selects a scratch file.
             label='manual-features' if remix.startswith('../') else remix

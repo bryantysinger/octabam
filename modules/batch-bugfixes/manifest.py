@@ -23,5 +23,5 @@ MODULE = runpy.run_path(str(_UPSTREAM), run_name="remix_manifest_batch_bugfixes"
 # The module table's fields are octabam's (README.md, `make docs`), so they
 # are added here rather than in his manifest.
 MODULE = dataclasses.replace(
-    MODULE, category=Category.FIXES, author="Zac-Kyoti/octatrack-kyoti-fw", author_url="https://github.com/Zac-Kyoti/octatrack-kyoti-fw",
+    MODULE, category=Category.FIXES, author="Zac Kyoti", author_url="https://github.com/Zac-Kyoti",
     proof=Proof.HARDWARE, proof_note="the author's MKI (bugs 1 and 3, and bug 2's [BANK]-held stall ended); bug 2's [PTN] answers emulator-verified identical to its earlier hardware-confirmed version")

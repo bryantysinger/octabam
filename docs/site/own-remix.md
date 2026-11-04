@@ -2,53 +2,31 @@
 
 You can assemble a personal remix from modules already in octabam. A remix
 chooses which modules are included and which effects appear in the FX1 and
-FX2 menus. The remixer shows compatibility conflicts and rebuilds the image
-as you change the selection.
+FX2 menus. The build refuses incompatible selections by name.
 
 This guide is for combining existing modules. If you want to create a new
 feature or contribute a module, start with the
 [developer documentation](https://github.com/sambanks/octabam/blob/main/CONTRIBUTING.md)
 and the [module author guide](https://github.com/sambanks/octabam/blob/main/docs/contributing/MODULES.md).
 
-## 1. Prepare the Build Environment
+## 1. Prepare the build environment
 
-Follow the [build guide](build-flash.md) through installing the toolchain and
-preparing your own OS 1.40C. The interactive remixer also needs its optional
-Python environment:
+Follow the [build guide](https://github.com/sambanks/octabam/blob/main/docs/guide/BUILDING.md) through installing the toolchain and
+preparing your own OS 1.40C.
 
-```bash
-make emu-setup
-```
+## 2. Select modules and effects
 
-See the [remixer guide](https://github.com/sambanks/octabam/blob/main/docs/guide/REMIXER.md)
-for detailed setup notes, Linux and WSL2 audio, and the keyboard controls.
-
-## 2. Select Modules and Effects
-
-Start the interactive remixer:
-
-```bash
-make remix
-```
-
-Use the arrow keys to browse modules and effects. In the **Available** pane,
-press `Enter` to add a module. In **Choosers**, arrange FX2 effects and press
-`1` to add or remove an FX1 entry. The **Unit** pane describes the selected
-module and its compatibility constraints. The remixer rebuilds and boots
-the selection under the emulator as you edit. It does not flash the
-Octatrack.
-
-Press `l` to load a starting remix, or `s` to save your selection under a
-new name. The selection is saved as `remixes/<name>/remix.py`.
-For the full key reference and hand-editing options, see the
-[remixer guide](https://github.com/sambanks/octabam/blob/main/docs/guide/REMIXER.md).
+Copy an existing `remixes/<name>/remix.py` and edit its `modules` (the FX2
+chooser, in row order) and, optionally, `fx1`. `make modules` lists every
+module key and the compatibility matrix. See the
+[composing guide](https://github.com/sambanks/octabam/blob/main/docs/guide/COMPOSING.md)
+for every field and the costs.
 
 Select **USB** for USB MIDI and optional audio in either direction. Its
-LAYOUT and INPUTS settings replace the four former USB module selections.
-For now they are build settings, so a different USB channel selection needs
-a rebuilt image; they cannot yet be changed on the unit.
+TRACKS, MAIN, CUE, MASTER, IN and MIDI settings are changed on the unit in PROJ > BRAIN > SETTINGS
+and take effect at the next boot. A remix can fix one with a `Pin`.
 
-## 3. Record and Check the Remix
+## 3. Record and check the remix
 
 Add `remixes/<name>/README.md` describing what the remix includes and what
 has been tested. Update the remix index, then run:
@@ -61,12 +39,11 @@ make check REMIX=<name>
 `make check` builds the image, runs its gates and boots it under the port.
 It is the minimum check before flashing; a successful build alone does not
 show that the remix works on hardware. For image creation and installation,
-continue to [Build and flash](build-flash.md).
+continue to [Build and Install](web-builder.md#install-the-image).
 
-## Next Steps
+## Next steps
 
-- [Choose a ready-made remix](choosing.md) if you want a tested starting
-  selection.
+- [Octabam v0.3](remix-octabam.md) is the ready-made selection.
 - [Developer documentation](https://github.com/sambanks/octabam/blob/main/CONTRIBUTING.md)
   and [writing a module](https://github.com/sambanks/octabam/blob/main/docs/contributing/MODULES.md)
   if you want to add a new feature or share a module.

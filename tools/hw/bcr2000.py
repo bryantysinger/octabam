@@ -12,7 +12,7 @@ Presets (`--preset`, default `rig`):
           (eight encoders = eight tracks); lower row 1 = BusDelay on T1, row 2 =
           BusVerb on T5, column-aligned: WET TONE TIME, then FDBK/SIZE PING/DIFF
           SCTR/SHMR DENS/DLY PTCH/GATE; row 3 = T8's Character SAT DRV FOLD WDTH
-          COMP TONE MIX (the master, FX1; SAT is page 2, CC 68), then the scene fader;
+          COMP TONE MIX (the master, FX1; SAT is page 2, CC 108), then the scene fader;
           buttons 33-40 MUTE, 41-48 SOLO per track.
   t1..t8  one track: groups 1-4 = FX1 page 1, FX1 page 2, FX2 page 1, FX2 page 2
           (LEVEL, AMP VOL, scene fader on the spare encoders); lower rows =
@@ -28,7 +28,8 @@ Without `--store` the preset lands in the BCR's edit buffer only.
 CC numbers: page 1 is stock (docs/firmware/MIDI.md: PLAYBACK 16-21, AMP 22-27,
 LFO 28-33, FX1 34-39, FX2 40-45, LEVEL 46, AMP VOL 25, crossfader 48, MUTE 49,
 SOLO 50, on the track's trig channel); page 2 is CC MAP (modules/cc-map: FX2
-62-67, FX1 68-73). Select ranges and defaults come from the manifests; MODE
+102-107, FX1 108-111, 14, 15; 62-73 until 1 Nov 2026, so a preset stored
+before then sends page 2 on the old numbers: re-send it). Select ranges and defaults come from the manifests; MODE
 over CC re-defaults the knobs around it (MODE DEFAULTS). Delay TONE (CC 42
 on T1) reaches the DSP only while T1's FX2 page is on screen (MIDI.md
 "Hardware findings"). MUTE/SOLO are sent as 127/0 toggles; the value the OT
@@ -53,9 +54,9 @@ import argparse, pathlib, sys, time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
 from remix import registry  # noqa: E402
+from remix.midi_cc import ccmap_cc  # noqa: E402
 
 PAGE1 = {"PB": 16, "AMP": 22, "LFO": 28, "FX1": 34, "FX2": 40}
-PAGE2 = {"FX2": 62, "FX1": 68}
 LEVEL, AMPVOL, XFADE, MUTE, SOLO = 46, 25, 48, 49, 50
 ROLES = {1: "DELAY SERVER", 5: "REVERB SERVER"}      # the rig's hosts; every other track runs SEND
 STATIONS = ("SPECTRUM", "CHARACTER", "MODULATION")   # FX1; the track's pick is not known here
@@ -81,7 +82,7 @@ def _mods():
 
 def slot_cc(page, slot):
     """CC number for `page` ('FX1'/'FX2') slot 0..11."""
-    return PAGE1[page] + slot if slot < 6 else PAGE2[page] + slot - 6
+    return PAGE1[page] + slot if slot < 6 else ccmap_cc(page, slot)
 
 
 def knob(ch, cc, label, count=None, default=0):
@@ -105,10 +106,10 @@ def user_buttons(channels):
          50: dict(ch=channels[4], cc=slot_cc("FX2", 4), label="VRB SHFT up", step=(0, 5), inc=1),
          52: dict(ch=channels[4], cc=slot_cc("FX2", 4), label="VRB SHFT down", step=(0, 5), inc=-1)}
     for g in range(4):
-        b[1 + 8 * g] = dict(ch=channels[0], cc=PAGE2["FX2"], label="DLY MODE up (push T1)", step=(0, 2), inc=1)
-        b[2 + 8 * g] = dict(ch=channels[0], cc=PAGE2["FX2"], label="DLY MODE down (push T2)", step=(0, 2), inc=-1)
-        b[5 + 8 * g] = dict(ch=channels[4], cc=PAGE2["FX2"], label="VRB MODE up (push T5)", step=(0, 2), inc=1)
-        b[6 + 8 * g] = dict(ch=channels[4], cc=PAGE2["FX2"], label="VRB MODE down (push T6)", step=(0, 2), inc=-1)
+        b[1 + 8 * g] = dict(ch=channels[0], cc=ccmap_cc("FX2", 6), label="DLY MODE up (push T1)", step=(0, 2), inc=1)
+        b[2 + 8 * g] = dict(ch=channels[0], cc=ccmap_cc("FX2", 6), label="DLY MODE down (push T2)", step=(0, 2), inc=-1)
+        b[5 + 8 * g] = dict(ch=channels[4], cc=ccmap_cc("FX2", 6), label="VRB MODE up (push T5)", step=(0, 2), inc=1)
+        b[6 + 8 * g] = dict(ch=channels[4], cc=ccmap_cc("FX2", 6), label="VRB MODE down (push T6)", step=(0, 2), inc=-1)
     return b
 
 

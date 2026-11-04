@@ -134,7 +134,7 @@ responder serves MIDI-only descriptors until fixed.
 ## 7. Gates
 
 - All current gates move into the one module: `verify_usbmidi_rx`,
-  `verify_usbmidi_clock`, `verify_usbmidi_replug`, `verify_usb`,
+  `verify_usb_midi_clock`, `verify_usb_midi_replug`, `verify_usb`,
   `verify_usb_in`, `verify_usb_align` (TRACKS MAIN CUE), `verify_usb_post`
   (TRACKS POST).
 - NEXT_BOOT values are read at boot, so covering six layouts needs six

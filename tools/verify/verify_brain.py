@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """verify_brain -- the BRAIN module applies the card's knob defaults.
 
-    python3 tools/verify/verify_brain.py [REMIX] [--project DIR]
+    python3 tools/verify/verify_brain.py [REMIX] [--project DIR] [--only-cases]
 
-Builds REMIX (default `octabam-bus`), stages
+Builds REMIX (default `octabam`; `octabam-bus` too), stages
 the project with BRAIN/card.work and card.strd written by
 tools/hw/ot_brain.py, and under the port selects T2's effect through the
 FX2 chooser (SEND -> stock DELAY) and the FX1 chooser (SPECTRUM ->
-CHARACTER), as tools/verify/verify_descdefaults.py does. Each case reads
+CHARACTER), as tools/verify/verify_desc_defaults.py does. Each case reads
 the brain's counters after the load (brain_counts, by symbol) and the live
 lane at the end:
 
@@ -36,7 +36,7 @@ lane at the end:
                 holds T1's FX2 page; then OK, UP, YES on CLEAR FX DEFAULT: no
                 BusDelay record left
   mode          a GRAIN record for BusDelay (T1): the FX2 page-2 editor moves
-                MODE CLEAN -> GRAIN (verify_modedefaults' call) and MODE
+                MODE CLEAN -> GRAIN (verify_mode_defaults' call) and MODE
                 DEFAULTS lands GRAIN's view with the card's values for the
                 slots the view lists; a slot it does not list is skipped
 
@@ -57,6 +57,7 @@ OUT = ROOT / "out/coreverify"
 BASE = 0x40000400
 LANES, IDS = 0x80000810, 0x80000ec4
 FX2_TABLE, FX1_TABLE = 0x400d5fdc, 0x400d5f58
+LIST_REF = 0x400375f4        # the operand of FUN_40052474 that holds the FX2 chooser list's address
 K = dict(no=0x32, fx1=0x25, fx2=0x26, down=0x20, yes=0x31, t2=0x11)
 PAGE = {"fx1": (0x12, 0x32, 0), "fx2": (0x18, 0x38, 8)}
 COUNTERS = ("loads", "state", "records", "applied", "values", "skip_id", "skip_layout",
@@ -88,10 +89,12 @@ def symbol(name):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("remix", nargs="?", default="octabam-bus")
+    ap.add_argument("remix", nargs="?", default="octabam")
     ap.add_argument("--project", default=os.environ.get("OT_PROJECT", ""))
     ap.add_argument("--set-name", default="BRAINSET")       # not BRAIN: that is the store's directory
     ap.add_argument("--name", default="BRAINPRJ")
+    ap.add_argument("--only-cases", action="store_true",
+                    help="run the eight card cases (none .. settings_bad) and stop: minutes, not the whole gate")
     a = ap.parse_args()
     project = a.project
     if not project and pathlib.Path("~/.octabam_project").expanduser().is_file():
@@ -128,6 +131,17 @@ def main():
         P = struct.unpack(">I", rd(table + 4 * fx, 4))[0]
         return P, rd(P + 0x5e, 12), struct.unpack(">12I", rd(P + 0x9a, 48))
 
+    def fx2_chooser_ids():
+        """The id on each row of the FX2 chooser, top to bottom, read from the built image: the list the
+        chooser walks holds each row's descriptor, whose first word's low byte is the id it stores."""
+        lst = struct.unpack(">I", rd(LIST_REF, 4))[0]
+        ids = []
+        while True:
+            ptr = struct.unpack(">I", rd(lst + 4 * len(ids), 4))[0]
+            if not ptr:
+                return ids
+            ids.append(struct.unpack(">I", rd(ptr, 4))[0] & 0xff)
+
     pdir = pathlib.Path(project).expanduser()
     copy = OUT / "project"
     shutil.rmtree(copy, ignore_errors=True)
@@ -136,7 +150,31 @@ def main():
         if f.is_file() and f.suffix.lower() == ".work":
             shutil.copy2(f, copy / f.name)
 
+    # T2's FX1 is SPECTRUM, so the FX1 chooser opens on its row and one DOWN lands CHARACTER. The
+    # project's own bytes name an effect by id, and which one that is depends on the remix.
+    import ot_project
+    # The save/menu probes below require BusDelay on T1, even when the
+    # supplied project is MIDI-only. Seed the disposable copy explicitly.
+    bd = mods["DELAY SERVER"]
+    ot_project.set_fx(copy, "fx2", 1, "DELAY SERVER", page=[p.default for p in bd.params[:6]],
+                      page2=[p.default for p in bd.params[6:12]], guard=False)
+    spm = mods["SPECTRUM"]
+    ot_project.set_fx(copy, "fx1", 2, "SPECTRUM", page=[p.default or 0 for p in spm.params[:6]],
+                      page2=[p.default or 0 for p in spm.params[6:12]], guard=False)
+    # The panel script opens T2's FX2 chooser on the track's own row and presses DOWN once, so the track has to start
+    # on the row above DELAY: SEND in the bus remix, whatever sits above it in the others (LO-FI in octabam).
+    rows = fx2_chooser_ids()
+    if 0x08 not in rows[1:]:
+        sys.exit(f"verify_brain: DELAY (0x08) is not below the first row of {a.remix}'s FX2 chooser {rows}")
+    ot_project.set_fx(copy, "fx2", 2, rows[rows.index(0x08) - 1], guard=False)
     delay, character = mods["DELAY"], mods["CHARACTER"]
+    # T1's FX2: DELAY SERVER is the bus remix's core-B FX2 by construction; a remix without it is given MODULATION there
+    # (live on FX2 with SLOTS FX1+FX2, a page 2 with a MODE, and no card record of its own to collide with).
+    bus = "DELAY SERVER" in remix.modules
+    t1 = mods["DELAY SERVER"] if bus else mods["MODULATION"]
+    if not bus:
+        ot_project.set_fx(copy, "fx2", 1, t1.key, page=[q.default or 0 for q in t1.params[:6]],
+                          page2=[q.default or 0 for q in t1.params[6:12]], guard=False)
     want = {"DELAY": {"TIME": 52, "FB": 5, "X": 1, "TAPE": 0}, "CHARACTER": {"DRV": 9, "MIX": 77}}
     work = ot_brain.set_default(None, delay, want["DELAY"])
     work = ot_brain.set_default(work, character, want["CHARACTER"])
@@ -244,8 +282,8 @@ def main():
 
         fx2, d2, got2 = landed("fx2")
         fx1, d1, got1 = landed("fx1")
-        check(f"{name}: the selects land DELAY (0x08) and CHARACTER (0x1c)  0x{fx2:02x} 0x{fx1:02x}",
-              (fx2, fx1) == (0x08, 0x1c))
+        check(f"{name}: the selects land DELAY (0x08) and CHARACTER (0x{character.menu.fx2_id:02x})  0x{fx2:02x} 0x{fx1:02x}",
+              (fx2, fx1) == (0x08, character.menu.fx2_id))
         check(f"{name}: the brain ran at the load ({counts['loads']} call(s))", counts["loads"] >= 1)
 
         def expect(defaults, m, values):
@@ -281,6 +319,9 @@ def main():
         if name == "none":
             check(f"settings: no card store, the defaults of layers 1 and 2 (values {svals}: APPLY DFLTS, MIDI LOG)",
                   svals == (1, 0))
+    if a.only_cases:
+        print(f"verify_brain: {'ok' if not fails else 'FAILED'} ({fails} failure(s)) -- the eight card cases only")
+        return 1 if fails else 0
     # ---- stock clamps: why the brain has no clamp of its own ----------------
     # The Part validator 0x40002318 rewrites every FX page byte outside its
     # descriptor's [min, min + count - 1] to the nearer end during the load
@@ -289,13 +330,19 @@ def main():
     import ot_project
     sp = mods["SPECTRUM"]
     bd = mods["DELAY SERVER"]
+    # T1's FX2 hosts a module the image carries: DELAY SERVER where the remix has the bus, CHARACTER (page 2: SAT
+    # of 3 values, KEY of 2) where it does not. Two page-2 slots with a count, planted past it.
+    host = bd if "DELAY SERVER" in remix.modules else mods["CHARACTER"]
+    counted = [i - 6 for i, q in enumerate(host.params[6:12], 6) if q.count and q.count < 128][:2]
     ccopy = OUT / "project_clamp"
     shutil.rmtree(ccopy, ignore_errors=True)
     shutil.copytree(copy, ccopy)
-    b1 = [p.default for p in bd.params[:6]]; b2 = [p.default for p in bd.params[6:12]]
+    b1 = [p.default or 0 for p in host.params[:6]]; b2 = [p.default or 0 for p in host.params[6:12]]
     s1 = [p.default or 0 for p in sp.params[:6]]; s2 = [p.default or 0 for p in sp.params[6:12]]
-    b2[0], b2[3], s2[0] = 64, 100, 90
-    ot_project.set_fx(ccopy, "fx2", 1, "DELAY SERVER", page=b1, page2=b2, guard=False)
+    for slot, v in zip(counted, (64, 100)):
+        b2[slot] = v
+    s2[0] = 90
+    ot_project.set_fx(ccopy, "fx2", 1, host.key, page=b1, page2=b2, guard=False)
     for tr in (2, 3, 4, 6, 7):
         ot_project.set_fx(ccopy, "fx1", tr, "SPECTRUM", page=s1, page2=s2, guard=False)
     card = OUT / "clamp.img"
@@ -310,7 +357,7 @@ def main():
     def part_base(p):
         return (0x8ed80 + p * PLEN) if p < 4 else (0x9504a + (p - 4) * PLEN)
     # (track, FX1 0 / FX2 6, page-2 slot, value count)
-    planted = [(1, 6, 0, 3), (1, 6, 3, 4)] + [(tr, 0, 0, 4) for tr in (2, 3, 4, 6, 7)]
+    planted = [(1, 6, slot, host.params[6 + slot].count) for slot in counted] + [(tr, 0, 0, 4) for tr in (2, 3, 4, 6, 7)]
     c = OUT / "clamp_run.img"
     shutil.copy2(card, c)
     banks = OUT / "clamp_banks.bin"
@@ -382,7 +429,7 @@ def main():
         for sid in (brain.fx_store_id(delay), brain.fx_store_id(character)):
             rec = next((r for r in f.records if r.store_id == sid), None)
             check(f"save: {sid}'s record kept byte for byte", rec is not None and rec.encode() == old_ids[sid])
-        for m, tr, lp1, lp2 in ((bd, 0, 0x18, 0x38), (sp, 1, 0x12, 0x32)):
+        for m, tr, lp1, lp2 in ((t1, 0, 0x18, 0x38), (sp, 1, 0x12, 0x32)):
             page = lanes[tr * 72 + lp1:tr * 72 + lp1 + 6] + lanes[tr * 72 + lp2:tr * 72 + lp2 + 6]
             rec = next((r for r in f.records if r.store_id == brain.fx_store_id(m)), None)
             keys = brain.fx_keys(m)
@@ -397,7 +444,7 @@ def main():
         # a second boot of that card: the saved values on the descriptors
         after2, ddump, log2 = OUT / "save_boot2.img", OUT / "save_desc.bin", OUT / "save2.txt"
         shutil.copy2(after, after2)
-        pb, ps = (struct.unpack(">I", rd(FX2_TABLE + 4 * m.menu.fx2_id, 4))[0] for m in (bd, sp))
+        pb, ps = (struct.unpack(">I", rd(FX2_TABLE + 4 * m.menu.fx2_id, 4))[0] for m in (t1, sp))
         cmd = [EMU, "--image", image, "--card", after2, "--set", a.set_name, "--project", a.name,
                "--mount", "--load-ms", "90000",
                "--step", f"-:dump:{pb + 0x5e:#x},12={ddump}"]
@@ -445,7 +492,7 @@ def main():
     entries = [pentry(dl_, layout=brain.fx_layout(dl_) ^ 1),        # same store, another layout
                pentry(ch_),                                        # unchanged
                brainfile.Entry(0x7e, "octabam.nosuch", 1),         # a store the image lacks
-               pentry(ds_, fx=sp_.menu.fx2_id)]                    # this FX id now names SPECTRUM
+               pentry(t1, fx=sp_.menu.fx2_id)]                     # this FX id now names SPECTRUM
     prec = brainfile.Record(brainfile.PROJECT_RECORD, "octabam.brain",
                             payload=b"".join(e.encode() for e in entries))
     pgood = brainfile.File(brainfile.PROJECT_WORK, [prec], "OLD").encode()
@@ -496,7 +543,7 @@ def main():
     fw = next((v for k, v in files.items() if k.upper().endswith("BRAIN/CARD.WORK")), None)
     recs = [r.store_id for r in brainfile.parse(fw).records] if fw else []
     check(f"save: on a card with no BRAIN folder the first save creates it and card.work  {recs}",
-          recs == [brain.fx_store_id(bd)])
+          recs == [brain.fx_store_id(t1)])
 
     # ---- menu: SAVE FX DEFAULT and CLEAR FX DEFAULT from the panel ------------
     MK = dict(no=0x32, yes=0x31, t1=0x10, fx2=0x26, proj=0x1c, down=0x20, up=0x33, right=0x21)
@@ -536,13 +583,13 @@ def main():
         lanes = mlanes.read_bytes()
         page = lanes[0x18:0x1e] + lanes[0x38:0x3e]
         if name == "menu_save":
-            rec = recs.get(brain.fx_store_id(bd))
+            rec = recs.get(brain.fx_store_id(t1))
             got = {v.key: v.data[0] for v in rec.values()} if rec else {}
-            want = {k: page[i] for i, k in enumerate(brain.fx_keys(bd)) if k}
+            want = {k: page[i] for i, k in enumerate(brain.fx_keys(t1)) if k}
             check(f"menu: SAVE FX DEFAULT from the panel writes T1's FX2 page ({got == want})", rec is not None and got == want)
         else:
             check(f"menu: CLEAR FX DEFAULT leaves no BusDelay record ({sorted(recs)})",
-                  mw is not None and brain.fx_store_id(bd) not in recs)
+                  mw is not None and brain.fx_store_id(t1) not in recs)
 
     # ---- settings from the panel: MIDI > MIDI LOG, YES (off by default: on) ----
     seed = brainfile.File(brainfile.CARD_WORK, [brainfile.Record(brainfile.SETTINGS, "octabam.brain",
@@ -564,10 +611,41 @@ def main():
         sys.exit(f"verify_brain: the menu_settings run did not finish -- {mlog}")
     files = emu_card.extract_image(mafter.read_bytes())
     mw = next((v for k, v in files.items() if k.upper().endswith("BRAIN/CARD.WORK")), None)
-    srec = [r for r in brainfile.parse(mw).records if r.kind == brainfile.SETTINGS] if mw else []
+    srec = [r for r in brainfile.parse(mw).records
+            if r.kind == brainfile.SETTINGS and r.store_id == "octabam.brain"] if mw else []
     got = {v.key: v.data[0] for v in srec[0].values()} if len(srec) == 1 else {}
-    check(f"settings: YES on LOG > MIDI > MIDI LOG writes one settings record, MIDI LOG on, APPLY DFLTS on, "
+    check(f"settings: YES on LOG > MIDI > MIDI LOG writes the octabam.brain settings record, MIDI LOG on, APPLY DFLTS on, "
           f"EVENT LOG at its default (on), the unknown key kept  {got}", got == {1: 1, 2: 1, 3: 1, 99: 1})
+
+    # ---- USB's pair rule from the panel: IN is refused while TRACKS, MAIN, CUE and MASTER are off ----
+    # BRAIN > SETTINGS: TRACKS PRE -> POST -> OFF, MAIN off, CUE off, then YES on IN. The rule
+    # compares the usb entries' keys (modules/usb/manifest.py); with the wrong keys it found none
+    # and IN went to AB (19 Oct 2026, usb_pair_ok looked for keys 1-5, the settings are 7-11).
+    if "USB" in remix.modules:
+        uc, uafter, ulog = OUT / "menu_usb.img", OUT / "menu_usb_after.img", OUT / "menu_usb.txt"
+        r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(copy), a.set_name, a.name,
+                            "--tree", str(OUT / "tree_menu_usb"), "--out", str(uc)], cwd=ROOT, capture_output=True, text=True)
+        if r.returncode:
+            sys.exit(f"verify_brain: stage_card failed:\n{r.stdout[-800:]}{r.stderr[-800:]}")
+        keys = ([("no", 400), ("proj", 1200)] + [("down", 400)] * 4 + [("right", 800)] + [("down", 400)] * 2 + [("yes", 800)]
+                + [("down", 300)] * 6 + [("yes", 500)] * 2           # TRACKS: PRE, POST, OFF
+                + [("up", 300)] * 3 + [("yes", 500)]                 # MAIN off
+                + [("up", 300)] * 2 + [("yes", 500)]                 # CUE off
+                + [("down", 300), ("yes", 1500)])                    # IN: refused
+        (OUT / "menu_usb.script").write_text(keys_script(keys))
+        cmd = [EMU, "--image", image, "--card", uc, "--set", a.set_name, "--project", a.name, "--load-ms", "90000",
+               "--mkii", "--live-script", OUT / "menu_usb.script", "--card-out", uafter]
+        with open(ulog, "w") as fh:
+            r = subprocess.run(list(map(str, cmd)), cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT)
+        if r.returncode or "ended on quit" not in ulog.read_text():
+            sys.exit(f"verify_brain: the menu_usb run did not finish -- {ulog}")
+        files = emu_card.extract_image(uafter.read_bytes())
+        mw = next((v for k, v in files.items() if k.upper().endswith("BRAIN/CARD.WORK")), None)
+        urec = [r for r in brainfile.parse(mw).records
+                if r.kind == brainfile.SETTINGS and r.store_id == "octabam.usb"] if mw else []
+        got = {v.key: v.data[0] for v in urec[0].values()} if len(urec) == 1 else {}
+        check(f"settings: USB's IN is refused while TRACKS, MAIN and CUE are OFF (record, key: value {got}; want TRACKS 0, MAIN 0, CUE 0, IN 0)",
+              got.get(7) == 0 and got.get(8) == 0 and got.get(9) == 0 and got.get(11) == 0)
 
     # ---- templates: SAVE from the shortcut; LOAD of a seeded template -------
     # Run 1: T1's FX1 page; hold FX1 + FUNC (the shortcut), SAVE TEMPLATE:
@@ -581,6 +659,14 @@ def main():
         return [f"{t} key {hold:#x} down", f"{t + 200} key 0x2d down", f"{t + 230} key 0x2d up",
                 f"{t + 500} key {hold:#x} up"], t + 900
     FX1_REGIONS = ((0x8eea6, 6), (0x8f07e, 6))
+    # T1's FX1 is CHARACTER in the templates' project: the project's own bytes name an effect by id,
+    # and which one that is depends on the remix.
+    tcopy = OUT / "project_tpl"
+    shutil.rmtree(tcopy, ignore_errors=True)
+    shutil.copytree(copy, tcopy)
+    chm = mods["CHARACTER"]
+    ot_project.set_fx(tcopy, "fx1", 1, "CHARACTER", page=[p.default or 0 for p in chm.params[:6]],
+                      page2=[p.default or 0 for p in chm.params[6:12]], guard=False)
     def tpl_run(tag, picks, seed=None, part_at=None, pre=(0x32, 0x10, 0x25), hold=0x25, regions=FX1_REGIONS):
         lines, tt = [], 1500
         for c in pre:
@@ -595,7 +681,7 @@ def main():
         if seed is not None:
             (OUT / f"{tag}_seed.work").write_bytes(seed)
             roots = ["--root-file", f"{OUT / f'{tag}_seed.work'}:BRAIN/card.work"]
-        r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(copy), a.set_name, a.name,
+        r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(tcopy), a.set_name, a.name,
                             "--tree", str(OUT / f"tree_{tag}"), "--out", str(tc), *roots],
                            cwd=ROOT, capture_output=True, text=True)
         if r.returncode:
@@ -966,7 +1052,7 @@ def main():
     ps_keys = [1 + o for o in range(0x70) if o == 0x24 or 0x28 <= o <= 0x37 or 0x3f <= o <= 0x54
                or 0x56 <= o <= 0x6a]
     keys = [(0x32, 400), (0x1c, 1200)] + [(0x20, 400)] * 4 + [(0x21, 800)] + [(0x31, 800)] + [(0x34, 400)] * 6 + [(0x21, 400)] * 6 + [
-        (0x31, 1200), (0x31, 4000), (0x20, 400), (0x31, 2500)]  # PROJECT tab: NEW PROJECT TPL, YES on the name; its screen: APPLY TO PROJECT, SET AS DEFAULT
+        (0x31, 1200), (0x31, 4000), (0x20, 400), (0x31, 2500)]  # PROJECT tab: <NEW PROJECT TEMPLATE>, YES on the name; its screen: APPLY TO PROJECT, SET AS DEFAULT
     files, _, (ram,) = ui_run("pset_save", keys, dumps=((0x80000000, 0x70),))
     work_ = card_file(files, "BRAIN/CARD.WORK")
     prec = [r for r in brainfile.parse(work_).records
@@ -1054,7 +1140,15 @@ def main():
     log_at = symbol("brain_post_log")
     lcard, lafter, llog, lmidi = OUT / "log.img", OUT / "log_after.img", OUT / "log.txt", OUT / "log.midi"
     lmidi.write_text("40 B0 07 14\n60 C0 02\n80 B1 28 40\n")
-    r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(copy), a.set_name, a.name,
+    # This probe asserts that CH1 program change queues pattern 2. Other
+    # probes keep the supplied project's MIDI receive configuration.
+    import ot_matrix
+    logcopy = OUT / "project_log"
+    shutil.rmtree(logcopy, ignore_errors=True)
+    shutil.copytree(copy, logcopy)
+    ot_matrix.stamp_text(logcopy, {"MIDI_PROGRAM_CHANGE_RECEIVE": 1,
+                                 "MIDI_PROGRAM_CHANGE_RECEIVE_CH": 0}, {})
+    r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(logcopy), a.set_name, a.name,
                         "--tree", str(OUT / "tree_log"), "--out", str(lcard),
                         "--root-file", f"{logon}:BRAIN/card.work"], cwd=ROOT, capture_output=True, text=True)
     if r.returncode:
@@ -1074,15 +1168,20 @@ def main():
           len(rows) > 1 and rows[1][6] == "2")
 
     # ---- mode: MODE DEFAULTS' view takes the card's values ------------------
-    if "MODE DEFAULTS" in remix.modules and bd.mode_views:
+    if "MODE DEFAULTS" in remix.modules and t1.mode_views:
         mcopy = OUT / "project_mode"
         shutil.rmtree(mcopy, ignore_errors=True)
         shutil.copytree(copy, mcopy)
-        ot_project.set_fx(mcopy, "fx2", 1, "DELAY SERVER", page=[p.default for p in bd.params[:6]],
-                          page2=[p.default for p in bd.params[6:12]], guard=False)
-        card_vals = {"FDBK": 77, "SCTR": 33, "GLEN": 2, "DEL": 5}
+        ot_project.set_fx(mcopy, "fx2", 1, t1.key, page=[p.default or 0 for p in t1.params[:6]],
+                          page2=[p.default or 0 for p in t1.params[6:12]], guard=False)
+        if bus:      # GRAIN's view lists FDBK, SCTR, GLEN; DEL (slot 0) is the slot it does not list
+            card_vals, slot_of, mode_label, skipped = {"FDBK": 77, "SCTR": 33, "GLEN": 2, "DEL": 5}, \
+                {"FDBK": 2, "SCTR": 7, "GLEN": 9, "DEL": 0}, "GRAIN", 0
+        else:        # MODULATION's mode 1 lists RATE, DLY, FDBK; LOFI (slot 4) is the slot it does not list
+            card_vals, slot_of, mode_label, skipped = {"RATE": 77, "DLY": 33, "FDBK": 100, "LOFI": 5}, \
+                {"RATE": 0, "DLY": 2, "FDBK": 3, "LOFI": 4}, 1, 4
         mwork = OUT / "mode_card.work"
-        mwork.write_bytes(ot_brain.set_default(None, bd, card_vals, mode="GRAIN"))
+        mwork.write_bytes(ot_brain.set_default(None, t1, card_vals, mode=mode_label))
         card = OUT / "mode.img"
         r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(mcopy), a.set_name, a.name,
                             "--tree", str(OUT / "tree_mode"), "--out", str(card),
@@ -1094,7 +1193,7 @@ def main():
                "--mount", "--load-ms", "90000",
                "--step", f"-:dump:{counts_at:#x},{4 * len(COUNTERS)}={cdump}",
                "--step", "-:poke:0x80000000=0;0x100b14cc=0",
-               "--step", f"-:call:{FX2_EDITOR:#x},{bd.mode_slot - 6},2",
+               "--step", f"-:call:{FX2_EDITOR:#x},{t1.mode_slot - 6},2",
                "--step", f"-:dump:{LANES:#x},576={lanes_dump}"]
         with open(log, "w") as fh:
             fh.write(" ".join(map(str, cmd)) + "\n"); fh.flush()
@@ -1104,17 +1203,16 @@ def main():
         counts = dict(zip(COUNTERS, struct.unpack(f">{len(COUNTERS)}I", cdump.read_bytes())))
         print(f"  mode: counters {counts}")
         lane = lanes_dump.read_bytes()[:72]
-        got_mode = lane[0x38 + bd.mode_slot - 6]
-        view = next(v for v in bd.mode_views if v.mode == 1)
-        check(f"mode: T1 BusDelay MODE -> {got_mode} (GRAIN)", got_mode == 1)
-        slot_of = {"FDBK": 2, "SCTR": 7, "GLEN": 9, "DEL": 0}
+        got_mode = lane[0x38 + t1.mode_slot - 6]
+        view = next(v for v in t1.mode_views if v.mode == 1)
+        check(f"mode: T1 {t1.key} MODE -> {got_mode} (view mode 1)", got_mode == 1)
         for slot, val in sorted(view.defaults.items()):
             want_v = next((card_vals[n] for n, s in slot_of.items() if s == slot and n in card_vals), val)
             off = (0x18 + slot) if slot < 6 else (0x38 + slot - 6)
             check(f"mode: slot {slot:2d} lane = {lane[off]:3d}  (view {val}, expected {want_v})", lane[off] == want_v)
-        check(f"mode: DEL, a slot GRAIN's view does not list, skipped ({counts['skip_slot']}) and untouched "
-              f"(lane {lane[0x18]}, default {bd.params[0].default})",
-              counts["skip_slot"] == 1 and lane[0x18] == bd.params[0].default)
+        check(f"mode: slot {skipped}, one the view does not list, skipped ({counts['skip_slot']}) and untouched "
+              f"(lane {lane[0x18 + skipped]}, default {t1.params[skipped].default or 0})",
+              counts["skip_slot"] == 1 and lane[0x18 + skipped] == (t1.params[skipped].default or 0))
     print(f"verify_brain: {'ok' if not fails else 'FAILED'} ({fails} failure(s)) -- {OUT}")
     return 1 if fails else 0
 

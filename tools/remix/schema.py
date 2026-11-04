@@ -85,6 +85,13 @@ STOCK_FX2_IDS = frozenset({0x04, 0x05, 0x08, 0x0c, 0x0d, 0x10, 0x11, 0x12,
                            0x13, 0x14, 0x15, 0x16, 0x18, 0x19, 0x1c})
 
 
+# The id space an image is built with: 32 is stock's (the DSP dispatch tables
+# and the ColdFire id tables hold 32 entries); 64 grows both (tools/build/idspace.py).
+ID_SPACES = (32, 64)
+FREE_FX2_IDS = tuple(i for i in range(0x04, 0x20) if i not in STOCK_FX2_IDS)
+FREE_FX2_IDS_64 = tuple(i for i in range(0x04, 0x40) if i not in STOCK_FX2_IDS)
+
+
 STEPPED_ONLY = (6, 7, 8, 9, 10, 11)
 
 
@@ -556,9 +563,10 @@ class MenuEntry:
         # 0x00-0x03 are the ids stock treats as bare synonyms for "no effect";
         # the first hardware test used them and got correct names with dead
         # knobs and garbage audio.
-        if not 0x04 <= self.fx2_id <= 0x1f:
+        if not 0x04 <= self.fx2_id <= FREE_FX2_IDS_64[-1]:
             raise ValueError(f"fx2 id 0x{self.fx2_id:02x} is out of range "
-                             f"(0x00-0x03 are stock's 'no effect' synonyms)")
+                             f"(0x00-0x03 are stock's 'no effect' synonyms; "
+                             f"0x{FREE_FX2_IDS_64[-1]:02x} is the top of the 64-id space)")
         if len(self.abbr) > 4:
             raise ValueError(
                 f"abbr {self.abbr!r} is {len(self.abbr)} characters -- the "
@@ -678,7 +686,7 @@ class DspSection:
     # is already there. The one place that has words to give is the interrupt
     # vector table: stock leaves whole runs of slots as `jmp *` (a self-jump
     # plus a zero word), which would freeze the core if that interrupt ever
-    # fired, so they are dead -- `tools/verify/verify_dspvectors.py` proves
+    # fired, so they are dead -- `tools/verify/verify_dsp_vectors.py` proves
     # nothing arms one, on every build, and that gate is the licence for this
     # field. The build walks forward from `pin` while the stock pattern
     # holds, refuses if what it finds is not that pattern, and claims every
@@ -697,6 +705,22 @@ class DspSection:
     # the chip cannot enter or leave one by a jump.
     pins: tuple[int, ...] = ()
     pin_split_label: str | None = None
+    # THE TAIL -- where a payload harvests NOTHING (every stock effect kept,
+    # so there is no donor region), place the section above the payload's
+    # code instead: from the first P word past its highest load record
+    # (payload A P:$1fdf, 33 words below the default map's 8K; payload B
+    # P:$1da0) in a load record of its OWN. No stock record covers that
+    # space, and growing the payload in place would move payload B
+    # (docs/contributing/PLACEMENT.md), so the build ships a copy of the
+    # payload with the record spliced in before its terminator as a
+    # PRE-BOOT payload of octabam's loader and pokes the DSP boot's upload
+    # pointer at it, the route tools/build/ab_image.py takes: stock bytes
+    # and payload B do not move. The copy costs a DRAM region in the
+    # platform arena (unpacked + packed) in the remixes that use it, and
+    # nothing in any other: a remix with a donor region places the section
+    # there, as before. Hooks (DspHook) are patched in place as for any
+    # section.
+    tail: bool = False
     # Per-payload text substitutions applied to the source before anything
     # else the build does to it: {"A": {"@SBASE@": "$33e00"}, "B":
     # {"@SBASE@": "$3be00"}}. dsp_asm has no equ and no expressions, so a
@@ -715,6 +739,9 @@ class DspSection:
         if self.max_per_core is not None and not 1 <= self.max_per_core <= 4:
             raise ValueError(f"{self.asm}: max_per_core {self.max_per_core} "
                              f"outside 1..4 (a core has four FX2 slots)")
+        if self.tail and (self.pins or self.ptable or self.ptable2):
+            raise ValueError(f"{self.asm}: tail places the section whole in a "
+                             f"record of its own; it takes no pins and no ptable")
         if self.ptable2 and not self.ptable:
             raise ValueError(f"{self.asm}: ptable2 without ptable -- the "
                              f"second block follows the first")
@@ -1028,7 +1055,7 @@ class Harness:
     # None = the default, FX2 position 0 (n = 2), or FX1 (n = 1) for an
     # fx1_only module. A module that runs at some positions only and is a
     # dry pass elsewhere names one it runs at, or `send_probe --direct`,
-    # the audition and verify_dirtystate measure its dry pass (VOCODER:
+    # the audition and verify_dirty_state measure its dry pass (VOCODER:
     # 5, 0x6500, a core's second FX2 slot).
     render_r7: int | None = None
 
@@ -1188,11 +1215,12 @@ class Linked:
     # unit's), under the loader's labels: prefix every label. Needs the
     # platform (a remix with at least one DRAM unit).
     loader: bool = False
-    # Assembler text generated PER REMIX -- include(modules) -> str, given
-    # the remix's modules by key -- written beside the unit as `remix.inc`
-    # and reachable by `.include "remix.inc"`. A unit whose data depends
-    # on which modules are in the image (mode-defaults' view table) is
-    # otherwise unlinkable: the source cannot know the remix.
+    # Assembler text generated PER REMIX -- include(modules, remix) -> str,
+    # given the remix's modules by key and the remix -- written beside the
+    # unit as `remix.inc` and reachable by `.include "remix.inc"`. A unit
+    # whose data depends on which modules are in the image (mode-defaults'
+    # view table) is otherwise unlinkable: the source cannot know the
+    # remix. The remix is what the layers below it resolve to (brain.py).
     include: object | None = None
     # (name, value) pairs passed to both `m68k-elf-as --defsym` (so
     # `.ifdef NAME` sees them) and `m68k-elf-ld --defsym`, as
@@ -1208,23 +1236,57 @@ class Linked:
     # CavePatch.registers_formatter: the build writes the unit's
     # `registers_formatter.symbol` into that module's descriptor clone.
     registers_formatter: FormatterReg | None = None
+    # Resident-only references resolved AFTER the platform runtime link.
+    # (local defsym name, DRAM unit label, symbol defined by that unit).
+    # Each local name must have a defsyms value for the author reference and
+    # first placement link. That value is never a fallback in a final image:
+    # the provider must exist, and relinking must preserve size and exports.
+    runtime_refs: tuple[tuple[str, str, str], ...] = ()
+    # Zero-initialized data allowed to change before the boot-check handoff.
+    # (symbol defined in this DRAM unit, byte length). The verifier resolves
+    # ownership and section bounds from the linked object/map, rejects overlap
+    # and nonzero initial bytes. Module gates must check the resulting values.
+    boot_mutable: tuple[tuple[str, int], ...] = ()
 
     def __post_init__(self):
         if self.registers_formatter is not None and not (
                 self.dram and self.registers_formatter.symbol):
             raise ValueError(f"Linked({self.label!r}): registers_formatter needs "
                              f"dram=True and a FormatterReg.symbol")
+        if self.boot_mutable:
+            if not self.dram or self.loader:
+                raise ValueError(f"Linked({self.label!r}): boot_mutable requires a DRAM unit")
+            seen = set()
+            for item in self.boot_mutable:
+                if (not isinstance(item, tuple) or len(item) != 2
+                        or not isinstance(item[0], str) or not item[0]
+                        or type(item[1]) is not int or item[1] <= 0):
+                    raise ValueError(f"Linked({self.label!r}): boot_mutable needs (symbol, positive size)")
+                if item[0] in seen:
+                    raise ValueError(f"Linked({self.label!r}): duplicate boot_mutable symbol")
+                seen.add(item[0])
         names = [n for n, _v in self.defsyms]
         if len(names) != len(set(names)):
             raise ValueError(f"Linked({self.label!r}): a defsym name declared twice")
+        if self.runtime_refs:
+            if self.dram or self.loader:
+                raise ValueError(f"Linked({self.label!r}): runtime_refs require a resident unit")
+            refs = [ref[0] for ref in self.runtime_refs if len(ref) == 3]
+            if len(refs) != len(self.runtime_refs) or any(
+                    not all(isinstance(v, str) and v for v in ref) for ref in self.runtime_refs):
+                raise ValueError(f"Linked({self.label!r}): runtime_refs need three nonempty names")
+            if len(refs) != len(set(refs)) or not set(refs) <= set(names):
+                raise ValueError(f"Linked({self.label!r}): runtime_refs need distinct declared defsyms")
         if self.reference is not None and not callable(self.reference):
             reference_shape(self.label, self.reference)
 
     def reference_for(self, modules) -> tuple[int, str] | None:
-        """(address, sha256) of the author's build for this selection."""
+        """(address, sha256) of the author's build, if this selection has one."""
         if self.reference is None:
             return None
         ref = self.reference(modules) if callable(self.reference) else self.reference
+        if ref is None:
+            return None
         return reference_shape(self.label, ref)
 
 
@@ -1405,17 +1467,56 @@ class DramRegion:
 @dataclass(frozen=True)
 class Override:
     """This module's own claim at `site` stands in for another module's
-    Detour there -- the way two mods that hook one stock instruction get to
-    share it. A BRIDGE module carries a stub that does what both hooks did,
-    in an order that respects each one's protocol, and declares an
-    Override per detour it replaces: `module` is the other module's key.
-    The build skips the overridden detour; the ledger treats the site as
-    the bridge's; the overridden module must be in the remix, or the
+    Detour, SymbolRef, Poke or TableGrow ref there -- the way two mods that
+    hook one stock instruction, or repoint one stock word, get to share it.
+    A BRIDGE module carries a stub (or a table) that does what both did, in
+    an order that respects each one's protocol, and declares an Override per
+    write it replaces: `module` is the other module's key. The build skips
+    the overridden write; the ledger treats the site as the bridge's; the
+    overridden module must be in the remix and must claim `site`, or the
     override is refused.
     """
 
     site: int
     module: str
+
+
+SELECTABLE = frozenset({"linked", "detours", "symbol_refs", "overrides", "pokes", "claims", "gates"})
+
+
+def apply_select(m, keys):
+    """`m` with its Module.select applied for a selection of module `keys`.
+    The same keys give the same module, so applying it twice is harmless."""
+    if m.select is None:
+        return m
+    over = m.select(frozenset(keys))
+    if set(over) - SELECTABLE:
+        raise ValueError(f"{m.name}: select may only set {', '.join(sorted(SELECTABLE))}")
+    return dataclasses.replace(m, **over)
+
+
+@dataclass(frozen=True)
+class DspOverride:
+    """This bridge stands in for another module's DspHook at `site`: the DSP form of Override.
+    The build does not plant the overridden module's jsr there; the one other hook at the site,
+    which must be a Remix.window_demand module's, gets a resident stub that runs its own body
+    when the module is loaded and then jumps to the overridden hook's entry, which replays the
+    displaced instruction (docs/proposals/SC_DEMAND_LOAD.md: SIDECHAIN_COMPRESSOR's moncommit
+    and LOAD METER's otop_e2 at P:0x50e / 0x303). `site` is one int for every payload or
+    {"A": addr, "B": addr}, as DspHook.site."""
+
+    site: int | Mapping[str, int]
+    module: str
+
+    def __post_init__(self):
+        if isinstance(self.site, Mapping):
+            object.__setattr__(self, "site", MappingProxyType(dict(self.site)))
+            if not self.site or set(self.site) - {"A", "B"}:
+                raise ValueError(f"DspOverride of {self.module!r}: site keys are payload tags A/B")
+
+    def site_on(self, payload: str):
+        """The site on that payload, or None where the override does not apply."""
+        return self.site.get(payload) if isinstance(self.site, Mapping) else self.site
 
 
 @dataclass(frozen=True)
@@ -1455,6 +1556,8 @@ class Module:
     # Claims of OTHER modules this module's own stand in for
     # (schema.Override) -- a bridge chaining two mods' hooks at one site.
     overrides: tuple[Override, ...] = ()
+    # DspHooks of OTHER modules this one stands in for (schema.DspOverride) -- the DSP bridge.
+    dsp_overrides: tuple[DspOverride, ...] = ()
     # Module KEYS this one is meaningless without -- a bridge whose overrides
     # skip another module's writes on the promise that a third module's
     # stubs stand at those sites (scenes-p2-kits). The ledger refuses a
@@ -1497,6 +1600,13 @@ class Module:
     # DSP work outside the FX pricer (for example a CF-registered source).
     # An explicit gap must block pressure qualification, never report N/A.
     pressure_blocker: str = ""
+    # A DSP SOURCE MACHINE: repo-relative path of a script whose
+    # integrate(img, stock) -> (pre-boot payloads, pokes, log) writes the
+    # machine's DSP code into both payloads, last, after every DSP pass
+    # (build_bus.py; ANALOG BD's tools/build/ab_image.py is the first).
+    # Such a machine owns the source seam and SPRING REV's words: the build
+    # refuses a remix with two, with SPRING REV, or with any DspSection.
+    dsp_source: str = ""
     # ---- settings (docs/proposals/BRAIN.md section 4.1) --------------------
     # The id the module's settings and stored defaults are filed under, and
     # the settings themselves. tools/remix/brain.py resolves them for a
@@ -1512,6 +1622,21 @@ class Module:
     # so every reader of `linked`, `dsp`, `detours` or `gates` sees the
     # chosen code without asking (modules/usb is the first).
     variant: object | None = None
+    # Optional build-time subscription selection: select(frozenset(module keys))
+    # returns linked, detours, symbol_refs, overrides, pokes, claims and gates (SELECTABLE).
+    # registry.bound applies it after settings, and ledger.check applies it to
+    # any selection it is given, so claims, linking, installation, image gates,
+    # the matrix and the remixer all see the same subset. It must be
+    # deterministic, depend only on the keys, and must not modify the registry
+    # or filesystem.
+    select: object | None = None
+    # CODE THAT THE BUILD DROPS WHEN IT CANNOT BE NEEDED: dsp_if(fixed) ->
+    # bool, given {setting name: value} of the module's settings that are
+    # fixed in the image (Apply.BUILD, pinned, or any setting of a remix
+    # without BRAIN; an Option as its label). False drops the module's DSP
+    # section (registry.bound()). modules/usb places its inject only when IN
+    # could be on.
+    dsp_if: object | None = None
     # The values a bound module was built with ({name: value}); empty on an
     # unbound one. An `include` callable reads them from the selection.
     build_values: Mapping = field(default_factory=dict, hash=False, compare=False)
@@ -1639,7 +1764,7 @@ class Module:
                 f"this id would hijack that effect on both menus (see "
                 f"STOCK_FX2_IDS). Declare MenuEntry(replaces=\"<KEY>\") if "
                 f"that is what you mean. Free ids: "
-                f"{', '.join(f'0x{i:02x}' for i in range(0x04, 0x20) if i not in STOCK_FX2_IDS)}")
+                f"{', '.join(f'0x{i:02x}' for i in FREE_FX2_IDS)}")
         if self.menu is not None and self.menu.replaces:
             if self.kind is Kind.STOCK:
                 raise ValueError(f"{self.name}: a STOCK entry cannot replace "
@@ -1956,6 +2081,38 @@ class Remix:
     # that itself, the way modules/modulation does with its allocator slot.
     hidden: tuple[str, ...] = ()
     named: tuple[str, ...] = ()
+    # EFFECT CODE IN THE SHARED WINDOW (25 Oct 2026): (module key, P address) pairs. The
+    # module is assembled ONCE at that address in `P:0x30000..0x3ffff`, its P table (if any)
+    # behind it, written into the window as a load record of payload A's upload (the same
+    # pre-boot copy a DspSection.tail uses), and both payloads' dispatch entries for its id
+    # point there: one copy, run by both cores. It takes no words from the harvested region.
+    # Core 1 running code that sits in payload A's half is measured on the unit
+    # (modules/pextprobe). The build refuses an address inside another owner's range
+    # (tools/remix/dsp_ranges.py) or a module whose two payload sources assemble differently.
+    # A module with DspHooks and no init/proc is reached by its hooks alone; its LFO table, ptable and ptable2 follow
+    # the code in that order. It has no tail and no pins.
+    window: tuple[tuple[str, int], ...] = ()
+    # DEMAND-LOADED WINDOW EFFECTS (docs/proposals/DEMAND_LOAD.md): module keys, each also in `window`
+    # (at the address its code runs from). The module is assembled and placed as above but left out of
+    # payload A's upload: its words, address, entry points and id go to out/dsp/demand_records.json for
+    # the ColdFire loader (modules/dlpump). Its id's dispatch entries point at a trampoline of the stub
+    # (modules/dlcopy/dlstub.asm) that passes the audio through until DLCOPY has published the code. The
+    # position in this tuple is the effect's index k (the entry at x:$33da3 + 8 k; a fifth or later moves DLCOPY up 8 words each).
+    window_demand: tuple[str, ...] = ()
+    # OTHER HOMES OF A DEMAND EFFECT: (key, P address) pairs, any number per key. The effect's address in `window` is its
+    # first home; each pair here is another, in a different FX2 block of the window. The build assembles the effect once per
+    # home (the code is position-dependent) and DLPUMP stages every copy; at load time it sends the first whose block holds no
+    # other demand effect and whose track's FX2 is not a stock reverb that reaches the code, and moves a loaded effect to
+    # another home when such a reverb arrives on its block.
+    window_homes: tuple[tuple[str, int], ...] = ()
+    # STOCK REVERBS KEPT OFF LOADED CODE: stock keys. The build assembles modules/dlcopy/dlwrap.asm once
+    # per payload (the stock entries differ), with a pair of trampolines per reverb, and points each
+    # reverb's id at them: the reverb then runs only while its buffer range misses every loaded
+    # `window_demand` effect.
+    window_guard: tuple[str, ...] = ()
+    # Where the stub and then the two wrapper copies are laid out, one after the other (P address, in a
+    # run of window words no stock effect writes: docs/proposals/DEMAND_LOAD.md).
+    window_loader: int = 0
     # THE HOST PAGE DRAWS ITS FIRST SLOTS ONLY (26 Sep 2026, Sam: "want
     # all the tracks to look the same"): (key, n) pairs. The hidden
     # module's page draws slots 0..n-1 under their manifest names (the rig:
@@ -2001,6 +2158,15 @@ class Remix:
     # offsets have no such exact identity.
     grains: int = 4
     fx1: tuple[str, ...] = ()
+    # The FX id space: 32 is stock's. 64 grows the DSP dispatch tables and
+    # the FX2 id tables (tools/build/idspace.py); a module in `fx1` keeps an
+    # id below 32 because FX1's own tables stay at 32 entries.
+    id_space: int = 32
+    # Module key -> FX2 id this remix puts it on, instead of the allocator's
+    # choice: a project saved on this remix keeps meaning the same module
+    # whatever else the registry gains. A pinned id above 0x1f needs
+    # id_space=64, and a module in `fx1` stays below 0x20.
+    ids: Mapping = field(default_factory=dict, hash=False)
     # LAYER 2 OF EACH SETTING (docs/proposals/BRAIN.md section 4.2):
     # (store id, setting name) -> a value (a new default the card and the
     # project may still change) or Pin(value) (fixed: no row, nothing stored).
@@ -2015,6 +2181,32 @@ class Remix:
     defaults: Mapping = field(default_factory=dict, hash=False)
 
     def __post_init__(self):
+        if self.id_space not in ID_SPACES:
+            raise ValueError(f"remix {self.name!r}: id_space={self.id_space}; "
+                             f"it is one of {ID_SPACES}")
+        _top = 0x3f if self.id_space == 64 else 0x1f
+        for _k, _i in self.ids.items():
+            if _k not in self.modules:
+                raise ValueError(f"remix {self.name!r}: ids pins {_k!r}, which is not in the remix")
+            if not 0x04 <= _i <= _top or _i in STOCK_FX2_IDS:
+                raise ValueError(f"remix {self.name!r}: ids pins {_k!r} to 0x{_i:02x}; "
+                                 f"free ids are 0x04..0x{_top:02x} but stock's")
+            if _k in self.fx1 and _i > 0x1f:
+                raise ValueError(f"remix {self.name!r}: {_k!r} is in fx1, so its id stays below 0x20")
+        if len(set(self.ids.values())) != len(self.ids):
+            raise ValueError(f"remix {self.name!r}: ids pins two modules to one id")
+        _first = dict(self.window)
+        for _k, _a in self.window_homes:
+            if _k not in self.window_demand:
+                raise ValueError(f"remix {self.name!r}: window_homes names {_k!r}, which is not in window_demand")
+            if not 0x30000 <= _a < 0x40000:
+                raise ValueError(f"remix {self.name!r}: window_homes {_k!r} at P:0x{_a:05x} is outside the shared window")
+            if (_a - 0x30000) >> 14 == (_first.get(_k, 0) - 0x30000) >> 14:
+                raise ValueError(f"remix {self.name!r}: window_homes {_k!r} at P:0x{_a:05x} is in the block of its first home; "
+                                 f"a home is a different FX2 block")
+        _blk = [(_k, (_a - 0x30000) >> 14) for _k, _a in self.window_homes]
+        if len(set(_blk)) != len(_blk):
+            raise ValueError(f"remix {self.name!r}: window_homes gives a demand effect two homes in one block")
         if self.grains not in (2, 4):
             raise ValueError(f"grains={self.grains}: BusDelay's GRAIN reader "
                              f"is built for 4 or 2 per line, nothing else")

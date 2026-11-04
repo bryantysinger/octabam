@@ -34,6 +34,17 @@
 |    clock handler 0x40005a48 builds the tempo (0x80001818, 0x80001814) from
 |    that delta; without it USB clock steps the sequencer and leaves the tempo
 |    at the project's, or at the last DIN clock's.
+|  * One clock source at a time, DIN first (#944). Both sources reach the
+|    one FIFO, framer and clock handler, so DIN and USB clock together are
+|    one stream of twice the ticks: the sequencer steps on both and the
+|    handler's interval ring reads the gaps between them (120 + 120 BPM
+|    read 5267..6424, and the tempo was copied into the project's TEMPOx24).
+|    A USB clock or transport event (0xF8, 0xFA, 0xFB, 0xFC, 0xF2) is dropped
+|    whole while DIN is clocking: CLK_T was written by someone other than
+|    this decoder (it differs from usbmidi_rx_clk_t, the last stamp written
+|    here) less than CLK_GAP counts ago. CLK_GAP is the clock handler's
+|    resync gap (0x40005a96), so the first USB tick taken after DIN stops
+|    carries a delta past it and the handler starts a fresh ring.
 
 .set EP2_RX_PRIME,  0x4001d184      | usb_midi_rx_prime(buf), the 64-byte form
 .set RX_ENQUEUE,    0x40092bbc      | midi_rx_enqueue(byte on stack)
@@ -42,6 +53,7 @@
 .set DTCN0,         0xfc07000c      | DMA timer 0 count (DTIN0 pin)
 .set CLK_T,         0x46c8345a      | DTCN0 at the last 0xF8
 .set CLK_DT,        0x46c83466      | DTCN0 delta between the last two 0xF8: the MIDI clock handler's tempo input
+.set CLK_GAP,       1881600         | DTCN0 counts (167 ms): the clock handler's resync gap (0x40005a96)
 .set RX_BUF,        0x4ecc9000      | usb_midi_rx_buf; its 4 KB page holds nothing else
 .set EP2_RX_DTD,    0x4ec953e0      | next-dTD word; token at +4, buffer at +8
 .set EP2_RX_TD,     0x4ec953e4
@@ -61,7 +73,7 @@
     .text
     .global usbmidi_rx_setcfg_shim, usbmidi_rx_isr_shim
     .global usbmidi_rx_reset_shim, usbmidi_rx_sessend_shim, usbmidi_rx_bus_end
-    .global usbmidi_rx_state, usbmidi_rx_errs
+    .global usbmidi_rx_state, usbmidi_rx_errs, usbmidi_rx_clk_t, usbmidi_rx_dropped
 
 | ---- SET_CONFIGURATION hook (replaces usbmidi.s's detour) ------------------
 | Live at the hook: d0-d1 (usbmidi_setcfg_shim saves them). Records whether
@@ -169,7 +181,7 @@ usbmidi_rx_flush:
 | MKII (OCTABAM14, macOS and two Windows 10 hosts, 7-9 Oct 2026): transmit
 | works on the first connection after boot and never after an unplug and
 | replug; a bus reset with the cable in does not do it. Under the port
-| (verify_usbmidi_replug) the session end leaves usbmidi_up = 1, the unit
+| (verify_usb_midi_replug) the session end leaves usbmidi_up = 1, the unit
 | goes on queueing clock and primes EP2 IN with USBCMD.RS clear, and the
 | bytes queued while unplugged go out after the next SET_CONFIGURATION.
 | How silicon then loses EP2 IN for good is inferred, not measured: a prime
@@ -205,7 +217,7 @@ usbmidi_rx_sessend_shim:
 | nothing to the next host), and both EP2 directions are flushed. The
 | accumulator length is usbmidi.s's local usbmidi_tx_acc_len, at
 | usbmidi_up + 4 in his verbatim layout (up, tx_busy, tmpbyte, .balign 2):
-| Linked.reference pins those bytes and verify_usbmidi_replug checks the
+| Linked.reference pins those bytes and verify_usb_midi_replug checks the
 | offset. Interrupts are masked for the three stores, as usbmidi.s masks its
 | own accumulator. Saves everything it uses.
 | usbmidi_tx_kick sets tx_busy and runs the encoder with interrupts unmasked;
@@ -289,7 +301,7 @@ usbmidi_rx_decode:
     lea     usbmidi_rx_cin_len,%a3
     movel   %d0,%d3
     asrl    #2,%d3                  | event count
-    bles    8f
+    blew    8f
     movew   %sr,%d5
 3:  mvzb    %a2@,%d0
     moveq   #15,%d1
@@ -305,7 +317,11 @@ usbmidi_rx_decode:
     movew   %d5,%sr
     bsr     usbmidi_rx_run_framer
     bras    4b
-6:  moveq   #0,%d2
+6:  bsr     usbmidi_rx_din_owns
+    beqs    10f
+    addql   #1,usbmidi_rx_dropped   | DIN is clocking: the event is not enqueued
+    bras    11f
+10: moveq   #0,%d2
 7:  mvzb    %a2@(1,%d2:l),%d0
     cmpil   #0xf8,%d0
     bnes    9f
@@ -314,6 +330,7 @@ usbmidi_rx_decode:
     subl    CLK_T,%d0
     movel   %d0,CLK_DT
     movel   %d1,CLK_T
+    movel   %d1,usbmidi_rx_clk_t
     mvzb    %a2@(1,%d2:l),%d0       | the 0xF8 again
 9:  movel   %d0,%sp@-
     jsr     RX_ENQUEUE
@@ -321,11 +338,40 @@ usbmidi_rx_decode:
     addql   #1,%d2
     cmpl    %d4,%d2
     blts    7b
-    movew   %d5,%sr
+11: movew   %d5,%sr
 5:  addql   #4,%a2
     subql   #1,%d3
     bgts    3b
 8:  rts
+
+| usbmidi_rx_din_owns: at SR 0x2700, a2 = the event. Z clear (d0 = 1) when
+| the event is a clock or transport message and DIN is clocking: CLK_T is not
+| the last stamp this decoder wrote and is under CLK_GAP old. A stale foreign
+| CLK_T is adopted as ours, so a DTCN0 wrap (2^32 counts, 380 s) cannot make
+| a DIN tick from long ago look recent. Trashes d0-d1.
+usbmidi_rx_din_owns:
+    mvzb    %a2@(1),%d0
+    cmpil   #0xf8,%d0
+    beqs    1f
+    cmpil   #0xfa,%d0
+    bcss    3f                      | below 0xFA (0xF2 is checked below)
+    cmpil   #0xfc,%d0
+    blss    1f                      | 0xFA, 0xFB, 0xFC
+    bras    4f
+3:  cmpil   #0xf2,%d0
+    bnes    4f
+1:  movel   CLK_T,%d0
+    cmpl    usbmidi_rx_clk_t,%d0
+    beqs    4f                      | the last 0xF8 stamped was ours
+    movel   DTCN0,%d1
+    subl    %d0,%d1                 | the DIN tick's age
+    cmpil   #CLK_GAP,%d1
+    blss    5f                      | younger than the gap: DIN owns the clock
+    movel   %d0,usbmidi_rx_clk_t    | stale: adopt it
+4:  moveq   #0,%d0
+    rts
+5:  moveq   #1,%d0
+    rts
 
 | usbmidi_rx_run_framer: one pass of the framer, entered as its interrupt
 | would: the long exception frame (format 4, vector 0x64, the current SR)
@@ -346,3 +392,5 @@ usbmidi_rx_cin_len:
 usbmidi_rx_state: .byte 0
     .balign 4
 usbmidi_rx_errs:  .long 0
+usbmidi_rx_clk_t: .long 0           | DTCN0 at the last 0xF8 this decoder stamped
+usbmidi_rx_dropped: .long 0         | USB clock and transport events dropped while DIN clocked

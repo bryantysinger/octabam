@@ -5,7 +5,7 @@ Turning a MODE on the panel re-defaults the knobs around it to that mode's
 
 ## Measured
 
-`tools/verify/verify_modedefaults.py` (in `make verify` with `OT_PROJECT`):
+`tools/verify/verify_mode_defaults.py` (in `make verify` with `OT_PROJECT`):
 the FX2 editor called on T1 (BusDelay, CLEAN -> GRAIN) and the FX1 editor
 on T2 (Modulation, MODE on slot 6 as on every effect since 16 Sep 2026, JUNO -> DIM) under the port leave every pair of the
 landed view in the live lane, page 1 and page 2, and the untouched slots
@@ -25,7 +25,7 @@ the knobs, on FX1 and FX2.
 
 ## Gates
 
-- `tools/verify/verify_modedefaults.py` (in `make verify` with `OT_PROJECT`).
+- `tools/verify/verify_mode_defaults.py` (in `make verify` with `OT_PROJECT`).
 
 ## Hook
 

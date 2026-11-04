@@ -1,4 +1,6 @@
-The project's side files — KITS' kits.work, PLOCKS P2's p2lkNN.work and
-MIDI SCENES' scenes.work — are written, copied and cleared at the right
-times: every bank load, a new project, the bank writer, the project save
-and reload. Nothing on the panel.
+Keeps each feature's extra files with the project: the Kits file, the page 2
+lock files and the MIDI scenes file. They are written, copied and cleared at
+the right moments: every bank load, a new project, project save and reload.
+
+In the Copy Project list, LEVEL scrolls only that list, as it does in the Kits
+lists.

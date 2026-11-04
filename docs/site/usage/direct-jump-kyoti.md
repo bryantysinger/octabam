@@ -1,12 +1,11 @@
-An immediate pattern change. A cued pattern takes over on the next step,
+Changes pattern immediately. A cued pattern takes over on the next step,
 locked to the master clock: it plays where it would be had it been
 running since START, whatever its track lengths, scales or master
 settings.
 
 ## Operation
 
-Toggle with [PTN] + [YES]. OFF at every power-on.
+Press [PTN] + [YES] to switch it on or off. It is OFF at every power-on.
 
-Not the same module as DIRECT JUMP (CHAIN AFTER: DIRECT). Both change
-when a cued pattern takes over, and they have not been run in one image:
-take one per remix.
+This is not the same as the stock DIRECT chain setting (CHAIN AFTER: DIRECT).
+Both change when a cued pattern takes over; use one or the other.

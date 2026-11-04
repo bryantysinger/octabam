@@ -89,3 +89,28 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 700;
   font-variation-settings: "WONK" 0, "SOFT" 0;
 }
+
+/* Page header: the title's cap height starts at the top of the buttons. */
+#page-header > div {
+  padding-top: 0;
+}
+#page-header h1 {
+  line-height: 1;
+  margin-top: -.16em;
+}
+/* Header row to content: 1rem gap, and the first element adds no margin of its own. */
+article {
+  gap: 1rem;
+}
+article .typography > h1:first-child + :not(.byline) {
+  margin-top: 0;
+}
+/* The header row carries only the previous/next arrows. */
+#page-header button[data-slot="button"] {
+  display: none;
+}
+/* The author line sits close under the header row (the article's 1rem gap is pulled back). */
+article .typography > p.byline {
+  margin-top: -.5rem;
+  color: var(--muted-foreground);
+}

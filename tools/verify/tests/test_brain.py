@@ -231,10 +231,10 @@ class Binding(unittest.TestCase):
     def test_variant_sets_fields_and_values(self):
         def variant(v):
             return {"linked": (Linked("u", "u.s", cpu="5475", dram=True,
-                                      include=lambda mods, n=v["LAYOUT"]: n),)}
+                                      include=lambda mods, remix, n=v["LAYOUT"]: n),)}
         m = mod(settings=(OUT,), variant=variant)
         b = m.bind({"LAYOUT": "MAIN"})
-        self.assertEqual(b.linked[0].include({}), "MAIN")
+        self.assertEqual(b.linked[0].include({}, None), "MAIN")
         self.assertEqual(dict(b.build_values), {"LAYOUT": "MAIN"})
         self.assertEqual(m.build_values, {})
 

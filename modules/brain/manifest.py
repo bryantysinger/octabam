@@ -14,6 +14,7 @@ import struct
 import sys
 
 from remix import schema
+import idspace
 from remix.schema import (Binary, Category, Detour, Gate, Kind, Linked, Module, Poke, Proof, Scope, Setting,
                           Store, SymbolRef)
 
@@ -21,7 +22,7 @@ H = bytes.fromhex
 SOURCE = "modules/brain/brain.s"
 
 
-def fx_inc(modules):
+def fx_inc(modules, remix):
     """The `remix.inc` brain.s includes: brain_fx[], one 40-byte entry per
     selected effect with knobs (brain.fx_targets): layout hash, store id
     pointer, twelve keys, fx id, id length, name (the module's key)."""
@@ -30,6 +31,7 @@ def fx_inc(modules):
     mods = modules if isinstance(modules, dict) else {}
     targets = [m for m in mods.values() if m.menu is not None and len(m.params) == 12]
     out = ["| remix.inc -- brain_fx: the effects in this image (modules/brain/manifest.py)",
+           f"        .set    brain_fx2_ids, {idspace.fx2_ids(remix):#x}",
            "        .section .rodata", "        .balign 4", "        .globl  brain_fx, brain_fx_n",
            f"brain_fx_n: .long {len(targets)}", "brain_fx:"]
     for i, m in enumerate(targets):
@@ -42,7 +44,7 @@ def fx_inc(modules):
     for i, m in enumerate(targets):
         out.append(f'brain_id_{i}: .ascii "{brain.fx_store_id(m)}"')
         out.append(f'brain_nm_{i}: .asciz "{m.key[:PANE_W - 2]}"')
-    return ("\n".join(out) + "\n" + image_inc(mods) + "\n" + menu_inc() + "\n" + settings_inc(mods)
+    return ("\n".join(out) + "\n" + image_inc(mods) + "\n" + menu_inc() + "\n" + settings_inc(mods, remix)
             + "\n" + page_keys_inc() + "\n" + func_keys_inc()
             + "\n        .text\n")
 
@@ -119,21 +121,22 @@ def image_inc(mods):
 PANE_W = 15                              # characters BRAIN's list pane shows (brain.c PANE_W)
 
 
-def settings_inc(mods):
+def settings_inc(mods, remix=None):
     """brain_set[] and brain_values[]: one entry per setting the unit holds
     at run time (remix.brain.live_table), in the SETTINGS list's order.
     An entry is 44 bytes (brain.c struct set_ent): store id, id length,
     type (1 Binary, 2 Option, 3 Number), apply (0 live, 1 callback, 2 next
     boot), label count, key, min, max, the default after layers 1 and 2,
-    the labels, the name, the module's key (the list's heading), the scope
-    (0 CARD: card.work; 1 PROJECT: the project's brain.work). Each value
-    is a long with its own global (remix.brain.value_symbol), which a
-    module's read macro loads."""
-    from remix import brain, registry
+    the setting's value address in CS1 when it is early (0 otherwise,
+    remix.brain.early_layout), the labels, the name, the module's key (the
+    list's heading), the scope (0 CARD: card.work; 1 PROJECT: the project's
+    brain.work). Each value is a long with its own global
+    (remix.brain.value_symbol), which a module's read macro loads."""
+    from remix import brain
     from remix.schema import Apply, Binary, Number, Option
-    remix = registry.remix(os.environ.get("REMIX")) if os.environ.get("REMIX") else None
     rows = brain.live_table(remix, mods) if remix is not None else []
     applies = {Apply.LIVE: 0, Apply.CALLBACK: 1, Apply.NEXT_BOOT: 2}
+    cs1 = brain.early_layout(remix, mods)[1] if remix is not None else {}
     out = ["        .data", "        .balign 4", "        .globl  brain_set, brain_set_n, brain_values",
            f"brain_set_n: .long {len(rows)}", "brain_set:"]
     strs, groups = [], {}
@@ -156,6 +159,7 @@ def settings_inc(mods):
                 f"        .byte   {len(r.store_id)}, {typ}, {applies[s.apply]}, {nl}",
                 f"        .word   {r.key}, {k.step if isinstance(k, Number) else 1}",
                 f"        .long   {lo}, {hi}, {int(r.value)}",
+                f"        .long   {cs1.get((r.store_id, r.key), 0)}",
                 f"        .long   {f'brain_slab_{i}' if nl else 0}, brain_snam_{i}, brain_sgrp_{groups[m.key]}, "
                 f"{1 if s.scope is Scope.PROJECT else 0}"]
         strs += [f'brain_sid_{i}: .ascii "{r.store_id}"', f'brain_snam_{i}: .asciz "{s.name}"']
@@ -268,6 +272,7 @@ MODULE = Module(
                       doc="the card's knob defaults (BRAIN/card.work) apply at each project load; off, every effect takes the image's defaults")),
     linked=(Linked("brain", SOURCE, cpu="5475", dram=True, include=fx_inc,
                    defsyms=(("MODEDEF_TABLE", 0), ("LM_STATS", 0), ("LM_DSP", 0), ("LM_OT", 0), ("ARENA_BASE", 0x40A955E0),
+                           ("CS1_EARLY_BASE", 0x100F859C),  # build override: remix.brain.early_layout
                            # other modules' counters, 0 without them (hooks.s brain_usb*)
                            ("usbaudio_underruns", 0), ("usbaudio_overruns", 0), ("in_counters", 0),
                            ("usbmidi_tx_drops", 0))),),
@@ -316,5 +321,7 @@ MODULE = Module(
                  SymbolRef(ROOT_DESC + 0x18, ROOT_ROWS, "brain", "brain_root_rows",
                            "MAIN MENU root rows: the four stock categories + BRAIN"),),
     pokes=(Poke(ROOT_COUNT_AT, H("00000004"), H("00000005"), "MAIN MENU root count: + BRAIN"),),
-    gates=(Gate("tools/verify/verify_brain.py", remix_arg=False, venv=True, stage="image"),),
+    # This gate builds its own octabam-bus image. Run it before the selected
+    # image is restored, never between gates that inspect that image.
+    gates=(Gate("tools/verify/verify_brain.py", remix_arg=False, venv=True),),
 )

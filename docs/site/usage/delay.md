@@ -20,7 +20,7 @@ every other track's FX2 is SEND.
 - TAPE on glides between delay times when TIME changes; off jumps.
 - DIR is the dry mix; at minimum only the delay signal is heard.
 
-## The Repeater (Lock)
+## The repeater (lock)
 
 LOCK on makes the delay a repeater: with FB 127 and SEND 0 the buffer
 repeats endlessly; lower FB fades out gradually. TIME sets the repeat

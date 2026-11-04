@@ -19,7 +19,7 @@ REMIX = Remix(
              "TEMPO SYNC", "CC MAP", "CC FEEDBACK", "MODE DEFAULTS", "RIG HOSTS", "TEMPO BUS",
              "USB",
              "STORE", "KITS",
-             "SCENES P2", "PLOCKS P2",
+             "SCENES P2", "EVENTS", "PLOCKS P2",
              "DELAY",
              "FX2 LOCK"),
     fallback="SEND",
@@ -27,6 +27,7 @@ REMIX = Remix(
     host_slots=(("DELAY SERVER", 2), ("REVERB SERVER", 2)),
     locked=("REVERB SERVER", "DELAY SERVER"),
     fx1=("SPECTRUM", "CHARACTER TXTR", "MODULATION"),
-    settings={("octabam.usb", "LAYOUT"): "MASTER",
-              ("octabam.usb", "INPUTS"): "OFF"},
+    settings={("octabam.usb", "TRACKS"): "OFF", ("octabam.usb", "MAIN"): 0,
+              ("octabam.usb", "CUE"): 0, ("octabam.usb", "MASTER"): 1,
+              ("octabam.usb", "IN"): "OFF"},
 )

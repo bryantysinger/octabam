@@ -9,7 +9,7 @@ comes out on track 5 under that track's dry.
 Track 5's FX2 page draws only DEL and REV. Every other knob is in the
 TEMPO window: press [TEMPO], then LEFT / RIGHT to focus the REVERB box.
 
-## Adjust the Sound
+## Adjust the sound
 
 - DEL on track 5 sends track 5's own dry into the delay; REV sends it into
   the reverb.

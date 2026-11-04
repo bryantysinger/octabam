@@ -17,8 +17,11 @@ in µs, the interrupts a second, and the peaks since the view opened.
 | `0x4000aad0` | `lea %sp@(-252),%sp / moveml %d0-%fp,%sp@`, the handler's prologue | `lm_in`: the prologue replayed, the entry stamp |
 | `0x4000d9a6` | `moveml %sp@,%d0-%fp / lea %sp@(252),%sp / rte`, the epilogue | `lm_out`: the duration summed, the window published, the epilogue replayed |
 
-The sites are BOOT TRACE's entry and CF METER's epilogue, so the ledger
-refuses LOAD METER beside either by name. The share counts the frame
+The sites are BOOT TRACE's entry and CF METER's epilogue: beside either, the
+registry adds [HOOKS](../hooks/README.md), which replays the prologue and the
+epilogue once and calls each module's routine (BOOT TRACE's note first at the
+entry, so LOAD METER's stamp excludes it; LOAD METER first at the epilogue).
+That pairing has run under Unicorn only (verify_hooks), not on a unit. The share counts the frame
 interrupt alone: the other interrupts and the tasks are not in it.
 
 ## The DSP cores
@@ -69,10 +72,13 @@ the last finished frame's:
 stock recorder reads MAIN) copies the bytes out and zeroes them, before the
 recorder (`0x400068e4`), USB's audio producer and STEMS read the buffer: every
 reader sees stock's bytes; it runs once per frame interrupt (its pass
-count equals the interrupt count, `verify_loadmeter` every), ahead of the
+count equals the interrupt count, `verify_load_meter` every), ahead of the
 recorder's call at `0x4000d340` and USB's audio producer's at `0x4000d9a0`. STEM
 REC reads MAIN from the transfer routine (`0x40004b12`), outside that
-order, so the two are refused together (`conflicts`) until measured. A record whose magic, sum, period (20,000 to
+order, and needs none: the meter's bytes are only in the low byte of MAIN's
+longs, which STEM REC never writes to a file (its 16-bit path keeps the top
+16 bits, its 24-bit path shifts the low byte off). Either order gives the
+same files; the two share `octabam` since 28 Oct 2026. A record whose magic, sum, period (20,000 to
 60,000 counts; nominal 36,256) or busy (at most its period) is wrong is
 counted as bad and changes nothing. CF METER's page-lane route (an FX2
 insert printing values as audio) was the alternative; it takes a track and
@@ -85,7 +91,7 @@ peak mark; then `WORST FRAME` (the longest single run of the frame interrupt
 as a share of the 362.8 µs frame, `OVER` at 100%); then the cost of each effect call
 (below), sorted. `-` = no sample yet, `?` = only bad records since the last
 refresh. While the screen is closed nothing draws and the DSPs and the host
-port carry the same traffic as with it open (`verify_loadmeter` closed); the
+port carry the same traffic as with it open (`verify_load_meter` closed); the
 scrub runs every frame either way.
 
 **OTOP, the cost of each effect call.** Four more DSP hooks on the stock
@@ -109,7 +115,7 @@ FX2 of the first position, then the next), 8..15 payload B's (tracks 1-4).
 the stock mixer, AMP and everything else. The stamps read and write only
 registers that are dead at the hook sites (`a` and `b` and `r2`, `r3`; the
 start hook saves `a` through the displaced store) and no modifier register;
-`verify_loadmeter` compares USB's audio-out ring with the stamps in and
+`verify_load_meter` compares USB's audio-out ring with the stamps in and
 replaced by no-ops (`LM_NOOT`): byte-identical. They cost 101 words a
 payload (257 in all with the meter). Measured only under the port, whose
 timer moves in 1,024-count steps, so single calls read 0 or 1,024 and only
@@ -140,6 +146,27 @@ instructions, so the mean resolves below the step, and the gate compares
 means. It reports each rise's error against N/2. The port counts
 instructions, the chip cycles; the chip's ratio is a hardware-round item.
 
+## On a unit
+
+First readings over USB (`tools/hw/load_meter.py`, vendor request `0xc0/0x57`),
+24 Oct 2026, image A1 (`octabam-bus`, `BUILD=A1`), project `OCTAMX01` (BASE
+layout: FX1 NONE, FX2 SEND at 0 on T1-T7; four stimuli on eight FLEX tracks,
+one trig on step 1 of 64 steps), 10 s each, 21 published windows:
+
+| | ColdFire share mean / max | longest frame-interrupt run | DSP 0 busy/period | DSP 1 busy/period |
+|---|---|---|---|---|
+| stopped | 24.2 % / 24.2 % | 106.7 µs (29 % of a frame) | 25.4 % | 18.5 % |
+| playing (host START, 120 BPM) | 48.8 % / 49.4 % | 336.5 µs (93 % of a frame) | 25.4 % | 18.5 % |
+
+Per effect slot the cost is 46-60 counts for an FX1 NONE and 432-497 counts
+(1.2-1.4 % of a frame) for a SEND, 113 for slot A4 FX2; the DSP figures did not
+move with the transport. The 93 % is the longest single run in the window: all
+eight voices start on the same step. The meter reads timer counts; no
+independent measurement of them has been made. Before the A1 image the
+request returned a stale `lm_stats` (the window stuck for minutes, then jumping
+100 windows) and an alternate request failed with 0 bytes
+(`docs/contributing/TRAPS.md#trap-ep0-dma`).
+
 ## Hardware round
 
 Every % and µs here is from the port, whose cycle table and timer are not
@@ -150,9 +177,17 @@ the chip's:
   MAIN, the USB stream);
 - the view's text widths on the unit's LCD.
 
+## Frame count
+
+Core 0 counts frames in `x:(r1+6)`, 24 bits, wrapping at 2^23 (a multiple of
+16, so the OTOP slot index continues). Before the wrap, bit 23 of the count reached
+`move a,n1` with A2 stale and the unit's frame interrupt stopped 8,388,607
+frames (50.7 minutes) after power-up (docs/contributing/TRAPS.md#trap-frame-count). `LM_FRAME0=N` starts
+the count at N in a gate build.
+
 ## Measured
 
-Both DSP cores under the port (`verify_loadmeter`, 12 Oct 2026, project
+Both DSP cores under the port (`verify_load_meter`, 12 Oct 2026, project
 BRAINPRJ, the view open for 4 s of emulated time): 89,783 good records and 2 bad
 (the first frames, before timer 0 is armed) out of 89,785 frame
 interrupts; core 0 busy 20,480 of a 36,864-count period, core 1 17,421 of
@@ -170,7 +205,7 @@ the chip's; the numbers on a unit are a hardware-round item.
 
 ## Gates
 
-- `tools/verify/verify_loadmeter.py`: with both DSP cores under the port,
+- `tools/verify/verify_load_meter.py`: with both DSP cores under the port,
   the records arrive and pass, the view's DSP rows carry numbers, the
   scrub zeroes MAIN's byte every frame and runs once per frame interrupt,
   USB's audio-out ring is byte-identical with the publish on and off
@@ -178,7 +213,13 @@ the chip's; the numbers on a unit are a hardware-round item.
   traffic, nothing stock writes the claimed words but payload B's boot
   zero loop, and an injected burn (`LM_BURN` builds) raises each core's
   busy by N/2 counts.
+- `tools/verify/verify_usb_load_meter.py`: the USB module's vendor request
+  `0xc0/0x57` (wValue low 0, 1, 2: `lm_stats`, `lm_dsp`, `lm_ot`; 20, 48 and
+  256 bytes) returns the meter's cells, equal to the same words peeked at
+  the symbol, with seq rising, a 0.5 s window, plausible periods and busy,
+  sampled slots; wValue 3 STALLs. `tools/hw/load_meter.py` reads them from
+  a unit (`--watch`, or `--for N --json` for a summary over N seconds).
 - `tools/verify/verify_brain.py` (BRAIN's gate) runs the PERFORMANCE screen on the
   `octabam-bus` remix, which carries this module.
-- `tools/verify/verify_dspvectors.py`, `verify_twocore` and `make
+- `tools/verify/verify_dsp_vectors.py`, `verify_two_core` and `make
   verify-bus` (audio bit-identity) for the DSP section.

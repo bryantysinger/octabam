@@ -11,7 +11,7 @@ pattern holds — trigs, parameter locks, track lengths and scales. Nor
 the tempo, the arrangements, the track recorders or the project
 settings.
 
-## The Keys
+## The keys
 
 | Action | MKII | MKI |
 |---|---|---|
@@ -23,7 +23,7 @@ settings.
 | save the Kit, copy it and the pattern to the next empty ones, play the copy | PTN+FUNC+RIGHT | PTN+FUNC+RIGHT |
 | copy / paste / clear an inactive pattern of the current bank (paste or clear again: undo) | hold PTN and FUNC, press the pattern's TRIG; then REC / STOP / PLAY | the same |
 
-## The Lists
+## The lists
 
 - **LOAD KIT** lists UNDO KIT (the Kit the current pattern had before
   the last load), then the 255 Kits: `NNN name`, `*` on a Kit no pattern
@@ -33,6 +33,9 @@ settings.
   (the first empty Kit when the slot holds none). YES opens the name
   editor (seven characters, `NEW KIT` for an empty Kit); the current
   Part is saved into the Kit and the current pattern plays it.
+- Each list shows its name, `LOAD KIT` or `SAVE KIT`, when it opens.
+  FUNC+YES is the quick save in SAVE KIT; in LOAD KIT it saves nothing
+  and shows `LOAD KIT: NO SAVE`.
 - In either list, LEVEL moves the cursor a row per detent; UP and DOWN
   as stock.
 - In either list, FUNC+REC copies the Kit under the cursor, FUNC+STOP
@@ -49,8 +52,5 @@ settings.
 ## Notes
 
 - Kits are per project, in the project directory.
-- On the first load of a project without a Kits file, Octakit's
-  `kits3a.work` and `kits3b.work` are imported when present; those files
-  are left on the card.
-- With MIDI SCENES in the remix, a Kit also carries the Part's scene
-  lock table.
+- With MIDI SCENES in the image, a Kit also carries the Part's MIDI scene
+  locks.

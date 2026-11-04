@@ -20,16 +20,18 @@ boundaries with the displaced instructions replayed.
 """
 
 from remix.schema import Gate, Category, Proof, Claims, Detour, Kind, Linked, Module
+import idspace
 
 H = bytes.fromhex
 
 
-def next_inc(modules):
+def next_inc(modules, remix):
     """Where a turn with no scene held continues: the stock prologue replay
     inside the unit. PLOCKS = 1 when PLOCKS P2 is in the remix: the dial
     shows a held step's page-2 lock."""
     plocks = f"        .set    PLOCKS, {1 if 'PLOCKS P2' in modules else 0}\n"
-    return (plocks + "        .set    P2_NEXT2, fx2_stock\n"
+    desc2 = f"        .set    DESC2, {idspace.fx2_ids(remix):#x}\n"
+    return (plocks + desc2 + "        .set    P2_NEXT2, fx2_stock\n"
             "        .set    P2_NEXT1, fx1_stock\n")
 
 MODULE = Module(
@@ -64,5 +66,5 @@ MODULE = Module(
     # + 0x20*track + 30
     claims=Claims(part_window=tuple((0x8f400 + 0x20 * i, 2, f"page-2 scene cell {i}")
                                     for i in range(128))),
-    gates=(Gate('tools/verify/verify_scenesp2.py'),),
+    gates=(Gate('tools/verify/verify_scenes_p2.py'),),
 )

@@ -155,7 +155,9 @@ MAIN MENU > OS (a list of /*.OBI)           bootstrap unpacks NOR -> 0x40000400
     every stock effect cannot carry it);
   - two detours (`0x40000412`, `0x40064c32`), one row pointer
     (`0x400cbda4`), one count poke (`0x400cbd8c`, the root 4 → 5);
-  - the top 2.6 MB of the platform reserve, which the gate keeps clear.
+  - 2.6 MB of the platform reserve at a fixed address (an ArenaReserve),
+    which no DRAM region may overlap; the reserve's top unless a region
+    needs more room (STEM REC's 8 MiB ring sits above it).
   (❌ The first prototype was a seventh CONTROL row with a one-file-at-a-
   time dialog and a 274 B ROM cave; the cave did not fit beside
   bottleservice's label formatters.)
@@ -168,7 +170,7 @@ from the state the bootstrap hands over, minus one parked argument and the
 
 ---
 
-## 4. What is measured ✅ (the port, `tools/verify/verify_remixswitch.py`, 16 checks)
+## 4. What is measured ✅ (the port, `tools/verify/verify_remix_switch.py`, 16 checks)
 
 - The panel drives the row, the dialog, the deferred load and the reset
   sequence on a card holding `STOCK140.OBI`. The stage reads back equal
@@ -223,7 +225,7 @@ its own (`dsp_park.asm`: host command `$12` on stock's unused vector
 `P:$24`; DMA and ESAI stopped; the interrupt left; count, address, words,
 jump). Under the port both cores take it, the stock upload completes
 through the loaders, and each core enters its stock bootstrap and payload
-start again (`verify_remixswitch`'s `dsp` case). The steps below stand, for
+start again (`verify_remix_switch`'s `dsp` case). The steps below stand, for
 build 6 (with BOOT TRACE: `remix-switch-trace`):
 
 **Builds 7-14, on the unit** (BOOT TRACE throughout; the whole story is
@@ -298,7 +300,9 @@ carries OS SWITCH (`schema.Remix.os_switch` was not taken).
   the maintainer's call to make upstream, or a local build option?
 - Should the platform reserve's top 2.6 MB be reserved for the switch in
   every remix (a platform guard in `platform_build.py`), rather than
-  checked by this module's gate only? Today no runtime comes near it.
+  checked by this module's gate only? Answered 11 Oct 2026 (MEMORY): the
+  stage is an ArenaReserve, the build moves DRAM regions off it and
+  refuses a runtime under it.
 - `Category.REFERENCE` is a stand-in; there is no "system" category.
 
 ## 8. Corrections this reading made to existing docs

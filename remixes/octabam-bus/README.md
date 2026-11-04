@@ -2,10 +2,10 @@
 
 A remix of Octatrack OS 1.40C, built from your own copy of it, that adds a
 **delay and reverb bus** with a send from every track, three new FX1
-effects, and the [core modules](../octabam-inserts/README.md#the-core-modules)
+effects, and the [core modules](../octabam/README.md#the-core-modules)
 (KITS, scene and parameter locks on page 2, USB MIDI and USB audio, BRAIN and
-the rest). It is bottleservice's bus with the core set added; USB AUDIO OUT
-is MAIN CUE here. Runs on an MKII; see [Where it has run](#where-it-has-run).
+the rest) and the extra ColdFire modules of `octabam` (OCTA303, MORPH,
+REC THRESHOLD, BUFFER SAVER, COPY PROJECT, EUCLID FILL, TRACK PATTERNS). The USB settings are at their defaults here (TRACKS PRE, MAIN, CUE, MIDI on). See [Where it has run](#where-it-has-run).
 
 ## The bus
 
@@ -63,13 +63,15 @@ listed give up their DSP code to the bus.
 | | stock | octabam-bus |
 |---|---|---|
 | sample and recorder memory | 14,602 pages | 12,895 pages (the platform reserve) |
-| DSP words free, payload A / B | | 44 / 605 |
+| DSP code in the window | | the servers, SEND, SPECTRUM, CHARACTER, MODULATION and LOAD METER (P:0x35800..0x37c67) |
 
 ## Where it has run
 
-Port gates only: `make check REMIX=octabam-bus` and the reach round. Not on
-a unit. bottleservice, the same bus without the core additions, ran on Sam's
-MKII (images A0-A6; `CHANGELOG.md`).
+Port gates only: `make check REMIX=octabam-bus` and the reach round. The seven extra ColdFire modules have not run beside the bus on a unit. The previous
+definition of this remix (servers in internal P, three FX1 effects, nothing else
+from the stock set) ran on an MKII (owner report, 16 Oct 2026). The servers and
+stations running from the shared window, and the stock effects beside them, have
+not run on a unit.
 
 ## How to flash
 

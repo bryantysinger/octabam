@@ -123,7 +123,7 @@ init:
         move    a,x:(r7+$1b)            ; the tilt's two low-pass states, the
         move    a,x:(r7+$1c)            ; compressor's level_s, the master flag:
         move    a,x:(r7+$1d)            ; every slot read before written
-        move    a,x:(r7+$25)            ; (verify_dirtystate)
+        move    a,x:(r7+$25)            ; (verify_dirty_state)
         move    a,x:(r7+$54)            ; the glides start at the knobs,
         move    a,x:(r7+$55)            ; the ramps at their targets
         move    a,x:(r7+$15)            ; KEY's counter last seen and the

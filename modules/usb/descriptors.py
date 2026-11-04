@@ -1,98 +1,116 @@
-"""The USB configuration descriptors the responder serves, per remix.
+"""The USB configuration descriptors the responder serves, for every
+runtime setting combination the unit can hold.
 
 markandrus/octemu's `custom/usb-midi.py` and `custom/usb-audio.py`
 (`config_descriptor`, MIT), as the text of USB MIDI's descriptor unit:
-the build calls `remix_inc(modules)` and writes it beside `cfg.s` as
-`remix.inc` (schema.Linked.include). Every configuration keeps the stock
-MSC interface byte for byte at the front:
+the build calls `remix_inc(modules, remix)` and writes it beside `cfg.s`
+as `remix.inc` (schema.Linked.include). Every configuration keeps the stock
+MSC interface byte for byte at the front.
 
-  MSC only (stock)      one interface, 32 bytes
-  + USB MIDI            + AudioControl [2] + MIDIStreaming with EP2 bulk
-                        in/out: three interfaces, 124 bytes
-  + USB AUDIO OUT       the MIDI function under an interface association,
-                        then a second: a UAC2 AudioControl (clock source,
-                        input terminal, USB streaming output terminal) +
-                        AudioStreaming (alt 0 idle, alt 1 with the iso IN
-                        EP3): five interfaces, 250 bytes. Its LAYOUT
-                        setting sets the channels: TRACKS MAIN CUE twenty at
-                        high speed (tracks, MAIN, CUE), TRACKS sixteen (the
-                        tracks), both with the stereo sum at full speed;
-                        MASTER track 8's L/R at both speeds and MAIN MAIN
-                        alone, each a front-left/front-right cluster; MAIN
-                        CUE MAIN + CUE, with MAIN at full speed. 24-bit
-                        samples in 4-byte subslots in every layout.
-  + USB AUDIO IN        the other direction beside it, at high speed: a
-                        USB streaming input terminal -> line output terminal,
-                        and AudioStreaming interface 5 with EP3 OUT (a stereo
-                        pair or four channels from the host, standing in for
-                        inputs A/B, C/D or A-D by its INPUTS setting): six
-                        interfaces.
+The runtime settings are six checkboxes (manifest.py): TRACKS (OFF / PRE /
+POST, 16 channels), MAIN (2), CUE (2), MASTER (2, track 8's L/R), IN (OFF /
+AB / CD / ABCD, the host -> device stream) and MIDI (ON / OFF). Any
+combination is one set of four configuration tables (fs, hs, os_fs, os_hs):
 
-`cfg_len` is exported as an absolute symbol: the responder's two clamp
-shims (usbmidi.s) compare wLength against it, since the stock `moveq #32`
-cannot hold either grown length above 127.
+  MSC only                the stock one-interface 32-byte shape, when every
+                          stream is off (no MIDI, no audio)
+  + USB MIDI              + AudioControl + MIDIStreaming with EP2 bulk
+                          in/out: three interfaces, 124 bytes
+  + USB AUDIO OUT         a UAC2 AudioControl (clock source, input
+                          terminal, USB streaming output terminal) +
+                          AudioStreaming (alt 0 idle, alt 1 with the iso IN
+                          EP3). Its channel count is the sum of the output
+                          checkboxes: 16 for TRACKS, 2 each for MAIN, CUE,
+                          MASTER, in slot order (tracks, MAIN, CUE, MASTER
+                          on the wire). High speed carries them all; full
+                          speed the 8-byte stereo sum (the producer's sum
+                          priority: tracks > MAIN > CUE > MASTER). 24-bit
+                          samples in 4-byte subslots everywhere.
+  + USB AUDIO IN          the other direction beside it, at high speed: a
+                          USB streaming input terminal -> line output
+                          terminal, and AudioStreaming interface 5 with EP3
+                          OUT (2 channels for AB/CD, 4 for ABCD, standing
+                          in for inputs A/B, C/D or A-D by the IN setting).
+
+Every set is in every image. One length `cfg_len` serves every table (each
+is zero-padded to it; the responder's two clamp shims compare wLength
+against the symbol, and a host never asks past a config's own
+wTotalLength). `set_ptrs` is the 256 x 4-long table of pointers into the
+deduplicated tables: set index = trk | main<<2 | cue<<3 | master<<4 |
+in<<5 | midi<<7 (each the setting's value byte). The responder's four
+sites push a pointer from it (manifest.py SELECTOR_DETOURS, the stubs in
+usbaudio.s), so the served descriptors follow the six bytes at run time.
+
+TRACKS with MASTER is refused (MASTER is track 8's L/R, which TRACKS
+already carries; it was a layout from before the checkboxes, and the only
+combination over 20 channels): the build refuses the resolved pair here,
+the brain's SETTINGS page refuses the move, and cfgsel clears MASTER when
+TRACKS is on, so a set with both serves the one without MASTER. Every
+combo polls EP3 IN at bInterval 2 (250 us): at most 20 ch x 4 B x 12
+frames = 960 B a poll. The EP3 OUT endpoint keeps bInterval 2 in every set
+(12 x 4 B x its 2 or 4 channels is 192 B at most).
+
+`audio_remix_inc(modules, remix)` is usbaudio.s's include: the resolved
+values (usb_trk_def etc., the fallback the unit boots with when the CS1
+block is invalid), the six settings' CS1 addresses, and the early block's
+entries for the header sum.
 """
 import struct
 
-# 24-bit samples in 4-byte subslots. 16 ch x 4 B x 44.1 kHz is 2,822 B/ms,
-# and one high-speed isochronous transaction carries at most 1,024 B, so the
-# endpoint is polled every 250 us (bInterval 2): 11.025 frames x 64 B, at
-# most 12 frames = 768 B a packet.
+# 24-bit samples in 4-byte subslots. 20 ch x 4 B x 44.1 kHz is 3,528 B/ms,
+# and one high-speed isochronous transaction carries at most 1,024 B, so
+# the endpoint is polled every 250 us (bInterval 2): 11.025 frames x 80 B,
+# at most 12 frames = 960 B a packet.
 SUBSLOT, BITS = 4, 24
-HS_CHANNELS, HS_MAXPKT, HS_BINTERVAL = 20, 12 * 80, 2     # 11/12 frames x 80 B every 250 us (16 tracks + MAIN + CUE)
 FS_CHANNELS, FS_MAXPKT, FS_BINTERVAL = 2, 45 * 8, 1       # 44/45 stereo frames x 8 B every 1 ms
-# per audio layout: (channels, max packet) at high speed; full speed is FS_*
-HS_LAYOUT = {"TRACKS MAIN CUE": (HS_CHANNELS, HS_MAXPKT),
-             "TRACKS": (16, 12 * 64),                # 11/12 frames x 64 B (16 tracks) every 250 us
-             "TRACKS POST": (16, 12 * 64),           # the same sixteen channels, after each track's MAIN gain
-             "MASTER": (2, 12 * 8),                # 11/12 frames x 8 B (T8) every 250 us (1 ms until 28 Sep 2026)
-             "MAIN CUE": (4, 12 * 16),                   # 11/12 frames x 16 B (MAIN + CUE) every 250 us
-             "MAIN": (2, 12 * 8)}                        # 11/12 frames x 8 B (MAIN) every 250 us
-FRONT_LR = 0x3                                             # bmChannelConfig: front left, front right (OUT MASTER, IN)
-UAC2_AC_IFACE, UAC2_AS_IFACE = 3, 4                        # usbaudio.s .set: the same numbers
+HS_BINTERVAL = 2                                          # 250 us, every set
+FRONT_LR = 0x3                                             # bmChannelConfig: front left, front right
 UAC2_CLOCK_ID, UAC2_IT_ID, UAC2_OT_ID = 0x10, 0x11, 0x12
-
-# USB AUDIO IN (Bryan T, 26 Sep 2026; AB / CD / ABCD 28 Sep): the host's
-# channels standing in for inputs. AudioStreaming interface 5, EP3
-# OUT (the only free endpoint: EP1 is mass storage, EP2 USB MIDI, EP3 IN the
-# input stream). Asynchronous with IMPLICIT feedback: no endpoint is left
-# for an explicit feedback IN, so EP3 IN is marked as the implicit-feedback
-# data endpoint and the host sizes each OUT packet from EP3 IN's. Same
-# clock source. It needs a USB AUDIO input layout for that feedback, one
-# that polls every 250 us as this stream does (every out layout since 28 Sep 2026).
-# HIGH SPEED ONLY: the full-speed configurations carry no interface 5 (the
-# unit does not serve it), so a full-speed host is never offered one.
-USBIN_AS_IFACE = 5
 USBIN_IT_ID, USBIN_OT_ID = 0x13, 0x14
-# host channels -> inputs by the INPUTS value (the DSP inject's slots):
-# 2 for a pair (AB, CD), 4 for ABCD
-IN_LAYOUT = {"AB": 2, "CD": 2, "ABCD": 4}
+
+TRK_LABELS = ("OFF", "PRE", "POST")
+IN_LABELS = ("OFF", "AB", "CD", "ABCD")
+CH_OUT = {"TRACKS": 16, "MAIN": 2, "CUE": 2, "MASTER": 2}
+IN_CH = {"AB": 2, "CD": 2, "ABCD": 4}
+
+_DEFAULTS = (1, 1, 1, 0, 0, 1)       # TRACKS PRE, MAIN, CUE, IN OFF, MIDI (the manifest's defaults)
 
 
-def _bound_value(modules, key, name):
-    """The build-time value `name` of module `key` in a selection (a dict of
-    bound modules, as the build passes an include); the setting's default
-    when the module is unbound; None when the module is not selected."""
-    if key not in modules:
-        return None
-    m = modules[key] if isinstance(modules, dict) else None
-    if m is not None and name in m.build_values:
-        return m.build_values[name]
-    from remix import registry
-    s = next(s for s in registry.by_key(key).settings if s.name == name)
-    return s.kind.labels[s.default]
+def _resolved(remix, mods):
+    """The six setting values after the remix's layers, as (trk, main, cue,
+    master, in_, midi) value bytes (an Option as its index, a Binary as
+    0/1); the defaults without a remix (the include tests call with none)."""
+    if remix is None:
+        return _DEFAULTS
+    from remix import brain
+    want = dict.fromkeys(("TRACKS", "MAIN", "CUE", "MASTER", "IN", "MIDI"))
+    for r, _s in brain.resolve(remix, mods):
+        if r.store_id == "octabam.usb" and r.name in want:
+            want[r.name] = r.value
+    assert all(v is not None for v in want.values()), \
+        "USB: the remix resolves no TRACKS / MAIN / CUE / MASTER / IN / MIDI (the module is selected)"
+    return tuple(want[k] for k in ("TRACKS", "MAIN", "CUE", "MASTER", "IN", "MIDI"))
 
 
-def audio_layout(modules):
-    """The remix's LAYOUT, or None for USB MIDI alone."""
-    layout = _bound_value(modules, "USB", "LAYOUT")
-    return None if layout in (None, "OFF") else layout
+def _bytes(vals):
+    """The six resolved values (an Option as its index, a Binary as 0/1) as
+    value bytes (the set-index bits and the CS1 block's bytes)."""
+    return (vals[0], vals[1], vals[2], vals[3], vals[4], vals[5])
 
 
-def in_inputs(modules):
-    """The remix's INPUTS, or None for no host -> device stream."""
-    inputs = _bound_value(modules, "USB", "INPUTS")
-    return None if inputs in (None, "OFF") else inputs
+def _early(remix, mods):
+    """(base, {(store id, key): CS1 address}, [(address, size)...]) of the
+    early block; (0, {}, []) without the brain or a remix. The entries are
+    in early_layout's offset order, for the header sum."""
+    if remix is None:
+        return 0, {}, []
+    from remix import brain
+    if not brain.has_brain(remix):
+        return 0, {}, []
+    base, offs = brain.early_layout(remix, mods)
+    ents = [(off, s.size) for m, s in brain.early_settings(remix, mods)
+            for off in [offs.get((m.store.id, s.key), 0)] if off]
+    return base, offs, ents
 
 
 def _ep(addr, pkt):
@@ -108,6 +126,16 @@ _MS_CLASS = (bytes([7, 0x24, 1, 0, 1, 37, 0]) +           # MS header
              bytes([6, 0x24, 2, 2, 2, 0]) +               # IN jack, external 2
              bytes([9, 0x24, 3, 1, 3, 1, 2, 1, 0]) +      # OUT jack, embedded 3
              bytes([9, 0x24, 3, 2, 4, 1, 1, 1, 0]))       # OUT jack, external 4
+
+
+def msc_only_config(hs, other_speed=False):
+    """MSC alone: the stock one-interface configuration, 32 bytes."""
+    bulk = 512 if hs else 64
+    body = (bytes([9, 4, 0, 0, 1, 8, 6, 0x50, 0]) +
+            _ep(0x81, bulk) + _ep(0x01, bulk))
+    total = 9 + len(body)
+    hdr = bytes([9, 7 if other_speed else 2]) + struct.pack("<H", total) + bytes([1, 1, 0, 0xC0, 3])
+    return hdr + body
 
 
 def midi_config(hs, other_speed=False):
@@ -126,8 +154,8 @@ def midi_config(hs, other_speed=False):
     return hdr + body
 
 
-def audio_config(hs, other_speed=False, layout="TRACKS MAIN CUE", with_in=None):
-    """The MIDI composite plus a UAC2 audio function, 250 bytes (usb-audio.py).
+def audio_config(hs, other_speed=False, nch=20, chcfg=0, in_ch=0, midi=True):
+    """The MIDI composite (when midi) plus a UAC2 audio function.
 
     Two SEPARATE functions under interface associations, the shape of a
     device macOS accepts (his measurement against an Elektron Digitone):
@@ -138,22 +166,30 @@ def audio_config(hs, other_speed=False, layout="TRACKS MAIN CUE", with_in=None):
     4-byte data stage), which the stock EP0 stack cannot receive; usbaudio.s
     takes it (44100 acknowledged, any other rate STALLed).
 
-    `layout` is the LAYOUT value: MASTER declares its two channels
-    front left / front right (the standard stereo cluster); the other two
-    keep bmChannelConfig 0 as his descriptors have it.
+    `nch` / `chcfg`: the AudioStreaming channel count and cluster: 0 for
+    any set with TRACKS in it or a mixed cluster, FRONT_LR for the 2-ch
+    MAIN and MASTER sets.
 
-    `with_in`: the INPUTS value, or None -- at high
-    speed, add the host -> device path (IT 0x13 -> OT 0x14, AudioStreaming
-    interface 5 with EP3 OUT, 2 or 4 channels) and mark EP3 IN as its
-    implicit-feedback source. The full-speed configuration is the one
-    without it.
+    `in_ch`: 0, 2 or 4 -- at high speed, add the host -> device path (IT
+    0x13 -> OT 0x14, AudioStreaming interface ii with EP3 OUT, 2 or 4
+    channels) and mark EP3 IN as its implicit-feedback source. The
+    full-speed configuration is the one without it. HIGH SPEED ONLY: the
+    full-speed configurations carry no IN interface (the unit does not
+    serve it), so a full-speed host is never offered one.
+
+    `midi`: with the MIDI function gone the audio interfaces renumber
+    (AC 3/AS 4/IN 5 -> 1/2/3); usbaudio.s's cfgsel latches the numbers the
+    shims compare against.
     """
-    with_in = with_in if hs else None
-    in_ch = IN_LAYOUT[with_in] if with_in else 0
-    in_cfg = FRONT_LR if in_ch == 2 else 0
+    in_ch = in_ch if hs else 0
+    if hs:
+        nch, chcfg = nch, chcfg
+    else:
+        nch, chcfg = FS_CHANNELS, chcfg            # the stereo sum
     bulk = 512 if hs else 64
-    nch, maxpkt = HS_LAYOUT[layout] if hs else (FS_CHANNELS, FS_MAXPKT)
-    chcfg = FRONT_LR if layout in ("MASTER", "MAIN") else 0
+    ac = 3 if midi else 1
+    as_ = ac + 1
+    ii = as_ + 1
     clk, it, ot = UAC2_CLOCK_ID, UAC2_IT_ID, UAC2_OT_ID
     clock = bytes([8, 0x24, 0x0A, clk, 0x01, 0x05, 0, 0])
     in_term = (bytes([17, 0x24, 0x02, it]) + struct.pack("<H", 0x0603) +
@@ -162,9 +198,10 @@ def audio_config(hs, other_speed=False, layout="TRACKS MAIN CUE", with_in=None):
     out_term = (bytes([12, 0x24, 0x03, ot]) + struct.pack("<H", 0x0101) +
                 bytes([0, it, clk]) + struct.pack("<H", 0) + bytes([0]))
     in_path = b""
-    if with_in:
+    if in_ch:
         # host -> device: a USB streaming input terminal feeding a line
         # output terminal, on the same (read-only) clock
+        in_cfg = FRONT_LR if in_ch == 2 else 0
         in_path = (bytes([17, 0x24, 0x02, USBIN_IT_ID]) + struct.pack("<H", 0x0101) +
                    bytes([0, clk, in_ch]) + struct.pack("<I", in_cfg) +
                    bytes([0]) + struct.pack("<H", 0) + bytes([0]) +
@@ -173,7 +210,13 @@ def audio_config(hs, other_speed=False, layout="TRACKS MAIN CUE", with_in=None):
     ac_audio_total = 9 + len(clock) + len(in_term) + len(out_term) + len(in_path)
     ac_audio = (bytes([9, 0x24, 1]) + struct.pack("<H", 0x0200) + bytes([0x0A]) +
                 struct.pack("<H", ac_audio_total) + bytes([0]) + clock + in_term + out_term + in_path)
-    ac, as_ = UAC2_AC_IFACE, UAC2_AS_IFACE
+    # EP3 IN: 12 x the frame bytes a 250 us poll (at most 20 ch: 960 B)
+    fb = 4 * nch
+    if hs:
+        assert 12 * fb <= 1024, f"{nch} channels do not fit a 250 us poll"
+        maxpkt, bint = 12 * fb, HS_BINTERVAL
+    else:
+        maxpkt, bint = FS_MAXPKT, FS_BINTERVAL
     as_iface = (
         bytes([9, 4, as_, 0, 0, 1, 2, 0x20, 0]) +
         bytes([9, 4, as_, 1, 1, 1, 2, 0x20, 0]) +
@@ -182,85 +225,153 @@ def audio_config(hs, other_speed=False, layout="TRACKS MAIN CUE", with_in=None):
         bytes([6, 0x24, 2, 1, SUBSLOT, BITS]) +
         # bmAttributes: isochronous, asynchronous; + usage "implicit
         # feedback data" (bits 5:4 = 10) when USB AUDIO IN pairs with it
-        bytes([7, 5, 0x83, 0x25 if with_in else 0x05]) + struct.pack("<H", maxpkt) +
-        bytes([HS_BINTERVAL if hs else FS_BINTERVAL]) +
+        bytes([7, 5, 0x83, 0x25 if in_ch else 0x05]) + struct.pack("<H", maxpkt) +
+        bytes([bint]) +
         bytes([8, 0x25, 1, 0, 0, 0]) + struct.pack("<H", 0))
-    if with_in:
-        ii = USBIN_AS_IFACE
+    if in_ch:
         as_iface += (
             bytes([9, 4, ii, 0, 0, 1, 2, 0x20, 0]) +
             bytes([9, 4, ii, 1, 1, 1, 2, 0x20, 0]) +
             bytes([16, 0x24, 1, USBIN_IT_ID, 0, 1]) + struct.pack("<I", 1) +
-            bytes([in_ch]) + struct.pack("<I", in_cfg) + bytes([0]) +
+            bytes([in_ch]) + struct.pack("<I", FRONT_LR if in_ch == 2 else 0) + bytes([0]) +
             bytes([6, 0x24, 2, 1, SUBSLOT, BITS]) +
             bytes([7, 5, 0x03, 0x05]) +                      # iso, asynchronous, data
             struct.pack("<H", 12 * in_ch * SUBSLOT) +       # 96 B for a pair, 192 for four
             bytes([HS_BINTERVAL]) +
             bytes([8, 0x25, 1, 0, 0, 0]) + struct.pack("<H", 0))
-    ac_midi = bytes([9, 0x24, 1, 0, 1]) + struct.pack("<H", 9) + bytes([1, 2])
-    iad_midi = bytes([8, 0x0B, 1, 2, 0x01, 0x00, 0x00, 0])
-    iad_audio = bytes([8, 0x0B, ac, 3 if with_in else 2, 0x01, 0x00, 0x20, 0])
-    body = (bytes([9, 4, 0, 0, 2, 8, 6, 0x50, 0]) +
-            _ep(0x81, bulk) + _ep(0x01, bulk) +
-            iad_midi +
-            bytes([9, 4, 1, 0, 0, 1, 1, 0, 0]) + ac_midi +
-            bytes([9, 4, 2, 0, 2, 1, 3, 0, 0]) +
-            _MS_CLASS +
-            _ep_midi(0x02, bulk) + bytes([5, 0x25, 1, 1, 1]) +
-            _ep_midi(0x82, bulk) + bytes([5, 0x25, 1, 1, 3]) +
-            iad_audio +
-            bytes([9, 4, ac, 0, 0, 1, 1, 0x20, 0]) + ac_audio +
-            as_iface)
+    body = bytes([9, 4, 0, 0, 2 if midi else 1, 8, 6, 0x50, 0]) + \
+        _ep(0x81, bulk) + _ep(0x01, bulk)
+    if midi:
+        ac_midi = bytes([9, 0x24, 1, 0, 1]) + struct.pack("<H", 9) + bytes([1, 2])
+        iad_midi = bytes([8, 0x0B, 1, 2, 0x01, 0x00, 0x00, 0])
+        body += (iad_midi +
+                 bytes([9, 4, 1, 0, 0, 1, 1, 0, 0]) + ac_midi +
+                 bytes([9, 4, 2, 0, 2, 1, 3, 0, 0]) +
+                 _MS_CLASS +
+                 _ep_midi(0x02, bulk) + bytes([5, 0x25, 1, 1, 1]) +
+                 _ep_midi(0x82, bulk) + bytes([5, 0x25, 1, 1, 3]))
+    iad_audio = bytes([8, 0x0B, ac, 3 if in_ch else 2, 0x01, 0x00, 0x20, 0])
+    body += (iad_audio +
+             bytes([9, 4, ac, 0, 0, 1, 1, 0x20, 0]) + ac_audio +
+             as_iface)
+    nif = (6 if in_ch else 5) if midi else (3 if in_ch else 2)
     total = 9 + len(body)
-    hdr = bytes([9, 7 if other_speed else 2]) + struct.pack("<H", total) + bytes([6 if with_in else 5, 1, 0, 0xC0, 3])
+    hdr = bytes([9, 7 if other_speed else 2]) + struct.pack("<H", total) + bytes([nif, 1, 0, 0xC0, 3])
     return hdr + body
 
 
-def configs(audio=None, with_in=None):
-    """`audio`: the remix's LAYOUT, or None for USB MIDI alone;
-    `with_in`: the INPUTS value beside it, or None."""
-    if audio:
-        def f(hs, other_speed=False):
-            return audio_config(hs, other_speed, audio, with_in)
+def _chcfg(trk, main, cue, master):
+    """The cluster for the combo: 0 with TRACKS in the stream or a mixed
+    cluster; FRONT_LR for the 2-ch MAIN and MASTER sets."""
+    if trk:
+        return 0
+    nch = 2 * (main + cue + master)
+    if nch == 2 and (main or master):
+        return FRONT_LR
+    return 0
+
+
+def _set_tables(trk, main, cue, master, in_, midi):
+    """The four configs (fs, hs, os_fs, os_hs) of one value-byte
+    combination. IN without an output stream is unreachable (the brain's
+    pair rule and cfgsel's guard both refuse it): its row serves the
+    no-audio config of the same MIDI value. TRACKS with MASTER is
+    unreachable too (refused the same three ways): its row serves the set
+    without MASTER."""
+    if trk:
+        master = 0
+    nch = 16 * (trk != 0) + 2 * (main + cue + master)
+    if nch == 0:
+        f = (lambda hs, other_speed=False:
+             midi_config(hs, other_speed) if midi else msc_only_config(hs, other_speed))
     else:
-        f = midi_config
-    out = {"cfg_fs": f(False), "cfg_hs": f(True), "cfg_os_fs": f(False, True), "cfg_os_hs": f(True, True)}
-    lengths = {len(v) for v in out.values()}
-    # One clamp (cfg_len) serves all four replies: min(wLength, cfg_len). A
-    # host asks for a configuration's wTotalLength, so a table shorter than
-    # cfg_len is sent whole and its zero pad is never requested. Without
-    # INPUTS on the four are one length as they always were; with it the
-    # high-speed pair carries interface 5 and the full-speed pair does not.
-    if not with_in:
-        assert len(lengths) == 1, "the four configurations must share one length (one clamp)"
-    length = max(lengths)
-    return {k: v + bytes(length - len(v)) for k, v in out.items()}, length
+        in_ch = IN_CH[IN_LABELS[in_]] if in_ else 0
+        chcfg = _chcfg(trk, main, cue, master)
+        f = lambda hs, other_speed=False: audio_config(hs, other_speed, nch, chcfg, in_ch, midi)
+    return [f(False), f(True), f(False, True), f(True, True)]
 
 
-def remix_inc(modules):
-    audio = audio_layout(modules)
-    with_in = in_inputs(modules)
-    if with_in:
-        assert audio, (f"INPUTS {with_in} needs a LAYOUT beside it: EP3 IN is "
-                       "its implicit-feedback source")
-    tables, length = configs(audio, with_in)
-    what = ("USB MIDI + " + audio if audio else "USB MIDI") + (f" + INPUTS {with_in}" if with_in else "")
-    lines = [f"| remix.inc -- the configuration descriptors for this remix ({what}),",
+def _blob():
+    """All 256 sets: every table zero-padded to one cfg_len, deduplicated
+    (AB and CD share a set; every audio set shares its full-speed pair),
+    with the 256 x 4-long pointer table in front. Returns (cfg_len, rows,
+    pointer table) where rows is label -> bytes."""
+    sets = [_set_tables(i & 3, (i >> 2) & 1, (i >> 3) & 1, (i >> 4) & 1, (i >> 5) & 3, (i >> 7) & 1)
+            for i in range(256)]
+    length = max(len(t) for s in sets for t in s)
+    tables, ptrs = {}, []
+    for s in sets:
+        row = []
+        for t in s:
+            t = t + bytes(length - len(t))
+            if t not in tables:
+                tables[t] = f"t{len(tables)}"
+            row.append(tables[t])
+        ptrs.append(row)
+    return length, tables, ptrs
+
+
+def remix_inc(modules, remix):
+    """cfg.s's remix.inc: the blob, the pointer table and `cfg_len`. The
+    resolved IN-without-an-output pair is refused here (EP3 IN is the
+    implicit-feedback source)."""
+    trk, main, cue, master, in_, midi = _resolved(remix, modules)
+    if in_ and not (trk or main or cue or master):
+        raise ValueError(f"USB: IN {IN_LABELS[in_]} needs an output stream beside it: EP3 IN is "
+                         "its implicit-feedback source")
+    if trk and master:
+        raise ValueError("USB: TRACKS and MASTER cannot both be on: MASTER is track 8's L/R, "
+                         "which TRACKS already carries")
+    length, tables, ptrs = _blob()
+    lines = ["| remix.inc -- every configuration of every setting combination,",
              "| generated by modules/usb/descriptors.py; the build rewrites it.",
-             f"    .global cfg_len", f"    .set cfg_len, {length}", "",
-             "    .text", "    .global cfg_fs, cfg_hs, cfg_os_fs, cfg_os_hs", ""]
-    for name, blob in tables.items():
-        lines.append("    .balign 4")
-        lines.append(f"{name}:")
+             f"    .global cfg_len", f"    .set cfg_len, {length}",
+             f"    .set SET_STRIDE, {length}", "    .set SETS_N, 256", "",
+             "| the 256 sets: set index = trk | main<<2 | cue<<3 | master<<4 |",
+             "| in<<5 | midi<<7; each row is that set's fs, hs, os_fs, os_hs table",
+             "    .text", "    .balign 4", "    .globl  set_ptrs", "set_ptrs:"]
+    for row in ptrs:
+        lines.append("    .long   " + ", ".join(row))
+    lines += ["", "| the tables, deduplicated, each SET_STRIDE bytes (a host never",
+              "| asks past a config's own wTotalLength)"]
+    for blob, label in sorted(tables.items(), key=lambda kv: kv[1]):
+        lines += ["    .balign 4", f"{label}:"]
         for i in range(0, len(blob), 16):
             lines.append("    .byte " + ", ".join(f"0x{b:02x}" for b in blob[i:i + 16]))
         lines.append("")
     return "\n".join(lines) + "\n"
 
 
+def audio_remix_inc(modules, remix):
+    """usbaudio.s's remix.inc: the resolved values (the fallback the unit
+    boots with when the CS1 block is invalid), the six settings' CS1
+    addresses, the block's base and the entries for the header sum."""
+    b = _bytes(_resolved(remix, modules))
+    base, offs, ents = _early(remix, modules)
+    names = ("TRK", "MAIN", "CUE", "MASTER", "IN", "MIDI")
+    lines = ["| remix.inc -- usbaudio.s's runtime knobs (modules/usb/descriptors.py)"]
+    for n, v in zip(("trk", "main", "cue", "master", "in", "midi"), b):
+        lines.append(f"    .set usb_{n}_def, {v}")
+    for n, key in zip(names, range(7, 13)):
+        at = offs.get(('octabam.usb', key))
+        lines.append(f"    .set CS1_USB_{n}, {-1 if at is None else at - base}")   # -1: fixed in the image (pinned)
+    lines += ["| the CS1 early block's base (remix.brain.early_layout; 0 = no brain,",
+              "| cfgsel takes the resolved defaults and never re-reads)",
+              "    .globl  usb_cs1_base",
+              f"usb_cs1_base: .long {base}",
+              "| the CS1 early block's entries as (offset from usb_cs1_base, size)",
+              "| long pairs, 0-terminated: the block header's sum is over these",
+              "| value bytes (brain.c write_early_block)",
+              "    .globl  cs1_early_ents",
+              "cs1_early_ents:"]
+    for off, size in ents:
+        lines.append(f"    .long   {off - base}, {size}")
+    lines.append("    .long   0")
+    return "\n".join(lines) + "\n"
+
+
 if __name__ == "__main__":
-    import sys
-    values = {"LAYOUT": "OFF" if "--audio" not in sys.argv else "TRACKS MAIN CUE",
-              "INPUTS": "OFF" if "--in" not in sys.argv else "AB"}
-    fake = type("Bound", (), {"build_values": values})()
-    print(remix_inc({"USB": fake}))
+    length, tables, ptrs = _blob()
+    print(f"cfg_len {length}  tables {len(tables)}  sets {len(ptrs)}")
+    for i, row in enumerate(ptrs):
+        print(f"set {i:3d}: {row}")

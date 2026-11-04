@@ -51,11 +51,32 @@ def record(gate, remix, line, root=ROOT):
         pass
 
 
+# Gate ids are kebab-case without a `verify_` or `gate:` prefix. Records
+# written before 19 Oct 2026 carry the old forms; read() rewrites them.
+OLD_IDS = {"dirtystate": "dirty-state", "initregs": "init-regs", "modenames": "mode-names",
+           "ccmap": "cc-map", "boottrace": "boot-trace", "fx2lock": "fx2-lock", "loadmeter": "load-meter",
+           "modedefaults": "mode-defaults", "remixswitch": "remix-switch", "tempobus": "tempo-bus",
+           "plocksp2": "plocks-p2", "scenesp2": "scenes-p2", "twocore": "two-core", "onebus": "one-bus",
+           "dspvectors": "dsp-vectors", "descdefaults": "desc-defaults", "charkey": "char-key",
+           "usbmidi-clock": "usb-midi-clock", "usbmidi-replug": "usb-midi-replug"}
+
+
+def canonical(gate):
+    """A recorded gate id in the current form (`gate:verify_scenesp2` -> `scenes-p2`)."""
+    g = gate.removeprefix("gate:").removeprefix("verify_").replace("_", "-")
+    return OLD_IDS.get(g, g)
+
+
 def read(root=ROOT):
     try:
-        return [json.loads(l) for l in path(root).read_text().splitlines() if l.strip()]
+        recs = [json.loads(l) for l in path(root).read_text().splitlines() if l.strip()]
     except OSError:
         return []
+    for r in recs:
+        # `reach:<command>` records name a command line, not a gate id
+        if not r["gate"].startswith("reach:"):
+            r["gate"] = canonical(r["gate"])
+    return recs
 
 
 def main():

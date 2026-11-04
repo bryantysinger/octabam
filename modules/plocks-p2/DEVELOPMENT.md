@@ -1,0 +1,200 @@
+# PLOCKS-P2 contribution notes
+
+## Trig-paste undo snapshot
+
+Hardware testing of EVENTS image EVT871E1 on 25 October 2026 exposed a
+pre-existing PLOCKS gap: continuous-hold paste/undo restored page-one locks
+but retained copied page-two locks. The same page-two failure reproduces
+under the port on private-hook baseline `ff9c5f84`, before either shared
+editor migration. Stock and the candidate both leave a newly pasted trig
+present while undoing its copied page-one locks.
+
+Native snapshot `0x400294c0` copies a track's 64 × 32 lock bytes from
+`track+0x59` into packed buffer `+0x28`; native restore copies them back.
+The memcpy address loads at `0x40029550` and `0x4002a426` now belong to
+EVENTS `edit.copy_pre`. PLOCKS maps that exact 2,048-byte transfer to its
+existing 768-byte track mirror, including `0xff` values. No extra buffer,
+saved field or native trig mutation is needed. Other transfer lengths,
+unaligned addresses, and the native CS1 duplicate remain outside this
+mapping. The restore touches the page-two power-off copy once.
+
+`verify_plocks_copy.py` executes 61 snapshot/restore and rejection cases
+through the assembled client and EVENTS dispatcher, checking all side memory,
+native-copy count, register preservation and persistence-touch count. Disabling
+the current source's snapshot branch makes the same regression fail. Native
+memcpy and persistence bodies are substituted in this focused gate; the panel
+and save/load gate executes the full firmware.
+
+The panel regression uses the same continuous-hold sequence on stock page
+one and FX1/FX2 page two: empty destination, a different existing lock,
+repeated paste/undo, multiple held destinations and held clear/undo. It checks the entire
+track's restored locks, the source, release behavior and retained native
+trig bits. Releasing between STOP presses starts another paste and is not
+this undo operation.
+
+The same stock/page-two comparison covers track paste/undo and pattern
+copy/paste/clear/undo. In the stopped fixture, stock's pattern paste calls
+`0x4004a8a4`, whose `0x40027e00` call invalidates undo kind 14. The gate
+compares native undo availability and the resulting locks with stock;
+pattern clear/undo separately exercises restoration.
+
+Physical results are recorded once in the
+[combined fixture](../../remixes/test/events-clients/README.md#hardware-results),
+with the earlier discrepancy in the
+[failure register](../../docs/contributing/FAILURE_MODES.md#plocks-trig-paste-undo-keeps-copied-page-two-locks).
+
+Snapshot mirroring copies 768 bytes only at the editor's copy boundary;
+the playback path is unchanged. The existing track/pattern copy instruction
+counts remain unchanged. Empty EVENTS and EUCLID-only selections omit the
+two new hooks entirely.
+
+## Held-edit release
+
+The page-2 editor marks a held trig as edited and clears native pending tap
+masks before committing a lock. This lets release distinguish an edit from
+a bare tap, preserving the lock just entered. `verify_plocks_p2.py`
+checks the held-step edit followed by release and subsequent bare-tap clearing.
+
+### Stock Address Provenance
+
+These are stock **1.40C** addresses, checked in the local MAIN_OS disassembly.
+The native knob-commit routine starts at `0x4004ecfc`: at `0x4004f0aa`
+it writes 1 to the 32-bit word `0x460d173a`, then clears the six 16-bit
+words below. `pe_commit` mirrors that sequence.
+
+| RAM word | Native knob-commit clear | Native trig-down read | Native release read / clear |
+|---|---|---|---|
+| `0x460d1a9e` | `0x4004f0b2` | `0x40050fee` | `0x4005fbe2` / `0x40060a5a` |
+| `0x460d1aa0` | `0x4004f0b8` | `0x40050ff4` | `0x4006001a` / `0x40060a68` |
+| `0x460d1aa2` | `0x4004f0be` | `0x40050ffa` | `0x4005feaa` / `0x40060a76` |
+| `0x460d1aa4` | `0x4004f0c4` | `0x400516a6` | `0x40060674` / `0x40060a84` |
+| `0x460d1aa6` | `0x4004f0ca` | `0x400516b8` | `0x40060a14` / `0x40060a92` |
+| `0x460d10dc` | `0x4004f0d0` | `0x4003004a` | `0x4003013a` / `0x40030144` |
+
+The main trig-down routine starts at `0x40050f20`; the release routine at
+`0x4005fb44`. Release also reads the edited word at `0x40060b04` and clears
+it at `0x40060b14` when the held-trig mask at `0x460d174a` is zero.
+The sixth mask belongs to an alternate trig path starting at `0x4002fff8`,
+called by release at `0x40060aa8`. Its consumed bits are cleared separately.
+The common reset helper at `0x400339b0` clears all six masks as well.
+
+The addresses, widths and matching stores are statically observed. The names
+“edited” and “pending tap masks” describe their inferred role from those
+read/write paths, corroborated by the release regression. They are not
+firmware symbols. This is not an exhaustive claim about every reader.
+
+Under the emulator, a recorded page-two lock survives release; a subsequent
+bare tap clears it. Project/card persistence and protected-file refusal are
+also covered by the passing regression. These are emulator measurements.
+Hardware tested by radiohagen on an Octatrack MKII on 17 October 2026:
+Octabam Core, source `b6a9d17`, local build label `OCTABAMP4`. The checklist
+passed, including hold/edit/release/rehold and comparison with page-one
+hold timing. Numeric
+physical timing was not measured; Bus/Inserts were tested under the emulator.
+
+## Release regression control
+
+On 17 October 2026, the full `verify_plocks_p2.py` (including `tap_clear`)
+was run twice on Core, BUILD=P4, from runtime/test source
+`b6a9d17fff215cd3daf32b7b5e5f73d7ee0748b0`, based on upstream
+`c3f37e531f6b072b8197d93f173e063b55249363`. Both runs used the same
+verifier and disposable project. The control removed only the edited-word
+store and six pending-tap clears from `pe_commit`; all display hooks and
+the verifier stayed unchanged.
+
+- Fix present: lock value **3** survives release; **zero failures**, exit 0.
+- Fix removed: the recorded lock is **255**, the empty-lock sentinel;
+  **three failures**, exit 1. The other two failures are the FX1/FX2
+  early-release Part-display assertions.
+- A subsequent bare trig tap clears the page-two locks in both runs.
+- The positive payload is byte-identical to the Core P4 payload tested on
+  hardware: SHA-256
+  `11389f83570ed0988bcb6d97a751ab1ea2a9744f8395e7c99601266386b73ab8`.
+
+This release control is separate from the P3 immediate-redraw timing
+control. These results measure emulator behavior.
+
+## SETUP display lifecycle
+
+- Stock dispatches trig press (event 1) to `0x40050f20`, hold (event 2)
+  to `0x400587d4`, and release to `0x4005fb44`. The event-2 branch at
+  `0x40060c80` reaches the hold handler via `0x40060c96`. Its page redraw
+  at `0x40058958` calls `0x4004d948(-1)`. PLOCKS wraps this call and then
+  refreshes active FX SETUP, following stock's hold timing without adding
+  a timer. The press path and its bookkeeping call remain untouched.
+- The release call to `0x4004d948(-1)` at `0x40060b38` is wrapped,
+  keeping its argument and return registers. It redraws the native page
+  then refreshes active FX SETUP. Committing a page-two edit also refreshes
+  SETUP immediately. Unheld dials retain their native animation and timeout.
+- FX1/FX2 descriptors at `0x400bc25a` / `0x400bc484` carry the window
+  pointer at +8 and native draw callback at +44. The popup object is
+  shared with other dialogs. Refresh requires the active pointer, its
+  open flag, SETUP geometry `(7, 0, 0xf4, 0x40)`, an audio track and the
+  corresponding FX page. A nonzero window pointer alone is insufficient.
+- Widget argument hooks at `0x40037c14` / `0x40037878` retain the native
+  renderer and formatter. `plk_dial` checks the first held step; an actual
+  lock sets bit 0 of the widget flags, preserving other bits. In the stock
+  dial renderer (`0x400479b4`), that bit keeps the formatted number visible
+  (`0x40047a8a`) and inverts the value area (`0x40047ba0`). Names use the
+  unchanged native text renderer. No lock leaves all widget flags unchanged.
+
+`verify_plocks_p2.py` drives native panel inputs and decodes the panel UART
+on disposable cards. It first boots unmodified stock 1.40C and captures
+COMPRESSOR ATK page-one locks at 50, 51, 52 and 53. The FX2 PLATE REV and
+FX1 COMPRESSOR page-two visible dial/number region must match stock pixel for pixel after
+its seven-row vertical offset. Native SETUP draws the name after the widget;
+its bottom padding clears row 16 (x=62..76). That row is checked with the
+unchanged name; the dial/number comparison covers rows 17..34 versus stock
+10..27. It checks:
+
+- unchanged parameter names, lock values and Part bytes;
+- numeric visibility after a pause and after release/rehold without a turn;
+- initial lock display timing against stock's page-one reference (10 ms
+  samples, 30 ms allowance for input-scan and decoded-frame phase);
+- short taps, two held trigs, and editing/releasing before the hold event;
+- release, unheld +1, slow held increments and FUNC removal;
+- untouched page-one locks and native MIXER/TEMPO/MIDI windows.
+
+Screens and port logs remain in the gate output. These measure emulator
+behavior; they do not measure physical panel timing. The manual hardware
+check above covers perceived hold timing, not instrumented latency.
+
+The pre-PR control restores upstream PLOCKS source at base
+`c3f37e531f6b072b8197d93f173e063b55249363`. Its six initial FX2 screen
+captures matched P1 (`7cb22414a58dbbd03e468ba1c69f03a862fb46ef`) exactly:
+the lock bytes changed but the displayed value stayed stale. This is an
+existing upstream display defect, separate from the release-erasure defect.
+The initial memory/persistence regression did not decode the LCD and
+therefore could not detect it.
+
+### Broader Scenes gate limitation
+
+The unmodified `verify_scenes_p2.py` expects DELAY SERVER's page-two MODE
+and TIME layout. With the local Core fixture, both the candidate and the
+upstream PLOCKS control fail the same seven assertions (six frame values
+and the seeded editor value). Core contains stock DELAY, not DELAY SERVER.
+Changing that fixture from PLATE REV to stock DELAY does not make this
+particular oracle applicable. This is not a passing aggregate Scenes
+check, and it is not evidence of a new regression. The PLOCKS panel,
+playback and persistence checks are reported separately. No Scenes code
+or verification thresholds are changed by this contribution.
+
+## EDIT EVENTS hardware results, 22 October 2026
+
+radiohagen, Octatrack MKII, `octabam-core`, build 98, `PLK858`.
+Source `0c9b81f90b5ef5436297c3c741383c90b6570b3d`; tested MAIN OS / RMX SHA-256:
+`4aa41530d96ecb04b224253f00000ab1f02fd5307bd320cdaa0bd9748347431b`.
+
+Operator-reported passes:
+
+- FX1 RMS / FX2 GVOL: held 50, released Part 20, reheld 50; native ATK 40 and MIDI VEL 80 remain intact.
+- Multiple steps: +1 changes 50/20 to 51/21; selective removal, partial release, ten quick edits and short taps preserve the expected lock/Part display.
+- Trigs: copy carries ATK/RMS/GVOL; continuous-hold clear/undo restores them; removal/reinsertion clears copied locks.
+- Tracks: T1-to-T2 paste, immediate undo, repaste and clear/undo preserve expected trigs/locks without changing T1.
+- Patterns: copy carries both tracks' locks; clear/undo and ten repeated clear/undo pairs restore checked trigs/locks.
+
+These cover Core editor/copy paths. Track and pattern operations exercise
+clipboard and undo-buffer transfers through EDIT EVENTS; trig copy/paste
+and lock clear/undo use PLOCKS' own hooks. Individual detour addresses and
+physical latency were not instrumented. Bus, Inserts and CX OSC have software
+coverage for the named image. Shared EVENTS results are in the combined fixture.

@@ -9,7 +9,7 @@ its DLY knob. The delay follows the project tempo.
 Track 1's FX2 page draws only DEL and REV. Every other knob is in the
 TEMPO window: press [TEMPO], then LEFT / RIGHT to focus the DELAY box.
 
-## Adjust the Sound
+## Adjust the sound
 
 - DEL on track 1 sends track 1's own dry into the delay; REV sends it into
   the reverb.

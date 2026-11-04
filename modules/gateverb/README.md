@@ -2,7 +2,7 @@
 
 A gated reverb for FX2, built on the reverb stage of Mutable Instruments Clouds
 ([`clouds/dsp/fx/reverb.h`](https://github.com/pichenettes/eurorack/blob/master/clouds/dsp/fx/reverb.h),
-MIT, Emilie Gillet 2014), ported to fixed point. On stock PLATE REV's id `0x14`; one instance per FX2 slot.
+MIT, Emilie Gillet 2014), ported to fixed point. On id `0x1a` (PLATE REV keeps `0x14`); one instance per FX2 slot.
 
 The reverb is Clouds': a Griesinger plate (the Dattorro paper's layout) of four input
 allpasses and a loop of two halves, each two allpasses and a delay. The first allpass is
@@ -31,27 +31,29 @@ That is the shape of the 1980s gated reverb: a dense, level wash that cuts off a
 
 ## What differs from Clouds
 
-- **Lengths scaled by 0.984.** The delay lines total 16,111 words (16,375 in Clouds); with the nine one-word gaps the ring is
-  16,120 words. An FX2 instance gets a 16,384-word slot, and the top 256 words of the slot hold the stock mailbox and LOAD METER, so the
-  module never writes them (`Claims.buffer_words = 16120`, checked by the ledger and by `dsp_host -guard 16120`).
+- **Lengths scaled by 0.9682.** The delay lines total 15,853 words (16,375 in Clouds); with the nine one-word gaps the ring is
+  15,862 words. An FX2 instance gets a 16,384-word slot; an effect's buffer stops at `+$3DFD` (octabam's FX2 rule, #785), because
+  the slot's last `$202` words are SIDECHAIN_COMPRESSOR's cross-core window in T3's and T7's slot, and the top 256 hold the stock
+  mailbox and LOAD METER (`Claims.buffer_words = 15862`, checked by the ledger and by `dsp_host -guard 15862`). Until 19 Oct 2026
+  the scale was 0.984 (a 16,120-word ring, to `+$3EF7`).
 - **24-bit buffer, not 12-bit.** Clouds stores each value as a 12-bit fixed-point number with a range of +-8. Here a value is held as
   value/8 in a 24-bit word, so the range is the same and the quantisation noise is far lower. Clouds' grit is not reproduced.
 - **LFOs.** Clouds uses a cosine oscillator updated every 32 samples. This port uses a parabola `4x(1-|x|)` of a phase accumulator
   updated once a block (16 samples), at the same rates (0.5 Hz on the first allpass smear, 0.3 Hz on the second delay), with the
-  same depths scaled with the lengths (60 samples for the smear, 98 for the delay, centred at 4605).
+  same depths scaled with the lengths (60 samples for the smear, 97 for the delay, centred at 4531).
 - **Smoothing.** The five coefficients move a sixteenth of the way to their target each block (Clouds changes them as they arrive).
-- **Memory.** A modulo ring of 16,120 words (`m5 = 16119`). It is not a power of two. Stock code uses small non-power-of-2 moduli
+- **Memory.** A modulo ring of 15,862 words (`m5 = 15861`). It is not a power of two. Stock code uses small non-power-of-2 moduli
   (6, 10 and 30), but nothing uses one this size with `(Rn+Nn)` addressing; this is the first thing to check on a unit.
 
 ## Measured
 
 Under `dsp_host` (`tools/verify/verify_gateverb.py`, remix `test/gateverb`):
 - 425 DSP words on each payload; the pricer counts 219 cycles per sample, a floor (it counts words, not memory stalls).
-- The first 52 calls pass the input through while the ring is cleared (310 words a call).
+- The first 77 calls pass the input through while the ring is cleared (206 words a call).
 - AMNT 0 is bit-exact dry.
 - An impulse and a noise burst through 48,000 samples match a float model (gate off, and an impulse with the gate on) of the same algorithm (same lengths, the same integer LFO phases and
   offsets, the same parameter laws and smoothing) to 58 dB (the difference is the 24-bit arithmetic).
-- No write outside the 16,120-word ring (`-guard 16120`); a dirty state block and a dirty ring with silent input give silent output.
+- No write outside the 15,862-word ring (`-guard 15862`); a dirty state block and a dirty ring with silent input give silent output.
 - TIME 127 rings longer than TIME 80.
 
 Not measured: sound (no listening yet), hardware, the real allocator's bases on a unit.

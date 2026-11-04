@@ -8,14 +8,12 @@ and ends at the next recorder trig.
 
 ## Operation
 
-In RECORDING SETUP, turn RLEN one past MAX (the drawn PLEN label is not
-yet verified on the unit). Set TRIG to ONE and QREC to PLEN: one REC
+In RECORDING SETUP, turn RLEN one past MAX, where PLEN is drawn. Set TRIG to ONE and QREC to PLEN: one REC
 press records the next pass and stops.
 
 RLEN 0–64 keep their stock meaning; saved parts need no restamp.
 
 ## Notes
 
-- Cursory testing on Sam's MKII (owner report, 16 Oct 2026).
 - PER TRACK mode: the length is the track's own length on its own scale;
   whether one loop should be the track's or the master's is open.

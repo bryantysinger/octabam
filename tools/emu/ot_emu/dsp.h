@@ -241,7 +241,7 @@ namespace ot
 		// shared window) with a xorshift stream before the boot ROM runs, as
 		// dsp_host -dirty does for Y. The boot ROM and the loader write what
 		// they own; everything else stays garbage until an effect's init
-		// clears it (verify_dirtystate, FAILURE_MODES "The master compressor
+		// clears it (verify_dirty_state, FAILURE_MODES "The master compressor
 		// collapses one channel").
 		void dirty(uint32_t _seed);
 		// O14: feed the input from the DSP's first receive frame instead of the

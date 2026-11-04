@@ -5,6 +5,11 @@ GitHub Pages by `.github/workflows/pages.yml` on pushes to main. The same
 build, without the deploy, runs as the `site` job on every PR
 (`.github/workflows/ci.yml`).
 
+`release.py` says what the site publishes: one release (`v0.3`, the git tag
+the web builder's patches are built from) of one remix (`octabam`). A remix
+that is not listed (`octabam-bus`, `cxosc-core`) has no manual, no overview
+row and no builder entry; it stays in the repository.
+
 `gen_pages.py` renders the generated pages from this commit's manifests
 (`tools/remix/index.py`, the registry). The generated files sit under
 `reference/` in the site directory, are gitignored, and never appear in
@@ -13,21 +18,73 @@ rebuilds them.
 
 Generated, gitignored:
 
-- the module reference (every module grouped by category, with author,
-  kind, proof status, FX2 id and knobs; stock effects in their own
-  section; every module name links to its own page)
-- one `modules/<name>.md` page per module (what it does, the manifest
-  facts — author, kind, proof, FX2 id, knobs, requires, conflicts — and
-  which official remixes carry it; stock effects included). The pages are
-  not in the nav (there are ~70): each carries a `not_in_nav` line and is
-  reached from the module reference and the remix pages' module tables.
-  The remix-page link back is looked up in the nav in `mkdocs.yml` (the
-  one file that names the hand-written pages).
-- the credits (authors linked, with their module keys)
-- one `_remix-<name>.md` fragment per non-test remix (the remix doc, its
-  proof line, and its module table, whose rows link to the per-module
-  pages), pulled into each remix page with
-  `pymdownx.snippets` (`--8<-- "reference/_remix-<name>.md"`)
+- the manual of each published remix, `reference/manual/<remix>/` (below)
+- `modules.md`, the Feature Directory (in the nav under More): what is in the published
+  remix by the manual's sections, linked to the manual pages, then every other contributed
+  module by category, linked to its own page
+- `modules/<name>.md`, one page per contributed module: the usage fragment, whether the
+  module is in the published remix (and its manual page), and its facts; no test status.
+  The pages are not in the nav (each carries a `not_in_nav` line); the directory reaches them
+- `_remix-<name>.md`: the module table of the remix's overview page
+  (`remix-<name>.md`, hand-written), each row linked to its manual page;
+  stock effects read `stock` in the author column
+
+## The remix manual
+
+`gen_manual.py` (run by `gen_pages.py`) writes the manual of each published
+remix under `reference/manual/<remix>/`:
+
+- `index.md`: the introduction (hand-written, below), conventions, the
+  contents, installing
+- one page per module, in the section `PLACE` gives it: `effects/`,
+  `machines/`, `sequencer/`, `parts/`, `midi-usb/`, `utilities/`, `fixes/`,
+  `inside/` ("Behind the scenes"). A module that `PLACE` does not name goes by
+  its category, so a new module is not left out
+- `brain/`: BRAIN, one page per part of it (index, templates, remixes,
+  settings, performance, log, about, files), from the hand-written fragments
+  `docs/site/manual/brain-<part>.md`
+- `credits.md`: the authors, one entry each (two spellings of one GitHub
+  account are one entry)
+
+Stock effects are not documented. No page carries a test status.
+
+Each module page is, from the manifest, never typed: the byline, which chooser
+an effect is in (FX1, FX2, read from the remix's `fx1` and the module's `SLOTS`
+setting), the knob layout (name, values, default, one-line meaning) with what a
+MODE renames, the settings a musician can change with the value this remix gives
+them (build-time settings are not shown), and what the module needs. From the
+hand-written usage fragment (`docs/site/usage/<name>.md`): the prose, with its
+site links rewritten for the page's depth. A fragment's own `## Parameters` table
+is dropped from the manual, because the knob tables come from the manifest. A
+sibling link in a fragment (`kits.md`) points at that module's page, or loses its
+link when the module is not in this manual. A module with no fragment shows its
+manifest line, so the manual has no hole. `HIDE_SHOTS` in `gen_manual.py` lists a
+screenshot that shows another remix's screen.
+
+The introduction is hand-written, one file per remix in the site's manual
+directory (`octabam.md`). Write it as sections `### About ...`, `### What changes
+...` for the page it lands in, so its links are relative to
+`reference/manual/<remix>/` (`../../../safety.md` reaches the site root); the
+generator adds the conventions, the contents and installing.
+
+To improve a knob's row in the manual, edit the `Param` `doc` in the manifest.
+To improve a module's prose, edit its usage fragment. The remix's own paragraph
+is `Remix.doc`.
+
+The pages are listed by hand under the manual in `mkdocs.yml`:
+`python3 tools/site/gen_manual.py --nav` prints the block. `verify_docs.py`
+refuses a nav that differs from the pages the manifests produce, naming the
+page.
+
+## The web builder
+
+`docs/site/builder/` holds the builder's page script, the patch of each published
+remix (`patches/<remix>.obp`) and `manifest.json`. They are built by
+`make webpatch BUILD=<nn>` (`tools/web/publish.py`) on a clean tree at the release
+tag, so a published patch names a commit anyone can check out; the manifest names
+the release. `tools/web/stale.py --check` verifies the committed patches in CI;
+a manifest that names a release is locked to it, and later changes are listed,
+not warned about.
 
 ## Rules the doclinks gate forces on these files
 
@@ -37,7 +94,7 @@ included. Three consequences:
 - The `REPOPATH` rule matches any `docs/…md`, `tools/…md`,
   `modules/…md` or `remixes/…md` string anywhere in a tracked file and
   requires the path to exist. The remix pages are therefore named flat at
-  the site root (`remix-core.md`, `remix-inserts.md`, `remix-bus.md`) so
+  the site root (`remix-octabam.md`) so
   the nav needs no `remixes/…` entry, and links into the repository are
   written as full `https://github.com/sambanks/octabam/…` URLs.
   `reference/…` paths are safe (not in the alternation). `gen_pages.py`

@@ -174,7 +174,7 @@ def make_ladder_project(src, dest, remix_name, pattern="A2"):
     sys.path.insert(0, str(HERE.parent)); import toolpath  # noqa: E402,F401
     from remix import registry
     remix = registry.remix(remix_name)
-    mods = registry.modules()
+    mods = registry.bound(remix)               # the remix's own ids
 
     sbank, spat = _pattern_ref(pattern)
     sdata = (src / f"bank{sbank:02d}.work").read_bytes()
@@ -658,8 +658,9 @@ def _cc_for(mods, layout, t, fx, name):
     slot = m.knob_map_all().get(name)
     if slot is None:
         return None
-    if slot >= 6:                          # page 2: CC MAP's CC 62-67 (FX2), 68-73 (FX1)
-        return (68 if fx == "fx1" else 62) + slot - 6
+    if slot >= 6:                          # page 2: CC MAP's numbers (tools/remix/midi_cc.py)
+        from remix.midi_cc import ccmap_cc
+        return ccmap_cc(fx, slot)
     return (34 if fx == "fx1" else 40) + slot
 
 

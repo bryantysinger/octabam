@@ -13,8 +13,8 @@ threshold, as on the Digitakt 2.
    track). While it waits, the track's status icon at the screen edge
    blinks.
 
-Not in an official remix; build the test remix `rec-threshold`. It cannot
-share an image with REC TRIG MUTE (they hook the same load).
+REC THRESHOLD and REC TRIG MUTE both change the same part of the stock
+firmware; HOOKS (see Behind the scenes) lets them share it.
 
 ## Operation
 

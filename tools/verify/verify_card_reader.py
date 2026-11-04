@@ -10,7 +10,12 @@ folders, built, read back and compared. It also pins what the reader cannot
 show: a folder with no file in it does not appear (it lists files), so a
 take that made its folder and wrote nothing reads as no take at all. And it
 pins the FAT16 image itself, by hash, so a change to the builder that moves
-one byte of it is seen.
+one byte of it is seen. The same files read back from a FAT32 image too,
+files above cluster 65,535 included, and an image too small to be FAT32 is
+refused.
+
+What it cannot see: how the firmware itself reads a card (the reader is
+emu_card's, not the Octatrack's file layer).
 """
 import hashlib
 import pathlib

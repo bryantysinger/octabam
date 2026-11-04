@@ -211,11 +211,11 @@ measured the same layout under the firmware's own dispatch (`--dsp-stopwatch`,
 meter's 24,971, core 1 15,177 against 14,880: the meter reads the real
 load within 2 %.
 
-`tools/verify/verify_twocore.py` (in `make check`): SEND and BusDelay on the
+`tools/verify/verify_two_core.py` (in `make check`): SEND and BusDelay on the
 real payload B feeding BusVerb on payload A (the send hop, the delay hop,
 the delay→reverb series hop) render bit-identical to the same layouts on
 one core through the DEV hatch, and under four skews.
-`tools/verify/verify_onebus.py` (in `make check`): the one-aux bus's chain,
+`tools/verify/verify_one_bus.py` (in `make check`): the one-aux bus's chain,
 its liveness stamp, WET passthrough, each host's print, the track-8 send
 refusal and station silence, senders and delay on payload B, reverb on payload A.
 

@@ -38,6 +38,12 @@ class Affected(unittest.TestCase):
         a = ci_paths.affected(["tools/harness/dsp_host/dsp_host.cpp"])
         self.assertTrue(a["dsp"])
 
+    def test_dsp_source_change_reaches_the_gates_and_the_tests_reach_plans(self):
+        # reach.route_tool plans refhash, identity, check-shared and test-acceptance for dsp/
+        a = ci_paths.affected(["dsp/reverb_server.asm"])
+        self.assertTrue(a["reach"])
+        self.assertTrue(a["acceptance"])
+
     def test_manifest_change_reaches_registry_jobs(self):
         a = ci_paths.affected(["modules/stems/manifest.py"])
         self.assertTrue(a["acceptance"])

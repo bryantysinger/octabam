@@ -614,6 +614,19 @@ namespace ot
 			}
 			m_request = std::move(r);		// answered by whoever serves it
 		}
+		else if(l.rfind("peek ", 0) == 0)
+		{
+			// read <len> bytes (the machine serves it: the memory is the
+			// guest's, readable only between run slices)
+			auto r = std::make_unique<Request>();
+			r->kind = "peek";
+			const std::string rest = l.substr(5);
+			const auto sp = rest.find(' ');
+			r->addr = uint32_t(std::strtoul(rest.substr(0, sp).c_str(), nullptr, 0));
+			if(sp != std::string::npos)
+				r->args.push_back(uint32_t(std::strtoul(rest.substr(sp + 1).c_str(), nullptr, 0)));
+			m_request = std::move(r);
+		}
 		else
 			_reply("err unknown\n");
 	}
@@ -685,9 +698,21 @@ namespace ot
 		while(off < _s.size())
 		{
 			const auto n = ::write(m_fd, _s.data() + off, _s.size() - off);
-			if(n <= 0)
-				break;
-			off += size_t(n);
+			if(n > 0)
+			{
+				off += size_t(n);
+				continue;
+			}
+			if(n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR))
+			{
+				// The socket is non-blocking: a reply larger than the send
+				// buffer waits for the client to drain it.
+				pollfd pf{m_fd, POLLOUT, 0};
+				if(::poll(&pf, 1, -1) <= 0)
+					break;
+				continue;
+			}
+			break;
 		}
 	}
 

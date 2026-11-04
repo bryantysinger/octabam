@@ -88,7 +88,11 @@ m_isr:
         moveq   #0,%d1
         move.b  FX2ID8,%d1
         cmpi.l  #METER_ID,%d1
+        .ifdef  WAVE_LOAD
+        bne.w   6f                              | T8's FX2 is not CF METER: no burn, no walk (cl_load's call below puts 6: out of short range)
+        .else
         bne.s   6f                              | T8's FX2 is not CF METER: no burn, no walk
+        .endif
         move.b  BURN,%d1
         beq.s   2f
         .ifdef  WAVE_LOAD
@@ -160,9 +164,13 @@ m_tail:
         move.w  #REF,(%a0)+
         move.w  m_kw,(%a0)                      | +0x3c/+0x3d = k
 3:      clr.b   m_inisr
+        .if     HK_FRAME_TAIL
+        rts                                     | HOOKS replays the epilogue
+        .else
         movem.l (%sp),%d0-%d7/%a0-%a6           | displaced: moveml %sp@,%d0-%fp
         lea     252(%sp),%sp                    | displaced
         rte                                     | displaced
+        .endif
 
 | d1 = segment length. Interrupts are masked (level 5).
 m_close:

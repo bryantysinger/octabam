@@ -11,7 +11,7 @@ MIDI-driven scene locks, Kits, page-2 scene locks and page-2 parameter locks on 
 
 ## Status
 
-Port-gated (`tools/verify/verify_scenesp2.py`, `tools/verify/verify_plocksp2.py`, `tools/verify/verify_kits.py`). Not flashed.
+Port-gated (`tools/verify/verify_scenes_p2.py`, `tools/verify/verify_plocks_p2.py`, `tools/verify/verify_kits.py`). Not flashed.
 
 ## Build
 

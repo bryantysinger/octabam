@@ -52,13 +52,21 @@ Groups and what each captures, from the `shot(...)` calls:
 
 | group | remix built | modules shot |
 |---|---|---|
-| `core` | `octabam-core` | rec-trig-mute, quantize-live-rec-toggle, mute-modes, quantizer, rlen-plen, midi-scenes, scenes-p2, plocks-p2, direct-jump-kyoti, reload-from-project |
-| `features` | `octabam-core` with REC THRESHOLD, EUCLID FILL, RND NAME and STEM REC added and REC TRIG MUTE removed (a scratch selection; THR and REC_TRIG_MUTE share a hook) | euclid-fill, rec-threshold, stems, rnd-name |
-| `inserts` | `octabam-inserts`, one effect per track | setup and main pages of SPECTRUM, CHARACTER, MODULATION, TRANSIENT, EUCLID, LOFI2, GATE VERB, DELAY |
+| `core` | `octabam` | rec-trig-mute, quantize-live-rec-toggle, mute-modes, quantizer, rlen-plen, midi-scenes, scenes-p2, plocks-p2, direct-jump-kyoti, reload-from-project |
+| `plocks` | `octabam`, PLATE REV on track 1 | plocks-p2 held lock and released Part value; use a disposable project with trig 1 empty |
+| `features` | `octabam` with REC THRESHOLD, EUCLID FILL, RND NAME and STEM REC added and REC TRIG MUTE and LOAD METER removed (a scratch selection; THR and REC_TRIG_MUTE share a hook, and LOAD METER declares a conflict with STEM REC) | euclid-fill, rec-threshold, stems, rnd-name |
+| `inserts` | `octabam`, one effect per track (T1 to T3 FX1, T4 FX2) | setup and main pages of SPECTRUM, CHARACTER, MODULATION, DELAY |
 | `bus` | `octabam-bus` | fx2-lock, tempo-bus, load-meter, memory, usb, and the DELAY SERVER, SEND and REVERB SERVER pages |
-| `extras` | one test remix per module (character-txtr, testgen, sidechain-compressor, miniverb, tapeecho, vocoder, wave) | setup and main page of each |
-| `machines` | `analog-bassdrum`, `octatrick` | analog-bassdrum, synth, direct-jump |
+| `extras` | one test remix per module (character-txtr, testgen, sidechain-compressor, miniverb, tapeecho, vocoder, wave, distorx, devilish, transient, gateverb; also alone as `distorx`) | setup and main page of each |
+| `machines` | `analog-bassdrum`, `octatrick`, `blackpyramids-303`, `octa303`, `cxosc` | analog-bassdrum, synth, direct-jump, blackpyramids-303, octa303, cxosc |
+| `octa303` | `octa303` (test remix) | octa303 alone (its two pages), without re-capturing the other machines |
+| `cxosc` | `cxosc` (test remix) | cxosc alone (PLAYBACK + SRC SETUP), without re-capturing the other machines |
+| `morph` | `morph` (test remix) | morph: the window on T1 armed, then STEPS 8 and x 2 |
+| `midi-loopback` | `midi-loopback` | midi-loopback (EXT/INT/BOTH windows and CHAN indicators) |
+| `midi-follow` | `midi-follow` | midi-follow (source selection and FOLLOW register window) |
+| `midi-scales` | `midi-scales` | midi-scales (OFF, Major, Dorian, Mixolydian) |
 | `probes` | `cfmeter` | CF METER |
+| `utilities` | `buffer-saver` | buffer-saver (a one-second take, then FUNC + PROJ: the SAVE SAMPLES? question) |
 
 The project is `--project`, `OT_PROJECT`, or the path in
 `~/.octabam_project`. The tool copies it to `out/manual-captures/<remix>/project`
@@ -120,3 +128,9 @@ mkdocs build --strict --config-file docs/site/mkdocs.yml
 ```
 
 Name the groups, project and remix in the PR body.
+
+The `midi-loopback` group uses a sample-free fixture starting on audio track 1,
+with MIDI channel 1 and routing EXT. Pass that local fixture with `--project`.
+
+The `midi-scales` group uses a sample-free fixture starting on audio track 1,
+with MIDI KEY OFF. Pass that local fixture with `--project`.

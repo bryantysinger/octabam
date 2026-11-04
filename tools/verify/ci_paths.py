@@ -24,8 +24,8 @@ import sys
 JOB_PREFIXES = {
     "coldfire": ["tools/emu", "tools/patches", "scripts", "Makefile"],
     "dsp": ["tools/harness", "tools/patches", "scripts", "Makefile"],
-    "acceptance": ["tools", "modules", "remixes", "scripts", "Makefile"],
-    "reach": ["modules", "remixes", "tools", "scripts", "Makefile"],
+    "acceptance": ["tools", "modules", "remixes", "scripts", "dsp", "Makefile"],
+    "reach": ["modules", "remixes", "tools", "scripts", "dsp", "Makefile"],
     "site": ["docs", "modules", "remixes", "tools", "scripts", "Makefile"],
 }
 

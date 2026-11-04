@@ -27,7 +27,7 @@ The voice is ported from
    OCT octaves down (default −2: PTCH 0 = C3). The AMP envelope is the
    synth's envelope.
 
-The first 64 blocks (23 ms) after the effect starts are silent while it
+The first 32 blocks (12 ms) after the effect starts are silent while it
 writes its tables.
 
 ## Knobs
@@ -51,10 +51,10 @@ writes its tables.
 - **DSP code:** 1,269 words. In remix [`wave`](../../remixes/test/wave/README.md)
   it lives in DARK REV's and SPRING REV's harvested words (768 left), so
   both reverbs are off the chooser there.
-- **DSP memory:** one 16,384-word FX2 buffer per instance from the
+- **DSP memory:** 8,192 words of one 16,384-word FX2 buffer per instance from the
   allocator, as a stock reverb or delay instance takes.
-- **DSP time:** 576 instructions a sample per instance (peak 9,213 a
-  16-sample block, `verify_wave`); four on one core 2,301 a sample. A core
+- **DSP time:** 576 instructions a sample per instance (peak 9,223 a
+  16-sample block, `verify_wave`); four on one core 2,304 a sample. A core
   has about 3,120 cycles a sample usable and stock's own work is about
   1,410 (`docs/firmware/CHIP.md`), so two or three WAVE tracks a core fit
   beside light FX; four do not. `cycle_count` prices one instance at
@@ -65,7 +65,8 @@ writes its tables.
 
 ## How it differs from CHOMPI WAVE
 
-- The tables are generated (eight 2,048-sample frames), not Serum files;
+- The tables are generated (eight 1,024-sample frames; 2,048 until 19 Oct 2026, when the FX2
+  rule from #785 kept the slot's last `$202` words free), not Serum files;
   FRAM morphs continuously between neighbours where CHOMPI steps a
   33-frame table with a 960-sample crossfade.
 - One envelope for the four voices (the carrier's level, through two
@@ -91,7 +92,7 @@ writes its tables.
 | 60 ms / 0.5 s after the carrier stops | −240 dBFS / exactly zero |
 | silent carrier | every output sample zero |
 | eight instances (both cores) | each bit-identical to its solo render |
-| instructions | peak 9,213 a block, one instance |
+| instructions | peak 9,223 a block, one instance |
 
 Every instruction form in `wave.asm` (97) has a site in a stock payload
 (`out/dsp/payload_*.asm`).

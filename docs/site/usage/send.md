@@ -8,7 +8,7 @@ and REV 0 is indistinguishable from no effect.
 On every track except 1, 5 and 8, FX2 is SEND (a new part is born that
 way; the FX2 chooser cannot change it). Page 1 has the two knobs.
 
-## Set the Sends
+## Set the sends
 
 - Raise DEL to hear the track in the delay's repeats; raise REV for the
   reverb tail.

@@ -20,8 +20,9 @@
 | bytes in the PART are compared with the channel's cache: PLAYBACK page 1
 | (Part +0x8edaa + t*30 + machine*6, machine from +0x8eda2 + t -> CC 16..21),
 | the page-1 array (+0x8ee9a + t*24: LFO -> CC 28..33, AMP -> 22..27, FX1 ->
-| 34..39, FX2 -> 40..45), FX1 page 2 (+0x8f07e + t*30 -> CC 68..73) and FX2
-| page 2 (+0x8f084 + t*30 -> CC 62..67): the firmware's own CC numbering
+| 34..39, FX2 -> 40..45), FX1 page 2 (+0x8f07e + t*30 -> CC 108..111, 14,
+| 15) and FX2 page 2 (+0x8f084 + t*30 -> CC 102..107): the firmware's own CC
+| numbering
 | (docs/firmware/MIDI.md section 3, docs/firmware/PARAM_PAGES.md section 5a) and
 | CC MAP's. A byte that differs is queued through EMIT, which updates the
 | cache itself; stock's own knob echo goes through the same cache, so a
@@ -184,13 +185,16 @@ cf_pos:
 | (region, offset, CC) triples, 0 ends. Region 0: PLAYBACK page 1 -> CC
 | 16..21. Region 1: the page-1 array, LFO +0..5 -> CC 28..33, AMP +6..11 ->
 | 22..27, FX1 +12..17 -> 34..39, FX2 +18..23 -> 40..45. Region 2: the
-| page-2 row, FX1 +12..17 -> CC 68..73, FX2 +18..23 -> 62..67 (modules/cc-map).
+| page-2 row, FX1 +12..17 -> CC 108..111, 14, 15, FX2 +18..23 -> 102..107
+| (modules/cc-map; 68..73 and 62..67 until 1 Nov 2026, when the load sweep
+| sent CC 64 = sustain to every synth on channels 1-8, issue #981).
+| tools/verify/verify_ccfeedback.py checks these against CC MAP's manifest.
 cf_map:
         .byte   0,0,16, 0,1,17, 0,2,18, 0,3,19, 0,4,20, 0,5,21
         .byte   1,6,22, 1,7,23, 1,8,24, 1,9,25, 1,10,26, 1,11,27
         .byte   1,0,28, 1,1,29, 1,2,30, 1,3,31, 1,4,32, 1,5,33
         .byte   1,12,34, 1,13,35, 1,14,36, 1,15,37, 1,16,38, 1,17,39
         .byte   1,18,40, 1,19,41, 1,20,42, 1,21,43, 1,22,44, 1,23,45
-        .byte   2,12,68, 2,13,69, 2,14,70, 2,15,71, 2,16,72, 2,17,73
-        .byte   2,18,62, 2,19,63, 2,20,64, 2,21,65, 2,22,66, 2,23,67
+        .byte   2,12,108, 2,13,109, 2,14,110, 2,15,111, 2,16,14, 2,17,15
+        .byte   2,18,102, 2,19,103, 2,20,104, 2,21,105, 2,22,106, 2,23,107
         .byte   0,0,0

@@ -3,7 +3,7 @@
 The station that dirties or tightens a track: fold, saturate, tilt,
 compress, width, mix.
 
-On stock LO-FI's id 0x1c, FX1 only: an FX2 instance runs as a dry pass
+On id 0x17 (stock LO-FI keeps 0x1c), FX1 only: an FX2 instance runs as a dry pass
 (`Claims(fx1_only=True)`, `verify_character.py`); the FX2 chooser hides the
 row. The chain is fixed: fold → saturate → tilt → compress → width → mix,
 distortion before dynamics. The saturation and compressor laws are
@@ -44,7 +44,7 @@ Page layout history: 16 Sep 2026 put MIX bottom right and SAT top left.
   float references to ≤ 7e-3 / 2e-3 / 1.4e-3 (TAPE 2e-2 on noise at DRV 127,
   the drive table's interpolation); TONE's `k2` linear in TONE, 0.5 % from
   the sine. GLUE / COMP on AC1's law; COMP 40 = +0.96 dB.
-- KEY (29 Sep 2026), `tools/verify/verify_charkey.py` (both cores, the
+- KEY (29 Sep 2026), `tools/verify/verify_char_key.py` (both cores, the
   delay host on T1): a burst at 0.25 over a 0.05 tone ducks T3 (core 1) and
   T6 (core 0) by 9.2 dB at KEY = T1, COMP 127, KLVL 64, lock-step and under
   skews 1 / 37 / 333 / −250; SELF ducks 8.7 dB on the same burst. With the
@@ -115,8 +115,8 @@ Page layout history: 16 Sep 2026 put MIX bottom right and SAT top left.
 
 ## Gates
 
-`tools/verify/verify_character.py` and `tools/verify/verify_charkey.py`
-(the manifest's), `make verify-ident MOD=character`, `verify_dirtystate`
+`tools/verify/verify_character.py` and `tools/verify/verify_char_key.py`
+(the manifest's), `make verify-ident MOD=character`, `verify_dirty_state`
 (in `make verify`).
 
 ## Sources

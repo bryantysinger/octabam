@@ -17,7 +17,7 @@ each engine's parameters with the values the host page would show.
 
 ## Measured
 
-- **Under the port** (`tools/verify/verify_tempobus.py`, in `make verify`
+- **Under the port** (`tools/verify/verify_tempo_bus.py`, in `make verify`
   with OT_PROJECT), on verify_set's staged card:
   - TEMPO opens the 118 × 64 window.
   - Delay MODE → GRAIN lands on the host's page-2 lane, with GRAIN's view
@@ -47,7 +47,7 @@ each engine's parameters with the values the host page would show.
 
 ## Gates
 
-- `tools/verify/verify_tempobus.py` (stage `image`; in `make verify` with `OT_PROJECT`).
+- `tools/verify/verify_tempo_bus.py` (stage `image`; in `make verify` with `OT_PROJECT`).
 
 ## The window
 

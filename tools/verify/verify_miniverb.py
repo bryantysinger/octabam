@@ -90,7 +90,7 @@ def verify(mems):
         path=OUT/f'miniverb_dirty_{c}.mem'
         path.write_bytes(body+term); dirty.append(path)
     _, quiet = run(mod, dirty, 'dirty_silent', 1024, mask=0, automate=True,
-                   extra=['-guard','16384','-guard-shared'])
+                   extra=['-guard','15870','-guard-shared'])
     gate('dirty state + dirty delay memory: all eight silent', not any(v for t in quiet for v in t))
     log=(OUT/'miniverb_dirty_silent.log').read_text()
     gate('bounds including shared Y and loaded program memory',
@@ -98,7 +98,7 @@ def verify(mems):
 
     _, _ = run(mod, mems, 'active_bounds', 1024, automate=True,
                inputs=inputs, split=[1,3,7,15,15,7,3,1],
-               extra=['-guard','16384','-guard-shared'])
+               extra=['-guard','15870','-guard-shared'])
     log=(OUT/'miniverb_active_bounds.log').read_text()
     gate('active split processing stays within all eight buffers',
          log.count('0 stray write regions, 0 CLOBBERING') == 8)

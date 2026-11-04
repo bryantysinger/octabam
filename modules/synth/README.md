@@ -91,6 +91,18 @@ units and depacked at boot into the arena reserve
 (`docs/contributing/PLACEMENT.md`). The page is pinned at `0x400d24d0`, the
 start of the second free gap.
 
+`PLACE` (setting `timhastie.synth`, Apply.BUILD, default `DRAM`) chooses where the
+page lives. `DRAM`: `page.s` is linked into the platform runtime with `poly.s`, the resolver at `0x40031ece`
+is a detour to `pg_resolve`, and the zero run is left alone. `CAVE`: the author's
+pinned ROM cave at `0x400d24d0`, which the ledger refuses in a remix that lists the
+stock DELAY (`Keep` on `0x400d24d0..0x400d24df`, `tools/remix/stock.py`). The stock DELAY
+reads the first words of that run as table data when its delay is long and the
+tempo slow, so with `CAVE` the DELAY computes a different output (issue #771,
+`docs/contributing/FAILURE_MODES.md`). Measured under the port: the DRAM form
+renders the PLAYBACK and LFO pages pixel for pixel as the cave form, and TAPE ECHO
++ SYNTH MACHINE passes `verify_tapeecho_cpu` with it. Not on a unit; the DRAM
+form has no author reference bytes (the cave form's are `PINNED_PAGE`).
+
 ## Collisions
 
 `tempo-bus` also uses the second free gap, so the ledger refuses that pair.

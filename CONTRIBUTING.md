@@ -67,11 +67,12 @@ README.md       what it is, what was MEASURED, what is INFERRED, what is open
 plus a remix that carries it (`remixes/<name>/remix.py`, or
 `remixes/test/<name>/remix.py` for a remix of that one module, and a
 `README.md` beside it: what is in it, where it has run;
-`docs/guide/REMIXER.md`) and, for anything with behaviour worth pinning, a gate
+`docs/guide/COMPOSING.md`) and, for anything with behaviour worth pinning, a gate
 (`tools/verify/verify_<name>.py`, named in the manifest's `gates`, run by
 `make check` for every remix that carries the module). Nothing else
 registers it: the registry discovers every `modules/*/manifest.py`, and
-refuses two modules on one key or one FX2 id.
+refuses two modules on one key. A module's `fx2_id` is its preferred id;
+the remix settles clashes (`registry.assign_ids`).
 
 The manifest's `category`, `author`, `author_url`, `proof` and `proof_note`
 are the README's module table (`make docs` renders it and the remix index
@@ -108,6 +109,26 @@ with everyone.
 
 **`key` is API.** It appears in the build report, and tools parse the
 report. Renaming a key, or rewording a report line, is a breaking change.
+
+**A module may not crash or degrade the unit in any configuration the user
+can select.** A module that does is not accepted. Selectable
+configurations include the number of instances, the tracks they sit on,
+parameter ranges, and combinations with other modules in the same remix.
+A guard removes the configuration (a refused selection, a clamp, a bypass on
+overrun); documenting the failure does not. `DspSection.max_per_core` declares
+an instance ceiling for the cycle price and the unit does not enforce it, so
+it is not a guard. The module README names the guard and what it was
+measured against.
+
+**A new module may not duplicate the function of an accepted one.** Once a
+module is accepted, changes to that behaviour are enhancements and bugfixes
+to that module. A separate module doing similar things is not accepted. Two
+exceptions: a proposal to replace an abandoned or buggy module, where the PR
+says which module it replaces and why; and a module that does the job in a
+suitably different fashion, where the PR states what differs (the method,
+the sound, the cost, what it can do that the accepted one cannot) and the
+module README carries the measurement that shows it. Modules that overlap
+and cannot share an image declare a `conflicts` pair (see Etiquette).
 
 ## The oracle rule
 
@@ -151,9 +172,10 @@ what `make check` runs, what each gate proves, what none of them can see.
 The contract:
 
 **`make check REMIX=<name>` is the floor**, for every remix the change
-reaches. There is no default remix: every target that builds or checks an
+reaches. No make target has a default remix: every target that builds or checks an
 image takes `REMIX=<name>` and refuses without it (`make modules` lists
-them). It builds, prices cycles, runs the gates every remix gets (the
+them); `make reach` and CI check `octabam`, the golden master, for every module
+it carries. It builds, prices cycles, runs the gates every remix gets (the
 ledger selftest, the stock-id audit, the docs, the knob census, the
 dirty-state render, the menu, the boot under the ColdFire port, a project
 under the port, USB) and then every gate the selected modules declare in
@@ -202,10 +224,15 @@ is seen.
 
 ## Before you open a PR
 
-Rebase onto current main, then run the gates on the rebased tree. Gates
-run before the rebase are not a result: a branch that merges without a
-conflict can still fail on main (PR #396's stress fixture named a knob
-that #415 had renamed).
+Rebase onto current main. Gates run before the rebase are not a result: a
+branch that merges without a conflict can still fail on main (PR #396's
+stress fixture named a knob that #415 had renamed).
+
+CI's `Gates — make reach` job runs the `make reach RUN=1 KEEP=1` line below
+on every PR push, against the 1.40C it downloads for that run; link the run
+in the PR body. A first-time contributor's run waits for maintainer approval.
+The commands below are the same ones to run on your own machine, on a rebased
+tree, while you iterate.
 
 ```bash
 git fetch origin && git rebase origin/main
@@ -228,7 +255,9 @@ the `make check` lines separately and names the accept line as blocked.
 A remix with a DSP module that declares no `dear` makes `make accept`
 report `blocked` with the module's name; say so in the PR. List each
 command and its result in the PR body (`make reach`'s output is the list;
-the PR template asks for it).
+the PR template asks for it). Every PR also runs
+`make reach RUN=1 KEEP=1` in CI on a runner that downloads the 1.40C for that
+run.
 
 A change that alters what a remix does — its modules, effects, menus,
 costs (memory pages, DSP words) or proof status — updates the
@@ -236,11 +265,14 @@ hand-written manual site pages under `docs/site/` in the same PR. The
 generated reference pages update themselves from the manifests.
 
 The usage fragment `docs/site/usage/<name>.md` (`<name>` = the module
-dir) is included into the generated module page, so it is authored for
-that page: `##` headings only (the page owns the title), relative links
-and images at reference depth (`../../img/<name>/<screen>.png`,
-`../../choosing.md`), no section signs, no bare repo paths, no nested
-includes.
+dir) is included into the module's page of the manual, so it is authored for
+that page: `##` headings only (the page owns the title), links and images
+written two levels below the site root (`../../img/<name>/<screen>.png`,
+`../../safety.md`), a link to another module's fragment by its bare file name
+(`kits.md`; the manual turns it into a link to that module's page, or into
+plain text when the module is not in the manual), no section signs, no bare
+repo paths, no nested includes. Write it for a musician: no commands, file
+names or test status.
 Screenshots are LCD captures from the emulator (`tools/site/capture_manual.py`;
 `tools/emu/live_shots.py` and the scripts in `tools/site/shots/` are the
 probe walks); a UI change re-captures them in the
@@ -256,11 +288,12 @@ check, and CI's `docs and links` job refuses a stale copy.
 
 ## What CI checks
 
-`.github/workflows/ci.yml` runs on every PR, on `main` and by hand, with
-no Elektron bytes. [TESTING.md section 11](docs/contributing/TESTING.md#11-what-github-actions-checks)
+`.github/workflows/ci.yml` runs on every PR, on `main` and by hand. Every
+job but `Gates — make reach` runs without Elektron bytes; that job fetches
+the 1.40C from Elektron's site into the runner on each run, with the zip hash
+pinned, and runs for pushes to `main` and every PR; a first-time contributor's run waits for maintainer approval. [TESTING.md section 11](docs/contributing/TESTING.md#11-what-github-actions-checks)
 lists each job and what it proves. **A green CI run says nothing about a
-remix**: building, booting and playing one needs 1.40C, which is why the
-gates above run on your machine. Actions are pinned to commit SHAs; a bump
+remix unless `Gates — make reach` ran.** Actions are pinned to commit SHAs; a bump
 is a PR that changes the SHA and the version comment beside it.
 
 ## Etiquette

@@ -10,7 +10,7 @@ BRAIN, REMIX SWITCH and the stock effects. For anyone who wants to move between 
 
 ## Status
 
-Measured under the ColdFire port (`python3 tools/verify/verify_remixswitch.py remix-switch`): the menu row, the load, the reset sequence, the chainload of the staged image, every refusal, the DSP park and re-upload. On a unit (29 Sep 2026, as a root category of its own before it moved under BRAIN): the same modules plus BOOT TRACE (`remix-switch-trace`, OCTABAM14, an MKII, 29 Sep 2026) switched to its own image and to stock 1.40C, audio and play working. Under BRAIN, with `/BRAIN/REMIXES/`: under the port only.
+Measured under the ColdFire port (`python3 tools/verify/verify_remix_switch.py remix-switch`): the menu row, the load, the reset sequence, the chainload of the staged image, every refusal, the DSP park and re-upload. On a unit (29 Sep 2026, as a root category of its own before it moved under BRAIN): the same modules plus BOOT TRACE (`remix-switch-trace`, OCTABAM14, an MKII, 29 Sep 2026) switched to its own image and to stock 1.40C, audio and play working. Under BRAIN, with `/BRAIN/REMIXES/`: under the port only.
 
 ## Build
 

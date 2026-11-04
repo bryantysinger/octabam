@@ -1,45 +1,50 @@
 | usbaudio_in.s -- USB AUDIO IN: the host's channels standing in for inputs.
 |
-| Three modules assemble this source: USB AUDIO IN AB (host channels 1/2 ->
-| inputs A/B), IN CD (1/2 -> C/D) and IN ABCD (1-4 -> A-D); remix.inc sets
-| IN_CHANNELS (2 or 4). Which inputs the pair lands on is the DSP inject's
-| business (rx_inject_*.asm, manifest.py): this unit ships the host's
-| channels in host order.
-|
-| The host streams AudioStreaming interface 5 alt 1 on EP3 OUT: isochronous,
-| asynchronous with IMPLICIT feedback (EP3 IN, the input stream, is the
-| feedback source, so the host sizes each OUT packet from EP3 IN's),
-| IN_CHANNELS x 24-bit in 4-byte little-endian subslots, 11/12 frames per
-| 250 us packet (<= 96 B for a pair, <= 192 B for four).
+| The host's channels stand in for inputs A/B (INPUTS AB), C/D (INPUTS CD)
+| or A-D (INPUTS ABCD) by the INPUTS run-time setting (usb_inputs, set by
+| usbaudio.s's cfgsel); with INPUTS OFF, the IN interface (usb_in_iface,
+| 5 with MIDI, 3 without) is not served and this unit never runs. Which
+| inputs the channels land on is the DSP inject's
+| business (rx_inject.asm, which runs the passes in_tx's flag words select): this unit
+| ships the host's channels in host order, 2 or 4 x 24-bit in 4-byte
+| little-endian subslots per frame, 11/12 frames per 250 us packet
+| (<= 96 B for a pair, <= 192 B for four).
 |
 |   USB side (this unit, all in the frame transfer machine's state 7):
-|     EP3 OUT up/down follows the host's SET_INTERFACE(5); four dTDs stay
+|     EP3 OUT up/down follows the host's SET_INTERFACE on the IN interface;
+|     four dTDs stay
 |     queued; each retired dTD's frames go into a 1,024-frame ring and the
 |     dTD is queued again at the tail (the Chipidea add-dTD procedure, as
 |     usbaudio.s does for EP3 IN).
 |   DSP side: once per 16-sample frame, 16 ring frames become TX_WORDS
 |     host-port halfwords for core 0 at $6320, the idle bank + $320 after the
-|     DSP's mask: word 0 = 1 while the stream is open, then 16 x (ch1 hi,
-|     ch1 lo, ch2 hi, ch2 lo[, ch3.., ch4..]), hi = sample[23:8], lo =
-|     sample[7:0], then zero pad. The DSP inject copies them over the
-|     module's slots of the RX block the next frame while word 0 is set, and
-|     leaves the block alone otherwise.
+|     DSP's mask: two passes (in_build), each a flag word then, flag 1, 16 x
+|     (hi, lo) halfwords for two channels, hi = sample[23:8], lo =
+|     sample[7:0]: the CD pass (CD, ABCD) and the AB pass (AB, ABCD), then
+|     zero pad. The DSP inject copies them over the module's slots of the RX
+|     block the next frame, and leaves the block alone on a 0 flag.
 |
 | Hooks (manifest.py):
-|   0x4001dd0a  SET_INTERFACE: usbaudio's shim sends every interface but 4
-|               here; interface 5 alt 0/1 records the alt and ACKs, any other
-|               alt STALLs, the rest goes on to the stock (mass-storage)
-|               handler. GET_INTERFACE(5) is answered by usbaudio.s (USB_IN).
+|   0x4001dd0a  SET_INTERFACE: usbaudio's shim sends every interface but the
+|               audio one here; the IN interface's alt 0/1 records the alt
+|               and ACKs, any other alt STALLs, the rest goes on to the
+|               stock (mass-storage) handler. GET_INTERFACE on the IN
+|               interface is answered by usbaudio.s.
 |   0x40004bc0  frame transfer state 7 (8 bytes): first visit does the work
 |               and starts one more transfer; its completion is the second
 |               visit, which runs stock state 7 (the frame IRQ unmask).
 |   0x4001de6e  the EP0 stall store: vendor GET 0x56 answers the counters.
 |
 | Memory: the dTDs and packet buffers are in on-chip SRAM (SRAM_*, declared
-| in each manifest's Claims.sram; the four-channel buffers reach the reply): the controller reaches SRAM through the
-| backdoor, it is not cached, so what the CPU writes is what the DMA reads.
-| The host-port buffer is in SDRAM and touched only through the uncached
-| alias (+0x08000000); the ring and the state are CPU-only. Packet buffers
+| in the manifest's Claims.sram; the four-channel buffers reach 768 B): the
+| controller reaches SRAM through the backdoor, it is not cached, so what the
+| CPU writes is what the DMA reads.
+| The host-port block for the DSP is in on-chip SRAM too (SRAM_TX): the CPU
+| writes it there at SRAM speed and eDMA channel 0 reads it from there, as
+| stock's own frame transfers do from 0x8000xxxx. Until 27 Oct 2026 it was in
+| SDRAM, written through the uncached alias: in_build took 9.5-10.1 us a frame
+| on Bryan T's MKII (a frame profiler, IN ABCD). The ring and the state are
+| CPU-only. Packet buffers
 | in SDRAM through the alias have not been measured with USB CROSSBAR on.
 |
 | Latency: the ring runs at IN_TARGET frames of cushion. With implicit
@@ -52,10 +57,10 @@
 | fills sum to a constant set at stream start (README, Latency).
 | SPDX-License-Identifier: MIT
 
-    .include "remix.inc"            | IN_CHANNELS: 2 (AB, CD) or 4 (ABCD)
 .set UNCACHED,       0x08000000
 .set SRAM_DTDS,      0x80007c00     | NSLOTI dTDs, 32-byte aligned (128 B)
 .set SRAM_BUFS,      0x80007c80     | NSLOTI packet buffers (384 B, or 768 for four channels)
+.set SRAM_TX,        0x80007880     | the host-port block for the DSP (TX_BYTES), 16-byte aligned
 .set SRAM_REPLY,     0x80007f80     | EP0 reply for 0x56 (64 B)
 
 | ---- firmware sites (1.40C) ----
@@ -108,40 +113,41 @@
 .set DSP_DEST,   0x6320             | idle bank + $320 after the DSP's mask
 
 | ---- geometry ----
-.set IN_IFACE,   5
+| The frame and packet widths follow usb_inputs at run time (2 channels for
+| AB/CD, 4 for ABCD; usb_inputs 0 = OFF never brings the unit up). The ring
+| and in_tx hold the ABCD maxima, one shape every image.
 .set NSLOTI,     4                  | dTDs kept queued (1 ms of packets)
-.set FRAME_B,    4*IN_CHANNELS      | bytes per frame: 8 for a pair, 16 for four
-.set OPKT,       12*FRAME_B         | 12 frames: the largest packet, 96 or 192 B
 .set IN_FRAMES,  1024               | ring, frames (power of two)
 .set IN_TARGET,  96                 | cushion before consuming, 2.2 ms (see Latency)
 .set BLOCK,      16                 | DSP frame
-.if IN_CHANNELS == 4
-.set TX_BYTES,   320                | word 0 + 128 halfwords + pad: 5 eDMA minor loops of 64
-.else
-.set TX_BYTES,   192                | word 0 + 64 halfwords + pad: 3 eDMA minor loops of 64
-.endif
+.set TX_BYTES,   320                | 2 flags + 128 halfwords (the ABCD maximum) + pad: 5 eDMA minor loops of 64
+.set TX_PAIR,    192                | a pair's transfer: 2 flags + 64 halfwords + pad, 3 minor loops
 .set TX_WORDS,   TX_BYTES/2
 .set NCOUNT,     15                 | longs in in_counters
 
-| wValue / wIndex / wLength from the SETUP packet, 16 bits into \r.
+| wValue / wIndex / wLength from the SETUP packet, 16 bits into \r. The low
+| byte is a byte move: orl reads a long at \lo, which put wLength's low byte
+| in bits 31-24 and left the clamp below unable to fire.
 .macro SETUP16 hi, lo, r
     mvzb    \hi,\r
     lsll    #8,\r
-    orl     \lo,\r
+    moveb   \lo,\r
 .endm
 
     .text
 | ---- SET_INTERFACE (0x4001dd0a) ---------------------------------------------
 | Displaced: oril #0x00400040,%d0 (d0 = ENDPTCTRL1, loaded by the stock
-| movel or by usbaudio's shim). d1 is free until 0x4001dd2e reloads it.
+| movel or by usbaudio's shim). d1 is free until 0x4001dd2e reloads it;
+| d2/d3 are restored by the epilogue (0x4001de74).
     .global in_setiface_shim
 in_setiface_shim:
     mvzb    SETUP_WIDXL,%d1
-    cmpil   #IN_IFACE,%d1
-    beqs    1f
-    oril    #0x00400040,%d0         | displaced
-    jmp     SETIFACE_REJOIN
-1:  mvzb    SETUP_WVALL,%d1
+    mvzb    usb_in_iface,%d2        | latched by cfgsel: 0 when the IN
+    cmpl    %d2,%d1                 | interface is not served (INPUTS OFF)
+    bnes    3f
+    tstb    usb_inputs              | and never up without an output stream
+    beqs    3f
+    mvzb    SETUP_WVALL,%d1
     moveq   #1,%d0
     cmpl    %d0,%d1
     bhis    2f                      | interface 5 has alt 0 and alt 1 only
@@ -152,6 +158,8 @@ in_setiface_shim:
     bset    #EP0_TXS,%d0
     movel   %d0,EP0CTRL
     jmp     SETIFACE_DONE
+3:  oril    #0x00400040,%d0         | displaced
+    jmp     SETIFACE_REJOIN
 
 | ---- vendor GET 0x56 (installed at 0x4001de6e) ------------------------------
 | Displaced: movel %d0,0xfc0b01c0 -- the stall's store (ENDPTCTRL0 with the
@@ -244,18 +252,29 @@ in_dma_start:
     moveb   %d0,CORE_SEL            | core 0
     moveq   #64,%d1
     movel   %d1,EDMA_NBYTES
-    movel   #(in_tx+UNCACHED),%d1
+    movel   #SRAM_TX,%d1
     movel   %d1,EDMA_SADDR
     movew   #0x81,%d0
     movew   %d0,HOST_ICR
     movew   #DSP_DEST,%d1
     movew   %d1,HOST_DATA
-    movew   #TX_WORDS-1,%d0
-    movew   %d0,HOST_DATA
+    | a pair sends 192 B (96 words, $x320..$x37f), ABCD 320 B: the shipped
+    | images' lengths, so a pair writes no DSP word past $x37f
+    | (d0/d1 only: the transfer IRQ saved those two)
+    moveq   #TX_PAIR/2-1,%d0
+    mvzb    usb_inputs,%d1
+    cmpil   #3,%d1
+    bnes    1f
+    movel   #TX_BYTES/2-1,%d0
+1:  movew   %d0,HOST_DATA
     movew   #0x88,%d1
     movew   %d1,HOST_CVR
-    movew   #(0x8000+TX_BYTES/64),%d0   | E_LINK, TX_BYTES/64 minor loops
-    movew   %d0,EDMA_CITER
+    movew   #(0x8000+TX_PAIR/64),%d0    | E_LINK, the minor loops
+    mvzb    usb_inputs,%d1
+    cmpil   #3,%d1
+    bnes    2f
+    movew   #(0x8000+TX_BYTES/64),%d0
+2:  movew   %d0,EDMA_CITER
     movew   %d0,EDMA_BITER
     clrb    %d1
     moveb   %d1,EDMA_START
@@ -282,12 +301,13 @@ in_frame:
     bsr     in_selfheal
     bra     in_build
 .Lf_idle:
-    moveal  #(in_tx+UNCACHED),%a1
-    clrw    %a1@                    | word 0 clear: the jacks
+    moveal  #SRAM_TX,%a1
+    clrl    %a1@                    | words 0-1 clear, both pass flags: the jacks
     rts
 
-| Bring EP3 OUT up. High speed only: the descriptors declare interface 5 at
-| high speed alone, so a full-speed host never asks. Retried every frame
+| Bring EP3 OUT up. High speed only: the descriptors declare the IN
+| interface at high speed alone, so a full-speed host never asks. Retried
+| every frame
 | while the host asks for alt 1.
 in_up:
     movel   PORTSC1,%d0
@@ -301,11 +321,15 @@ in_up:
     subql   #1,%d1                  | are power-on garbage (usbaudio.s)
     bpls    1b
     moveal  qh_in,%a0
-    movel   #(0x60000000+(OPKT<<16)),%d0   | Mult 1, ZLT off, maxpkt OPKT
     | Mult must be non-zero: with Mult 0 (Linux's chipidea udc has it for
     | ISO RX) 800 of 821 packets completed with a transaction error and 0
     | bytes, then the stream stopped (Bryan T, 26 Sep 2026).
-    movel   %d0,%a0@
+    movel   #(0x60000000+(96<<16)),%d0    | maxpkt OPKT: 96 B a pair, 192 for four
+    mvzb    usb_inputs,%d1
+    cmpil   #3,%d1                  | ABCD: 192 B a packet
+    bne     1f
+    movel   #(0x60000000+(192<<16)),%d0
+1:  movel   %d0,%a0@
     moveq   #1,%d0
     movel   %d0,%a0@(8)             | next dTD: terminate
     movel   ENDPTCTRL3,%d0          | the RX half only: EP3 IN owns TX
@@ -385,15 +409,17 @@ in_slot:
     moveal  #SRAM_DTDS,%a0
     addal   %d0,%a0
     moveal  #SRAM_BUFS,%a3
-.if IN_CHANNELS == 4
-    lsll    #6,%d1                  | slot * 64
-.else
     lsll    #5,%d1                  | slot * 32
-.endif
     addal   %d1,%a3
     addal   %d1,%a3
-    addal   %d1,%a3                 | + slot * OPKT (3 x 32 or 3 x 64)
-    rts
+    addal   %d1,%a3                 | + slot * 96 (a pair)
+    mvzb    usb_inputs,%d0
+    cmpil   #3,%d0                  | ABCD: 192 B a slot
+    bne     1f
+    addal   %d1,%a3
+    addal   %d1,%a3
+    addal   %d1,%a3                 | + slot * 192 (four channels)
+1:  rts
 
 | Write slot d2's dTD for one packet: buffer pages, next = terminate, then
 | the ACTIVE token LAST (uncached stores reach memory in program order).
@@ -408,8 +434,12 @@ in_dtd_fill:
     andil   #0xfffff000,%d0
     addil   #0x1000,%d0
     movel   %d0,%a0@(12)            | page 1: a buffer may straddle 4 KB
-    movel   #((OPKT<<16)+(1<<DTD_ACTIVE)),%d0   | total bytes, ACTIVE, no IOC
-    movel   %d0,%a0@(4)
+    movel   #((96<<16)+(1<<DTD_ACTIVE)),%d1   | total bytes OPKT, ACTIVE, no IOC
+    mvzb    usb_inputs,%d0
+    cmpil   #3,%d0                  | ABCD: 192 B a packet
+    bne     1f
+    movel   #((192<<16)+(1<<DTD_ACTIVE)),%d1
+1:  movel   %d1,%a0@(4)
     rts
 
 | Queue all NSLOTI dTDs as one chain and prime.
@@ -451,20 +481,35 @@ in_retire:
 1:  movel   %d3,%d0
     swap    %d0
     andil   #0x7fff,%d0             | bytes left
-    movel   #OPKT,%d4
+    movel   #96,%d4
+    mvzb    usb_inputs,%d1
+    cmpil   #3,%d1                  | ABCD
+    bne     .Lr_opkt
+    movel   #192,%d4
+.Lr_opkt:
     subl    %d0,%d4                 | d4 = bytes received
     bcs     .Lr_requeue             | nonsense: drop it
     movel   %d4,%d0
-    andil   #FRAME_B-1,%d0
-    beqs    2f
+    mvzb    usb_inputs,%d1
+    cmpil   #3,%d1                  | ABCD: 16 B a frame
+    bne     .Lr_wf8
+    andil   #15,%d0
+    bras    .Lr_wf
+.Lr_wf8:
+    andil   #7,%d0                  | 8 B a frame
+.Lr_wf:
+    beqs    .Lr_frames
     addql   #1,in_bad               | not whole frames
     addql   #1,in_partial
-2:
-.if IN_CHANNELS == 4
-    lsrl    #4,%d4                  | frames
-.else
-    lsrl    #3,%d4                  | frames
-.endif
+.Lr_frames:
+    mvzb    usb_inputs,%d1
+    cmpil   #3,%d1                  | ABCD: 16 B a frame
+    bne     .Lr_fs8
+    lsrl    #4,%d4
+    bras    .Lr_have_n
+.Lr_fs8:
+    lsrl    #3,%d4                  | frames: 8 B a frame
+.Lr_have_n:
     movel   %d4,in_lastn
     addql   #1,in_pkts
     tstl    %d4
@@ -474,15 +519,18 @@ in_retire:
     movel   in_produced,%d5
 3:  movel   %d5,%d0
     andil   #IN_FRAMES-1,%d0
-.if IN_CHANNELS == 4
-    lsll    #4,%d0
+    mvzb    usb_inputs,%d1
+    cmpil   #3,%d1                  | ABCD: 16 B a frame
+    bne     .Lr_idx8
+    lsll    #4,%d0                  | frame * 16
     lea     %a2@(0,%d0:l),%a1
     movel   %a3@+,%a1@+
     movel   %a3@+,%a1@+
-.else
-    lsll    #3,%d0
+    bras    .Lr_copy
+.Lr_idx8:
+    lsll    #3,%d0                  | frame * 8
     lea     %a2@(0,%d0:l),%a1
-.endif
+.Lr_copy:
     movel   %a3@+,%a1@+
     movel   %a3@+,%a1@+
     addql   #1,%d5
@@ -590,12 +638,16 @@ in_selfheal:
     addql   #1,in_reprimes
 9:  rts
 
-| 16 ring frames -> in_tx for the DSP: word 0 = 1, then each host channel as
-| a hi/lo halfword pair, host order. Before the cushion is full, and on an
-| underrun (which refills the cushion), silence with word 0 set: an open
-| stream owns its inputs even while it is starting.
+| 16 ring frames -> in_tx for the DSP, two passes (rx_inject.asm): the CD
+| pass's flag word, then (flag 1) 16 x (C hi, C lo, D hi, D lo); the AB
+| pass's flag word, then (flag 1) 16 x (A hi, A lo, B hi, B lo); hi =
+| sample[23:8], lo = sample[7:0] (the host port carries 16 bits a word). A
+| ring frame holds the host channels in host order (in_retire): a pair is 8
+| B a frame, ABCD 16 B, A, B, C, D at +0, +4, +8, +12. Before the cushion is full,
+| and on an underrun (which refills the cushion), silence: both flags 0 and
+| the jacks come through.
 in_build:
-    moveal  #(in_tx+UNCACHED),%a1
+    moveal  #SRAM_TX,%a1
     movel   in_produced,%d0
     subl    in_consumed,%d0         | fill
     movel   %d0,in_lastfill
@@ -610,53 +662,83 @@ in_build:
     addql   #1,in_underruns
     moveq   #1,%d1
     moveb   %d1,in_prefill
-    bras    .Lb_silence
+    bra.w   .Lb_silence
 2:  cmpl    in_minfill,%d0          | fill before this block's 16 go out
     bccs    4f
     movel   %d0,in_minfill
 4:  cmpl    in_maxfill,%d0
     blss    5f
     movel   %d0,in_maxfill
-5:  moveq   #1,%d0
-    movew   %d0,%a1@+               | word 0: the stream is open
+5:  mvzb    usb_inputs,%d4
+    | the CD pass: CD at +0, ABCD at +8
+    moveq   #2,%d0
+    cmpl    %d0,%d4
+    beqs    6f
+    moveq   #3,%d0
+    cmpl    %d0,%d4
+    bnes    7f
+    moveq   #8,%d3                  | ABCD: C, D at +8
+    bsr.s   .Lb_pass
+    bras    8f
+6:  moveq   #0,%d3                  | CD: the pair at +0
+    bsr.s   .Lb_pass
+    bras    8f
+7:  clrw    %a1@+                   | no CD pass
+    | the AB pass: AB and ABCD at +0
+8:  moveq   #1,%d0
+    cmpl    %d0,%d4
+    beqs    9f
+    moveq   #3,%d0
+    cmpl    %d0,%d4
+    bnes    10f
+9:  moveq   #0,%d3
+    bsr.s   .Lb_pass
+    bras    11f
+10: clrw    %a1@+                   | no AB pass
+11: movel   in_consumed,%d5
+    addil   #BLOCK,%d5
+    movel   %d5,in_consumed
+    rts
+| One pass: flag 1, then 16 frames from in_consumed, two channels from
+| frame + d3 (4 B each, LE), hi/lo halfwords to %a1@+. d4 kept.
+.Lb_pass:
+    moveq   #1,%d0
+    movew   %d0,%a1@+               | the pass's flag
     lea     in_ring,%a2
     movel   in_consumed,%d5
     moveq   #BLOCK,%d7
 .Lb_frame:
     movel   %d5,%d0
     andil   #IN_FRAMES-1,%d0
-.if IN_CHANNELS == 4
-    lsll    #4,%d0
-.else
-    lsll    #3,%d0
-.endif
-    lea     %a2@(0,%d0:l),%a0       | a0 = this frame: IN_CHANNELS x 4 B, LE
-    moveq   #IN_CHANNELS,%d6
+    lsll    #3,%d0                  | frame * 8 (a pair: in_retire's stride)
+    moveq   #3,%d1
+    cmpl    %d1,%d4
+    bnes    1f
+    addl    %d0,%d0                 | ABCD: frame * 16
+1:  lea     %a2@(0,%d0:l),%a0
+    addal   %d3,%a0                 | the pass's pair
+    moveq   #2,%d6
 .Lb_ch:
-    mvzb    %a0@(3),%d1             | sample[23:16]
-    lsll    #8,%d1
-    mvzb    %a0@(2),%d2             | sample[15:8]
-    orl     %d2,%d1
-    movew   %d1,%a1@+               | hi = sample[23:8]
-    mvzb    %a0@(1),%d1             | lo = sample[7:0]
-    movew   %d1,%a1@+
-    addql   #4,%a0
+    movel   %a0@+,%d1               | the LE container: b0 b1 b2 b3, sample = b3 b2 b1
+    byterev %d1                     | b3 b2 b1 b0
+    movel   %d1,%d2
+    swap    %d1                     | b1 b0 b3 b2
+    movew   %d1,%a1@+               | hi = sample[23:8] (b3 b2)
+    lsrl    #8,%d2                  | 00 b3 b2 b1
+    mvzb    %d2,%d2                 | lo = sample[7:0] (b1)
+    movew   %d2,%a1@+
     subql   #1,%d6
     bnes    .Lb_ch
     addql   #1,%d5
     subql   #1,%d7
     bnes    .Lb_frame
-    movel   %d5,in_consumed
     rts
 .Lb_silence:
     moveq   #TX_BYTES/4-1,%d1
 3:  clrl    %a1@+
     subql   #1,%d1
     bpls    3b
-    moveal  #(in_tx+UNCACHED),%a1
-    moveq   #1,%d0
-    movew   %d0,%a1@                | word 0: open, silent
-    rts
+    rts                             | both flags 0: the jacks
 
     .data
     .balign 4
@@ -679,8 +761,9 @@ in_err:       .long 0               | completions with a dTD error bit
 in_partial:   .long 0               | completions that were not whole frames
 
 qh_in:        .long 0
-in_ring:      .space IN_FRAMES*FRAME_B
-    .global in_alt                  | usbaudio.s answers GET_INTERFACE(5) from it
+in_ring:      .space IN_FRAMES*16     | 16 B a frame (the ABCD maximum); a 2-ch
+                                      | frame uses the first 8 of its slot
+    .global in_alt                  | usbaudio.s answers GET_INTERFACE on the IN interface from it
 in_alt:       .byte 0               | the host's request (USB interrupt)
 in_running:   .byte 0               | EP3 OUT is up (state-7 owned)
 in_prefill:   .byte 0               | filling the cushion
@@ -689,4 +772,3 @@ in_busy:      .byte 0               | state 7: our transfer is in flight
 in_zero_sent: .byte 0               | closed: blocks with word 0 = 0 completed since the close; transfers skipped from ZERO_BLOCKS
 
     .balign 32
-in_tx:        .space TX_BYTES

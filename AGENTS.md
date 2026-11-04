@@ -11,10 +11,10 @@ The repo is organised as **modules** (`modules/<name>/manifest.py` declares one
 contribution) composed into **remixes** (`remixes/<name>/remix.py` selects a
 set, `README.md` beside it says where it has run; `remixes/test/<name>/`
 carries one module for its gates).
-`make modules` lists them, with the compatibility matrix; `make remix`
-composes one. `docs/contributing/MODULES.md` is the contributor guide and
+`make modules` lists them, with the compatibility matrix.
+`docs/contributing/MODULES.md` is the contributor guide and
 `CONTRIBUTING.md` the contract. The build refuses to start when two selected
-modules claim the same FX2 id, cave, hook or detour span, poke, table or
+modules claim the same cave, hook or detour span, poke, table or
 symbol ref, runtime write, kept stock bytes, grown stock table,
 core-private Y word, per-core FX2 buffer region or DSP data range
 (`Claims.dsp_ranges`), or declare each other a conflict — by name.
@@ -58,15 +58,24 @@ make render REMIX=<name>        # hear the bus locally, ~6x real time
 make reverb IN=loop.wav ARGS='--wet --mode all'
 ```
 
-Never claim something works because it assembled or linked. `make check` is
+Never claim something works because it assembled or linked. `make check` (run by CI) is
 the floor; `docs/contributing/TESTING.md` says what each gate proves and what
 none of them can see.
 
 **Before opening a PR, and again before merging one:** rebase onto
-`origin/main`, then `make reach RUN=1 KEEP=1` on the rebased tree
-(`CONTRIBUTING.md` "Before you open a PR" is the rule and the reason);
-list each command and its result in the PR body. Passes whose image and
-inputs did not move are reported `cached`.
+`origin/main`. CI's reach job runs the gates the diff reaches, and the
+`refhash` bit-identity pass for a build change, on every push to `main` and every
+PR, fork PRs included, on a runner that downloads the 1.40C for that run
+(`CONTRIBUTING.md` "Before you open a PR" is the rule and the reason); the
+PR body links the run and lists each gate's result from its log. A first-time
+contributor's run waits for maintainer approval. **Run no whole-remix check
+and no reach or refhash pass locally before a PR: they take hours and CI runs
+them.** Locally, run only the one gate script for the change
+(`python3 tools/verify/verify_<name>.py <remix>`), push, and read
+`gh pr checks`; a local whole-remix run is for a failure CI has reported that
+the one script cannot reproduce. A change to
+`.github/`, `scripts/` or the Makefile runs every CI job. Passes whose image
+and inputs did not move are reported `cached`.
 
 **A change that alters what a remix does — its modules, effects, menus,
 costs or proof status — updates the hand-written manual site pages under
@@ -147,6 +156,7 @@ moment it costs real work, and add its line here.
 - [A dump can resolve a dispatch entry for an effect it does not contain](docs/contributing/TRAPS.md#trap-dump-alias) — `SPEC=1` aliases the absent server to SEND; check which code the entry points at before believing negatives.
 - [Payload A's half of the shared window is fully owned](docs/contributing/TRAPS.md#trap-shared-window) — no delay lines below `0x38000`.
 - [An FX2 id is also an FX1 id](docs/contributing/TRAPS.md#trap-fx2-id) — schema refuses stock ids; a client keys its slot on r7, never X:$213.
+- [A module's id is the remix's, not the manifest's](docs/contributing/TRAPS.md#trap-module-id) — `registry.bound(remix)` for ids, `idspace` for the FX2 table and dispatch addresses; a 64-id image moves both.
 - [`dsp_host`'s default audio block sits in stock scratch](docs/contributing/TRAPS.md#trap-audio-block) — `-audio 0` for a stock render.
 - [An absolute stock-table address is right in A and 13 words off in B](docs/contributing/TRAPS.md#trap-stock-tables) — declare table addresses; audit both payloads.
 - [A knob word under an LFO has non-zero low bits](docs/contributing/TRAPS.md#trap-lfo-word) — mask with `and #>$7f0000`; store from `a1`/`b1`.
@@ -154,13 +164,27 @@ moment it costs real work, and add its line here.
 - [A part saved under an older slot layout stalls the sequencer](docs/contributing/TRAPS.md#trap-part-layout) — `stamp-defaults` on the card before play.
 - [The emulated load's part is not the part that plays](docs/contributing/TRAPS.md#trap-otemu-part) — write fixtures into every part of every bank.
 - [The harness's dispatcher model is not the dispatcher](docs/contributing/TRAPS.md#trap-dispatcher-model) — measure dispatcher facts under the port.
-- [An effect's `init` must preserve r1](docs/contributing/TRAPS.md#trap-init-r1) — `verify_initregs` refuses; zero through r5.
+- [An effect's `init` must preserve r1](docs/contributing/TRAPS.md#trap-init-r1) — `verify_init_regs` refuses; zero through r5.
 - [A slot can draw a knob and publish nothing](docs/contributing/TRAPS.md#trap-knob-publish) — panel and DSP are separate; `docs/firmware/PARAM_PAGES.md`.
 - [Flash cycles are expensive](docs/contributing/TRAPS.md#trap-flash) — render locally and measure first.
 - [The unit misbehaves](docs/contributing/TRAPS.md#trap-failure-modes) — `docs/contributing/FAILURE_MODES.md` first; add new failures the moment they are seen.
-- [A persistent slot init doesn't clear holds the previous effect's state](docs/contributing/TRAPS.md#trap-dirty-state) — zero every slot the sample loop reads; `verify_dirtystate` refuses.
+- [Window code above `0x37f00` is wiped at boot; below `0x33da3` DARK REV can write it](docs/contributing/TRAPS.md#trap-window-zero) — resident code in `0x33da3..0x37eff`; the build refuses the rest.
+- [A host write at the frame interrupt's entry is lost on every other frame](docs/contributing/TRAPS.md#trap-host-mask) — send to core B on ping-0 frames; never to core A.
+- [`dsp_asm` does not assemble a backward `bra`](docs/contributing/TRAPS.md#trap-bra-back) — trampolines go before their target.
+- [A persistent slot init doesn't clear holds the previous effect's state](docs/contributing/TRAPS.md#trap-dirty-state) — zero every slot the sample loop reads; `verify_dirty_state` refuses.
+- [`dsp_asm` puts a label's absolute address in `brclr`'s displacement word](docs/contributing/TRAPS.md#trap-brclr) — write the displacement as a number; the roundtrip cannot see it.
+- [A zero CS1 with a valid settings tail boots stock's settings as zeros](docs/contributing/TRAPS.md#trap-cs1-zero) — lay the early block over `cs1_boot(image)`.
+- [`in_slot` lost its `lsll #5`: four packet buffers 3 bytes apart](docs/contributing/TRAPS.md#trap-in-slot) — a gate that passed and now fails: run the old commit under today's tools first.
+- [The stock echo-freeze mix rewrites arena region 7 every frame](docs/contributing/TRAPS.md#trap-region7) — poke region 7 AND its staging zero in a tap check; expect zero on src-7.
+- [A gate that models a setting must boot that setting](docs/contributing/TRAPS.md#trap-post-cs1) — `--cs1-in` the block; an empty run reports which watch was empty, never crashes.
+- [The bench socket drops a large reply on EAGAIN](docs/contributing/TRAPS.md#trap-bench-socket) — poll POLLOUT in the write loop; a short line in the port log is display-only.
+- [Payload B's frame routine writes `x:$3f7f..$3fbf` every frame](docs/contributing/TRAPS.md#trap-stock-x-scratch) — the guard's base cells were there; read what the stock writes before putting state in X, and read the cells back on a unit.
 
 **ColdFire / DRAM side**
+
+- [A nonzero popup pointer is not an open FX SETUP window](docs/contributing/TRAPS.md#trap-popup-redraw) — check the open flag and geometry; verify held-lock edits on the decoded LCD.
+
+- [A shared string helper's bound cut the load's path](docs/contributing/TRAPS.md#trap-strcat-bound) — REMIX SWITCH's 30-byte `strcat` cut `/BRAIN/REMIXES/` + a name over 14 characters; bound each buffer at the buffer, and give a fixture the longest name the build writes.
 
 - [A branch can enter the middle of a displaced span](docs/contributing/TRAPS.md#trap-detour-interior) — whole instructions are insufficient: keep shared branch targets; the MIDI CHROMATIC gate exercises both paths.
 
@@ -176,8 +200,29 @@ moment it costs real work, and add its line here.
 - [A forked port shares its DSP memory with its siblings](docs/contributing/TRAPS.md#trap-fork-shm) — `unshareRanges`; new shared maps need the same.
 - [The port ran under Rosetta and nothing said so](docs/contributing/TRAPS.md#trap-rosetta) — `file out/emu/ot_emu` is the check.
 - [The report is API and prints paths](docs/contributing/TRAPS.md#trap-report-api) — re-save refhash only after the artifacts are shown identical.
+- [Id 0 is FX1 NONE too: a stock fallback ran on every empty FX1 slot](docs/contributing/TRAPS.md#trap-stock-fallback) — the sequencer held its first step; `registry.remix` refuses a stock fallback.
+- [A frame count past $7fffff reaches `move a,n1` with A2 stale; the unit's frame interrupt stopped 50.7 min after power-up](docs/contributing/TRAPS.md#trap-frame-count) — keep the count below bit 23; preset it to test (`LM_FRAME0`).
+- [An EP0 reply is DMA'd from memory the cache may not have written; a 64-multiple reply breaks the next request](docs/contributing/TRAPS.md#trap-ep0-dma) — copy through `+UNCACHED`; never answer a multiple of 64 bytes.
 - [Same-named labels across units resolve by nm table order](docs/contributing/TRAPS.md#trap-nm-order) — per-unit tables; a ref naming a symbol its unit does not define is refused.
+- [`moveml %sp@` is the mode-2 form and stores at sp unchanged](docs/contributing/TRAPS.md#trap-movem-sp) — the lea-framed save/restore idiom, or `%sp@-`/`%sp@+`.
+- [cfgsel served one MAIN and one CUE short of the declared nch](docs/contributing/TRAPS.md#trap-cfgsel-nch) — 16 × TRACKS + 2 × (MAIN + CUE + MASTER); every consumer agrees on usb_nch.
+- [At .Lf_nomaster the branch was inverted](docs/contributing/TRAPS.md#trap-producer-stride) — the slot advance walks what was WRITTEN: 24 with tracks, 88 without.
+- [`--watch-mem` is one string](docs/contributing/TRAPS.md#trap-watchmem) — a second flag replaces the first; comma-join the ranges.
 - [A completion IRQ in the first-sector write window polls DRQ on the stale count](docs/contributing/TRAPS.md#trap-first-sector-irq) — the guard keeps the sector and its bookkeeping inside the existing mask; `verify_ata_write` gates it.
+- [The stock Part validator clamps a stored FX2 id to 31](docs/contributing/TRAPS.md#trap-id-clamp) — a poke bypasses it, a project does not; `idspace.convert` raises the two immediates to 63; `verify_ids64_load` loads a project.
+- [A floating cave rounded past the clone window landed on the chooser list](docs/contributing/TRAPS.md#trap-cave-round) — `… not free` names the victim; the overflow fallback takes any floating cave ending past the limit, starting past DELAY's kept bytes.
+- [A DRAM clone's `CLONE_<key>` export is its staging address](docs/contributing/TRAPS.md#trap-dram-clone-stage) — repointed only at the end; compare runtime addresses from `_psyms`.
+- [A runtime's own bytes can spell the clones' staging range](docs/contributing/TRAPS.md#trap-staging-coincidence) — the build moves staging and re-checks; a word that moves with it is stale.
+- [The machine list's key handlers clamp the cursor to 5](docs/contributing/TRAPS.md#trap-machine-clamp) — a sixth row fits by accident, a seventh needs the ten `moveq`s; a port key held 0.25 s repeats.
+- [Narrowing the port's DMA arm rule broke a gate whose image never moved](docs/contributing/TRAPS.md#trap-dma-arm) — a port change is every port gate's instrument; CI's cached passes hide it.
+
+- [Resident relinks can republish imported staging addresses](docs/contributing/TRAPS.md#trap-resident-import-exports) — publish only owned exports; `midi-follow-events` exercises descriptor relocation with MIDI Part State.
+- [A ColdFire save frame sized for the wrong register count overwrites the return address](docs/contributing/TRAPS.md#trap-cf-frame) — `lea -4N(%sp)` + `movem.l regs,(%sp)`; no pre-decrement `movem`, no `eor <mem>,Dn`, no `st <mem>`, no `move.b #imm,abs.l`.
+- [An unused-looking project byte can be rewritten on save](docs/contributing/TRAPS.md#trap-unused-bytes) — mark, load, save, diff before using one.
+- [A file opened through the stock layer keeps unwritten bytes in the buffer you gave it](docs/contributing/TRAPS.md#trap-file-buffer) — PLOCKS P2's empty files lost their header to a fill of that buffer; write from anything else while the file is open.
+- [`--watch-mem` given to a `--scenario` child logs nothing](docs/contributing/TRAPS.md#trap-scenario-watch) — watch with a direct run.
+- [Audio and MIDI playing Parts are independent](docs/contributing/TRAPS.md#trap-part-engine-context) — use the matching STORE context reader; seed different engine Parts in fixtures.
+- [A MIDI-only fixture leaves audio frame checks with no playing Part](docs/contributing/TRAPS.md#trap-midi-only-frame-fixture) — activate an audio trig within the probe and use the selected module's actual parameters.
 
 ## How claims are written here
 

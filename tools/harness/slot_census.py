@@ -16,7 +16,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import too
 import send_probe  # noqa
 from remix import registry  # noqa
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "verify"))
-import verify_dirtystate as vd  # noqa
+import verify_dirty_state as vd  # noqa
 
 key = sys.argv[1] if len(sys.argv) > 1 else "DELAY SERVER"
 blocks = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2].isdigit() else 1200

@@ -38,6 +38,8 @@
 | controller register), so d0 is free here and reloaded on the way out.
     .global crossbar_init_shim
 crossbar_init_shim:
+    jsr     cfgsel                  | the CS1 block -> usb_layout/usb_inputs and the
+                                    | config set, before any responder or producer runs
     movel   #BCR_ON,%d0
     movel   %d0,SCM_BCR
     movel   #PRS_USB1ST,%d0

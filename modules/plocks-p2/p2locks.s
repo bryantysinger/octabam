@@ -45,7 +45,7 @@
         .set    ID2_OFF,    0x8ed88
         .set    P2_OFF,     0x8f07e         | part: FX1 page 2 slot 0, +track*30; FX2 at +6
         .set    DESC1,      0x400d5f58
-        .set    DESC2,      0x400d5fdc
+        .include "remix.inc"            | DESC2: the FX2 descriptor table
         .set    ENC_DEFAULT, 0x4003240c
         .set    DIRTY,      0x40027e00
         .set    REDRAW,     0x46c7d244
@@ -81,7 +81,7 @@
         .text
         .globl  plk_edit, plk_fill_slide, plk_fill_plain, plk_s2p_a, plk_s2p_b
         .globl  plk_reset, plk_p2r, plk_note, plk_apply, plk_dial, plk_init, STORE
-        .globl  plk_place, plk_clrlocks, plk_clrtrack, plk_tcopy, plk_tpaste, plk_memcpy
+        .globl  plk_place, plk_clrlocks, plk_clrtrack, plk_tcopy, plk_tpaste
         .globl  plk_st_bankw_pre, plk_st_bankcopy, plk_st_loadall_pre, plk_st_loadmask_pre
         .globl  plk_st_newproj, plk_st_tocs1, plk_st_fromcs1, plk_st_answer
         .extern store_refuse
@@ -242,6 +242,17 @@ pe_c1:  addl    %a0@(0x9a),%d1
 pe_c2:  moveb   %d0,%a1@
         bra.w   pe_loop
 pe_commit:
+        | Mirror stock's edited flag and pending trig-tap masks. Otherwise
+        | key-up handles a bare trig tap and clears the newly written lock.
+        moveq   #1,%d0
+        movel   %d0,0x460d173a
+        moveq   #0,%d0
+        movew   %d0,0x460d1a9e
+        movew   %d0,0x460d1aa0
+        movew   %d0,0x460d1aa2
+        movew   %d0,0x460d1aa4
+        movew   %d0,0x460d1aa6
+        movew   %d0,0x460d10dc
         bsr.w   ui_bank                | CS1, when it holds this bank
         bsr.w   nv_touch
         | the stock lock editor's marks: the bank edited, the project
@@ -263,10 +274,95 @@ pe_commit:
         lea     REDRAW,%a0
         moveq   #20,%d0
         movel   %d0,%a0@(0,%d1:l)
+        bsr.w   plk_refresh_setup
 pe_done:
         moveq   #0,%d0
         movem.l %sp@,%d2-%d7/%a2-%a6
         lea     %sp@(44),%sp
+        rts
+
+| Refresh FX SETUP after stock's hold-event and release page redraws.
+| Use the native hold event, not key-down, to match page-one timing.
+| Keep each native call and its return registers intact.
+        .globl  plk_page_draw, plk_widget1, plk_widget2
+plk_page_draw:
+        movel   %sp@(4),%sp@-
+        jsr     0x4004d948
+        addql   #4,%sp
+        bra.w   plk_refresh_setup
+plk_refresh_setup:
+        lea     %sp@(-16),%sp
+        movem.l %d0-%d1/%a0-%a1,%sp@
+        tstl    MIDITRK
+        bne.s   prs_done
+        movel   PAGEKIND,%d0
+        subql   #3,%d0
+        cmpil   #1,%d0
+        bhi.s   prs_done
+        lea     0x400bc25a,%a1        | FX1 SETUP descriptor
+        tstl    %d0
+        beq.s   prs_window
+        lea     0x400bc484,%a1        | FX2 SETUP descriptor
+prs_window:
+        movel   %a1@(8),%d0           | native window object
+        beq.s   prs_done
+        cmpl    WINDOW,%d0
+        bne.s   prs_done
+        moveal  %d0,%a0
+        movel   %a0@(32),%d0
+        btst    #5,%d0
+        beq.s   prs_done              | closed popup
+        movel   %a0@(8),%d0
+        cmpil   #7,%d0
+        bne.s   prs_done
+        tstl    %a0@(12)
+        bne.s   prs_done
+        movel   %a0@(24),%d0
+        cmpil   #0xf4,%d0
+        bne.s   prs_done
+        movel   %a0@(40),%d0
+        cmpil   #0x40,%d0
+        bne.s   prs_done              | shared object now belongs to another modal
+        moveal  %a1@(44),%a0          | native SETUP draw callback
+        movel   %a0,%d0
+        beq.s   prs_done
+        jsr     %a0@
+prs_done:
+        movem.l %sp@,%d0-%d1/%a0-%a1
+        lea     %sp@(16),%sp
+        rts
+
+| Pass stock's held-lock flag to the existing widget renderer. Bit 0
+| both inverts the value area and keeps the formatted number visible,
+| including after its normal animation timer expires. The parameter name
+| stays native. Preserve the descriptor's other widget flags and formatter.
+plk_widget2:
+        bsr.s   plk_widget_flags
+        movel   %d3,%sp@-             | displaced renderer arguments
+        movel   %a3@,%sp@-
+        movel   %a1,%sp@-
+        jmp     0x4003787e
+plk_widget1:
+        bsr.s   plk_widget_flags
+        movel   %d3,%sp@-
+        movel   %a3@,%sp@-
+        movel   %a1,%sp@-
+        jmp     0x40037c1a
+plk_widget_flags:
+        movel   %d0,%sp@-
+        movel   %d6,%sp@-
+        movel   PAGEKIND,%d6
+        subql   #3,%d6
+        moveq   #-1,%d0
+        bsr.w   plk_dial
+        tstl    %d0
+        bmi.s   pwf_done
+        movel   %a1,%d0
+        oril    #1,%d0
+        moveal  %d0,%a1
+pwf_done:
+        movel   %sp@+,%d6
+        movel   %sp@+,%d0
         rts
 
 | -------------------------------------------------------------- playback ----
@@ -729,12 +825,15 @@ tp_out: movem.l %sp@,%d0-%d2/%a0-%a1
 | pattern (0x8ed8) or a track (0x91a) copied between the bank RAM, the
 | clipboard and the undo buffer takes its page 2 along, in the same
 | shape. memcpy clobbers d0, d1, a0, a1.
-plk_memcpy:
+plk_copy_mirror:
         movel   %sp@(12),%d0
         cmpil   #TRK_STRIDE,%d0
         beq.s   mc_go
         cmpil   #PTN_STRIDE,%d0
-        bne.w   mc_stock
+        beq.s   mc_go
+        cmpil   #64*32,%d0            | stock's packed track-lock snapshot
+        beq.w   mc_locks
+        bra.w   mc_stock
 mc_go:  movel   INITED,%d1
         cmpil   #MAGIC,%d1
         bne.w   mc_stock
@@ -780,7 +879,53 @@ mc_t:   subil   #STORE,%d0
 mc_out: movem.l %sp@,%d2-%d4
         lea     %sp@(12),%sp
 mc_stock:
-        jmp     0x40020898             | stock memcpy, the caller's frame as it was
+        rts                          | EVENTS owns the native copy
+
+| Trig paste/clear undo snapshots the track's 64 lock records, not a
+| whole native track. Its packed buffer puts locks at +0x28; bank RAM
+| puts them at track+0x59. Mirror all 64 page-2 records, including 0xff.
+| The native buffer kind owns the existing P2BUF mirror's lifetime.
+mc_locks:
+        movel   INITED,%d1
+        cmpil   #MAGIC,%d1
+        bne.s   mc_stock
+        lea     %sp@(-12),%sp
+        movem.l %d2-%d4,%sp@
+        movel   %sp@(12+8),%d0
+        bsr.w   p2lockloc
+        movel   %a0,%d0
+        beq.w   mc_out
+        moveal  %a0,%a1
+        movel   %sp@(12+4),%d0
+        bsr.w   p2lockloc
+        movel   %a0,%d0
+        beq.w   mc_out
+        movel   %a0,%d4
+        moveal  %a1,%a0
+        moveal  %d4,%a1
+        movel   #TRACK_B/4,%d2
+        bra.w   mc_copy
+
+| Only exact packed-buffer lock starts and bank track-lock starts map.
+| CS1's native duplicate copy must not mirror or touch NV a second time.
+p2lockloc:
+        cmpil   #CLIP+0x28,%d0
+        bne.s   pll_undo
+        lea     P2BUF0,%a0
+        rts
+pll_undo:
+        cmpil   #UNDO+0x28,%d0
+        bne.s   pll_ram
+        lea     P2BUF1,%a0
+        rts
+pll_ram:
+        movel   %d0,%d1
+        subil   #BLOB+0x59,%d1
+        bcs.w   pl_none
+        cmpil   #16*BANK_STRIDE,%d1
+        bcc.w   pl_none
+        subil   #0x59,%d0
+        bra.w   p2loc
 
 | p2loc: d0 = an address -> a0 = the page-2 track block that mirrors it
 | (a track's start in a bank's patterns, the clipboard or the undo
@@ -1090,16 +1235,9 @@ plk_st_bankcopy:
         moveq   #16,%d0
         lea     F_WRITE,%a1
         bsr.w   fio
-        lea     IOB,%a0
-        moveq   #-1,%d0
-        movel   #IOB_LEN/4,%d1
-fc_fill:
-        movel   %d0,%a0@+
-        subql   #1,%d1
-        bne.s   fc_fill
-        moveq   #BANK_B/IOB_LEN,%d2
-fc_wr:  lea     IOB,%a0
-        movel   #IOB_LEN,%d0
+        movel   #BANK_B/FFROW_LEN,%d2  | the body from FFROW: the header is still in IOB, the file's buffer
+fc_wr:  lea     FFROW,%a0
+        movel   #FFROW_LEN,%d0
         lea     F_WRITE,%a1
         bsr.w   fio
         subql   #1,%d2
@@ -1578,6 +1716,8 @@ P2STAGE: .fill  8*REC,1,0xff            | the staging record, by track
 P2PEND: .fill   24*REC,1,0xff           | pending slots n = 0..2, index n*8 + track
 P2REC:  .fill   8*REC,1,0xff            | the trig record, by track
 P2MASK: .fill   8,2,0                   | bits: the slots the last trig locked, by track
+        .set    FFROW_LEN,  256
+FFROW:  .fill   FFROW_LEN,1,0xff        | an empty bank's body, written from here by plk_st_bankcopy
 
         .section .bss
         .align  4
@@ -1590,3 +1730,33 @@ PATH:   .space  260
 PSRC:   .space  260
         .align  4
 IOB:    .space  IOB_LEN                 | the stock file layer's buffer
+
+        .text
+        .globl plk_ed_claim, plk_ed_handle, plk_ed_copy_pre
+plk_ed_handle:
+        jmp plk_edit
+plk_ed_claim:
+        tstl MIDITRK
+        bne.s plk_ed_no
+        tstl WINDOW
+        beq.s plk_ed_no
+        cmpil #5,%d0
+        bhi.s plk_ed_no
+        tstw HELD
+        beq.s plk_ed_no
+        movel PAGEKIND,%d0
+        subql #3,%d0
+        cmpil #1,%d0
+        bhi.s plk_ed_no
+        moveq #1,%d0
+        rts
+plk_ed_no:
+        moveq #0,%d0
+        rts
+plk_ed_copy_pre:
+        movel %d2,%sp@-
+        movel %d1,%sp@-
+        movel %d0,%sp@-
+        jsr plk_copy_mirror
+        lea %sp@(12),%sp
+        rts

@@ -20,5 +20,7 @@ REMIX = Remix(
     fx1=("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
          "COMB FILTER", "COMPRESSOR", "LO-FI"),
     fallback="NONE",
-    settings={("octabam.usb", "LAYOUT"): "MAIN", ("octabam.usb", "INPUTS"): "AB"},
+    settings={("octabam.usb", "TRACKS"): "OFF", ("octabam.usb", "MAIN"): 1,
+              ("octabam.usb", "CUE"): 0, ("octabam.usb", "MASTER"): 0,
+              ("octabam.usb", "IN"): "AB"},
 )

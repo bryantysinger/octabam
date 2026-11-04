@@ -54,7 +54,7 @@ Idempotent. What to install before it: [BUILDING.md section 0](../guide/BUILDING
 |---|---|---|
 | `dsp_asm` | `vendor/dsp56300` | the DSP56300 assembler. It mis-encodes some instructions silently (see [TRAPS.md](TRAPS.md#trap-asm)). `tools/patches/dsp56300.patch` adds the chip's one-word displaced move (displacement −64..63, data-ALU register); a word or cycle figure recorded before 14 Sep 2026 counts such a move as 2 |
 | `dsp_host` | `tools/harness/dsp_host/` (staged into `vendor/dsp56300` and built there) | the emulator harness written here: runs assembled effects on the dsp56300 emulator core. `tools/harness/README.md` |
-| `emu_bringup.py` | `tools/emu/` | Tier-0 ColdFire bring-up: boots the MAIN OS image on Unicorn's CFV4E core to the RTOS handoff (the remixer's emulator view). Needs `unicorn`: `make emu-setup` (uv, the `emu` extra). `tools/emu/README.md` |
+| `emu_bringup.py` | `tools/emu/` | Tier-0 ColdFire bring-up: boots the MAIN OS image on Unicorn's CFV4E core to the RTOS handoff. Needs `unicorn`: `make emu-setup` (uv, the `emu` extra). `tools/emu/README.md` |
 | `ot_emu` | `tools/emu/ot_emu/` (`make emu-cf`) | the headless C++ port of the machine: boots the built image, loads a project from a staged card, runs the sequencer and both DSP cores. `tools/emu/README.md` |
 | `ot_brain` | `tools/hw/ot_brain.py` | brain files (`.work`, `.strd`, `.brain`): `dump` to JSON, `build` from JSON (a record it cannot read kept as its bytes, so a round trip is byte for byte), `pair` (what the core does with a directory's `.work` / `.strd`; `docs/proposals/BRAIN.md` section 6.2) |
 | `ot_spec` | `tools/hw/ot_spec.py` | one JSON spec over a project's parts and patterns: `apply` (FX ids by module name, every knob by name, machine type, part names; per pattern track: length, scale, trigs, locks on every page by knob name — PLAYBACK, LFO, AMP, FX1, FX2 — with `clear`; the lock-trig mask follows), `report` (the same shape back), `diff` (two projects, field by field); checksum + read-back on `.work` and `.strd` |
@@ -121,7 +121,7 @@ one-word displaced move, the DMA dual-counter reload, the host-stepped
 mode, the shared window, the unmapped-register hooks). Gated on: upstream's
 own `dsp56kTestRunner` suite, `scripts/refhash.sh check` against a
 pre-repin baseline (24 cases), `verify-bus`, `verify-spectrum-ident`,
-`verify-twocore`, and `make check` with a real project under the port
+`verify-two-core`, and `make check` with a real project under the port
 (`verify_set`) -- all bit-identical or passing. Our own AGU fix is still
 an open, uncommented upstream PR (#13, since 8 Sep).
 
@@ -135,11 +135,31 @@ with the window open on 1199 of 1200 rewrites. Ported octemu's renewal
 (`m_deRenewed`, in `setDCR`/`finishTransfer`) — but its block-dump
 against the same project, same frame count, is **bit-identical** with or
 without the fix, so it is landed defensively (matches the DMA manual's
-own semantics, costs nothing, `verify-twocore` and every gate stay
+own semantics, costs nothing, `verify-two-core` and every gate stay
 green) rather than as a fix for an observed symptom. Not octemu's other
 DE-renewal hunk (disabling `HostTransmitData` as a request source):
 `ot_emu` drives HDI08 directly, never through a `DmaChannel`, so that
 half doesn't apply here (checked, not inferred).
+
+### The 28 Oct 2026 re-pin
+
+`vendor/dsp56300` moved from `8ccdd843` to `8b731966` (upstream's default
+branch `dsp56300`, 66 commits). The patch dropped the hunks upstream
+carries: the signed modulo bounds (`fdd98fc`), the masked-interrupt
+peripheral service, `Peripherals56367::setIoExtension` (our unmapped-register
+hooks; `ot_emu` calls it), the DMA request-target table sized to all 32 DRS
+values (our out-of-range guard) and the dual-counter reload in the 2D
+transfer loop. The same-value DCR renewal of 22 Sep (above) is removed; it
+had no observed effect. Kept: the arming rule of `DmaChannel::arm`, behind
+`DSP::setDmaTriggerOnArm` (upstream `3cee91c9` no longer serves a raised
+request on a DCR write that also selects the source; `ot_emu` sets the flag).
+With upstream's rule `verify_remix_switch` failed in CI (`ok d0=0`: neither
+core took the park command); with the flag it passes. The mechanism is not
+found. The disassembler now names `M_PCRE` and `M_PRRE` (upstream `2dee93df`),
+so `verify_dsp_vectors` lists them. Built and run in an isolated tree: `dsp56kTestRunner`
+passes (including our `bset #$f,m4` test), `dsp_asm` emits `0257de` and
+`f4f9ea`, `ot_emu` builds and its non-firmware `ctest` passes. The gates run
+in CI.
 
 ## 2. Acquiring and unpacking an OS
 
@@ -200,8 +220,8 @@ the default m68k core does not decode this CPU.
 
 `tools/build/build_bus.py` is the builder (`make bus` = `XBUS=1 SPEC=1`).
 It builds a remix: a named selection of modules (`make bus REMIX=<name>`,
-no default; `make modules` lists the modules and the remixes,
-`make remix` composes one interactively). Each `modules/<name>/manifest.py`
+no default; `make modules` lists the modules and the remixes).
+Each `modules/<name>/manifest.py`
 declares one contribution against `tools/remix/schema.py`, and
 `tools/remix/ledger.py` refuses a selection whose modules collide.
 `docs/contributing/MODULES.md` is the contributor guide. The builder assembles
@@ -224,8 +244,8 @@ Render on the desktop at ~6× real time instead of flashing.
 |---|---|
 | `tools/harness/dsp_host` | the emulator harness: boots a payload dump (both payloads, `-memB`, shared window shared), calls effects through the recovered ABI, captures audio, polices memory, meters instructions per block |
 | `tools/harness/rig_render.py` (`make render-rig`) | all eight tracks locally on both cores, FX1→FX2 chained per track, ids and knobs from a project part or by name, stems in, per-track + mix wavs and `meter.txt` out |
-| `tools/verify/verify_twocore.py` (`make verify-twocore`, in `make check`) | the two-core gate: the servers on their real cores render bit-identical to the DEV hatch, and under four interleave skews |
-| `tools/verify/verify_onebus.py` (`make verify-onebus`, in `make check`) | the one aux bus on both cores: the chain, each host's print, WET passthrough (sample-exact), the track-8 send refusal, a stored RET byte inert, stations without sends, four skews |
+| `tools/verify/verify_two_core.py` (`make verify-two-core`, in `make check`) | the two-core gate: the servers on their real cores render bit-identical to the DEV hatch, and under four interleave skews |
+| `tools/verify/verify_one_bus.py` (`make verify-one-bus`, in `make check`) | the one aux bus on both cores: the chain, each host's print, WET passthrough (sample-exact), the track-8 send refusal, a stored RET byte inert, stations without sends, four skews |
 | `tools/harness/render_reverb.py` (`make reverb IN=..`) | wav → BusVerb → wav, knobs by name, sweeps, wet-only |
 | `tools/harness/send_probe.py` (`make render`, `make render-delay`) | renders a SEND→bus→server path and measures it numerically; `--direct` puts audio through one module on its own track, the way an insert is rendered |
 | `tools/harness/abkit.py`, `station_laws.py`, `pressure.py`, `port_compare.py` | A/B kits for voicing by ear; a station's control laws read off noise; every selectable layout priced and the dearest rendered; the harness against the ColdFire port on one part |
@@ -247,7 +267,7 @@ CI). The family, and what each proves:
 | `tools/verify/verify_midi.py` | the note→PITCH interval path, locally, via a build override |
 | `tools/verify/verify_dram_boot.py` | every DRAM remix booted under the port and its window read back |
 | `tools/verify/verify_kits.py` | KITS under the port: staging, LOAD/SAVE KIT, the files, migration and Octakit import |
-| `tools/verify/verify_dirtystate.py`, `verify_initregs.py`, `verify_replaces.py`, `verify_labels.py`, `verify_modenames.py`, `verify_hidden.py`, `verify_grains.py`, `verify_twocore.py`, `verify_onebus.py`, the per-module render gates | every module silent from a garbage block; no init writes r1; no stock effect hijacked; selects print their words on the emulated firmware; the mode formatter renames; hidden engines; the grain lever; both cores; the bus |
+| `tools/verify/verify_dirty_state.py`, `verify_init_regs.py`, `verify_replaces.py`, `verify_labels.py`, `verify_mode_names.py`, `verify_hidden.py`, `verify_grains.py`, `verify_two_core.py`, `verify_one_bus.py`, the per-module render gates | every module silent from a garbage block; no init writes r1; no stock effect hijacked; selects print their words on the emulated firmware; the mode formatter renames; hidden engines; the grain lever; both cores; the bus |
 | `tools/remix/selftest.py` | the resource ledger catches every collision it claims to, and every shipped remix is clean (part of `make check`) |
 | `scripts/refhash.sh` | a change to the build (not a module) changed nothing: 24 configurations, artifacts and build reports, bit-identical; save a baseline on a tree you trust first |
 
@@ -259,17 +279,28 @@ last section), the hardware capture setup — protocol in `docs/history/CAPTURE_
 | tool | what it does |
 |---|---|
 | `tools/hw/capture_hw.py` | records the unit through an audio interface and analyses the capture numerically |
+| `tools/hw/load_meter.py` | LOAD METER's three blocks over the vendor request `0xc0/0x57` (`octabam-bus`, `octabam-inserts`): the frame interrupt's share, each DSP core's busy/period, each effect slot's cost; once, `--watch`, or `--for N --json` |
 | `tools/hw/usb_counters.py` | the audio-out's ring counters (`--in`: the audio-in's) over their vendor requests, once or `--watch` |
+| `tools/hw/usb_in_tones.py` | USB IN on a unit with no interface: a tone per host channel into inputs A-D, MAIN and CUE recorded back over USB, per channel each tone's level, the residual after the tones, the worst second and the DC; run on two images to A/B an inject change; `--save` keeps the audio |
+| `tools/hw/usb_soak.py` | USB IN/OUT soak on a unit for N minutes: a click into input A once a second, found on MAIN, its round trip in samples of the same stream; lost or repeated frames show as a latency step, beside missing clicks, host xruns and both rings' counter deltas; a CLEAN verdict; `--csv` keeps every click |
 | `tools/hw/usb_probe.py` | a host session (sustained tone or open/close churn) against a unit on `usb-io`, both rings' counters polled while the stream is open, a verdict and a JSON report |
+| `tools/hw/ot_kits.py` | reads and rewrites a project's `kits.work` (version 2): the Kits present, the pattern assignment, the CRC kept right; `rotate` points each pattern at another Kit, `from-card` reads the file the firmware wrote out of a card image |
+| `tools/hw/ot_fresh.py` | a fresh empty project made by the firmware under the port (the panel script of `verify_kits` `newsave` on a blank project), read back from the card the port writes; needs no unit and no stored project, passes `ot_matrix.py audit`; stays under `out/` |
+| `tools/hw/ot_fuzz.py` | seeded stress sequences over USB MIDI (program changes single and in bursts, START / STOP, a moving tempo, the crossfader, scene select, mutes, levels, FX knobs) run against a generated project with the rig's health checks every 0.5 s; stops on the first failure and writes the operation index, the last 40 operations and the unit's state; `gen`, `run`, `show`; not yet run on a unit |
+| `tools/hw/ot_stimuli.py` | synthetic stereo 24-bit stimuli with known level, spectrum and events (two tones, level ladder, impulses, hits, log sweep, pink and white noise, silence, DC), generated from a seed, loop-seamless; `gen` writes WAVs and `stimuli.json` (rms, peak, event frames, sha256), `verify` regenerates and compares to one step |
+| `tools/hw/ot_matrix.py` | a remix in many configurations over one USB cable: `plan` and `proj` stamp up to 32 layouts per project (BASE; each effect on all eight tracks at its defaults, at `dear` and in each MODE; `--pairs` adds FX1 x FX2), `audit` lists what a project holds that a fresh one does not; `--clean` rebuilds all 16 banks from a fresh unit-created project; MIDI and start-state settings are stamped as text; `run` steps them by program change, plays by MIDI START, captures the unit's USB audio and polls LOAD METER, and flags CRASH, FREEZE, CLICKS, STATIC, LEVEL, CLIP and LOAD against BASE; `selftest` runs the detectors on synthetic audio |
+| `tools/hw/usb_transport_probe.py` | one USB cable, nothing else: START / clock / STOP to the unit's USB MIDI port while its USB audio is captured in idle, play and tail phases; per-channel levels, whether START and STOP took effect, and the audio-out counters' deltas |
 | `tools/hw/sos_capture.py` | the sound-on-sound loop sample-exact: a fixture project, a tone + sample-index-ramp signal, a capture over USB INPUTS AB / LAYOUT TRACKS (remix `sos-capture`), the same project and signal under the port, a compare that finds the arm, aligns unit and port and lists where recirculating passes or the two runs differ, and `wraps`, which classifies each wrap (repeat, skip, a sample neither lag explains) from the loop's own lag, on any audio |
 | `tools/hw/usb_offset.py` | the offset in samples between two channels of one recording, per click (cross-correlation and onset): a click on one track recorded with `tools/rec`, for example a track channel against MAIN in the twenty-channel stream; `--selftest` |
 | `tools/harness/usb_align.py` | the twenty-channel stream's MAIN-to-track alignment under the port: the tone project on a staged card, EP3 IN drained once the sequencer plays, the lag from each tone's phase in its track channel and in MAIN |
 | `tools/hw/rec.swift` | drop-free CoreAudio HAL recorder (compiled on demand); the ffmpeg/avfoundation path drops samples |
-| `tools/hw/ot_midi.py` | drives the Octatrack over CoreMIDI from the CLI: CC, notes, raw bytes |
+| `tools/hw/ot_midi.py` | drives the Octatrack over CoreMIDI from the CLI: CC, notes, raw bytes; `In` hands a source's packets to a callback |
+| `tools/hw/freeze_watch.py` | waits beside a unit and stops at a freeze, nothing added to the image: a handshake (`probe`) finds what the unit answers (GET_STATUS, LOAD METER, USB audio's counters, MIDI clock) and arms the triggers it can (clock stall, USB dead, frame stall, interrupt rate, `--when`); the samples `--pre` before and `--post` after, which part stopped, LOAD METER's per-slot costs, with `--audio` the unit's audio, in `out/hw/freeze/`; reboots, USB DISK MODE and STOPs are logged, not counted; `selftest` without a unit |
 | `tools/hw/bcr2000.py` | programs a Behringer BCR2000 for octabam-bus: BCL from the manifests (page-1 CCs + CC MAP's page 2), sent over SysEx with per-line acks or written for BC Manager |
 | `tools/hw/hw_sweep.py` | scripted sweeps: MIDI steps + capture + per-step metrics in one process |
 | `tools/hw/level_cap.py` | quick capture with peak/RMS/crest/clip-run reporting per channel |
 | `tools/hw/gain_pass.py` | gain-matches a whole project bank-by-bank over MIDI |
+| `tools/hw/ot_sampleslot.py` | one WAV in a project as a FLEX slot on one track, with its `[SAMPLE]` block, the `markers.work` trim record the unit needs, the track's machine in every part of every bank, optional trigs every Nth step of A01, and `MIDI_TRANSPORT_RECEIVE=1` so MIDI Start works; `.strd` twins written |
 | `tools/hw/ot_project.py` | reads and writes Octatrack project/bank files on the CF card: `stamp-defaults` after a layout change, `set-fx`, `stamp-slot`, `rigproj` |
 | `tools/hw/ot_soak.py`, `hw_bus_test.py`, `hw_knob_sweep.py`, `hw_flash7.py`, `midi_flash.py`, `ot_clock.py` | a soak run that reports a freeze or the idle tick; synchronous-detection A/B of a parameter over MIDI; every knob's liveness; the one-aux bus claims driven over MIDI; OS flashing over MIDI; transport |
 | `tools/hw/ot_ladder.py` | the LADDER: one configuration per bank in a card project (effect selection without the panel), stepped by program change, each rung measured by level, spectrum and the tail after STOP (bus connected, reverb T60, delay time); `proj` / `run` / `analyse` / `summary` |

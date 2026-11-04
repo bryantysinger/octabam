@@ -27,6 +27,9 @@ import subprocess
 import sys
 import time
 
+import card_retention
+from contextlib import ExitStack
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 import toolpath  # noqa: E402,F401
@@ -112,6 +115,18 @@ def provenance():
 def run_gate(name, command, out, env, timeout, cwd=None):
     """A failed command, timeout, or successful-but-skipped gate cannot pass."""
     cwd = cwd or ROOT
+    try:
+        with card_retention.Gate(cwd, f"acceptance:{name}", env) as cards:
+            return _run_gate(name, command, out, cards.env, timeout, cwd, cards)
+    except card_retention.RetentionError as exc:
+        log = out / (name + ".log")
+        log.write_text(f"[FAIL] card retention: {exc}\n")
+        return dict(name=name, command=command, status="failed", exit_code=None,
+                    log=log.name, duration_seconds=0, skips=[], not_applicable=[],
+                    reason=str(exc), card_retention="failed")
+
+
+def _run_gate(name, command, out, env, timeout, cwd, cards):
     log = out / (name + ".log")
     start = time.monotonic()
     result = dict(name=name, command=command, status="failed", exit_code=None,
@@ -122,7 +137,8 @@ def run_gate(name, command, out, env, timeout, cwd=None):
         try:
             proc = subprocess.Popen(command, cwd=cwd, env=env, stdout=output,
                                     stderr=f,
-                                    start_new_session=(os.name == "posix"))
+                                    start_new_session=(os.name == "posix"),
+                                    pass_fds=cards.pass_fds)
             try:
                 result["exit_code"] = proc.wait(timeout=timeout)
             except (subprocess.TimeoutExpired, KeyboardInterrupt) as exc:
@@ -143,6 +159,14 @@ def run_gate(name, command, out, env, timeout, cwd=None):
     result["not_applicable"] = [line.strip() for line in NA.findall(text)]
     if result["exit_code"] == 0 and not FAIL.search(text):
         result["status"] = "blocked" if result["skips"] else "passed"
+    result["gate_status"] = result["status"]
+    try:
+        cards.finish(result["status"] == "passed", include_modified=True)
+        result["card_retention"] = "kept" if cards.keep or result["status"] != "passed" else "passed"
+    except card_retention.RetentionError as exc:
+        result.update(status="failed", card_retention="failed", reason=str(exc))
+        with log.open("a") as f:
+            f.write(f"[FAIL] card retention: {exc}\n")
     result["duration_seconds"] = round(time.monotonic() - start, 3)
     print(f"acceptance: {name}: {result['status']} ({log})", flush=True)
     return result
@@ -263,7 +287,8 @@ class Run:
         return self.report["status"]
 
 
-RUNNER_ERRORS = (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError, SystemExit)
+RUNNER_ERRORS = (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError, SystemExit,
+                 card_retention.RetentionError)
 
 
 def preflight(r, args, provenance_data):
@@ -408,6 +433,11 @@ def remix_stages(r):
 
 
 def run_sharded(live, jobs):
+    with ExitStack() as owners:
+        return _run_sharded(live, jobs, owners)
+
+
+def _run_sharded(live, jobs, owners):
     """The per-remix stages of `jobs` remixes at a time, each remix in a
     shard worktree (check_shards.make_shard: HEAD + this tree's diff, its
     own port build), handed out from one queue so the dearest remix does
@@ -418,6 +448,8 @@ def run_sharded(live, jobs):
     shards = [ROOT / "out/shards" / str(i) for i in range(jobs)]
     (ROOT / "out/shards").mkdir(parents=True, exist_ok=True)
     print(f"acceptance: {len(live)} remixes over {jobs} shards under out/shards/", flush=True)
+    leases = {s: owners.enter_context(card_retention.Gate(s, "acceptance setup", snapshot_cards=False))
+              for s in shards}
     for s in shards:
         check_shards.make_shard(s, ROOT / "out/shards" / f"{s.name}.setup.log")
     todo = queue_mod.Queue()
@@ -431,6 +463,7 @@ def run_sharded(live, jobs):
             except queue_mod.Empty:
                 return
             r.tree = shard
+            r.env["OCTABAM_CARD_LOCK"] = leases[shard].env["OCTABAM_CARD_LOCK"]
             try:
                 remix_stages(r)
             except RUNNER_ERRORS as exc:
@@ -443,6 +476,15 @@ def run_sharded(live, jobs):
 
 
 def main(argv=None):
+    try:
+        with card_retention.Gate(ROOT, "acceptance", snapshot_cards=False) as owner:
+            return _main(argv, owner.env)
+    except card_retention.RetentionError as exc:
+        print(f"[FAIL] card retention: {exc}", file=sys.stderr)
+        return 2
+
+
+def _main(argv, owner_env):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--remix", nargs="+",
                     default=(os.environ.get("REMIXES") or os.environ.get("REMIX") or "").split() or None,
@@ -470,7 +512,7 @@ def main(argv=None):
     remixes = list(dict.fromkeys(args.remix))
     out.mkdir(parents=True)
 
-    env = dict(os.environ)
+    env = dict(owner_env)
     # Serialize recursive Make even when this runner is invoked by make -j.
     for var in ("MAKEFLAGS", "MFLAGS", "MAKEOVERRIDES"):
         env.pop(var, None)
@@ -503,7 +545,11 @@ def main(argv=None):
                 r.fail(exc)
     live = [r for r in live if not r.stopped]
     if args.jobs > 1 and len(live) > 1:
-        run_sharded(live, min(args.jobs, len(live)))
+        try:
+            run_sharded(live, min(args.jobs, len(live)))
+        except RUNNER_ERRORS as exc:
+            for r in live:
+                r.fail(exc)
     else:
         for r in live:
             try:

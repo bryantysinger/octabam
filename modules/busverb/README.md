@@ -142,8 +142,8 @@ from `$c`; BusVerb's `$c` knob field is MODE.
 
 ## Gates
 
-- The manifest's gates: `tools/verify/verify_twocore.py` and
-  `tools/verify/verify_onebus.py` (shared with BusDelay, run once), both in
+- The manifest's gates: `tools/verify/verify_two_core.py` and
+  `tools/verify/verify_one_bus.py` (shared with BusDelay, run once), both in
   `make check`.
 - `make verify-bus` (the bus layouts, bit for bit against a stamp).
 - Render:

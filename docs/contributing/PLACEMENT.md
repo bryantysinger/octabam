@@ -21,10 +21,11 @@ A DSP-side class exists for one kind of code (sanderlegit, PR #542):
 | class | declared as | where it lands | budget |
 |---|---|---|---|
 | **Pinned DSP section** | `DspSection(pins=(...), pin_split_label=...)` | fixed P addresses instead of the harvested effect region: the interrupt vectors stock leaves as `jmp *`. One address per piece, cut at one label with a one-word bridge jump, so a section can span two runs and cost the region nothing | ✅ read from the image: payload A 50 dead words (`$02..$0F`, `$1A..$1B`, `$1E..$3F`), payload B 58 (`$02..$0F`, `$14..$3F`) |
+| **Tail DSP section** | `DspSection(tail=True)` | where the payload harvests nothing: above the payload's code in internal P, in a load record of its own that a pre-boot copy of the payload carries (below) | payload A 33 words (`$1fdf..$1fff`), payload B 609 (`$1da0..$1fff`); costs a DRAM region of about twice the payload |
 
 Stock's unused vectors are self-jumps: an interrupt that fired there would
 spin the core in it for good, so stock never enables them.
-`tools/verify/verify_dspvectors.py` checks that on every build (the runs
+`tools/verify/verify_dsp_vectors.py` checks that on every build (the runs
 are all self-jumps; no DMA whose vector is in one has DIE set; no ESAI
 control word has an interrupt enable; the set of peripherals either
 payload configures is the audited one), and that gate is the licence for
@@ -40,21 +41,157 @@ fourteen effects and the park wholly in dead vectors booted from a switch,
 played, and switched away again, so the chip runs code in the
 exception-vector slots and takes the bridge jump between two runs.
 
-The top of P is free and unreachable. ✅ Measured 29 Sep 2026: the core's
-default map gives 8K words of P (`0x2000`); payload A's code ends at
-`0x01fdf` (33 words spare), payload B's at `0x01d9f` (609). Code is placed
-by rewriting words inside the payload's existing load records and no
-record covers that space; a new record grows payload A's blob, and payload
-B's begins on the byte A's ends, so it would shift B, the
-`FUN_40001b18(0x400f59ef)` call site and the boot copy. Stock's low P is
-full: A loads all 8,159 words in 66 records, B all 7,583 in 46, with no
-holes.
+The top of P is free. ✅ Measured 29 Sep 2026: the core's default map gives
+8K words of P (`0x2000`; and 25 Oct 2026 on the unit: a word written at
+`P:0x2000`, `0x2100`, `0x2400`, `0x2800`, `0x3000` or `0x3800` does not read back,
+while the spare `P:0x1fe0` does, `modules/pextprobe`); payload A's code ends at `0x01fdf` (33 words
+spare, `0x01fdf..0x01fff`), payload B's at `0x01d9f` (609). Stock's low P
+is full: A loads all 8,159 words in 66 records, B all 7,583 in 46, with no
+holes. No record covers the spare words, and growing payload A's blob in
+place would shift B (it begins on the byte A's ends), the
+`FUN_40001b18(0x400f59ef)` call site, the boot copy and the immediates in
+the bootstrap-reprogram path at `0x40000450` (A's size `0x136cb` at
+`0x40000476` and `0x400004d4`, `79563` at `0x40000488`, B's address at
+`0x400004b0` and `0x40000500`; that path runs only when `0x3ffc` is below
+`0x400dea48`; Sam B, #854).
+
+**The tail** (`DspSection(tail=True)`, 22 Oct 2026) reaches it without
+moving anything. The normal boot hands the DSP loader only a pointer
+(`pea 0x400e2324; jsr 0x40001b18`, the pointer at `0x40001e8e`; B's at
+`0x40001ed4`), and the records end at the first space word above 2. Where
+a payload harvests nothing (every stock effect kept), the build assembles
+a tail section at the first word above the payload's internal-P records,
+splices one P record holding it in front of a COPY of the payload's
+terminator, ships the copy as a pre-boot payload of octabam's loader into
+a DRAM region of the platform arena (`dsp_tail_A`: the payload's length
+plus 4 KB, twice, unpacked then packed: 167,318 B, 28 pages for payload
+A), and pokes the pointer at it: the route ANALOG BD's builder
+(`tools/build/ab_image.py`) takes for its X record. Stock bytes and
+payload B stay where they are. A remix with a donor region places the
+section there instead, so no remix that built before moves a byte. USB's
+RX inject (29 words) is the one user; `remixes/test/usb-io-stock14`.
+✅ On an MKII, 22 Oct 2026 (Bryan T, OCTABAM4): the inject at
+`P:$1fdf..$1ffb` delivered the host's four channels as the donor-region
+inject does (`tools/hw/usb_in_tones.py`), so the chip runs code at the top
+of internal P and the DSP boots from the poked pointer's copy. Refhash: all
+24 configurations bit-identical with the change.
+Not covered: the reprogram path above uploads from its immediates, so if
+it ever ran it would load payload A without the tail record (ANALOG BD's
+uploads have the same exposure); and tools that read a payload from the
+image's own records (`dsp_modmap`) do not see the tail.
 
 The OS-image edits every class needs (a detour at a stock instruction, a
 poke, a grown table) are `Detour`, `Poke`, `TableGrow`, wired by symbol;
 stock bytes a module relies on without writing are a `Keep`.
 `tools/remix/ledger.py` refuses two modules that claim one byte before
 a byte is written.
+
+## Code in the shared window (measured 25 Oct 2026, unmeasured where marked)
+
+A DSP core's P ends at `P:0x1fff` on the default map (`DSP.md` section 3), so
+code that is not in the image's P records has to run from the shared window,
+`P:0x30000..0x3ffff`. ✅ On the unit (PEXT PROBE v2, image P2, 25 Oct 2026,
+`modules/pextprobe`): each core wrote a three-word routine (`move #>$a5a5a5,x0`
+/ `rts`) at `P:0x30100`, `0x35900`, `0x36300`, `0x36800`, `0x37000`, `0x37800` and
+`0x37e00`, called it with `jsr (r5)` and read `x0` back: seven of seven, on core 0
+(track 5) and on core 1 (track 1), so core 1 runs code that sits in payload A's
+half. The window is one memory: the words are visible to both cores, so one copy
+of a routine serves both.
+
+Which words are free, from `tools/remix/dsp_ranges.py` (the ledger's claims, not a
+measurement):
+
+| remix | payload A's half `0x30000..0x37fff` | payload B's half `0x38000..0x3ffff` |
+|---|---|---|
+| `octabam-bus` | free: `0x30048..0x30800` (1,976 words), `0x35800..0x36000` (2,048), `0x36200..0x37f00` (7,424); 11,448 in all. Owned: stock staging `0x30000..0x30048`, BusVerb `0x30800..0x35800`, the bus scratch `0x36000..0x36200`, the mailbox `0x37f00..0x37f10`, LOAD METER's figures `0x37f10..0x37f50` | BusDelay's LineL, all of it |
+| `octabam-inserts` | MODULATION and GATE VERB claim the whole half as the allocator's FX2 buffers (`Claims.stock_instance_buffer`); the tail a given effect leaves unused is not in the ledger | the same |
+
+Not measured: the cost of running an effect from the window (`CHIP.md` records one wait
+state as P against none as X or Y, and contention per 8 K block when both cores use the
+same block), and whether the stock effects a remix keeps use any of the words
+the ledger shows as free.
+
+The other lever in `CHIP.md` is the OMR memory switch (MS, MSW1:MSW0), which would give
+a core 16 K, 24 K or 32 K words of P at the cost of Y (48 K, 40 K, 32 K, 24 K);
+nothing writes OMR in either payload and it has not been tried. The bus remix's
+BusVerb and BusDelay own `Y:0x4000..0xc000` on each core.
+
+## The 64-id layout
+
+`Remix.id_space = 64` (`tools/build/idspace.py`). The build works on the stock
+layout throughout, writes the tables it grows into a virtual window, and
+`idspace.convert` turns the finished image into this layout:
+
+- Each payload gets one more X load record at `X:0x8da0` (129 words:
+  INIT[64], PROC[64], a spare), appended before its terminator (+396 B each).
+  The six `move x:(r1+$215|$235),r2` words of the dispatcher (A `P:0x4b4`,
+  `0x4cb`, `0x4ce`, `0x4ea`, `0x501`, `0x504`; B `0x2a9`, `0x2c0`, `0x2c3`,
+  `0x2df`, `0x2f6`, `0x2f9`) are repointed. The old record stays, holding the
+  entries for ids below 32, so tools that read `X:0x215` see them.
+- B moves by A's growth. The boot copy sites take the new lengths and starts
+  (`0x40000478`, `0x4000048a`, `0x400004d6`: A; `0x400004ac`, `0x400004fa`: B;
+  `0x400004b2`, `0x40000502`, `0x40001ed4`: B's start). The image keeps its
+  size: B's end now covers the head of the SRAM-init image (`0x401086f4`
+  onward), whose first 792 bytes are zero but for eight at offset `0xe8`. The
+  routine at `0x4000f938` that copies that image to SRAM is replaced by a
+  60-byte cave at `0x400d797c` that zeroes the covered head, writes the eight
+  bytes and copies from B's new end.
+- `FX2_IDS` and `ID2POS` are written at `0x400d79bc` and `0x400d7abc` (256 B
+  each, just below the long chooser list) and the nine stock `lea` sites that
+  read them (`idspace.LEA_SITES`) are repointed. The three regions are
+  reserved: the build ends its caves at `0x400d797c`. FX1's tables stay at
+  their stock addresses.
+
+Measured in the port (22 Oct 2026): the image boots and loads a project as
+stock does; id `0x25` poked into T1 makes core 1 run BBD's process entry every
+frame with `r1 = 0x25`; the firmware's resolver `0x40031da4` returns BBD's
+descriptor for it; `make check REMIX=ids64` passes. Not measured then: a boot on
+hardware, that `X:0x8da0..0x8e21` is physical X RAM on the chip (X above
+`0x8d8b` holds no loaded record today and `docs/firmware/DSP.md` section 7
+says high X is not usable memory), the chooser and UI with ids of 32 or more,
+and the FX1 side (the hardware results below cover the first three). A 62-byte per-frame SRAM buffer at `0x800017d6` differs
+between the stock and the grown image after the same emulated time (the stock
+image is deterministic; the cause was not confirmed).
+
+Hardware step 1 was run on 27 Oct 2026 (an MKII, image `test/bus-usb` P3: the `bus` remix with USB added, REVERB SERVER
+replaced by `dsp/xmem_probe_ids64.asm`; T5 playing a noise loop, captured over USB). T5's left channel carried signal and
+its right channel had no non-zero samples, and MAIN, which is T5 at the centre pan law, matched. By the
+probe's rule that is: the 129-word record `X:0x8da0..0x8e20` read back every walking value (good), and the 1,024 words above
+it (`0x8e21..0x9220`) did not. The one block the layout needs behaves as X RAM; the memory above it does not read back, so the
+record would sit at the end of the X RAM that exists (inferred from the two results). This shows the words behave as RAM while the probe runs; it does not show
+that stock never uses them for something else. An earlier build on the `bus` remix without USB (image P1, flashed, not
+measurable) is not used.
+
+Hardware steps 2 and 3, the same unit and day:
+
+- Step 2, the grown image boots: `ids64-usb` (the `ids64` test remix with USB added, image I7) booted and loaded a project.
+- Step 3, first attempt: a project that stored BBD's id `0x25` loaded with nothing on FX2. The stock Part validator
+  (`0x40002318`) clamps each FX2 id byte to 31 as the project loads (`moveq #31` at `0x400023de` and `0x400023e4`), so `0x25`
+  loaded as `0x1f`; the port showed the same with a project. See `TRAPS.md` "The stock Part validator clamps a stored FX2 id
+  to 31". `idspace.convert` now rewrites those two immediates to 63.
+- Step 3, after the fix (image I8): BBD shows in the FX2 slot of T1 and T5 and runs on both cores. With MIX 127, FDBK 100
+  and TIME 64 the captured T1 and T5 audio, identical to each other, has autocorrelation peaks at 126 ms (r 0.39) and 252 ms
+  (0.15), a feedback echo; a peak near 2,000 ms is the pattern repeating (16 steps).
+- Choosing BBD from the FX2 chooser was measured under the port only (28 Oct 2026): the chooser's row for id `0x25` in the
+  image's id-to-row table, picked on track 2 with the panel keys, sets its FX2 id to `0x25` (`verify_ids64_load`). On the unit
+  only the project path has been tried.
+- Not measured: the chooser on the unit, the FX1 side, and anything else that reads or validates FX2 ids of 32 or more (scene
+  and p-lock writes, part copy, the MIDI pages, `kill.s` for ids above 31).
+
+Hardware, as planned in this order (steps 1 to 3 above are done; the earlier attempts are listed there):
+
+1. `X:0x8da0..0x8e20` is X RAM. `XBUS=1 XPROBE=1 XPROBE_SRC=dsp/xmem_probe_ids64.asm
+   REMIX=bus python3 tools/build/build_bus.py` builds a stock-layout image whose
+   REVERB SERVER is `dsp/xmem_probe_ids64.asm`: half volume on a track carrying
+   it (T5-T8) is both blocks good, LEFT silent is the 129-word block bad, RIGHT
+   silent is the 1,024 words above it bad. The probe builds; it has not been
+   rendered.
+2. The grown image boots: `make image REMIX=ids64`, load a project, play. This
+   exercises the shifted blob chain, the lengths the boot copy takes and the
+   SRAM-init cave.
+3. BBD selected on id `0x25` from the chooser on a track: audible, knobs
+   respond, the stop kill silences it (`kill.s` compares against the id the
+   remix gave it).
 
 ## The free ROM (measured)
 
@@ -66,7 +203,10 @@ run at `0x401087e4` and the unit raised `VEC:03` in the menu draw loop
 
 ```
 0x400c45b0..0x400c4702     338 B
-0x400d24d0..0x400d2ce0   2,064 B
+0x400d24d0..0x400d2ce0   2,064 B   (the first words are READ by the stock DELAY as table data: its
+                                    coefficient table ends here and an index up to 511 runs past it;
+                                    a cave there changes the DELAY's output. Measured 21 Oct 2026, issue #771.
+                                    Keep 0x400d24d0..0x400d24df zero.)
 0x400d2ee6..0x400d3020     314 B   (refused at placement by the build, 25 Sep 2026:
                                     a live descriptor, modules/midi-scenes' CAVE2 note)
 0x400d64da..0x400d7c3c   5,986 B   (the FX2 chooser's NONE row + terminator sit at
@@ -150,14 +290,16 @@ page-aligned; the ceiling is the reserve's end; a unit's `.bss` must end
 below it. KITS's library (1,622,944 B) and PLOCKS P2's table (1,572,864 B)
 are `.bss` there.
 
-**REMIX SWITCH's stage** (`modules/remix-switch`) is the top of this reserve,
+**REMIX SWITCH's stage** (`modules/remix-switch`) is a fixed claim in this
+reserve, its top unless a DRAM region needs more (STEM REC's 8 MiB ring
+has no room below it and sits above),
 `0x41200000..0x41495de0`: a 64-byte mailbox, a 40-byte copy stub at
 `+0x100`, the staged image from `+0x1000` (2,706,400 B). The running OS
 writes it just before a reset and the next boot's OS entry reads it before
 anything else runs; nothing between a reset and the OS entry writes SDRAM
 outside the image the bootstrap unpacks (`docs/firmware/ARCHITECTURE.md`
-section 3a). In a remix carrying the module, `verify_remixswitch` refuses a
-runtime and stage that reach the mailbox.
+section 3a). In a remix carrying the module, `verify_remix_switch` refuses a
+runtime and stage that reach the mailbox, and a DRAM region over the stage.
 
 The OS never touches a reservation again: the arena clear starts at the
 new base, the boot-time copies follow the literal, and the page allocator

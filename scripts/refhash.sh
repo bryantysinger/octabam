@@ -6,10 +6,11 @@
 # of the stock OS (out/raw/section_3_MAIN_OS.bin), so the baseline is untracked
 # and only means anything on the machine that saved it.
 #
-#   scripts/refhash.sh check    # every artifact and every build report must match
-#                               # the baseline of this branch's merge-base with
-#                               # origin/main (tools/verify/refhash_store.py: saved
-#                               # once per merge-base, shared by every worktree)
+#   scripts/refhash.sh check    # every artifact must match the baseline of this
+#                               # branch's merge-base with origin/main
+#                               # (tools/verify/refhash_store.py: saved once per
+#                               # merge-base). rc=0 <report> lines may differ;
+#                               # rc!=0 reports are compared (tools/verify/refhash_compare.py)
 #   scripts/refhash.sh save     # a LOCAL baseline of this tree, for
 #                               # REFHASH_LOCAL=1 scripts/refhash.sh check
 #
@@ -122,9 +123,36 @@ case "${1:-}" in
     run_matrix out/refhash/current "${REFHASH_JOBS:-4}"
     restore
     echo
+    if [ ! -f out/refhash/current/manifest.txt ]; then
+      echo "  FAIL: out/refhash/current/manifest.txt missing (matrix did not finish)"
+      exit 2
+    fi
     if diff -u out/refhash/baseline/manifest.txt out/refhash/current/manifest.txt > out/refhash/manifest.diff; then
       rm -f out/refhash/manifest.diff
       echo "  ALL ${#CASES[@]} CASES BIT-IDENTICAL"
+      exit 0
+    fi
+    # Artifacts vs reports: a new replaces= module (LEFT STOCK) or a path
+    # printed in a hint changes every report hash while the bins stay
+    # identical (trap-report-api). CI baselines the merge-base, so those
+    # PRs can never re-save; pass when every non-<report> line matches.
+    # Cases with rc!=0 keep their <report> (often the only line).
+    if python3 tools/verify/refhash_compare.py \
+         out/refhash/baseline/manifest.txt out/refhash/current/manifest.txt
+    then
+      echo "  ARTIFACTS BIT-IDENTICAL (${#CASES[@]} cases); reports differ (build-report API)"
+      echo "  (common when a replaces= module joins LEFT STOCK — trap-report-api)"
+      echo
+      cat out/refhash/manifest.diff
+      echo
+      for spec in "${CASES[@]}"; do
+        local_name="${spec%%|*}"
+        if ! cmp -s "out/refhash/baseline/$local_name.log" "out/refhash/current/$local_name.log"; then
+          echo "--- report diff: $local_name ---"
+          diff -u "out/refhash/baseline/$local_name.log" "out/refhash/current/$local_name.log" | head -60
+        fi
+      done
+      rm -f out/refhash/manifest.diff
       exit 0
     fi
     echo "  MISMATCH -- the refactor is not behaviour-preserving"

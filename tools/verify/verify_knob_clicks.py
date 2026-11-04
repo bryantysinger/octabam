@@ -39,7 +39,7 @@ The garbage start: every module and mode is also rendered with its instance
 block pre-filled (0x7fffff, 0x5a5a5a) and the tone from block 0; the first
 256 blocks' peak must be within 1 dB of the same render's from a zero block
 (the settled peak, blocks 1000 on, is reported beside).
-verify_dirtystate's silence cannot see a garbage gain or coefficient state.
+verify_dirty_state's silence cannot see a garbage gain or coefficient state.
 
 What this cannot see: the chip's cycle overrun (a block that misses its
 deadline crackles on the unit and renders clean here), anything the
@@ -64,7 +64,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
 import send_probe  # noqa: E402
-import verify_onebus as vo  # noqa: E402
+import verify_one_bus as vo  # noqa: E402
 from remix import registry  # noqa: E402
 
 SCRATCH = ROOT / "out/dsp/_knobs"
@@ -337,7 +337,7 @@ def run_case(mems, case):
 
 
 # ---- the garbage start ---------------------------------------------------
-# verify_dirtystate renders from a garbage instance block on SILENCE, which
+# verify_dirty_state renders from a garbage instance block on SILENCE, which
 # cannot see a garbage gain or coefficient: a run value or glide state that
 # init does not seed gives garbage gains for the blocks it takes to glide
 # in, and silence in is silence out either way. Here each module and mode is
@@ -356,7 +356,7 @@ SETTLED_FROM = 1000
 
 def mem_with_fill(base, fill, out, r7s):
     """the .mem with the instance blocks at `r7s` (X, 0x100 words each)
-    filled (verify_dirtystate's run format)"""
+    filled (verify_dirty_state's run format)"""
     blob = base.read_bytes()
     body, term = blob[:-9], blob[-9:]
     assert term[0] == 0xff, "not a .mem dump"

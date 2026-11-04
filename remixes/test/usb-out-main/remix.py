@@ -11,12 +11,13 @@ from remix.schema import Proof, Remix
 REMIX = Remix(
     name="usb-out-main",
     family="mods", proof=Proof.PORT, proof_note="`verify_usb` under the port, 28 Sep 2026",
-    doc="stock + USB (LAYOUT MAIN) (2 ch: MAIN L/R).",
+    doc="stock + USB (MAIN) (2 ch: MAIN L/R).",
     modules=("USB",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
              "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
              "PLATE REV", "SPRING REV", "DARK REV"),
     fallback="NONE",
-    settings={("octabam.usb", "LAYOUT"): "MAIN",
-              ("octabam.usb", "INPUTS"): "OFF"},
+    settings={("octabam.usb", "TRACKS"): "OFF", ("octabam.usb", "MAIN"): 1,
+              ("octabam.usb", "CUE"): 0, ("octabam.usb", "MASTER"): 0,
+              ("octabam.usb", "IN"): "OFF"},
 )

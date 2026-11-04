@@ -90,7 +90,7 @@ def init():
     emit("        rts", "")
 
 
-# ---- table generation: 256 samples a call until 16,384 -----------------------
+# ---- table generation: 256 samples a call until 8,192 ------------------------
 def generate():
     gen, done = "wv01", "wv02"
     emit(f"{gen}:",
@@ -100,7 +100,7 @@ def generate():
          "        move    a1,r4",
          "        move    #>$ffffff,m4",
          f"        move    {x(GEN)},a",
-         "        asr     #$b,a,a                     ; frame",
+         "        asr     #$a,a,a                     ; frame",
          "        move    a1,n4")
     frames = [L() for _ in range(8)]
     for k in range(1, 8):
@@ -109,7 +109,7 @@ def generate():
     # frame 0: sine, the magic circle, x += e y; y -= e x
     send = L()
     emit(f"{frames[0]}:",
-         f"        move    #>{q(2 * math.sin(math.pi / 2048))},y1",
+         f"        move    #>{q(2 * math.sin(math.pi / 1024))},y1",
          f"        do      #$100,>{send}")
     emit(f"        move    {x(SX)},a",
          "        move    a,y:(r4)+",
@@ -123,13 +123,13 @@ def generate():
          f"{send}:",
          "        nop",
          f"        bra     {done}")
-    # frames 1..7 from the index i = GEN & 2047 (r5 counts it)
+    # frames 1..7 from the index i = GEN & 1023 (r5 counts it)
 
     def sample_loop(lbl, body):
         end = L()
         emit(f"{lbl}:",
              f"        move    {x(GEN)},a",
-             "        and     #>$0007ff,a",
+             "        and     #>$0003ff,a",
              "        move    a1,r5",
              f"        do      #$100,>{end}",
              "        move    r5,a                        ; i",
@@ -140,36 +140,36 @@ def generate():
              "        nop",
              f"        bra     {done}")
 
-    # triangle: i/512 rising, (1024 - i)/512, (i - 2048)/512; x 2 AMP after /2
+    # triangle: i/256 rising, (512 - i)/256, (i - 1024)/256; x 2 AMP after /2
     t1, t2, t3 = L(), L(), L()
     sample_loop(frames[1], [
-        "        move    #>$000200,x0",
+        "        move    #>$000100,x0",
         "        cmp     x0,a",
         f"        blt     {t1}",
-        "        move    #>$000600,x0",
+        "        move    #>$000300,x0",
         "        cmp     x0,a",
         f"        blt     {t2}",
-        "        sub     #>$000800,a",
+        "        sub     #>$000400,a",
         f"        bra     {t1}",
         f"{t2}:",
         "        move    a,x0",
-        "        move    #>$000400,a",
+        "        move    #>$000200,a",
         "        sub     x0,a",
         f"{t1}:",
-        "        asl     #$d,a,a                     ; t / 1024: half scale",
+        "        asl     #$e,a,a                     ; t / 512: half scale",
         "        move    a,x0",
         f"        move    #>{q(2 * AMP)},y1",
         "        mpy     x0,y1,a",
     ])
-    # saw: i < 1024 ? i : i - 2048, / 1024
+    # saw: i < 512 ? i : i - 1024, / 512
     s1 = L()
     sample_loop(frames[2], [
-        "        move    #>$000400,x0",
+        "        move    #>$000200,x0",
         "        cmp     x0,a",
         f"        blt     {s1}",
-        "        sub     #>$000800,a",
+        "        sub     #>$000400,a",
         f"{s1}:",
-        "        asl     #$c,a,a                     ; t / 2048: half scale",
+        "        asl     #$d,a,a                     ; t / 1024: half scale",
         "        move    a,x0",
         f"        move    #>{q(2 * AMP)},y1",
         "        mpy     x0,y1,a",
@@ -178,7 +178,7 @@ def generate():
     for k, w in ((3, .5), (4, .25), (5, .125), (6, .0625), (7, .03125)):
         hi, lo = L(), L()
         sample_loop(frames[k], [
-            f"        move    #>${int(2048 * w):06x},x0",
+            f"        move    #>${int(1024 * w):06x},x0",
             "        cmp     x0,a",
             f"        blt     {hi}",
             f"        move    #>{q(-AMP * w / (1 - w))},a",
@@ -286,12 +286,12 @@ def voice(k):
     s = VOICE + 5 * k
     emit(f"; voice {k}",
          f"        move    {x(s)},a",
-         "        lsr     #$d,a",
+         "        lsr     #$e,a",
          "        move    a1,n2",
          "        move    a1,n3",
          f"        move    {x(s)},b",
-         "        and     #>$001fff,b",
-         "        asl     #$a,b,b",
+         "        and     #>$003fff,b",
+         "        asl     #$9,b,b",
          "        move    b1,y1                       ; frac",
          f"        move    {x(RA)},r2",
          "        move    (r2)+n2",
@@ -412,7 +412,7 @@ def tri(phase_slot, inc_slot, depth_slot):
 def proc():
     emit("proc:",
          f"        move    {x(GEN)},a",
-         "        move    #>$004000,x0",
+         "        move    #>$002000,x0",
          "        cmp     x0,a",
          "        blt     wv01",
          # ---- per block: the knobs
@@ -512,8 +512,8 @@ def proc():
             emit(f"        move    {x(ROOT)},x0")
         emit("        mac     x0,y1,a                     ; x (1 + spread)",
              f"        move    a,{x(INC + k)}")
-    emit("        move    #>$0007ff,m2",
-         "        move    #>$0007ff,m3",
+    emit("        move    #>$0003ff,m2",
+         "        move    #>$0003ff,m3",
          "        move    #>$000001,n0",
          "        do      n7,>wv98")
     # ---- per sample
@@ -625,11 +625,11 @@ def proc():
          "        move    b1,x0",
          f"        move    x0,{x(MORPH)}",
          "        asr     #$14,a,a",
-         "        asl     #$b,a,a",
+         "        asl     #$a,a,a",
          f"        move    {x(BASE)},x0",
          "        add     x0,a",
          f"        move    a1,{x(RA)}",
-         "        add     #>$000800,a",
+         "        add     #>$000400,a",
          f"        move    a1,{x(RB)}")
     # vibrato: 2^(lfo/6) / 2 = .5 + y/2 + y^2/4, y = lfo ln2 / 6
     tri(VPH, VINC, VDEP)
@@ -695,7 +695,7 @@ HEADER = f"""; CYCLES_FORWARD_BRANCHES
 ; through two 2 ms one-poles, is the envelope. So PTCH, the CHROMATIC keys,
 ; SCALE QUANTIZER, p-locks and AMP play the synth.
 ;
-; The FX2 buffer (Y, 16,384 words) holds eight 2,048-sample frames, written
+; The FX2 buffer (Y, 8,192 of its 16,384 words) holds eight 1,024-sample frames, written
 ; 256 samples a call after init (sine, triangle, saw, square, pulses 1/4 ..
 ; 1/32, zero-mean, peak {AMP}); the output is silent until they are done.
 ;

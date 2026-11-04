@@ -40,8 +40,8 @@ KEY KLVL TXTR.
 
 ## Gates
 
-`verify_character_txtr.py` and `verify_charkey_txtr.py` (the manifest's:
-Character's two gates run on this module), `verify_dirtystate`, and the
+`verify_character_txtr.py` and `verify_char_key_txtr.py` (the manifest's:
+Character's two gates run on this module), `verify_dirty_state`, and the
 test remix's `make check`.
 
 ## Sources

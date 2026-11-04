@@ -5,7 +5,7 @@ one DRAM unit, seven detours, nothing on the DSP.
 
 ## Measured
 
-Under the port, 10 Oct 2026, the cells (`tools/verify/verify_scenesp2.py`
+Under the port, 10 Oct 2026, the cells (`tools/verify/verify_scenes_p2.py`
 on `remixes/test/scenes-midisc`, MIDI SCENES + KITS + SCENES P2 + PLOCKS
 P2, OCTABAM89_setgate):
 
@@ -76,7 +76,7 @@ module used until 10 Oct 2026 (stock's LFO designs of MIDI tracks 2–8,
 
 ## Gates
 
-- `tools/verify/verify_scenesp2.py`.
+- `tools/verify/verify_scenes_p2.py`.
 
 ## What stock does
 

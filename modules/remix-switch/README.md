@@ -100,11 +100,14 @@ unmeasured.)
 | `dsp_park.asm` | both DSP payloads, WHOLLY in stock's dead interrupt vectors: entry on `P:$1E`, 31 words at `P:$20..$3E`, a one-word bridge, 8 words at `P:$06..$0D` | the park (below). It costs the effect region nothing, so a remix that harvests nothing can carry the switcher (`remixes/base/`) |
 | `osw.inc` | all of them | the stage layout and the status words; the gate parses it |
 
-**The stage** is the top of the platform reserve: mailbox `0x49200000`,
-stub `0x49200100`, the chainloader's body `0x49200400`, image `0x49201000..0x49495de0` (uncached aliases). Stock
-never touches the reserve, and nothing between a reset and the OS entry
-writes it (the bootstrap only unpacks the image). The gate checks that the
-remix's own runtime ends below the mailbox.
+**The stage** is a fixed claim in the platform reserve: mailbox `0x49200000`,
+stub `0x49200100`, the chainloader's body `0x49200400`, image `0x49201000..0x49495de0` (uncached aliases). It is the
+reserve's top unless a module's DRAM region needs more: STEM REC's 8 MiB
+ring has no room below it, so it sits above, and MEMORY grows the reserve
+past it. Stock never touches the reserve, and nothing between a reset and
+the OS entry writes it (the bootstrap only unpacks the image). The gate
+checks that the remix's own runtime ends below the mailbox and that no
+DRAM region overlaps the stage.
 
 **Why the OS entry and not the boot detour.** The DSP upload at
 `0x40001e50` assumes both cores sit in their HI08 boot ROM, which only a
@@ -131,7 +134,7 @@ head's one `#>osw_ldr` reference is rewritten to wherever the tail landed
 
 That is safe only while nothing arms an interrupt in the run, and once code
 lives there the freeze that would announce one is gone -- so
-`tools/verify/verify_dspvectors.py` audits it on every build: the runs are
+`tools/verify/verify_dsp_vectors.py` audits it on every build: the runs are
 all self-jumps, no DMA whose vector is in one has DIE set, no ESAI control
 word has an interrupt enable, and the set of peripherals either payload
 configures is the audited one. ✅ Under the port every REMIX SWITCH check
@@ -180,7 +183,7 @@ exchange"; the hang was the DSP (above). Whether `60 02` is needed at all
 is not measured; it is harmless (the OS sends it at boot). An MKI's panel
 is sent nothing (untested on an MKI).
 
-## Measured ✅ (under the ColdFire port, `tools/verify/verify_remixswitch.py`)
+## Measured ✅ (under the ColdFire port, `tools/verify/verify_remix_switch.py`)
 
 - **The menu, the load and the reset sequence run from the panel.** Keys
   NO, PROJ (the MKII's MAIN MENU), DOWN ×4 (OS), YES, YES, YES on a card

@@ -1,12 +1,12 @@
-MIDI CC numbers stock ignores now reach page 2 of FX1 and FX2. Stock
+MIDI CC numbers that stock ignores now reach page 2 of FX1 and FX2. Stock
 incoming CC writes page 1 only (CC 16–45).
 
-## The CC Numbers
+## The CC numbers
 
 | CC | Writes |
 |---|---|
-| 62–67 | FX2 page 2, slots 6–11 |
-| 68–73 | FX1 page 2, slots 6–11 |
+| 102–107 | FX2 page 2, slots 6–11 |
+| 108–111, 14, 15 | FX1 page 2, slots 6–11 |
 
 ## Operation
 
@@ -16,10 +16,8 @@ sent over CC re-defaults the knobs around it.
 
 ## Notes
 
-- The FX2 block writes BusDelay and BusVerb tracks; other FX2 effects
-  are skipped.
-- CC 64–67 carry standard pedal meanings (sustain, portamento, sostenuto,
-  soft pedal): a sustain pedal on a track's channel writes FX2 page-2
-  slot 8 on a bus host.
-- The module writes the page the firmware's own editors write; the DSP
-  follows the live lane each frame.
+- Only the FX1 block does anything in this image: FX2 page 2 is reached only
+  when a track's FX2 is a delay or reverb server, which this image does not
+  have. FX1 page 2 works on any FX1 effect except NONE.
+- The value is written where the panel's own page-2 editor writes it, so
+  the effect follows it on the next audio frame.

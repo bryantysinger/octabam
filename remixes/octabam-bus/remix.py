@@ -1,34 +1,44 @@
 """octabam-bus -- the core ColdFire modules plus the delay and reverb bus.
 
-CORE (see octabam-inserts) with bottleservice's effects: BusDelay on T1's FX2,
-BusVerb on T5's FX2, SEND on every other track's FX2, the stock DELAY on T8,
-SPECTRUM, CHARACTER and MODULATION on FX1, TEMPO SYNC, TEMPO BUS, MODE DEFAULTS,
-RIG HOSTS and FX2 LOCK. USB is MAIN CUE (bottleservice: MASTER).
+CORE and the extra ColdFire modules of octabam (OCTA303, MORPH, REC THRESHOLD, BUFFER SAVER,
+COPY PROJECT, EUCLID FILL, FX2 LOCK, TRACK PATTERNS) with the bus effects: BusDelay on T1's FX2, BusVerb on T5's FX2,
+SEND on every other track's FX2, the stock DELAY on T8, TEMPO SYNC, TEMPO BUS, MODE
+DEFAULTS, RIG HOSTS and FX2 LOCK, and LOFI AMF FIX. USB is MAIN CUE.
+
+FX1 lists SPECTRUM, CHARACTER and MODULATION. The 13 stock effects give up their DSP
+code: the servers, SEND, the stations and LOAD METER's DSP half run from internal P, with
+no window pins. The three stock reverbs have no chooser row: FX2 is locked and BusVerb
+replaces them.
 """
 
 from remix.schema import Pin, Proof, Remix
 
-CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
+CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2", "EVENTS",
         "CC MAP", "CC FEEDBACK", "USB",
         "RECORDER LOOP FIX", "BATCH_BUGFIXES", "ERASE_EMPTY_TRIGLESS_LOCKS",
-        "QUANTIZE_LIVE_REC_TOGGLE", "REC_TRIG_MUTE", "MUTE_MODES",
+        "QUANTIZE_LIVE_REC_TOGGLE", "REC_TRIG_MUTE", "MUTE_MODES", "PATTERN MUTE",
         "SCALE QUANTIZER", "TUNER", "DIRECT_JUMP_KYOTI", "RELOAD_FROM_PROJECT", "RLEN PLEN",
         "ATA WRITE GUARD",
         "LOAD METER")
+# The ColdFire modules octabam carries beyond CORE (FX2 LOCK is in MODULES below).
+COLDFIRE = ("OCTA303", "MORPH", "REC THRESHOLD", "BUFFER SAVER", "COPY PROJECT", "EUCLID FILL",
+            "TRACK PATTERNS")
 
 REMIX = Remix(
     name="octabam-bus",
-    family="rig", proof=Proof.HARDWARE, proof_note="cursory testing on Sam's MKII (owner report, 16 Oct 2026)",
-    doc="CORE + the delay and reverb bus (BusDelay on T1's FX2, BusVerb on T5's FX2, SEND on every other track's FX2, the stock DELAY on T8) + SPECTRUM, CHARACTER and MODULATION on FX1.",
-    modules=("REVERB SERVER", "DELAY SERVER", "SEND", "SPECTRUM", "CHARACTER", "MODULATION",
+    family="rig", proof=Proof.CHECK, proof_note="",
+    doc="CORE + the extra ColdFire modules of octabam + the delay and reverb bus (BusDelay on T1's FX2, BusVerb on T5's FX2, SEND on every other track's FX2, the stock DELAY on T8) + SPECTRUM, CHARACTER and MODULATION on FX1.",
+    modules=("LOFI AMF FIX", "REVERB SERVER", "DELAY SERVER", "SEND", "SPECTRUM", "CHARACTER", "MODULATION",
              "TEMPO SYNC", "MODE DEFAULTS", "RIG HOSTS", "TEMPO BUS",
              "DELAY",       # the stock DELAY keeps its chooser row: T8 hosts it
-             "FX2 LOCK") + CORE,   # the chooser cannot change any track's FX2
+             "FX2 LOCK") + CORE + COLDFIRE,   # the chooser cannot change any track's FX2
     fallback="SEND",
     hidden=("REVERB SERVER", "DELAY SERVER"),
     host_slots=(("DELAY SERVER", 2), ("REVERB SERVER", 2)),
     locked=("REVERB SERVER", "DELAY SERVER"),
     fx1=("SPECTRUM", "CHARACTER", "MODULATION"),
-    settings={("octabam.usb", "LAYOUT"): "MAIN CUE", ("octabam.usb", "INPUTS"): "OFF",
+    settings={("octabam.usb", "TRACKS"): "PRE", ("octabam.usb", "MAIN"): 1,
+              ("octabam.usb", "CUE"): 1, ("octabam.usb", "MASTER"): 0,
+              ("octabam.usb", "IN"): "OFF",
               ("kyoti.mute-modes", "PLACE"): Pin("DRAM")},
 )

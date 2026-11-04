@@ -5,11 +5,11 @@ second-difference spikes > 0.02 FS in T1's print (the wet). 20 Sep 2026:
 0 / 73 / 896 with the ramp (tools/harness/port_click_census.py is the same
 census on a port run).
 
-    python3 tools/harness/glide_census.py [mode]      # needs the SPEC dumps of verify_onebus
+    python3 tools/harness/glide_census.py [mode]      # needs the SPEC dumps of verify_one_bus
 """
 import pathlib, struct, subprocess, sys, math
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa
-import send_probe, verify_onebus as vo  # noqa
+import send_probe, verify_one_bus as vo  # noqa
 from remix import registry  # noqa
 A, B = vo.SCRATCH / "spec_A.mem", vo.SCRATCH / "spec_B.mem"; mems = {0: A, 1: B}
 kw = dict(MODE=int(sys.argv[1]) if len(sys.argv) > 1 else 0, TIME=20, FDBK=60, TONE=100, PING=0, WET=127)

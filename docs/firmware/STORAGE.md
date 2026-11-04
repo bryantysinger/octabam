@@ -141,3 +141,13 @@ and AUTO_CHANNEL (end at `0x40067994`) were seen without their entries. The
 setters write the RAM byte and the CS1 mirror and mark nothing dirty; the
 file is written at project save.
 
+## 6. CHANGE project list: RENAME / DELETE (FUNC+BANK) ✅
+
+Stock's project-folder rename/delete is not a MAIN MENU row. It is the
+FUNC+BANK `LISTPOP` on **PROJECT → CHANGE** (`CHOOSE PROJECT`). Full map
+(opener, handler/label tables, stock `"COPY"` label tail, port chord) is
+in `PANEL.md` "CHANGE project list → FUNC+BANK". Related strings in the
+image: `CHOOSE PROJECT` `0x400b5ce0`, `<CREATE EMPTY PROJECT>`
+`0x400b5bf1`, `RENAME PROJECT` `0x400b5c5c`, `DELETE THIS PROJECT?`
+`0x400b5d39`, `CHECKING PROJECT` nearby in the same cluster.
+

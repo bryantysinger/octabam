@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """A hardware probe for the host's channels into inputs A/B, C/D or A-D
-(USB INPUTS) and the audio stream they ride on, for anyone with an Octatrack on
+(USB IN) and the audio stream they ride on, for anyone with an Octatrack on
 `usb-io` to run against their own unit. Bryan T, 27 Sep 2026 (PR #492), for
 a report from an MKI (nordseele, USB_AUDIO_PR468_REVIEW.md): macOS
 CoreAudio restarting the stream's IO context hundreds of times, output-only
@@ -46,9 +46,9 @@ Needs: `brew install portaudio`, then
 (libusb is found as tools/hw/usb_counters.py finds it; its docstring has
 the Intel/arm64 note for this Mac).
 
-`0x56` STALLs (reported, not fatal) on an image whose USB INPUTS is OFF; the
+`0x56` STALLs (reported, not fatal) on an image whose USB IN is OFF; the
 EP3 OUT section of the report is then empty. `0x55` STALLs on an image with
-no USB audio out (LAYOUT OFF).
+no USB audio out (every output off).
 
 Attach the --json report to the issue or PR thread with the unit
 (MKI/MKII), the macOS version and the host app.
@@ -72,7 +72,7 @@ IN_RING_NAMES = ("produced", "consumed", "pkts", "lastn", "lastfill", "underruns
 AUDIO_NAMES = ("consumed", "acc", "overruns", "underruns", "lastn", "lastfill", "lastbank",
                "bankdup", "lastsamp", "srcjump", "reprimes", "minfill", "maxfill", "anchor", "produced")
 # the host -> unit stream's channel count is read from the CoreAudio device
-# (2 with INPUTS AB or CD, 4 with ABCD)
+# (2 with IN AB or CD, 4 with ABCD)
 
 EXPECTED_RATE = 44100.0
 
@@ -83,7 +83,14 @@ def find_device():
     libs = (glob.glob("/usr/local/opt/libusb/lib/libusb-1.0.dylib") + glob.glob("/opt/homebrew/opt/libusb/lib/libusb-1.0.dylib")
             + glob.glob("/usr/local/lib/libusb-1.0*.dylib") + glob.glob("/usr/local/Cellar/libusb/*/lib/libusb-1.0*.dylib")
             + glob.glob("/opt/homebrew/lib/libusb-1.0*.dylib") + glob.glob("/opt/homebrew/Cellar/libusb/*/lib/libusb-1.0*.dylib"))
-    backend = usb.backend.libusb1.get_backend(find_library=lambda _: libs[0]) if libs else None
+    backend = None
+    try:
+        import libusb_package
+        backend = libusb_package.get_libusb1_backend()
+    except ImportError:
+        pass
+    if backend is None:
+        backend = usb.backend.libusb1.get_backend(find_library=lambda _: libs[0]) if libs else None
     dev = usb.core.find(idVendor=0x1935, idProduct=0x0002, backend=backend)
     if dev is None:
         sys.exit("no Octatrack on USB (1935:0002) -- is it connected and enumerated?")
@@ -330,14 +337,14 @@ def main():
               f"overruns +{ir['overruns_delta']} underruns +{ir['underruns_delta']} "
               f"bankdup +{ir['bankdup_delta']} reprimes +{ir['reprimes_delta']}")
     else:
-        print("EP3 IN (to the host):  no data (STALLed: the image has no USB audio out -- LAYOUT OFF?)")
+        print("EP3 IN (to the host):  no data (STALLed: the image has no USB audio out -- all the outputs off?)")
     if summary["ep3_out"]:
         orr = summary["ep3_out"]
         print(f"EP3 OUT (from the host): produced +{orr['produced_delta']}, underruns +{orr['underruns_delta']} "
               f"overruns +{orr['overruns_delta']} bad +{orr['bad_delta']}, "
               f"minfill/maxfill {orr['minfill_final']}/{orr['maxfill_final']}")
     else:
-        print("EP3 OUT (from the host): no data (STALLed: the image has no USB audio in -- INPUTS OFF?)")
+        print("EP3 OUT (from the host): no data (STALLed: the image has no USB audio in -- IN OFF?)")
     if summary["at_close"]:
         ac = summary["at_close"]
         print(f"at stream close: EP3 IN overruns +{ac['ep3_in_overruns']} reprimes +{ac['ep3_in_reprimes']} "

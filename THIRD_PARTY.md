@@ -26,7 +26,11 @@ time (`.incbin`, `make os`).
 | markandrus/octemu `src/board/ot-board.c` USB packet bench (line protocol) | MIT | markandrus | `tools/emu/ot_emu/usb.h` speaks the same protocol so his `tests/usb-host.py` drives the port; the model is written here |
 | Airwindows Capacitor2 | MIT | Chris Johnson | `modules/spectrum` ISO (`capacitor2_ref.py`) |
 | [CHOMPI-Club/CHOMPI](https://github.com/CHOMPI-Club/CHOMPI) WAVE firmware at `a73d732` | MIT (`modules/wave/LICENSE-CHOMPI`, `modules/waveload/LICENSE-CHOMPI`); CHOMPI is CHOMPI Club's trademark (their `TRADEMARKS.md`): used to say where the code comes from; not affiliated with or endorsed by CHOMPI Club or Chase Bliss | CHOMPI Club | `modules/wave`, `modules/waveload` |
+| [RobinSchmidt/Open303](https://github.com/RobinSchmidt/Open303) (the TB-303 voice: oscillator, filter, envelopes, accent) | MIT | Robin Schmidt, 2009 (www.rs-met.com) | `modules/blackpyramids-303`: the DSP voice in both payloads (`bp_dsp_data.py` in the submodule) |
 | DJ-Mixer `fx-dsp/core/src/blocks/TapeEchoBlock.cpp` | licence not stated in the tree | not stated in the tree | `modules/tapeecho`: the behavioural reference for voicing and the 44.1 kHz native comparison (`modules/tapeecho/README.md`); multi-head geometry and the physical-cell write model are not copied |
+| BOSS SD-1 Super OverDrive service notes, ET5212-510A (3 Mar 1981) | part values only, no text | © Roland (BOSS) | `modules/distorx` SD-1 (the circuit modelled from its part values) |
+| ElectroSmash, *Pro Co Rat Analysis*, https://www.electrosmash.com/proco-rat | part values, schematic, the clipping amplifier's response curve, the LM308's slew rate; laws only, no text | © ElectroSmash | `modules/distorx` RAT, TURB |
+| LTspice `LedRed` diode model, as quoted on the All About Circuits forum | two numbers (IS, N) | © Analog Devices (LTspice library); values only | `modules/distorx` TURB |
 
 Retired transcriptions (in history only): jpcima `string-machine` (BSL-1.0,
 the Solina ensemble, removed 16 Sep 2026).
@@ -44,6 +48,22 @@ the laws (`modules/modulation/README.md` "Sources"):
 | TAL-NoiseMaker chorus, Surge XT chorus/Ensemble, JunoX, chowdsp BBD | GPL | laws only |
 | Rakarrack/guitarix Vibe, BYOD Solo-Vibe, Zyn APhaser | GPL | laws only |
 
+## Measurements, circuit values and laws behind ColdFire modules (no code transcribed)
+
+What a module's model is fitted to or built from, when nothing of the source's own text or audio is
+in the tree. The recordings are not redistributed: the fits are numbers in the module's tables.
+
+| source | what is used | licence / status | used in |
+|---|---|---|---|
+| Din Sync, *TB-303 reference recordings for x0xb0x* (25 files, 400 notes at C2 with known knob positions), http://www.dinsync.info/2010/02/tb-303-reference-recordings-for-x0xb0x.html | the calibration target: band levels, peaks, the resonance's ring decay, brightness over time, accent peaks; fitted constants in `tools/octa303/o3tables.py` (and `ladder_cache.json`, coefficients solved from them) | recordings published for x0xb0x builders; licence not stated; not redistributed (measured locally, numbers only) | `modules/octa303` |
+| tinyloops, *Programming the Roland TB-303*, https://tinyloops.com/tb303/index.html | two example recordings (the resonant "drops", "saw with only accents") for the ring decay and the accent | licence not stated; not redistributed (numbers only) | `modules/octa303` |
+| Robin Whittle, *Devil Fish* manual (2019) and "TB-303 unique" notes, Real World Interfaces, https://www.firstpr.com.au/rwi/dfish/ | circuit values and behaviour: the gate length (3.5 of 6 clocks), the accent RC (47k x 0.033 µF; 47k + 100k with 1 µF), the slide RC, the square's duty by pitch | © Robin Whittle; laws and component values only, no text | `modules/octa303` (and the Devil Fish laws `DF_*` in `tools/octa303/o3tables.py`, read by the `devilish` knobs) |
+| Tim Stinchcombe, analysis of the TB-303 diode ladder ("diode2"), https://www.timstinchcombe.co.uk/index.php?pge=diode2 | the transfer function the ladder's low-frequency behaviour was checked against | © Tim Stinchcombe; laws only | `modules/octa303` |
+| Roland, TB-303 service notes | the DECAY range, the ENV MOD taper, the slide capacitor | © Roland; values only | `modules/octa303` |
+| Tim Hastie, SYNTH MACHINE 2.9, https://github.com/timhastie/octatrick-modules (`v2.9` = `525f4b1`) | the FLEX integration re-done for one voice (the renderer call `sy_render(track, ping, start, end)`, START resolution, PTCH/RATE neutral, pinned positions, the clean retrig byte, the PLAYBACK page clone) and the semitone tuning system; `octa303.s` is written here | MIT, Tim Hastie 2026 | `modules/octa303` |
+| repeat98, `analog-bassdrum` (this repository) | the measured machine-list seams the OCTA-303 row uses | this repository's MIT | `modules/octa303` |
+| devilfish707, Play Modes investigation, [devilfish707/Octaplay](https://github.com/devilfish707/Octaplay) `playmodes/INVESTIGATION.md` at `acd6b0c` | the sequencer addresses and findings: the per-track step counters, the tick's and the rebuild's step-handler calls, the per-track advance, the UI step query, MIDI mode, the trig-key dispatcher; TRACK PATTERNS writes its own code at those sites | MIT (the repository's LICENSE); addresses and findings only, no code | `modules/trackpatterns` |
+
 ## Firmware modifications built from their authors' repositories (git submodules)
 
 | module | upstream | licence |
@@ -53,10 +73,15 @@ the laws (`modules/modulation/README.md` "Sources"):
 | `tools/remix/loader.S` (the DRAM loader) | derived from Octakit's `runtime/loader.S` | MIT, Copyright (c) 2026 June Kiff |
 | `tools/remix/pack.py` (the payload packer) | ported from Octakit's encoder (`patcher/src/lib.rs`) | MIT, Copyright (c) 2026 June Kiff |
 | `modules/synth`, `modules/quantizer`, `modules/direct-jump`, `modules/tuner` (SYNTH MACHINE, SCALE QUANTIZER, DIRECT JUMP, TUNER) | https://github.com/timhastie/octatrick-modules (one submodule, four wrappers; pinned to `v2.9` = `525f4b1`) | MIT, Tim Hastie 2026 |
-| `modules/direct-jump-kyoti`, `modules/reload-from-project`, `modules/sidechain-compressor` (DIRECT_JUMP_KYOTI, RELOAD_FROM_PROJECT, SIDECHAIN_COMPRESSOR) | https://github.com/Zac-Kyoti/octatrack-kyoti-fw (one repository, eight submodule mounts; DIRECT_JUMP_KYOTI and RELOAD_FROM_PROJECT pinned to `329b801`; SIDECHAIN_COMPRESSOR to `bf5bfc0` on the fork `sambanks/octatrack-kyoti-fw`, pending Zac-Kyoti/octatrack-kyoti-fw#1) | MIT, Zac-Kyoti and the OT Kyoti FW contributors 2026 |
-| `modules/batch-bugfixes`, `modules/quantize-live-rec-toggle`, `modules/erase-empty-trigless-locks` (BATCH_BUGFIXES, QUANTIZE_LIVE_REC_TOGGLE, ERASE_EMPTY_TRIGLESS_LOCKS) | https://github.com/Zac-Kyoti/octatrack-kyoti-fw (three mounts, pinned to `77f132f`) | MIT, Zac-Kyoti and the OT Kyoti FW contributors 2026 |
-| `modules/mute-modes` (MUTE_MODES) | https://github.com/Zac-Kyoti/octatrack-kyoti-fw (one mount; fork `sambanks/octatrack-kyoti-fw` at `bf5bfc0`, pending Zac-Kyoti/octatrack-kyoti-fw#1) | MIT, Zac-Kyoti and the OT Kyoti FW contributors 2026 |
-| `modules/rec-trig-mute` (REC_TRIG_MUTE) | https://github.com/Zac-Kyoti/octatrack-kyoti-fw (one mount, pinned to `0bc14c7`) | MIT, Zac-Kyoti and the OT Kyoti FW contributors 2026 |
+| `modules/cxosc` (CX OSC) | local fork of https://github.com/timhastie/octatrick-modules: `poly.s` from `v2.9` = `525f4b1`, plus `po_amp_snap`, `po_amp_at` and `po_alaw` from `v2.22` = `73686de` (`po_amp_at` without the SY DRUM branch); `page.s` and `machine.s` from `v2.15` = `17ba281` (machine.s adapted by Tim from Modwerk's FM Synth, https://github.com/repeat98/modwerk `1c1d938`) | MIT, Tim Hastie 2026; Modwerk contributors 2026 (through Tim's `machine.s`); CX OSC voice/page changes by ilia-murzinov — `modules/cxosc/NOTICE`, `LICENSE-TIM` |
+| `modules/midi-scales` (MIDI SCALES) | https://github.com/radiohagen/octatrack-modules (submodule at `modules/midi-scales/upstream`; pinned to `0ebe11e7f19fd6c48bf0109544d5da84326db86d`) | MIT; module author: `radiohagen`; inherited Octabam notices retained |
+| `modules/midi-loopback` (MIDI LOOPBACK) | https://github.com/radiohagen/octatrack-modules (submodule at `modules/midi-loopback/upstream`; pinned to `0ebe11e7f19fd6c48bf0109544d5da84326db86d`) | MIT; module author: `radiohagen`; inherited Octabam notices retained |
+| `modules/midi-follow` (MIDI FOLLOW) | https://github.com/radiohagen/octatrack-modules (submodule at `modules/midi-follow/upstream`; pinned to `0ebe11e7f19fd6c48bf0109544d5da84326db86d`) | MIT; module author: `radiohagen`; inherited Octabam notices retained |
+| `modules/store/part*.s` (native Part access) | derived from MIDI PART STATE in https://github.com/radiohagen/octatrack-modules at `3b1fda3410e698718230d984901a34a02e9346ab`; generalized in this repository | MIT; original native Part source by `radiohagen`; inherited Octabam notices retained |
+| `modules/direct-jump-kyoti`, `modules/reload-from-project`, `modules/sidechain-compressor`, `modules/blackpyramids-303`, `modules/varispeed` (DIRECT_JUMP_KYOTI, RELOAD_FROM_PROJECT, SIDECHAIN_COMPRESSOR, BLACKPYRAMIDS_303, VARISPEED) | https://github.com/Zac-Kyoti/octatrack-kyoti-fw (one repository, ten submodule mounts; DIRECT_JUMP_KYOTI pinned to `329b801`, RELOAD_FROM_PROJECT to `6a2da8d`; SIDECHAIN_COMPRESSOR to `b0d49bf`; BLACKPYRAMIDS_303 to `9b2e35a`; VARISPEED to `9b2e35a`) | MIT, Zac-Kyoti and the OT Kyoti FW contributors 2026 |
+| `modules/batch-bugfixes`, `modules/quantize-live-rec-toggle`, `modules/erase-empty-trigless-locks` (BATCH_BUGFIXES, QUANTIZE_LIVE_REC_TOGGLE, ERASE_EMPTY_TRIGLESS_LOCKS) | https://github.com/Zac-Kyoti/octatrack-kyoti-fw (three mounts; BATCH_BUGFIXES and ERASE_EMPTY_TRIGLESS_LOCKS pinned to `77f132f`, QUANTIZE_LIVE_REC_TOGGLE to `9c890bb`) | MIT, Zac-Kyoti and the OT Kyoti FW contributors 2026 |
+| `modules/mute-modes` (MUTE_MODES) | https://github.com/Zac-Kyoti/octatrack-kyoti-fw (one mount, pinned to `826d23e`) | MIT, Zac-Kyoti and the OT Kyoti FW contributors 2026 |
+| `modules/rec-trig-mute` (REC_TRIG_MUTE) | https://github.com/Zac-Kyoti/octatrack-kyoti-fw (one mount, pinned to `553d8d2`) | MIT, Zac-Kyoti and the OT Kyoti FW contributors 2026 |
 
 `modules/kits-reload`, `modules/scenes-kits`, `modules/cc-map`,
 `modules/tempo-sync`, `modules/mode-defaults` and `modules/recorder-loop-fix`

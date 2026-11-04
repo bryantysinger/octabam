@@ -14,7 +14,7 @@ from remix.schema import Category, Claims, Detour, Gate, Kind, Linked, Module, P
 H = bytes.fromhex
 
 
-def kits_inc(modules):
+def kits_inc(modules, remix):
     """MSCKIT: 1 with MIDI SCENES in the remix: a Kit record then carries the Part's
     lock table and kits.work is version 2."""
     return f"        .set    MSCKIT, {1 if 'MIDI SCENES' in modules else 0}\n"

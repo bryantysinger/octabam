@@ -40,7 +40,7 @@
 // carried (r7probe's "track 2 FX2 = 0x6400" reads as position 1's FX1 under
 // the real stride) put every position >= 1 low, and the one-aux return's pin
 // on position 3 matched only in this harness -- never on the unit. Callers
-// (rig_render, verify_onebus, send_probe) pass -r7 1 + 3*pos + (fx-1).
+// (rig_render, verify_one_bus, send_probe) pass -r7 1 + 3*pos + (fx-1).
 //
 // so FX2 instance k defaults to alloc index 1+2k and state block 0x6000+(2+2k).
 //

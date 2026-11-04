@@ -13,13 +13,14 @@
 ;                and before the ColdFire pulls this frame's read-back.
 ; Timer 0 (CLK/2) is armed here the first time a core passes the start hook
 ; (TCSR0 = TRM | TE, no interrupt enable: stock never writes the timers,
-; tools/verify/verify_dspvectors.py's peripheral set).
+; tools/verify/verify_dsp_vectors.py's peripheral set).
 ;
 ; The figures live in the shared window at X:$37F10-$37F2F (Claims
 ; dsp_ranges), so core 1's reach core 0: core 0's at $37F10, core 1's at
-; $37F18. Core 0 publishes 17 bytes into the low byte of the low word of
-; MAIN's first 17 longs in the read-back it is about to send (x:$206 +
-; $100, the ch 6 block; docs/firmware/DSP.md section 6c). Measured under
+; $37F18. Core 0 publishes 23 bytes into the low byte of the low word of
+; MAIN's first 23 longs in the read-back it is about to send (x:$206 + $100:
+; x:$206 is the ch 6 block, $2600 or $4600 by the frame's bank, stored at
+; A P:$8c; docs/firmware/DSP.md section 6c). Measured under
 ; the port: the ColdFire pulls the block before the frame ends, so the
 ; publish follows the pack (P:$2d5-$2eb), not the frame end.
 ; The packer (P:$55a) stores a sample's low word as (sample & $ffff) << 8,
@@ -32,6 +33,8 @@
 ;   period (timer 0 counts, high byte first)
 ;   14, 15 reserved, zero (core 0's ESAI TUE and ROE frame counts until 13 Oct
 ;   2026: the room went to OTOP)    16 the sum of bytes 0-15, mod 256
+;   17-22 OTOP's record (below): $b4, the slot, its cost's three bytes, the
+;   sum of those five mod 256
 ;
 ; The core: the two `move #>...,a` before `cmp #>$38000,a` load the build's
 ; per-payload base (YBase.ALWAYS): payload A's half on core 0, B's ($38000)
@@ -41,7 +44,7 @@
 ; is read in the stock code that follows: r1 at A P:$a8, B P:$7c); b is live
 ; at A's (the spin count stored at P:$92) and is not touched. r1 is the
 ; core's block, and m1 is linear there: the stock code right after moves
-; through r1 (A P:$ae `move x:(r1)+,x0`, B P:$353 in func_34f). End hooks: a, x0, x1
+; through r1 (A P:$86 `move r0,x:>$203`, B P:$74). End hooks: a, x0, x1
 ; are dead; r6 is the block and linear there (the stock copy right after runs
 ; `move x:(r6)+,x0 / move x0,x:(r7)+`; r7 is set by stock's next instruction),
 ; and r6 takes the displaced `#>$421` last. No modifier register is written.
@@ -60,23 +63,29 @@
 ;
 ; A core's block: +0 the start stamp, +1 busy, +2 period, +3 OTOP's start
 ; stamp, +4 OTOP's next cost cell, +5 armed ($5a5a5a), +6 frames (core 0:
-; counted by the publish); core 0's at $37F10, core 1's at $37F18; core 0's
-; publish keeps its sum at +$10, a value at +$11 and the slot at +$12.
+; counted by the publish, wrapping at 2^23); core 0's at $37F10, core 1's at $37F18; core 0's
+; publish keeps each record's running sum in b and lm_three's scratch in x1;
+; +$10 to +$12 are unused.
 ;
-; Every form has a stock site: move x:>abs,acc (P:$d0), move a1,x:>abs
-; (P:$86), sub x0,a (P:$178), and #>imm,a (P:$7f), cmp #>imm,a (P:$4c),
-; beq (P:$4e), move x1,x:>abs (P:$86a), add x0,a (P:$83), lsr #n,a (P:$3eb),
-; move a,r0 (USB AUDIO IN's inject, run on a unit), move x:(rN+n),a and
-; move a1,x:(rN+n) (the one-word displaced form, 533 sites in A),
-; lua (r0+n),r0 (P:$a7), move r6,a (as USB AUDIO IN's move r6,a), bsr to a
-; later label (Spectrum's, Character's),
-; move x:(rN)+,x1 and move a/x0,x:(rN)+ (P:$ae, P:$359, P:$dd) through a
-; pointer for the peripherals, as #581's meter_out.asm.
+; Every form has a stock site: move x:>abs (the long-absolute reads of the
+; timer: the decoder prints them as x:<<M_TCR0 and friends, and the build's
+; roundtrip table maps those names back to the numbers), move #>imm,rN
+; (A P:$9b), sub x0,a (P:$178),
+; and #>imm,a (P:$7f), cmp #>imm,a (P:$4c), beq (P:$4e), add x0,a (P:$83),
+; lsr #n,a (P:$3eb), move x:(rN+n),a and move a1,x:(rN+n) (the one-word
+; displaced form, 533 sites in A), move a,rN (P:$146), move a,n1 (P:$d0f),
+; move x:(rN+nN),a (P:$934), lua (r0+n),r0 (P:$a7), move a1,x1 and x1,a,
+; bsr to a later label (Spectrum's, Character's),
+; move x:(rN)+,x1 and move a/x0,x:(rN)+ (P:$ae, P:$359, P:$3a6), move x0,b
+; (A P:$622, P:$633). Two forms have no bare stock site: add x0,b (the
+; class's nine parallel and conditional sites: P:$d8, P:$225, P:$24b,
+; P:$470, P:$74d, P:$7b2, P:$838, P:$d2e, P:$d60) and move b,a (the
+; register-move class 21xxxx; move b,x0 has 29 sites in A). Both are
+; gate-checked by verify_load_meter.
 
 lm_start:
         move    r5,x:>$206              ; the displaced instruction
-        move    #>$ffff8c,r1            ; peripherals through a pointer: dsp_asm's
-        move    x:(r1)+,x1              ;   round trip names them (TCR0 now)
+        move    x:>$ffff8c,x1           ; TCR0 now
         bsr     lm_blk
         move    a,r1                    ; this core's block
         add     #<$30,a                 ; OTOP: this frame's first cost cell, the block + $30
@@ -88,35 +97,30 @@ lm_start:
         move    a,x:(r1+0)
         move    #>$5a5a5a,x0
         move    x0,x:(r1+5)
-        move    #>$ffff8e,r1            ; TLR0 = 0
-        move    a,x:(r1)+
+; LM_FRAME0
+        move    a,x:>$ffff8e            ; TLR0 = 0
         move    #>$ffffff,x0            ; TCPR0 all ones
-        move    #>$ffff8d,r1
-        move    x0,x:(r1)+
+        move    x0,x:>$ffff8d
         move    #>$000201,x0            ; TCSR0: TRM | TE, no interrupt enable
-        move    #>$ffff8f,r1
-        move    x0,x:(r1)+
+        move    x0,x:>$ffff8f
         rts
 lms_t:
         move    x:(r1+0),x0             ; the last start
         move    x1,a
         sub     x0,a
-        and     #>$ffffff,a             ; the advance mod 2^24 (a2 stale: stored from a1)
-        move    a1,x:(r1+2)             ; period
+        move    a1,x:(r1+2)             ; period: a1 is the advance mod 2^24 (a2 stale)
         move    x1,x:(r1+0)
         rts
 
 lm_end:
 ; LM_BURN
-        move    #>$ffff8c,r6
-        move    x:(r6)+,x1              ; TCR0 now
+        move    x:>$ffff8c,x1           ; TCR0 now
         bsr     lm_blk
         move    a,r6                    ; this core's block
         move    x:(r6+0),x0             ; busy = now - this frame's start
         move    x1,a
         sub     x0,a
-        and     #>$ffffff,a
-        move    a1,x:(r6+1)
+        move    a1,x:(r6+1)             ; a1: mod 2^24
         move    #>$421,r6               ; the displaced instruction
         rts
 
@@ -128,8 +132,7 @@ otop_s1:
 otop_s2:
         move    a,x:>$20a               ; the displaced instruction
 ; OT_S
-        move    #>$ffff8c,r2
-        move    x:(r2),b                ; TCR0 now (no address update: m2 may be modulo)
+        move    x:>$ffff8c,b            ; TCR0 now (no address update: m2 may be modulo)
         bsr     lm_blk
         move    a,r2
         move    b,x:(r2+3)              ; the start stamp
@@ -152,8 +155,7 @@ otop_e2:
         move    x:>$206,r0              ; the displaced instruction
         rts
 otop_end:
-        move    #>$ffff8c,r2
-        move    x:(r2),b                ; now
+        move    x:>$ffff8c,b            ; now
         bsr     lm_blk
         move    a,r2
         move    x:(r2+3),a              ; the start stamp
@@ -166,21 +168,24 @@ otop_end:
         rts
 
 ; core 0, after the MAIN pack (A P:$2ec `move x:>$205,r0`, before the
-; ColdFire's pull of this frame's read-back): the 17 bytes into MAIN's low
-; words (x:$206 + $100: MAIN's long i at words 2i, 2i + 1). Busy and period
-; are the last finished frame's. r1 is core 0's block, r0 the pointer; both
-; are written by the stock code that follows, which relies on m0 and m1
-; being linear (P:$2f4 `move x:(r0+$32),a`, P:$303 `a,x:(r1)+`); a, b, x0
-; and x1 are written there before they are read.
+; ColdFire's pull of this frame's read-back): the 23 bytes into MAIN's low
+; words (the ch 6 block, $2700: MAIN's long i at words 2i, 2i + 1). Busy and
+; period are the last finished frame's. r1 is core 0's block, r0 the pointer
+; (x:$206 + $100: the banks alternate, so a literal is right every other
+; frame); both are written by the stock code
+; that follows, which relies on m0 and m1 being linear (P:$2f4
+; `move x:(r0+$32),a`, P:$303 `a,x:(r1)+`); a, b, x0 and x1 are written
+; there before they are read. Each record's running sum rides in b from its
+; seed to its publish (both stay far under 2^24, so b's upper bits stay
+; clear).
 lm_pub:
 ; LM_PUB
         move    #>$37f10,r1
-        move    x:>$206,a
-        move    #>$100,x0
-        add     x0,a
-        move    a,r0
+        move    x:>$206,a               ; this frame's ch 6 block: $2600 or $4600 (the
+        add     #>$100,a                ;   two bank setups, A P:$54 and P:$64)
+        move    a,r0                    ; MAIN, + $100
         move    #>$a5,x0                ; the magic, and the sum's start
-        move    x0,x:(r1+$10)
+        move    x0,b
         bsr     lm_byte
         move    x:(r1+6),a
         bsr     lm_low
@@ -192,56 +197,47 @@ lm_pub:
         bsr     lm_three
         move    x:(r1+$a),a             ; core 1's period
         bsr     lm_three
-        clr     a                       ; bytes 14 and 15: reserved, zero
-        bsr     lm_low
-        clr     a
-        bsr     lm_low
-        move    x:(r1+$10),a            ; the sum, published as it is
-        and     #>$ff,a
-        move    a1,x0
-        bsr     lm_byte
+        lua     (r0+4),r0               ; bytes 14 and 15 stay zero (the pack's shift
+        move    b,a                     ;   left them so); their zeros add nothing
+        bsr     lm_low                  ;   to the sum, and byte 16 follows
 ; OTOP's record: $b4, the slot (0..15: this frame's count mod 16), its cost's
 ; three bytes, the sum of those five mod 256. The cost cell is $37F40 + slot (core
 ; 0's eight, then core 1's).
         move    #>$b4,x0
-        move    x0,x:(r1+$10)
+        move    x0,b
         bsr     lm_byte
         move    x:(r1+6),a
         and     #>$f,a
-        move    a1,x:(r1+$12)           ; the slot
-        bsr     lm_low
-        move    x:(r1+$12),a
-        add     #>$37f40,a              ; the 16 cost cells are contiguous
-        move    a,r2
-        move    x:(r2),a                ; the cost
-        bsr     lm_three
-        move    x:(r1+$10),a
-        and     #>$ff,a
-        move    a1,x0
-        bsr     lm_byte
+        move    a,n1                    ; the slot (n0/n1 are written by stock before read)
+        bsr     lm_low                  ; publishes the slot
         move    x:(r1+6),a              ; frames
         add     #<$1,a
+        and     #>$7fffff,a             ; wrap at 2^23: with bit 23 set the next load sign-extends A2, and
+                                        ;   `and #>$f` leaves it, so `move a,n1` limits n1 to $800000
         move    a1,x:(r1+6)
+        lua     (r1+$30),r1             ; the 16 cost cells, contiguous from $37F40
+        move    x:(r1+n1),a             ; the cost
+        bsr     lm_three
+        move    b,a                     ; the five bytes' sum
+        bsr     lm_low
 lmp_x:
         move    x:>$205,r0              ; the displaced instruction
         rts
 
 ; a1's three bytes, high first
 lm_three:
-        move    a1,x:(r1+$11)
+        move    a1,x1                   ; x1: the scratch (written by stock before read)
         lsr     #$10,a
         bsr     lm_low
-        move    x:(r1+$11),a
+        move    x1,a
         lsr     #$8,a
         bsr     lm_low
-        move    x:(r1+$11),a
-; a1's low byte: added to the running sum and published
+        move    x1,a
+; a1's low byte: published and added to the running sum in b
 lm_low:
         and     #>$ff,a
         move    a1,x0
-        move    x:(r1+$10),a
-        add     x0,a
-        move    a1,x:(r1+$10)           ; the sum, mod 256 when published
+        add     x0,b
 ; x0 (0..255) into the low byte of the long at r0's low word; r0 to the next long
 lm_byte:
         move    x:(r0+1),a

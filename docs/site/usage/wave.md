@@ -19,7 +19,7 @@ AMP envelope all play it. It is an experiment.
 
 Not in an official remix; build the test remix `wave`, which takes DARK
 REV's and SPRING REV's words, so both reverbs are off its chooser. The
-first 23 ms after the effect starts are silent while it writes its tables.
+first 12 ms after the effect starts are silent while it writes its tables.
 
 ![FX2 SETUP with Wave Synth selected: FDEP, FRAT, VDEP, VRAT and DETN on its page 2.](../../img/wave/chooser.png)
 

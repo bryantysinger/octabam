@@ -128,8 +128,17 @@ byte against the emitter's cache for the track's channel:
 | lane bytes | CC | page |
 |---|---|---|
 | 0..29 | 16..45 | page 1: PLAYBACK 16-21, AMP 22-27, LFO 28-33, FX1 34-39, FX2 40-45 |
-| +0x32..0x37 | 68..73 | FX1 page 2 (CC MAP's numbering) |
-| +0x38..0x3d | 62..67 | FX2 page 2 (CC MAP's numbering) |
+| +0x32..0x37 | 108..111, 14, 15 | FX1 page 2 (CC MAP's numbering) |
+| +0x38..0x3d | 102..107 | FX2 page 2 (CC MAP's numbering) |
+
+Page 2 went out as CC 68..73 and 62..67 until 1 Nov 2026. On a MKII
+sequencing a Tonverk from the MIDI out (issue #981, measured under the
+port on the reporter's project): a project load sent 361 bytes, 22 CCs on
+each of channels 1–8, CC 64 = 127 among them, and with AUDIO CC OUT on EXT
+every Tonverk note hung after its release; on INT none did. That CC 64 is
+read as a held sustain pedal is the reporter's inference, not measured.
+The numbers moved with CC MAP's; `verify_ccfeedback` takes them from CC
+MAP's manifest, so the sweep sends exactly what CC MAP reads.
 
 A byte that differs goes through `EMIT`, which updates the cache itself.
 Stock's knob echo goes through the same cache, so a panel turn is sent

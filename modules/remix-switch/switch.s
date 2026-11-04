@@ -656,12 +656,12 @@ load_file:
         clr.b   (%a2)
         pea     str_ospath
         move.l  %a2,-(%sp)
-        bsr.w   strcat
+        bsr.w   strcat_path
         addq.l  #8,%sp
         bsr.w   curname
         move.l  %a0,-(%sp)
         move.l  %a2,-(%sp)
-        bsr.w   strcat
+        bsr.w   strcat_path
         addq.l  #8,%sp
         pea     (STR_R).l
         move.l  %a2,-(%sp)
@@ -1048,11 +1048,18 @@ boot_release:
         bra.s   1b
 
 | ---- strings -----------------------------------------------------------------
-| strcat(dst, src): append, bounded to 30 bytes in all (the dialog's line)
+| strcat(dst, src): append, bounded to 30 bytes in all (the dialog's line).
+| strcat_path: the same, bounded to 48 bytes in all (`path`): the load's
+| "/BRAIN/REMIXES/" plus a name of up to NLEN-1 characters. At 30 bytes the
+| open was given the name cut after 14 characters.
 strcat:
+        moveq   #29,%d0
+        bra.s   strcat_n
+strcat_path:
+        moveq   #47,%d0
+strcat_n:
         move.l  (4,%sp),%a0
         move.l  (8,%sp),%a1
-        moveq   #29,%d0
 1:      tst.b   (%a0)
         beq.s   2f
         addq.l  #1,%a0

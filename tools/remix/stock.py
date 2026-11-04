@@ -47,7 +47,7 @@ from __future__ import annotations
 
 import pathlib
 
-from remix.schema import Category, Claims, Harness, Kind, MenuEntry, Module, Param
+from remix.schema import Category, Claims, Harness, Keep, Kind, MenuEntry, Module, Param
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 STOCK_IMAGE = ROOT / "out/raw/section_3_MAIN_OS.bin"
@@ -207,15 +207,26 @@ WORDS: dict[str, int] = {}
 # and knobs were at the stamped project's values. The extents match fixed
 # buffer sizes (2,048, 3,072, 4,096 words), not a sweep that stopped.
 # SLOT_EXTENT[key] = highest offset written (0 = base word).
+# SIDECHAIN_COMPRESSOR's cross-core window is the last 0x202 words of the T3 and
+# T7 slots (0x33dfe, 0x3bdfe): an effect that fills its slot must stop at
+# +0x3DFD (buffer_words <= 15,870) to sit beside it; ledger.py refuses the rest.
 SLOT_EXTENT: dict[str, int] = {
     "FLANGER": 0x7FF, "CHORUS": 0xBFD, "SPATIALIZER": 0xA5F, "COMB FILTER": 0xBFF,
     "PLATE REV": 0x37FF, "SPRING REV": 0xFFF, "DARK REV": 0x3DA2,
 }
 SLOT_BASES = (0x30000, 0x34000, 0x38000, 0x3C000)
 
+# The stock DELAY looks up 0x400d1ce0 + 4 * (x >> 6) (0x40003526, 0x40003540) and
+# stores the word in the track's delay state. The table has 508 entries and ends at
+# 0x400d24d0, where the zero run begins; an index up to 511 (a slow tempo, a long TIME:
+# 51 BPM in verify_tapeecho_cpu) reads the first four words of the run, which are zero
+# in 1.40C. A module's code there changes the DELAY's output (issue #771, measured
+# under the port), so a remix that lists DELAY keeps them.
+DELAY_TABLE_END = 0x400d24d0
+
 
 def _stock(key, name, fx2_id, desc, abbr, fullname, words, doc, char,
-           buffer=False):
+           buffer=False, keeps=()):
     WORDS[key] = words
     return Module(
         name=name, key=key, kind=Kind.STOCK, doc=doc, category=Category.STOCK,
@@ -227,6 +238,7 @@ def _stock(key, name, fx2_id, desc, abbr, fullname, words, doc, char,
         # every module in the registry needs a distinct one, and R D S W F
         # M N G B are the modules'.
         harness=Harness(layout_char=char, is_server=False),
+        keeps=keeps,
     )
 
 
@@ -258,7 +270,15 @@ MODULES = (
     _stock("DELAY", "delay", 0x08, 0x400d4a96, b"DEL", b"DELAY", 0,
            "Stock Echo Freeze delay -- runs on the ColdFire, so it costs the "
            "DSP nothing; the row works as on a stock unit. No local render.",
-           "Y"),
+           "Y", keeps=(Keep(DELAY_TABLE_END, bytes(16),
+                            "the stock DELAY reads these words past its 508-entry coefficient table"),)),
+    # Null DSP stub (docs/firmware/DSP.md); FX2-only. Listed so a buffer
+    # insert can declare replaces="MULTIBCOMP" without taking DELAY/PHASER.
+    _stock("MULTIBCOMP", "multibcomp", 0x19, 0x400d5bdc, b"MBC",
+           b"MULTIBCOMP", 0,
+           "Stock multiband compressor stub -- null DSP, not in the stock "
+           "chooser. Kept here so a module may replace its id.",
+           "B"),  # not W: RESONATOR; not H: GATE VERB
     # ---- THE THREE REVERBS, listable -------------------
     _stock("PLATE REV", "plate", 0x14, 0x400d5594, b"PLTE", b"PLATE REV", 594,
            "Stock plate reverb. Its 594 words are the FIRST of the donor "

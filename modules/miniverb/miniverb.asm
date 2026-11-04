@@ -1,5 +1,6 @@
 ; Mini Verb v4: four branches, eight in-loop allpass diffusers, 44.1 kHz.
-; Own 16K allocator buffer and r7+$20..$3f. No global writable state.
+; Own 16K allocator buffer (a 15,870-word ring: the slot's last $202 words stay
+; free, octabam's FX2 rule, #785) and r7+$20..$3f. No global writable state.
 ; Four input allpasses, two interpolated/modulated in-loop allpasses.
 ; Orthogonal Householder feedback. INIT resets all state, preserves r1/n1/m1.
 ; 20 base,21 head,22 clear;24..27 targets;28..2a smooth decay/damp/mix;
@@ -37,12 +38,13 @@ mv_zero:
         move    x:(r4),a
         move    a,x:(r7+$20)
         move    a,x:(r7+$21)
-        move    #>$80,a
+        move    #>124,a
         move    a,x:(r7+$22)
         rts
 
 proc:
 ; Bounded clearing: 128 words per call, dry until the entire ring is clean.
+; 124 calls under the ring's own modulus: the last one wraps 2 words to the start.
 ; Unconditional init resets every persistent scalar, even from dirty RAM.
         move    x:(r7+$22),a
         tst     a
@@ -53,12 +55,13 @@ proc:
         move    x:(r7+$20),x0
         add     x0,a
         move    a,r4
-        move    #>$ffffff,m4
+        move    #>$3dfd,m4
         clr     a
         do      #128,>mv_clear
         move    a,y:(r4)+
 mv_clear:
         nop
+        move    #>$ffffff,m4
         rts
 mv_ready:
 ; feedback .65 + .32 * knob/128, bounded at .9675.
@@ -92,8 +95,8 @@ mv_mix:
         move    a,n2
         move    #>$ffffff,m2
         move    x:(r7+$37),r2
-        move    #>$3fff,m4
-        move    #>$3fff,m5
+        move    #>$3dfd,m4
+        move    #>$3dfd,m5
         move    x:(r7+$21),r5
         move    #>$1,n0
         do      n7,>mv_end

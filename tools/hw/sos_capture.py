@@ -2,8 +2,7 @@
 """The sound-on-sound loop, captured sample-exact on a unit and compared with
 the port running the same project on the same input.
 
-The remix `sos-capture` (or any image with USB INPUTS AB and LAYOUT
-TRACKS) takes the host's stereo stream on inputs A/B and sends the sixteen
+The remix `sos-capture` (or any image with USB IN AB and USB TRACKS) takes the host's stereo stream on inputs A/B and sends the sixteen
 track channels back, both 24-bit and digital end to end. The signal:
 
   L  a 997 Hz sine, -20 dBFS (not a divisor of any bar at any tempo, so a
@@ -273,7 +272,7 @@ def capture(a):
 
 def readback_tracks(dump):
     """The read-back arena under the port: every track's post-FX, pre-fader
-    block (what USB LAYOUT TRACKS sends) -> (samples, 16) in 24-bit units."""
+    block (what USB TRACKS sends) -> (samples, 16) in 24-bit units."""
     import blockdump as bd
     c = bd.classes(bd.read(dump))
     out = []

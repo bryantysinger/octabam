@@ -101,8 +101,8 @@ one is better"); GRAIN DENS 32 → 127 on the loop "sounds pretty good".
 ## Gates
 
 The manifest's gates: `tools/verify/verify_grains.py`,
-`tools/verify/verify_tempo.py`, `tools/verify/verify_twocore.py`,
-`tools/verify/verify_onebus.py`. `verify_delay` and `make verify-bus` (28
+`tools/verify/verify_tempo.py`, `tools/verify/verify_two_core.py`,
+`tools/verify/verify_one_bus.py`. `verify_delay` and `make verify-bus` (28
 cases) are the bit-identity gates quoted under Measured; `make
 verify-knobs` covers the per-sample ramps.
 
@@ -126,7 +126,7 @@ absolute pointer cannot be masked — the first build wrote every other
 sample 16K away. The DEV hatch (payload A, beside the reverb's tank) keeps
 two 16K lines in the shared half; `tools/remix/geom.py` selects the
 `; @B` / `; @DEV` lines, and the two geometries render bit-identically at
-any TIME both can hold (`verify_twocore`). The ledger refuses a second
+any TIME both can hold (`verify_two_core`). The ledger refuses a second
 owner of the private region on the same payload (`Claims.owns_fx2_buffers`)
 and anything else declared in LineL's half (`Claims.dsp_ranges`,
 `Y:0x38000–0x3FFFF`); `verify_set` holds the port's shared-window write
@@ -180,7 +180,7 @@ at the target).
 the block so far to `y:$990` (zeroed on the block's first call, held in raw
 `$79`) and increments a counter at `y:$991`. Character reads them when its
 KEY is T1. The host's own output is bit-identical with the publish
-(`verify_charkey`, and a CLEAN / GRAIN / REVERSE render against the build
+(`verify_char_key`, and a CLEAN / GRAIN / REVERSE render against the build
 before it); cost 24 words, 6 cycles per sample by the pricer (1,001 ->
 1,007).
 

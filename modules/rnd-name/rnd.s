@@ -5,13 +5,19 @@
 | Reload. This unit replaces that key table (SymbolRef at 0x400d08f2) with
 | stock plus CUE -> rnd_chord.
 |
-| CREATE NEW PROJECT: YYMMDD + space + two pool words.
-| Words-only (no date): SAVE SAMPLE AS, SAVE PROJECT AS / CHOOSE NEW
-| PROJECT NAME, NAME THE NEW DIR, NAME THE NEW SET, and KITS SAVE KIT
-| (DRAM callback). Rename / remarks / card: inert.
+| Date + two pool words: CREATE NEW PROJECT, SAVE PROJECT AS, CHOOSE NEW
+| PROJECT NAME, and COPY PROJECT (cp_named, when that module is in the
+| remix). Words-only (no date): SAVE SAMPLE AS, NAME THE NEW DIR,
+| NAME THE NEW SET, and KITS SAVE KIT (DRAM callback). Rename / remarks /
+| card: inert.
+|
+| Date is gated only on CB_SLOT (0x460e761a) — the editor's done-callback
+| — never on the window title.
 |
 | Fill length follows the editor's ED_MAX (kits = 7). Short editors get
 | one pool word; longer ones join two (64 x 64).
+
+        .include "remix.inc"            | HAVE_COPY_PROJECT: 1 when COPY PROJECT is in the remix
 
         .text
         .globl  rnd_chord
@@ -42,6 +48,10 @@
         .equ    DRAM_LO,    0x40a00000
         .equ    DRAM_HI,    0x4f000000
 
+        .if     HAVE_COPY_PROJECT
+        .extern cp_named                | COPY PROJECT's NAMEED done-cb (DRAM)
+        .endif
+
 | FUNC+CUE while the name editor's FUNC layer is up.
 | d3 = 1 -> prepend date; d3 = 0 -> words only.
 rnd_chord:
@@ -49,14 +59,19 @@ rnd_chord:
         moveq   #1,%d3
         cmpil   #CREATE_CB,%d0
         beqs    0f
+        cmpil   #SAVEAS_CB,%d0         | SAVE PROJECT AS…
+        beqs    0f
+        cmpil   #CHOOSE_CB,%d0         | CHOOSE NEW PROJECT NAME
+        beqs    0f
+        .if     HAVE_COPY_PROJECT
+        movel   #cp_named,%d1          | COPY PROJECT (same date template)
+        cmpl    %d1,%d0
+        beqs    0f
+        .endif
         moveq   #0,%d3
         cmpil   #SAMPLE_CB1,%d0
         beqs    0f
         cmpil   #SAMPLE_CB2,%d0
-        beqs    0f
-        cmpil   #SAVEAS_CB,%d0
-        beqs    0f
-        cmpil   #CHOOSE_CB,%d0
         beqs    0f
         cmpil   #NEWDIR_CB,%d0
         beqs    0f
@@ -121,13 +136,13 @@ rnd_fill:
         bcs     rnd_one
 
         bsr     rnd_rng
-        and.l   #POOL_MASK,%d0
+        bsr     rnd_pool_idx
         lea     rnd_a,%a1
         bsr     rnd_nth
         move.l  %a1,%a2
 
         bsr     rnd_rng
-        and.l   #POOL_MASK,%d0
+        bsr     rnd_pool_idx
         lea     rnd_b,%a1
         bsr     rnd_nth
 
@@ -150,9 +165,9 @@ rnd_fill:
 rnd_one:
         bsr     rnd_rng
         move.l  %d0,%d1
-        and.l   #POOL_MASK,%d0
+        bsr     rnd_pool_idx
         lea     rnd_a,%a1
-        btst    #6,%d1
+        btst    #22,%d1                 | high half; low bit 6 was tempo-tied
         beqs    5f
         lea     rnd_b,%a1
 5:
@@ -218,21 +233,65 @@ rnd_nth:
         move.l  %a1@,%a1
         rts
 
+| Pool index from bits 16..21. Low 6 of this LCG track the seed's low
+| bits: tempo (BPM x 24) ^ K collapses to a handful of joins (FOGRET at
+| 120 BPM with the clock stopped).
+rnd_pool_idx:
+        swap    %d0
+        and.l   #POOL_MASK,%d0
+        rts
+
 rnd_rng:
         move.l  rnd_state,%d0
         bne     1f
-        move.l  TEMPO24,%d0
-        move.l  CLOCKEST,%d1
-        eor.l   %d1,%d0
-        move.l  #0xA5A5A5A5,%d1
-        eor.l   %d1,%d0
-        bne     1f
-        moveq   #1,%d0
+        bsr     rnd_seed
 1:
         move.l  #1664525,%d1
         mulu.l  %d1,%d0
         add.l   #1013904223,%d0
         move.l  %d0,rnd_state
+        rts
+
+| Cold seed: tempo ^ clock ^ RTC h:m:s ^ K (seconds change per use).
+| Preserves a0 — rnd_fill keeps the buffer cursor there across rnd_rng.
+rnd_seed:
+        lea     %sp@(-12),%sp
+        moveml  %d2/%a0/%a2,%sp@
+        move.l  TEMPO24,%d2
+        move.l  CLOCKEST,%d0
+        eor.l   %d0,%d2
+        lea     RTC_RD,%a2
+        pea     0                       | seconds
+        jsr     %a2@
+        addql   #4,%sp
+        move.l  %d0,%sp@-
+        jsr     BCD2BIN
+        addql   #4,%sp
+        eor.l   %d0,%d2
+        pea     1                       | minutes
+        jsr     %a2@
+        addql   #4,%sp
+        move.l  %d0,%sp@-
+        jsr     BCD2BIN
+        addql   #4,%sp
+        lsl.l   #8,%d0
+        eor.l   %d0,%d2
+        pea     2                       | hours
+        jsr     %a2@
+        addql   #4,%sp
+        move.l  %d0,%sp@-
+        jsr     BCD2BIN
+        addql   #4,%sp
+        swap    %d0
+        eor.l   %d0,%d2
+        move.l  #0xA5A5A5A5,%d0
+        eor.l   %d0,%d2
+        bne     0f
+        moveq   #1,%d2
+0:
+        move.l  %d2,%d0
+        moveml  %sp@,%d2/%a0/%a2
+        lea     %sp@(12),%sp
         rts
 
         .data

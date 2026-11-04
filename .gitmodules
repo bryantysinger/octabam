@@ -27,10 +27,29 @@
 	url = https://github.com/Zac-Kyoti/octatrack-kyoti-fw
 [submodule "modules/mute-modes/upstream"]
 	path = modules/mute-modes/upstream
-	url = https://github.com/sambanks/octatrack-kyoti-fw
+	url = https://github.com/Zac-Kyoti/octatrack-kyoti-fw
 [submodule "modules/rec-trig-mute/upstream"]
 	path = modules/rec-trig-mute/upstream
 	url = https://github.com/Zac-Kyoti/octatrack-kyoti-fw
 [submodule "modules/sidechain-compressor/upstream"]
 	path = modules/sidechain-compressor/upstream
 	url = https://github.com/sambanks/octatrack-kyoti-fw
+
+[submodule "modules/midi-loopback/upstream"]
+	path = modules/midi-loopback/upstream
+	url = https://github.com/radiohagen/octatrack-modules.git
+	branch = codex/pr/midi-loopback
+
+[submodule "modules/midi-scales/upstream"]
+	path = modules/midi-scales/upstream
+	url = https://github.com/radiohagen/octatrack-modules.git
+	branch = codex/pr/midi-scales
+[submodule "modules/blackpyramids-303/upstream"]
+	path = modules/blackpyramids-303/upstream
+	url = https://github.com/Zac-Kyoti/octatrack-kyoti-fw
+[submodule "modules/varispeed/upstream"]
+	path = modules/varispeed/upstream
+	url = https://github.com/Zac-Kyoti/octatrack-kyoti-fw
+[submodule "modules/midi-follow/upstream"]
+	path = modules/midi-follow/upstream
+	url = https://github.com/radiohagen/octatrack-modules.git

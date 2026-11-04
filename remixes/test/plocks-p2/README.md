@@ -9,7 +9,7 @@ Page-2 parameter locks and page-2 scene locks on the stock effects.
 
 ## Status
 
-Port-gated (`tools/verify/verify_plocksp2.py`). Not flashed.
+Port-gated (`tools/verify/verify_plocks_p2.py`). Not flashed.
 
 ## Build
 

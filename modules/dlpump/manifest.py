@@ -1,0 +1,112 @@
+"""DLPUMP -- the demand loader's ColdFire half: watches which effects the tracks use, stages the
+blocks of the ones that are not loaded and withdraws the ones nobody uses. Called from LOAD
+METER's entry code (docs/proposals/DEMAND_LOAD.md, decision 9).
+"""
+import json
+import pathlib
+
+from remix.schema import Apply, Category, Detour, Gate, Kind, Linked, Module, Option, Proof, Setting, Store
+
+RECORDS = pathlib.Path("out/dsp/demand_records.json")
+CAPACITY = 2600                 # code words a block may hold: the staging area X:0x2906..0x3d55 takes 2 per word; the table is this size on every link
+BLOCK_TRACK = {0: 6, 1: 7, 2: 2, 3: 3}   # window block (address >> 14 & 3) -> the FX2 track whose slot is there (0-based; docs/firmware/DSP.md section 7)
+WIN = 0x30000
+REVERBS = ("PLATE REV", "SPRING REV", "DARK REV")
+TOAST_NAME_MAX = 10             # "EVICT <name> 1ST" must fit the popup, so a longer name is cut: 20 characters. Measured on the unit, 27 Oct 2026: 22 clipped slightly, 19 fitted; a newline does not break the line
+
+
+def _soft(module):
+    """A demand effect that keeps a stock effect's dispatch (MenuEntry.stock_dsp: SIDECHAIN_COMPRESSOR is
+    COMPRESSOR): while its code is not loaded the track runs the stock effect, so DLPUMP never refuses it
+    and never refuses a reverb for it; a reverb that reaches its code takes the block at once."""
+    return bool(module.menu is not None and module.menu.stock_dsp)
+
+
+def table_inc(modules, remix):
+    """remix.inc: one record per Remix.window_demand effect (id, the track of its first home's block, its home table,
+    the number of homes, the withdraw message, the two toasts), then per effect a table of homes and a staged block
+    for each. A home is one block of the window the effect can be loaded into: its track, the staged block, its length
+    in halfwords, the mask of stock reverbs that reach its code (bit i for REVERBS[i], set when the code starts at or
+    below the highest word that reverb writes, `stock.SLOT_EXTENT` counted from the block's base) and the block's
+    index. The DSP stage writes RECORDS after the first link, so that link reserves CAPACITY words per staged block
+    with no content; the second link has the words and the same size."""
+    from remix import stock
+    recs = json.loads(RECORDS.read_text()) if RECORDS.is_file() else {}
+    keys = list(remix.window_demand)
+    phase_any = modules["DLPUMP"].build_values.get("PHASE", "PING0") == "ANY"
+    grace = {"10 S": 13780, "2 S": 2756}[modules["DLPUMP"].build_values.get("GRACE", "10 S")]   # idle calls: 1,378 a second
+    rows = [f"        .equ    DL_N, {len(keys)}", f"        .equ    PHASE_ANY, {int(phase_any)}", f"        .equ    GRACE, {grace}"]
+    for key in REVERBS:
+        rows.append(f"        .equ    DL_{key.split()[0]}, 0x{stock.BY_KEY[key].menu.fx2_id:02x}")
+    addrs = {key: [dict(remix.window)[key]] + [a for hk, a in remix.window_homes if hk == key] for key in keys}
+    rows.append("dl_tab:")
+    for k, key in enumerate(keys):
+        track = BLOCK_TRACK[(addrs[key][0] - WIN) >> 14 & 3]
+        rows.append(f"        .long   0x{modules[key].menu.fx2_id:02x}, {track}, dl_hm{k}, {len(addrs[key])}, dl_off{k}, dl_need{k}, dl_hold{k}, "
+                    f"{int(_soft(modules[key]))}")
+    for k, key in enumerate(keys):
+        homes = recs[key]["homes"] if key in recs else []
+        rows.append(f"dl_hm{k}:")
+        for h, addr in enumerate(addrs[key]):
+            n = 7 + 2 * len(homes[h]["words"]) if h < len(homes) else 0
+            mask = sum(1 << i for i, r in enumerate(REVERBS) if (addr - WIN) % 0x4000 <= stock.SLOT_EXTENT[r])
+            rows.append(f"        .long   {BLOCK_TRACK[(addr - WIN) >> 14 & 3]}, dl_blk{k}_{h}, {n}, {mask}, {(addr - WIN) >> 14 & 3}, 0")
+    for k, key in enumerate(keys):
+        track = BLOCK_TRACK[(addrs[key][0] - WIN) >> 14 & 3]
+        homes = recs[key]["homes"] if key in recs else []
+        for h, addr in enumerate(addrs[key]):
+            rec = homes[h] if h < len(homes) else None
+            halves = []
+            if rec:
+                words = rec["words"]
+                if len(words) > CAPACITY:
+                    raise ValueError(f"{key}: {len(words)} code words; DLPUMP reserves {CAPACITY}")
+                halves = [k, rec["addr"] - WIN, len(words), rec["init"] - WIN, rec["proc"] - WIN]
+                for w in words:
+                    halves += [w >> 8, w & 0xFF]
+                total = sum(words) & 0xFFFFFF               # the copier checks this before it publishes
+                halves += [total >> 8, total & 0xFF]
+            used = len(halves)
+            rows.append(f"dl_blk{k}_{h}:")
+            for i in range(0, used, 8):
+                rows.append("        .word   " + ", ".join(str(x) for x in halves[i:i + 8]))
+            rows.append(f"        .space  {2 * (2 * CAPACITY + 7) - 2 * used}")
+            rows.append(f"dl_blk{k}_{h}_end:")
+        rows.append(f"dl_off{k}:  .word   {k}, 0, 0, 0, 0")
+        name = modules[key].menu.fullname.decode().upper()[:TOAST_NAME_MAX]      # as the chooser lists it, cut to fit
+        if _soft(modules[key]):
+            # nothing is refused: the track's effect runs as the stock one, so the toast says the key is off and why
+            rows.append(f'dl_need{k}: .asciz "SC KEY OFF: T{track + 1} FX2"')
+            rows.append(f'dl_hold{k}: .asciz "SC KEY OFF: T{track + 1} REV"')
+        else:
+            rows.append(f'dl_need{k}: .asciz "EVICT T{track + 1} FX2 1ST"')
+            rows.append(f'dl_hold{k}: .asciz "EVICT {name} 1ST"')
+        rows.append("        .balign 2")
+    return "\n".join(rows) + "\n"
+
+
+MODULE = Module(
+    name="dlpump",
+    key="DLPUMP",
+    kind=Kind.CF_PATCH,
+    category=Category.REFERENCE, author="sambanks", author_url="https://github.com/sambanks",
+    proof=Proof.CHECK, proof_note="",
+    doc="Host-writes a staged block to a DSP core, a chunk per frame interrupt (demand loader).",
+    linked=(Linked("dlpump", "modules/dlpump/pump.s", cpu="5475", include=table_inc, dram=True),),
+    detours=(
+        Detour(0x4005578C, bytes.fromhex("2f032f02226f000c"), "dlpump", "dl_key",
+               "the UI task's page-key handler: a toast the idle loop owes is shown at the next press", pad_to=8),
+        Detour(0x4005272A, bytes.fromhex("b2806700020c"), "dlpump", "dl_sel_fx1",
+               "FX1 chooser select, the 'same effect' test: refuse a demand effect that cannot be loaded"),
+        Detour(0x400524BA, bytes.fromhex("b2806700021c"), "dlpump", "dl_sel_fx2",
+               "FX2 chooser select, the 'same effect' test: the same"),
+    ),
+    store=Store("octabam.dlpump"),
+    settings=(Setting(1, "PHASE", Option("PING0", "ANY"), default="PING0", apply=Apply.BUILD,
+                      doc="PING0: send on the frames whose ping word is 0 (the port's delivering frames); ANY: on every "
+                          "frame (a measurement build: the copier's counters show what the unit loses)"),
+              Setting(2, "GRACE", Option("10 S", "2 S"), default="10 S", apply=Apply.BUILD,
+                      doc="how long an unused effect stays loaded before it is withdrawn; a project load leaves every id at its "
+                          "default for about 4 s (measured on a unit), so 10 S keeps the effects through it; 2 S is for the port gates"),),
+    gates=(Gate("tools/verify/verify_dlload.py", venv=True),),
+)

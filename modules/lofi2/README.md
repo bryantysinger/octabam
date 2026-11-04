@@ -12,7 +12,7 @@ How it differs from CHARACTER, which replaces stock LO-FI and also crushes and r
 |---|---|---|---|---|
 | 1 | 0 | FREQ | 0-127 | modulator frequency, exponential over six octaves from RANGE's base; read by whichever MODE is selected; keeps an LFO's fraction between steps and glides, so sweeps are smooth |
 | 1 | 1 | MIX | 0-127 | modulator depth: crossfades the ring or shift output against the dry |
-| 1 | 2 | FDBK / GAIN | 0-127 | one knob, read per MODE, and the panel renames it. SHIFT: FDBK, the feedback ladder (f, f+d, f+2d), capped at 0.45. RING: GAIN on the ring product, 2^(k/64): 0 dB at 0 (today's level), +6 dB at 64, +11.9 dB at 127 |
+| 1 | 2 | FDBK / GAIN | 0-127 | one knob, read per MODE, and the panel renames it. SHIFT: FDBK, the feedback ladder (f, f+d, f+2d), capped at 0.40 (0.45 until #825, where the top of FDBK self-oscillated). RING: GAIN on the ring product, 2^(k/64): 0 dB at 0 (today's level), +6 dB at 64, +11.9 dB at 127 |
 | 1 | 3 | SRR | 0-127 | sample-rate reduction, a fractional hold at stock LO-FI's measured rates: no reduction through 7, 8,018 Hz at 64, 3,564 Hz at 127; the rate glides, so turns and LFOs sweep smoothly |
 | 1 | 4 | BRR | 0-127 | bit-depth reduction, a continuous round-to-nearest quantiser on stock LO-FI's curve: the step grows from 1 LSB through 3 to 2^13.5 at 64 and 2^20.8 at 127, exactly stock's; it glides, so turns and LFOs sweep smoothly |
 | 1 | 5 | LPF | 0-127 | high-shelf cut, -12 dB above a corner swept exponentially from 100 Hz at 0 to 16 kHz at 126 (about 17 steps an octave); 127 takes it out of circuit, bit for bit; it glides, so turns and LFOs sweep smoothly |
@@ -41,7 +41,7 @@ How it differs from CHARACTER, which replaces stock LO-FI and also crushes and r
 - Ported to this tree in October 2026. Three changes the port required:
   - the shifter's chain pointer was `lua (r7+$40)`, which assembles to `r7-$40` (`lua` takes a displacement of -64..63; docs/contributing/TRAPS.md). All four Hilbert chains had been keeping their state in the 64 words below the instance's own block. This tree's build refuses it (the disassemble-what-you-assemble round-trip); the pointer is now `r7 + n1`. It moved where the state lives, not the arithmetic: under `rig_render` (T1 and T5, every MODE), the September source and this one render bit-identically, because nothing in that layout uses those 64 words (the top of the slot below, `$c0..$ff`). On the unit it was a latent corruption of whatever does.
   - every page-1 knob read is masked (an LFO-modulated knob word carries bits 8-15; docs/contributing/TRAPS.md): `and #>$7f0000` for the selects, and, since the October rewrites, `and #>$7fff00` for the continuous knobs, which keep those bits as the LFO's fraction.
-  - `init` zeroes the block (verify_dirtystate), where it had been a bare `rts`.
+  - `init` zeroes the block (verify_dirty_state), where it had been a bare `rts`.
 - Rendered against the September source in this tree (the same image built from each, `rig_render`, T1 on payload B and T5 on payload A; passthrough, RING with and without AMPH, SRR/BRR/LPF, SHIFT UP, SHIFT DOWN with FDBK): bit-identical in every case, and T1 bit-identical to T5.
 - The port ran on Bryan T's MKII as image 96 (remix `_bt_oct`, his own: LOFI2 with RECORDER LOOP FIX, USB AUDIO IN ABCD and OUT MAIN CUE), 10 Oct 2026: LPF right on track 1 (payload B), SHIFT on two tracks at once, MODE through RING / DOWN / UP without a fault.
 - AMPH bipolar, GAIN and the MODE duck ran on the unit as image 97 (October 2026).

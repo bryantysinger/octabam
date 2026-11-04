@@ -394,19 +394,27 @@ def check_modules(mods) -> list[str]:
     return bad
 
 
+def _free_run(remix, mods) -> tuple[int, int]:
+    """(start, length) of CS1_FREE's largest run after the selected
+    modules' Claims.sram; the CS1 block's home (BRAIN.md section 6.4)."""
+    lo, hi = CS1_FREE
+    taken = sorted((b, b + n) for m in _selected(remix, mods) if m.claims
+                   for b, n, _w in m.claims.sram if b < hi and b + n > lo)
+    best, at, start = 0, lo, lo
+    for b, e in taken:
+        if b - at > best:
+            best, start = b - at, at
+        at = max(at, e)
+    if hi - at > best:
+        best, start = hi - at, at
+    return start, best
+
+
 def early_budget(remix, mods) -> int:
     """Bytes of early values the remix's CS1 block can hold: the largest free
     run of CS1_FREE after every selected module's Claims.sram, less the
     block header."""
-    lo, hi = CS1_FREE
-    taken = sorted((b, b + n) for m in _selected(remix, mods) if m.claims
-                   for b, n, _w in m.claims.sram if b < hi and b + n > lo)
-    best, at = 0, lo
-    for b, e in taken:
-        best = max(best, b - at)
-        at = max(at, e)
-    best = max(best, hi - at)
-    return max(0, best - EARLY_HEADER)
+    return max(0, _free_run(remix, mods)[1] - EARLY_HEADER)
 
 
 def early_settings(remix, mods) -> list[tuple[object, object]]:
@@ -416,6 +424,19 @@ def early_settings(remix, mods) -> list[tuple[object, object]]:
         return []
     return [(m, s) for r, s in resolve(remix, mods) for m in [mods[r.module]]
             if s.early and r.runtime]
+
+
+def early_layout(remix, mods) -> tuple[int, dict[tuple[str, int], int]]:
+    """(base, {(store id, key): CS1 offset}) of the early block: the values
+    at `base` + EARLY_HEADER in early_settings order, one s.size bytes each.
+    settings_inc emits each entry's offset into its brain_set[] row, so
+    brain.c's writer needs only the base (defsym CS1_EARLY_BASE)."""
+    base, _run = _free_run(remix, mods)
+    offs, at = {}, base + EARLY_HEADER
+    for m, s in early_settings(remix, mods):
+        offs[(m.store.id, s.key)] = at
+        at += s.size
+    return base, offs
 
 
 def check_remix(remix, mods) -> list[str]:

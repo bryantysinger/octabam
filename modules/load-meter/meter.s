@@ -15,16 +15,28 @@
         .equ    DTCN3,  0xfc07c00c
         .equ    WIN,    66000000                | 0.5 s at 132 MHz
         .equ    BODY,   0x4000aad8              | the handler after its displaced prologue
+        .include "remix.inc"                    | HK_FRAME_ENTRY, HK_FRAME_TAIL (modules/hooks)
 
         .text
 | ---- 0x4000aad0: the handler's first instructions, then the entry stamp --
         .globl  lm_in
 lm_in:
+        .if     HK_FRAME_ENTRY == 0             | bridged by HOOKS: it replays the prologue
         lea     %sp@(-252),%sp                  | displaced: lea %sp@(-252),%sp
         movem.l %d0-%d7/%a0-%a6,%sp@            | displaced: moveml %d0-%fp,%sp@
+        .endif
         move.l  DTCN3,%d0                       | every register is saved: d0 is free
         move.l  %d0,lm_t0
-        jmp     BODY
+        .weak   dl_pump                         | DLPUMP, when the remix carries it
+        move.l  #dl_pump,%d0
+        beq.s   1f
+        move.l  %d0,%a0
+        jsr     %a0@
+        .if     HK_FRAME_ENTRY
+1:      rts                                     | HOOKS goes on to the body
+        .else
+1:      jmp     BODY
+        .endif
 
 | ---- 0x4000d9a6: the epilogue, every exit path --------------------------
 | d0-a6 are saved at (sp) and restored below, so every register is free.
@@ -35,7 +47,7 @@ lm_out:
         sub.l   lm_t0,%d0                       | this interrupt's duration
         add.l   %d0,lm_sum
         addq.l  #1,lm_cnt
-        addq.l  #1,lm_irqs                      | every frame interrupt, for verify_loadmeter
+        addq.l  #1,lm_irqs                      | every frame interrupt, for verify_load_meter
         cmp.l   lm_max,%d0
         bls.s   1f
         move.l  %d0,lm_max
@@ -56,9 +68,13 @@ lm_out:
         clr.l   lm_sum
         clr.l   lm_cnt
         clr.l   lm_max
+        .if     HK_FRAME_TAIL
+2:      rts                                     | HOOKS replays the epilogue
+        .else
 2:      movem.l %sp@,%d0-%d7/%a0-%a6            | displaced
         lea     %sp@(252),%sp                   | displaced
         rte                                     | displaced
+        .endif
 
 | ---- 0x4000d310: the DSP meter's bytes, before the recorder reads MAIN ---
 | Core 0 (dsp_meter.asm) puts 17 bytes in the low byte of MAIN's first 17
@@ -79,7 +95,7 @@ lm_out:
 lm_scrub:
         lea     %sp@(-24),%sp
         movem.l %d0-%d3/%a0-%a1,%sp@
-        addq.l  #1,lm_scrubs                    | every pass, for verify_loadmeter
+        addq.l  #1,lm_scrubs                    | every pass, for verify_load_meter
         lea     MAIN_LO,%a0
         lea     lm_raw,%a1
         moveq   #22,%d1                         | bytes 0..22: the meter record, then OTOP's
@@ -246,7 +262,7 @@ lm_irqs: .long  0                               | frame interrupts (lm_out)
 | core 0 busy, core 1 busy, records: summed since the reset. The port's
 | timer moves in 1,024-count steps (the vendored emulator updates timers
 | every 2,048 instructions), so one frame's busy cannot resolve a small
-| change; the mean over many frames can (verify_loadmeter calibrate)
+| change; the mean over many frames can (verify_load_meter calibrate)
 lm_dsum: .long  0, 0, 0
 lm_raw: .space  24
         .balign 4

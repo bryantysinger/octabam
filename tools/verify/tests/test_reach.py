@@ -1,9 +1,11 @@
 """The path classifier, against a fake registry and a fake dependency graph:
 no manifests, no firmware."""
+import json
 import os
 import pathlib
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import reach
@@ -82,6 +84,36 @@ def commands(paths, accept_runs_check=False, c=None):
 
 def note(path, c=None):
     return reach.classify([path], c or ctx())[0][2]
+
+
+class DefaultRemixTests(unittest.TestCase):
+    """QUICK checks octabam, and only it, for every module it carries."""
+
+    def quick(self, remixes_of, remixes):
+        return reach.Context(
+            module_key={"character": "CHARACTER", "miniverb": "MINIVERB"}, remixes_of=remixes_of, gate_owners={},
+            remixes=remixes, deps={}, shared_scripts=(), remix_scripts=(), quick=True, test_remixes=(),
+            make_base=MAKE_BASE, make_head=MAKE_BASE)
+
+    def test_a_module_octabam_carries_is_checked_on_octabam_alone(self):
+        c = self.quick({"CHARACTER": ["bamsep26", "octabam", "usb"], "MINIVERB": ["miniverb"]},
+                       ["bamsep26", "miniverb", "octabam", "usb"])
+        self.assertEqual(c.carriers(["bamsep26", "octabam", "usb"]), ["octabam"])
+        self.assertEqual(c.carriers(["miniverb"]), ["miniverb"])
+        self.assertEqual(c.carriers(["bamsep26", "usb"]), ["bamsep26", "usb"])
+
+    def test_octabam_is_the_floor_and_the_cover_stands_in_without_it(self):
+        both = self.quick({"CHARACTER": ["bamsep26", "octabam"], "MINIVERB": ["miniverb"]}, ["bamsep26", "miniverb", "octabam"])
+        self.assertEqual(both.floor, ["octabam"])
+        without = self.quick({"CHARACTER": ["bamsep26"], "SEND": ["bamsep26"], "MINIVERB": ["miniverb"]}, ["bamsep26", "miniverb"])
+        self.assertEqual(without.floor, ["bamsep26"])
+
+    def test_full_checks_every_carrier_and_the_cover(self):
+        c = reach.Context(module_key={"character": "CHARACTER"}, remixes_of={"CHARACTER": ["bamsep26", "octabam"]},
+                          gate_owners={}, remixes=["bamsep26", "octabam"], deps={}, shared_scripts=(),
+                          remix_scripts=(), quick=False, test_remixes=(), make_base=MAKE_BASE, make_head=MAKE_BASE)
+        self.assertEqual(c.carriers(["bamsep26", "octabam"]), ["bamsep26", "octabam"])
+        self.assertEqual(c.floor, ["bamsep26"])
 
 
 class ModuleAndRemixTests(unittest.TestCase):
@@ -395,6 +427,18 @@ class PlanTests(unittest.TestCase):
         self.assertIn("tools/verify/verify_usb_post.py", scripts)
         self.assertIn("tools/verify/verify_usb_align.py", scripts)
 
+    def test_selection_only_store_gate_reaches_its_actual_clients(self):
+        context = reach.Context.from_registry()
+        script = "tools/verify/verify_store_part_selection.py"
+        self.assertEqual(context.gate_owners[script], ["STORE"])
+        self.assertEqual(context.gate_remixes[script],
+                         {"hooks-boot", "midi-follow", "midi-follow-events", "midi-loopback",
+                          "scales", "scales-quantizer"})
+        rows = reach.classify([script], context)
+        self.assertEqual(reach.remixes_reached(rows),
+                         ["hooks-boot", "midi-follow", "midi-follow-events", "midi-loopback",
+                          "scales", "scales-quantizer"])
+
     def test_remixes_reached(self):
         rows = reach.classify(["modules/character/a.asm", "remixes/miniverb/remix.py"], ctx())
         self.assertEqual(reach.remixes_reached(rows), ["bamsep26", "miniverb", "usb"])
@@ -493,9 +537,12 @@ class TestRemixTests(unittest.TestCase):
         c.remixes = [r for r in c.remixes if r != "miniverb"]
         return c
 
-    def test_a_module_only_in_test_remixes_is_not_checked(self):
+    def test_a_module_only_in_test_remixes_runs_its_own_gates_there(self):
+        # #953: a green run must not read as a checked module when only the selftest ran
         rows = reach.classify(["modules/miniverb/engine.asm"], self.ctx_without_tests())
-        self.assertEqual([cmd for _, g, _ in rows for _, cmd in g], ["python3 tools/remix/selftest.py"])
+        self.assertEqual([cmd for _, g, _ in rows for _, cmd in g],
+                         ['make check-shared REMIXES="miniverb" MODULES="MINIVERB"',
+                          'make check-remix REMIX=miniverb MODULES="MINIVERB"'])
         self.assertIn("carried only by test remixes", rows[0][2])
 
     def test_a_test_remix_edit_is_not_checked(self):
@@ -508,6 +555,117 @@ class TestRemixTests(unittest.TestCase):
         c = self.ctx_without_tests()
         self.assertIn("--remixes bamsep26 usb", c.identity()[1])
         self.assertNotIn("--remixes", ctx().identity()[1])
+
+
+class PlanJsonTests(unittest.TestCase):
+    def test_one_entry_per_command_in_plan_order(self):
+        rows = reach.classify(["remixes/miniverb/remix.py"], ctx())
+        items = reach.plan(rows)
+        d = reach.plan_json("origin/main", "abc", True, 2, reach.remixes_reached(rows), items)
+        self.assertEqual([g["command"] for g in d["gates"]], [c for _, c, _ in items])
+        self.assertEqual(d["remixes"], ["miniverb"])
+        self.assertEqual((d["tier"], d["jobs"], d["merge_base"]), ("quick", 2, "abc"))
+        self.assertEqual(json.loads(json.dumps(d)), d)
+
+    def test_a_full_plan_says_so_and_nothing_to_run_is_an_empty_list(self):
+        d = reach.plan_json("origin/main", None, False, 1, [], [])
+        self.assertEqual((d["tier"], d["gates"]), ("full", []))
+
+    def test_main_prints_only_the_json_on_stdout(self):
+        import contextlib
+        import io
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = reach.main(["--json", "--paths", "docs/README.md"])
+        self.assertEqual(rc, 0)
+        d = json.loads(out.getvalue())
+        self.assertEqual(d["tier"], "quick")
+        self.assertIn("docs/README.md", err.getvalue())
+
+    def items(self):
+        return [("verify_docs", "python3 tools/verify/verify_docs.py", ["a"]),
+                ("test-acceptance", "make test-acceptance", ["b"]),
+                ("ci", "make ci", ["g"]),
+                ("ci-dsp", "make ci-dsp", ["h"]),
+                ("ci-emu", "make ci-emu", ["i"]),
+                ("selftest", "python3 tools/remix/selftest.py", ["f"]),
+                ("refhash", "scripts/refhash.sh check", ["c"]),
+                ("check-shared", 'make check-shared REMIXES="x y"', ["d"]),
+                ("check-remix", 'python3 tools/verify/check_shards.py --jobs 3 --modules "K1,K2" x y', ["e"])]
+
+    def test_entries_group_the_quick_commands_and_split_the_shards_per_remix(self):
+        got = {e["name"]: [c for _, c, _ in e["items"]] for e in reach.entries(self.items(), 3)}
+        self.assertEqual(list(got), ["refhash", "check-shared", "check-shared (module gates)",
+                                     "check-remix x", "check-remix y", "selftest"])
+        self.assertEqual(got["selftest"], ["python3 tools/remix/selftest.py"])
+        commands = [c for cs in got.values() for c in cs]
+        for dedicated in ("verify_docs.py", "make test-acceptance", "make ci", "make ci-dsp", "make ci-emu"):
+            self.assertFalse([c for c in commands if dedicated in c], dedicated)
+        self.assertEqual(got["check-shared"], ['make check-shared REMIXES="x y" SHARED_PART=rest'])
+        self.assertEqual(got["check-shared (module gates)"], ['make check-shared REMIXES="x y" SHARED_PART=modules'])
+        self.assertEqual(got["check-remix y"],
+                         ['python3 tools/verify/check_shards.py --jobs 3 --modules "K1,K2" y'])
+
+    def test_a_split_remix_is_units_that_cover_every_gate_job_once(self):
+        items = [("check-remix", "python3 tools/verify/check_shards.py --jobs 3 --modules \"K1\" x octabam", ["e"])]
+        parts = {"long": ("remix-switch",), "project": ("set", "plocks-p2")}
+        with mock.patch.dict(reach.SPLIT_REMIX_JOBS, {"octabam": parts}):
+            got = {e["name"]: e["items"][0][1] for e in reach.entries(items, 3)}
+        pre = 'python3 tools/verify/check_shards.py --jobs 3 --modules "K1" '
+        self.assertEqual(got["check-remix x"], pre + "x")
+        self.assertEqual(got["check-remix octabam"], pre + "--skip-jobs remix-switch,set,plocks-p2 octabam")
+        self.assertEqual(got["check-remix octabam (long)"], pre + "--only-jobs remix-switch octabam")
+        self.assertEqual(got["check-remix octabam (project)"], pre + "--only-jobs set,plocks-p2 octabam")
+        for line in got.values():
+            self.assertEqual(reach.shards_line(line)[0], [line.split()[-1]])
+
+    def test_the_brain_unit_exists_only_when_brain_is_reached(self):
+        def names(modules):
+            flag = f'--modules "{modules}" ' if modules else ""
+            items = [("check-remix", f"python3 tools/verify/check_shards.py --jobs 3 {flag}octabam", ["e"])]
+            return {e["name"]: e["items"][0][1] for e in reach.entries(items, 3)}
+        got = names("BRAIN,KITS")
+        self.assertEqual(got["check-remix octabam (brain)"], ".venv/bin/python3 tools/verify/verify_brain.py octabam")
+        self.assertIn("check-remix octabam (brain)", names(""))              # an unscoped run reaches BRAIN too
+        self.assertNotIn("check-remix octabam (brain)", names("KITS"))
+        # additive: the plain unit still skips only the SPLIT_REMIX_JOBS parts, image stays in it
+        self.assertNotIn("image", got["check-remix octabam"].split("--skip-jobs ")[1].split()[0].split(","))
+
+    def test_recipe_scripts_follow_an_implementation_cut_into_halves(self):
+        mk = ("verify-shared: ## x\n\t$(MAKE) -j1 verify-shared-impl\n\n"
+              "verify-shared-impl: verify-shared-rest-impl $(if $(Y),,verify-shared-modules-impl)\n\n"
+              "verify-shared-rest-impl:\n\tpython3 tools/a.py\n\n"
+              "verify-shared-modules-impl:\n\tpython3 tools/b.py\n")
+        self.assertEqual(reach.recipe_scripts(mk, "verify-shared"), {"tools/a.py", "tools/b.py"})
+
+    def test_entries_name_a_lone_check_and_make_repeated_names_unique(self):
+        items = [("check", "make check REMIX=x", []), ("check", "make check REMIX=x", []),
+                 ("accept", 'make accept REMIXES="x y"', [])]
+        self.assertEqual([e["name"] for e in reach.entries(items, 1)], ["check x", "check x #2", "accept"])
+
+    def test_the_json_matrix_lists_each_units_commands(self):
+        d = reach.plan_json("origin/main", None, True, 3, ["x", "y"], self.items())
+        self.assertEqual([e["name"] for e in d["matrix"]][-1], "selftest")
+        self.assertEqual(len(d["gates"]), 9)
+
+    def test_only_keeps_one_unit_and_refuses_an_unknown_one(self):
+        import contextlib
+        import io
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            rc = reach.main(["--paths", "scripts/refhash.sh", "--only", "refhash"])
+        self.assertEqual(rc, 0)
+        self.assertIn("refhash.sh check", out.getvalue())
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()), \
+                self.assertRaises(SystemExit) as e:
+            reach.main(["--paths", "scripts/refhash.sh", "--only", "nope"])
+        self.assertIn("no such unit", str(e.exception))
+
+    def test_json_refuses_run(self):
+        import contextlib
+        import io
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            reach.main(["--json", "--run"])
 
 
 class VendorWriterTests(unittest.TestCase):

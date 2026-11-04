@@ -9,7 +9,7 @@ lagging the tracks (Bryan T, 25 Sep 2026), the amount unmeasured. This
 stages the tone project (tools/harness/usb_sig_project.py: track N's left
 channel at 200 + 100 N Hz, its right at +50) on a card, runs the remix under
 the port with the sequencer playing, and at the end dumps the producer's
-own ring (`aud_ring`, 1,024 frames x 20 channels, the last 23 ms, contiguous
+own ring (`aud_ring`, 1,024 80-byte frames, the last 23 ms, contiguous
 once unwrapped at `aud_produced`) -- no USB bench, whose polls pace nothing
 under --sequencer; `aud_force` is poked to 1 after the load so the producer
 runs, as it otherwise does only while a host asks for the stream. The lag of MAIN L (channel 17) behind each track's left
@@ -46,7 +46,9 @@ PY = ROOT / ".venv/bin/python3"
 OUT = ROOT / "out/usb_align"
 FS = 44100
 NCH = 20
-FRAME_B = 4 * NCH
+FRAME_B = 4 * NCH                   # the stream's frame bytes, which is the ring's
+SLOT_B = FRAME_B                    # frame stride since 27 Oct 2026 (it was an 88-byte
+                                    # slot): tracks 64, MAIN 8, CUE 8
 SEARCH = 4096                       # samples either side
 
 
@@ -92,8 +94,9 @@ def main():
     if not EMU.exists() or not PY.exists():
         sys.exit("usb_align: needs the port (make emu-cf) and the .venv")
     remix = registry.remix(a.remix)
-    if brain.value(remix, registry.modules(), "octabam.usb", "LAYOUT") != "TRACKS MAIN CUE":
-        sys.exit(f"usb_align: {a.remix} does not carry USB with LAYOUT TRACKS MAIN CUE")
+    get = lambda n: brain.value(remix, registry.modules(), "octabam.usb", n)
+    if get("TRACKS") == "OFF" or get("MAIN") != 1 or get("CUE") != 1:
+        sys.exit(f"usb_align: {a.remix} does not carry USB with TRACKS + MAIN + CUE")
     if OUT.exists():
         shutil.rmtree(OUT)
     OUT.mkdir(parents=True)
@@ -126,7 +129,7 @@ def main():
         sys.exit(f"usb_align: stage_card failed\n{r.stdout[-800:]}{r.stderr[-800:]}")
     nm = subprocess.run(["m68k-elf-nm", str(ROOT / "out/platform/runtime/runtime.elf")], capture_output=True, text=True).stdout
     sym = {p[2]: int(p[0], 16) for p in (l.split() for l in nm.splitlines()) if len(p) == 3}
-    ring_b = 1024 * FRAME_B
+    ring_b = 1024 * SLOT_B
     log = OUT / "port.txt"
     with open(log, "w") as lf:
         r = subprocess.run([str(EMU), "--image", str(image), "--card", str(card), "--set", "OCTABAM",
@@ -151,8 +154,10 @@ def main():
     start = produced - n
     ch = [[0] * n for _ in range(NCH)]
     for i in range(n):
-        base = ((start + i) & (n - 1)) * FRAME_B
+        base = ((start + i) & (n - 1)) * SLOT_B
         for c in range(NCH):
+            # channels 0-15: the tracks' pairs at frame + 4c; 16/17: MAIN L/R
+            # at frame + 64/+68, 18/19: CUE at +72/+76 (wire order)
             w = int.from_bytes(raw[base + 4 * c:base + 4 * c + 4], "little")
             v = w >> 8
             ch[c][i] = v - (1 << 24) if v & 0x800000 else v

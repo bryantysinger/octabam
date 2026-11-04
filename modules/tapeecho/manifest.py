@@ -34,16 +34,16 @@ MODULE = Module(
         Param(b"TIME", 64, active=True, formatter=_PLAIN,
               doc="FREE: 46..231 ms; BEAT: twelve note divisions from 1/64 to dotted 1/4"),
         Param(b"FDBK", 64, active=True, formatter=_PLAIN,
-              doc="repeat intensity; the upper range safely self-oscillates from tape noise"),
+              doc="repeat intensity; the top of the range self-oscillates from tape noise"),
         Param(b"WOW", 25, active=True, formatter=_PLAIN,
               doc="0.8 Hz wow plus irregular flutter; about 8 cents at 44, 22 cents at 127"),
         Param(b"AGE", 64, 128, active=True, formatter=_PLAIN,
               doc="repeat bandwidth, flutter and noise; fresh at 0, worn at 127"),
         Param(b"SYNC", 0, 2, active=True, formatter=_STEP,
               labels=("FREE", "BEAT"),
-              doc="FREE uses milliseconds; BEAT quantises TIME from stock tempo"),
+              doc="FREE sets TIME in milliseconds; BEAT snaps it to note divisions of the project tempo"),
         Param(b"MIX", 90, active=True, formatter=_PLAIN,
-              doc="dry/wet crossfade; 0 is exact passthrough"),
+              doc="dry/wet; 0 is exact passthrough"),
         # ---- detail/setup page (stock effect page 2) ---------------------
         Param(),  # former DRIVE: fixed at zero, including previously saved parts
         Param(),  # AGE moved to page 1; old page-2 values are ignored

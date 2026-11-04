@@ -47,7 +47,7 @@ init:
         move    x0,x:(r7+$02)
         clr     a
         move    a,x:(r7+$03)            ; every slot the loop reads before
-        move    a,x:(r7+$04)            ; it writes (verify_dirtystate)
+        move    a,x:(r7+$04)            ; it writes (verify_dirty_state)
         move    a,x:(r7+$05)
         move    a,x:(r7+$06)
         rts

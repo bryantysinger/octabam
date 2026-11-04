@@ -14,6 +14,7 @@ REMIX = Remix(
              "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
              "PLATE REV", "SPRING REV"),
     fallback="NONE",
-    settings={("octabam.usb", "LAYOUT"): "TRACKS MAIN CUE",
-              ("octabam.usb", "INPUTS"): "OFF"},
+    settings={("octabam.usb", "TRACKS"): "PRE", ("octabam.usb", "MAIN"): 1,
+              ("octabam.usb", "CUE"): 1, ("octabam.usb", "MASTER"): 0,
+              ("octabam.usb", "IN"): "OFF"},
 )

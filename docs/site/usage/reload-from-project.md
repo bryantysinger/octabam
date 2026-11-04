@@ -3,5 +3,5 @@ transport.
 
 ## Operation
 
-- [PTN] + [TRACK n]: reload the track's sequence from the project.
-- [BANK] + [TRACK n]: re-apply the saved Part.
+- [PTN] + [TRACK n]: reload that track's sequence from the project.
+- [BANK] + [TRACK n]: re-apply the track's saved Part.

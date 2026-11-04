@@ -75,7 +75,7 @@
 ;   LOFI2 uses none of it (CHIP.md section 5).
 ; ---- boot garbage --------------------------------------------------------
 ; `init` zeroes $00..$83 from r7, as stock LO-FI's own init does
-; (verify_dirtystate). Beyond that, the state tolerates garbage:
+; (verify_dirty_state). Beyond that, the state tolerates garbage:
 ;   * carrier phase: any value is a legal phase, and A1 extraction wraps it.
 ;   * held pair: at worst one wrong sample before the first latch.
 ;   * SRR phase: init zeroes it, and it stays in 0 .. 1.0 by construction.
@@ -94,9 +94,9 @@
 ; ---------------------------------------------------------------------------
 
 init:
-; ---- every slot to zero (verify_dirtystate; AGENTS.md "a persistent slot
+; ---- every slot to zero (verify_dirty_state; AGENTS.md "a persistent slot
 ; that init does not clear"). r5, never r1: the FX1 dispatcher keeps the
-; effect id in r1 across this call (verify_initregs). $00..$83 is the whole
+; effect id in r1 across this call (verify_init_regs). $00..$83 is the whole
 ; block, so no per-slot census can go stale. The smoothed shelf coefficient
 ; at $08 starts at 0 and glides to its target over the first few hundred
 ; samples, which on silence produces nothing.
@@ -173,12 +173,13 @@ lf_shf:
 ; direction" below, after the step is known. Selector order is RING / DOWN /
 ; UP, so the encoder walks the sidebands in pitch order with RING at one end.
 
-; fdbk = FDBK * 0.45, BodeShift's cap. Inactive in RING by design: ring
-; feedback is a harmonic-order generator, not a ladder, and was not wanted.
+; fdbk = FDBK * 0.40. Inactive in RING by design: ring feedback is a
+; harmonic-order generator, not a ladder, and was not wanted. The cap was
+; 0.45 (BodeShift's) until sambanks/octabam#825: see the loop gain below.
         move    x:(r6+$2),a
         and     #>$7fff00,a             ; the knob AND its LFO fraction
         move    a1,x0
-        move    #>$39999a,y1
+        move    #>$333333,y1            ; 0.40
         mpy     x0,y1,a
         move    a,x:(r7+$05)
 
@@ -638,9 +639,14 @@ lf_nomod:
         tst     a
         beq     lf_noshift
 
-; in = 0.5*dry + fdbk*lastwet, per channel. The halving is what keeps the
-; feedback loop inside the rail: |in| settles at 0.5/(1-fdbk), so fdbk < 0.5
-; is an ARITHMETIC cap, not a taste one. The x2 at the output undoes it.
+; in = 0.5*dry + fdbk*lastwet, per channel. The x2 that forms the wet is
+; INSIDE the loop, so the loop gain is 2*fdbk, not fdbk: 0.8 at the cap.
+; The Hilbert pair cannot shift DC or Nyquist (every section is -1 at
+; z = +-1, so I/Q collapses to 0 degrees there and DC comes back as a
+; carrier-rate tone with sqrt(2) the amplitude, and back again), so the
+; worst two-pass gain is (2 fdbk)^2 sqrt(2): 0.905 at 0.40. At the old 0.45
+; it was 1.15, and FDBK 124-127 at FREQ about 56-72 in HIGH self-oscillated
+; up to the limiter (#825).
         move    x:(r7+$33),a            ; dry L
         asr     #$1,a,a
         move    x:(r7+$3b),x0           ; lastwet L

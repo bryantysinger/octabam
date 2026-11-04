@@ -48,6 +48,8 @@ sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "tools/harness"))
 import toolpath  # noqa: E402,F401
 import usb_post_model as M  # noqa: E402
+from remix import registry  # noqa: E402
+from verify_usb import early_block, cs1_block, has_early_slot  # noqa: E402
 
 EMU = ROOT / "out/emu/ot_emu"
 PY = ROOT / ".venv/bin/python3"
@@ -64,7 +66,10 @@ MASTER_ON = 0x80000034                 # MASTER TRACK
 MAIN_LEVEL = 0x80000035
 AUDIO_CC_IN = 0x80000049
 LEVEL_START = 80                       # (80/128)^2: eight tones at -12 dBFS sum under full scale
-SLOT = 64
+UNCACHED = 0x08000000                  # the producer writes the ring through the alias (usbaudio.s)
+SLOT = 88                              # the ring's frame stride: the stream's frame bytes (usbaudio.s
+                                       # usb_frame_bytes, since 27 Oct 2026), set in main() from the
+                                       # settings the session boots: 64 (tracks) + 8 a checked pair
 
 
 class Emu:
@@ -142,9 +147,10 @@ def xlv_table_from_elf(sym):
     return words[:256]
 
 
-def session(sym, card, events, total_ms, workdir, tag, master=False):
+def session(sym, card, events, total_ms, workdir, tag, cs1, master=False):
     """One port run: load, play, watch, apply `events` [(ms, fn)], return the frames."""
-    e = Emu(["--image", str(IMAGE), "--interactive", "--dsp"] + card, workdir / f"port_{tag}.log")
+    e = Emu(["--image", str(IMAGE), "--interactive", "--dsp", "--cs1-in", str(cs1)] + card,
+            workdir / f"port_{tag}.log")
     try:
         e.cmd("frame on")
         e.poke(sym["aud_force"], [1])
@@ -159,7 +165,7 @@ def session(sym, card, events, total_ms, workdir, tag, master=False):
         e.cmd("key 0x25 0")
         e.cmd("run 400")
         for a, n in [(PING, 4), (PREV, 4), (ARENA, ARENA_LEN), (SNAP, SNAP_LEN), (MAINB, 0x80),
-                     (sym["aud_ring"], 1024 * SLOT), (sym["post_state"], 96)]:
+                     (sym["aud_ring"] + UNCACHED, 1024 * SLOT), (sym["post_state"], 96)]:
             e.cmd(f"watchmem {a:#x} {n}")
         t = 0
         for ms, fn in sorted(events, key=lambda x: x[0]) + [(total_ms, None)]:
@@ -178,7 +184,8 @@ def frames_of(rows, sym):
     """Group the writes into ColdFire frames (a frame starts at frame_isr's ping
     write). The read-back block the producer read in frame F is reassembled from
     the arena writes as they stood when its first ring write landed."""
-    ring0, ring1 = sym["aud_ring"], sym["aud_ring"] + 1024 * SLOT
+    ring0 = sym["aud_ring"] + UNCACHED
+    ring1 = ring0 + 1024 * SLOT
     st0 = sym["post_state"]
     arena = bytearray(ARENA_LEN)
     prev = None
@@ -289,6 +296,13 @@ def analyse(frames, xlv, master=False):
     lines.append(f"RUN: {len(blocks)} blocks; {sounding} track-blocks with signal; "
                  f"{splits} track-blocks with a nonzero split")
     ok &= bool(blocks) and sounding > 0 and (splits > 0 or master)    # the plain run pokes the split word
+    if not blocks:
+        lines.append(f"MODEL/SUM: skipped -- {sum(p is not None for p in prod)} producer frames, "
+                     f"{sum(m is not None for m in mains)} MAIN frames, "
+                     f"{sum(s is not None for s in states)} state frames; "
+                     f"{sum(len(f['ring']) for f in frames)} ring writes, "
+                     f"{sum(f['x'] is not None for f in frames)} frames with a read-back block")
+        return lines, ok
     bad_model = []
     for F in blocks:
         exp, new = model(F, 4)
@@ -354,11 +368,25 @@ def main():
     nm = subprocess.run(["m68k-elf-nm", str(ELF)], capture_output=True, text=True).stdout
     sym = {p[2]: int(p[0], 16) for p in (l.split() for l in nm.splitlines()) if len(p) == 3}
     if "post_xlv" not in sym:
-        print("  [SKIP] verify_usb_post: the image under test does not carry LAYOUT TRACKS POST")
+        print("  [SKIP] verify_usb_post: the image under test does not carry USB TRACKS POST")
         return 0
     work = pathlib.Path(a.keep) if a.keep else pathlib.Path(tempfile.mkdtemp(prefix="usb_post_"))
     work.mkdir(parents=True, exist_ok=True)
     card = stage(a.source, work)
+    # The image resolves TRACKS to PRE (the bus remix's pin); this gate models
+    # POST, so each session boots a CS1 early block holding TRACKS POST --
+    # cfgsel reads the block at the USB controller init (verify_usb's runtime
+    # rows do the same). Every other early setting keeps its resolved value.
+    remix = registry.remix(os.environ.get("REMIX"))
+    base, early, resolved = early_block(remix, registry.modules())
+    if not has_early_slot(early):
+        print("  [SKIP] verify_usb_post: TRACKS is fixed in this image (no USB setting has an early CS1 entry to hold POST)")
+        return 0
+    cs1 = work / "cs1_post.bin"
+    cs1.write_bytes(cs1_block(base, early, resolved, {"TRACKS": 2}))
+    global SLOT
+    val = {r.name: r.value for r in resolved.values() if r.store_id == "octabam.usb"}
+    SLOT = 64 + 8 * sum(1 for k in ("MAIN", "CUE", "MASTER") if val.get(k))
     xlv = xlv_table_from_elf(sym)
     if len(xlv) != 256 or xlv[254] < 0x7f0000:
         print(f"  [FAIL] verify_usb_post: post_xlv not read back from {ELF}")
@@ -389,14 +417,14 @@ def main():
         (122, midi("b4 31 00")),
     ]
     ok = True
-    frames, nwrites = session(sym, card, events, 135, work, "plain")
+    frames, nwrites = session(sym, card, events, 135, work, "plain", cs1)
     lines, pok = analyse(frames, xlv)
     print(f"verify_usb_post: {len(frames)} frames logged ({nwrites} writes)")
     for l in lines:
         print("  " + l)
     ok &= pok
     mframes, _ = session(sym, card, [(10, midi("b7 2e 50")), (20, midi("b7 31 7f")), (28, midi("b7 31 00"))],
-                         40, work, "master", master=True)
+                         40, work, "master", cs1, master=True)
     mlines, mok = analyse(mframes, xlv, master=True)
     for l in mlines:
         print("  " + l)

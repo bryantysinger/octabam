@@ -128,7 +128,7 @@ slot-11 byte (WOW, or 0) as TIME: stamp before play (`stamp-defaults
   still passing), the three carriers of the housekeeping block, the
   election, 1–7 senders per bus, both cross-sends, split blocks, compared
   bit-for-bit against a stamp (`SAVE=1` first).
-- `tools/verify/verify_onebus.py` (in `make check`) runs the chain on both
+- `tools/verify/verify_one_bus.py` (in `make check`) runs the chain on both
   cores: T5 prints the reverb (stereo) and T1 the delay; the reverb hears
   the delay; delay WET 0 == no delay three blocks later, sample-exact; a
   host at WET 0 prints only its dry; T1's print is bit-identical with the
@@ -139,7 +139,7 @@ slot-11 byte (WOW, or 0) as TIME: stamp before play (`stamp-defaults
   contributes nothing; T5's DEL and T1's REV land bit-identically to a SEND
   track's on the same core; the chain is identical under four
   instruction-level skews.
-- `make verify-twocore`: SEND, delay and series hops on their real cores ==
+- `make verify-two-core`: SEND, delay and series hops on their real cores ==
   the DEV hatch.
 - `dsp_host` runs both cores since 7 Sep 2026, lock-step or under `-skew`;
   a mismatch under skew is a defect, identity is not evidence
@@ -189,7 +189,7 @@ CORE 1 (payload B)  tracks 1–4   BusDelay  Y:0x4000–0xBFFF (private) + Y:0x3
   unity) and the reverb read the chain or, with no delay, the aux.
 - So: a DEL-only send reaches the reverb only as repeats × DLY; a REV-only
   send never reaches the delay; DLY 0 = the two engines in parallel
-  (`verify_onebus` measures each, bit for bit where it can).
+  (`verify_one_bus` measures each, bit for bit where it can).
 - WET on each engine (slot 5): each host prints `wet × WET` under its own
   dry: T1 the repeats, T5 the tail. Until 15 Sep 2026 each stage
   crossfaded (`in × (1 − MIX) + wet × MIX`).
@@ -215,7 +215,7 @@ knob byte 0 carried a non-zero low byte (port, 5 Oct 2026,
 `docs/firmware/LFO.md` section 5). The registration masks the DEL and REV
 words with `and #>$7f0000` before the `tst`, as BusVerb and BusDelay do; the
 unmasked `tst` counted a track at knob 0 as a sender (N/(N+1) dilution of the
-other senders, -6.02 dB with one). `verify_onebus` renders an unfed client
+other senders, -6.02 dB with one). `verify_one_bus` renders an unfed client
 with a DEL word `0x000080` and a REV word `0x000080` beside a real send and
 requires the real send's print unchanged.
 

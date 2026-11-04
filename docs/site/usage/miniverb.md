@@ -22,7 +22,7 @@ remix `miniverb`. Hardware: cursory testing on Sam's MKII (owner report, 16 Oct 
   in eight steps.
 - MIX 0 is an exact dry passthrough. The room is fixed: there is no
   predelay, freeze or colour mode.
-- After the effect starts the audio passes dry for about 46 ms while the
+- After the effect starts the audio passes dry for about 45 ms while the
   delay memory clears.
 - Four instances fit per DSP core, eight in all.
 

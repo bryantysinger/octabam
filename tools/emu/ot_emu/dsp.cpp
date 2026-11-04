@@ -271,18 +271,11 @@ namespace ot
 			// op_Brclr_pp forever; the second faulted in the JIT's funcCreate
 			// on the first DSP interrupt (lldb, EXC_BAD_ACCESS).
 			c.dsp->setHostStepped(!m_rt);
-			if(m_rt)
-			{
-				// O17: two of O8's defects apply to a JIT core on its own
-				// thread too, as flags of their own (the host-stepped mode
-				// carries them for the interpreter): the peripheral service
-				// under a masked interrupt (defect 3: core A boots with `ori
-				// #3,mr`) and the DMA trigger on arming (defect 8: DMA2 is
-				// armed with TDE already set; measured again under the JIT,
-				// core 0 parked at P:0x4b with DSR2 never moving).
-				c.dsp->setPeripheralsUnderMaskedInterrupt(true);
-				c.dsp->setDmaTriggerOnArm(true);
-			}
+			// DMA arming: a DCR write that selects the request source and sets DE
+			// serves a request raised before it (the rule before upstream 3cee91c9),
+			// in both modes. Upstream's rule leaves verify_remix_switch's park
+			// command untaken by both cores (measured in CI, 27 Oct 2026).
+			c.dsp->setDmaTriggerOnArm(true);
 			// HC and HCP clear when the DSP TAKES the host command. ✅ Measured
 			// 8 Sep 2026: watching for the PC to land on the vector never fired
 			// -- a fast interrupt runs the vector's two words inline -- so the
@@ -538,7 +531,7 @@ namespace ot
 			c.px->getEsaiClock().setCyclesPerSample(c.esaiCyclesPerSlot);
 
 			// The inter-core mailbox (see dsp.h), on the Y-side peripherals.
-			c.py->setUnmappedHooks(
+			c.py->setIoExtension(
 				[this, i](dsp56k::TWord _a, dsp56k::TWord& _v)
 				{
 					// O17: `full` is the flag of a one-word SPSC channel between the

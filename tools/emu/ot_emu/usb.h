@@ -121,6 +121,7 @@ namespace ot
 		// Two bench commands the machine itself has to serve, from OUTSIDE
 		// the run loop (a borrowed call re-enters it):
 		//   poke <addr> <hex>      write bytes into guest memory   -> poke ok
+		//   peek <addr> <len>      read bytes from guest memory    -> peek <hex>
 		//   call <addr> [arg ...]  run a firmware routine as main   -> call <d0> | call err <why>
 		// The run loop stops when one is queued (`hasRequest`), the caller
 		// serves it and answers with `answerRequest`.

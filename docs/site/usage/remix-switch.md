@@ -3,11 +3,11 @@ file in `/BRAIN/REMIXES/` is a raw OS image.
 
 ## Operation
 
-BRAIN > REMIXES lists the `.RMX` files, sorted. The one whose name
-matches the running image (case and spaces ignored) has `RUNNING` at
-the right. YES asks `BOOT <NAME>?`; YES boots it without writing the
-flash. After a switch, a `FLASHED` separator shows the image a
-power-cycle returns to.
+BRAIN > REMIXES lists the `.RMX` files in order. The one whose name
+matches the running image (case and spaces ignored) shows `RUNNING` at the
+right. Press [YES] to be asked `BOOT <NAME>?`; [YES] again boots it
+without writing the flash. After a switch, a `FLASHED` separator shows the
+image that a power-cycle returns to.
 
-A staged image need not carry this module: stock 1.40C itself is a
-valid target.
+The image you switch to need not carry this module: stock 1.40C itself is
+a valid target.

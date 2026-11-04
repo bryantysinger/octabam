@@ -374,6 +374,17 @@ namespace
 		if(const char* e = std::getenv("OT_SELFPROF"); e && std::atof(e) > 0.0)
 			prof.start(std::atof(e));
 		struct ProfEnd { SelfProfiler& p; ~ProfEnd() { p.finish(); } } profEnd{prof};
+		// EOF on stdin ends the loop only when the loop reads it; a long `run`
+		// or a stuck core never does. So a dead parent (we are re-parented)
+		// ends the process from here, whatever the main thread is doing.
+		// Every card sector is already pwrite()n (--card-rw), so _exit loses nothing.
+		if(const pid_t parent = ::getppid(); parent > 1)
+			std::thread([parent] {
+				while(::getppid() == parent)
+					std::this_thread::sleep_for(std::chrono::seconds(1));
+				std::fprintf(stderr, "ot_emu: parent %d is gone: exiting\n", static_cast<int>(parent));
+				::_exit(3);
+			}).detach();
 #ifdef __APPLE__
 		// O17: the ColdFire's thread joins the DSP workers' scheduling band.
 		// The workers run at QOS_CLASS_USER_INITIATED (the vendored
@@ -831,7 +842,7 @@ namespace
 				// `call <addr> [<arg>...]` -> ok d0=<hex> | err <why>: a firmware
 				// routine run as main (Rtos::callAsMain, --call's), for a routine
 				// that cannot genuinely block. modules/remix-switch's osw_reupload
-				// (verify_remixswitch: park the DSP, then the stock upload).
+				// (verify_remix_switch: park the DSP, then the stock upload).
 				uint64_t addr = 0;
 				std::vector<uint32_t> args;
 				bool okArgs = w.size() >= 2 && parseNumber(w[1], addr) && addr <= 0xffffffffull;
@@ -2723,10 +2734,29 @@ int main(int _argc, char** _argv)
 				for(const auto& c : parseCalls(atFrames, true))
 					actions.push_back({c.frame, false, {}, -1, c.addr, c.arg, true});
 				std::stable_sort(actions.begin(), actions.end(), [](const Action& x, const Action& y) { return x.frame < y.frame; });
+				// MIDI OUT (UART0) and the panel wire (UART A) with the frame each byte was first seen at
+				// (frames since the transport start), checked at every event of the run: FILE.frames
+				std::vector<std::pair<uint64_t, size_t>> seqMark0, seqMarkA;
+				size_t seqSeen0 = rtos.serialTx0().size(), seqSeenA = rtos.serialTxA().size();
+				const auto seqMark = [&]
+				{
+					const auto z = rtos.serialTx0().size();
+					if(z != seqSeen0)
+					{
+						seqMark0.emplace_back(rtos.frameCount() - frame0, seqSeen0);
+						seqSeen0 = z;
+					}
+					const auto a = rtos.serialTxA().size();
+					if(a != seqSeenA)
+					{
+						seqMarkA.emplace_back(rtos.frameCount() - frame0, seqSeenA);
+						seqSeenA = a;
+					}
+				};
 				for(const auto& act : actions)
 				{
 					const auto at = frame0 + act.frame;
-					rtos.runUntil(budgetMs, [&] { return rtos.frameCount() >= at; }, ot::Rtos::Changes::OnEvent);	// O15e: the ack hook wakes
+					rtos.runUntil(budgetMs, [&] { seqMark(); return rtos.frameCount() >= at; }, ot::Rtos::Changes::OnEvent);	// O15e: the ack hook wakes
 					if(act.at)
 					{
 						const bool spun = rtos.runToMainSpin(1000.0) == ot::Rtos::Stop::Gate;
@@ -2764,8 +2794,30 @@ int main(int _argc, char** _argv)
 				if(profile)
 					m.clearProfile();		// the whole-run table below then covers the frames alone
 				const auto wall0 = std::chrono::steady_clock::now();
-				const auto rs2 = rtos.runUntil(livePath.empty() ? budgetMs : 1e15, [&] { return rtos.frameCount() >= target || live.quit; },
+				const auto rs2 = rtos.runUntil(livePath.empty() ? budgetMs : 1e15, [&] { seqMark(); return rtos.frameCount() >= target || live.quit; },
 					ot::Rtos::Changes::OnEvent);	// O15e: the ack hook wakes; the live poll wakes too
+				seqMark();
+				const auto writeFrames = [](const std::string& path, const std::vector<std::pair<uint64_t, size_t>>& marks,
+					const std::vector<uint8_t>& tx)
+				{
+					std::ofstream fl(path);
+					for(size_t i = 0; i < marks.size(); ++i)
+					{
+						const auto end = i + 1 < marks.size() ? marks[i + 1].second : tx.size();
+						fl << marks[i].first;
+						for(auto k = marks[i].second; k < end; ++k)
+						{
+							char h[4];
+							std::snprintf(h, sizeof h, " %02x", tx[k]);
+							fl << h;
+						}
+						fl << "\n";
+					}
+				};
+				if(!midiOut.empty())
+					writeFrames(midiOut + ".frames", seqMark0, rtos.serialTx0());
+				if(!serialOut.empty())
+					writeFrames(serialOut + ".a.frames", seqMarkA, rtos.serialTxA());
 				const auto wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - wall0).count();
 				const auto ran = rtos.frameCount() > frame0 ? static_cast<double>(rtos.frameCount() - frame0) : 0.0;
 				std::printf("cpu        : %llu ColdFire instructions over the frames (%.0f per frame of %g samples); %.2f s wall = %.1f M instr/s, %.1fx real time\n",
@@ -2932,6 +2984,30 @@ int main(int _argc, char** _argv)
 					for(size_t i = 0; i < req.bytes.size(); ++i)
 						m.write8(req.addr + uint32_t(i), req.bytes[i]);
 					usb->answerRequest("poke ok\n");
+				}
+				else if(req.kind == "peek")
+				{
+					// `peek <addr> <len>` -> peek <hex> | peek err <why>: guest
+					// memory read between run slices (the arena probes).
+					const uint64_t len = req.args.empty() ? 0 : req.args[0];
+					if(len < 1 || len > 4096 || req.addr + len > 0x100000000ull || !m.mapped(req.addr, uint32_t(len)))
+					{
+						char line[128];
+						std::snprintf(line, sizeof line, "err peek %#x+%llu\n", req.addr, static_cast<unsigned long long>(len));
+						usb->answerRequest(line);
+					}
+					else
+					{
+						std::string out = "peek ";
+						static const char* const hex = "0123456789abcdef";
+						for(uint64_t i = 0; i < len; ++i)
+						{
+							const auto b = m.read8(req.addr + uint32_t(i));
+							out += hex[b >> 4];
+							out += hex[b & 15];
+						}
+						usb->answerRequest(out + "\n");
+					}
 				}
 				else
 				{

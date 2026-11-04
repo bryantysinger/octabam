@@ -24,7 +24,7 @@ engines hidden from the chooser there was no row to put it back.
 
 ## Measured
 
-- Under the port (`tools/verify/verify_fx2lock.py`, in `make check`):
+- Under the port (`tools/verify/verify_fx2_lock.py`, in `make check`):
   T2, FX2 twice, DOWN, YES leaves the live FX2 ids as a run that pressed
   nothing. Without the module the same sequence turns T2's SEND (0x09)
   into the stock DELAY (0x08) on bottleservice.

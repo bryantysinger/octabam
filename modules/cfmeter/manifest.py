@@ -23,9 +23,13 @@ from remix.schema import (BusRole, Category, Detour, DspSection, Formatter, Gate
 _BLANK = Param(b"", None, active=False)
 
 
-def load_inc(modules):
-    """WAVE LOAD in the remix: m_isr calls its cl_load with BURN as K."""
-    return "        .set    WAVE_LOAD, 1\n" if "WAVE LOAD" in modules else ""
+def load_inc(modules, remix):
+    """WAVE LOAD in the remix: m_isr calls its cl_load with BURN as K. And
+    HOOKS's flags: beside LOAD METER or BOOT TRACE, m_tail returns and HOOKS
+    replays the epilogue (modules/hooks, frame_tail)."""
+    from remix import hooks_flags
+    return (("        .set    WAVE_LOAD, 1\n" if "WAVE LOAD" in modules else "")
+            + hooks_flags.inc("CF METER", modules))
 
 
 MODULE = Module(

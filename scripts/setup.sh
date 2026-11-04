@@ -12,20 +12,16 @@ source "$(dirname "$0")/vendor.sh"
 cd "$(dirname "$0")/.."
 refuse_shared_vendor
 
-echo "== 1) System tools (via Homebrew) =="
-need_brew=()
-command -v binwalk  >/dev/null 2>&1 || need_brew+=(binwalk)
-command -v radare2  >/dev/null 2>&1 || need_brew+=(radare2)
-# The m68k/ColdFire cross-toolchain (bottled): DRAM runtimes and units are
-# compiled from source at build time, and every pinned ColdFire cave with a
-# `.s` source is re-assembled and compared against its bytes.
-command -v m68k-elf-gcc >/dev/null 2>&1 || need_brew+=(m68k-elf-gcc)
-if [ "${#need_brew[@]}" -gt 0 ]; then
-  echo "   installing: ${need_brew[*]}"
-  brew install "${need_brew[@]}"
-else
-  echo "   binwalk and radare2 already present."
-fi
+echo "== 1) System tools =="
+# The m68k/ColdFire cross-toolchain: DRAM runtimes and units are compiled from
+# source at build time, and every pinned ColdFire cave with a `.s` source is
+# re-assembled and compared against its bytes. Installed by make setup-mac
+# (brew) and make setup-linux (scripts/m68k-toolchain.sh).
+command -v m68k-elf-gcc >/dev/null 2>&1 \
+  || { echo "   [!] m68k-elf-gcc not on PATH -- run make setup-mac or make setup-linux"; exit 1; }
+for t in binwalk r2; do
+  command -v "$t" >/dev/null 2>&1 || echo "   $t not installed (optional: make recon's binwalk pass, make disasm)"
+done
 
 echo
 echo "== 1b) mc68k (ColdFire core for the headless machine) =="
@@ -58,8 +54,7 @@ echo
 echo "== 3) Ghidra (optional, manual) =="
 if [ ! -d "/Applications/ghidra" ] && ! command -v ghidra >/dev/null 2>&1; then
   cat <<'EOF'
-   Ghidra not detected. For ColdFire disassembly:
-     brew install --cask ghidra      # needs JDK 17+ (brew install temurin)
+   Ghidra not detected. For ColdFire disassembly: install Ghidra (needs JDK 17+).
    Ghidra has no perfect native ColdFire processor; the m68k module covers
    most of the ISA. Alternative: radare2/rizin with -a m68k.
    Only needed for OS archaeology, not for building effects.
@@ -105,7 +100,7 @@ if [ -x "$DIS" ] && [ -x "$ASM" ] && [ -x "$HOST" ] && ! binary_arch_ok "$DIS" "
 fi
 if [ ! -x "$DIS" ] || [ ! -x "$ASM" ] || [ ! -x "$HOST" ]; then
   if ! command -v cmake >/dev/null 2>&1; then
-    echo "   [!] cmake not found — brew install cmake — then re-run make setup (make check needs dsp_asm and dsp_host)"
+    echo "   [!] cmake not found — install cmake — then re-run make setup (make check needs dsp_asm and dsp_host)"
     exit 1
   else
     vendor_dsp56300
