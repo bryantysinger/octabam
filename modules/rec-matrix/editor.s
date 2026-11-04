@@ -69,7 +69,11 @@
         .equ    BLIT,       0x400128a8      | (descriptor, surface, x, y): the renderer's glyph draw
         .equ    TRK_LED0,   40              | track n: id 40 + 2n red, 41 + 2n green (tools/panel/KEYMAP.md)
         .equ    TRK_LEVEL,  15              | stock's level for both track-key LEDs
-        .equ    ICON_X,     84              | the title's icon: its 7 x 5 cell's left
+        .equ    SMC_WORD,   0x80000008      | solo 0-7, mute 8-15, cue 16-23 (PATTERN MUTE's pm.s)
+        .equ    MUTE_BYTE,  0x8000000a      | the audio tracks' mute, bit n = track n
+        .equ    DTCN3,      0xfc07c00c      | DMA timer 3: free-running at the 132 MHz bus (PANEL.md)
+        .equ    FLASH_BIT,  26              | its bit 26: ~0.5 s lit, ~0.5 s dark
+        .equ    ICON_X,     104             | the title's icon: its 7 x 5 cell's left, clear of the title tab's corners
         .equ    ICON_Y,     56              | and bottom (y up): rows 3..7, the title bar's band
 
 | mask bits: 0 A, 1 B, 2 C, 3 D, 4 AB, 5 CD, 6..13 T1..T8, 14 MAIN, 15 CUE
@@ -189,6 +193,8 @@ rmx_open:
         move.l  %d0,rmx_win
         moveq   #1,%d0
         move.l  %d0,rmx_editing
+        moveq   #-1,%d0
+        move.l  %d0,rmx_trk_ctx             | the track keys written in full
         pea     rmx_layer
         jsr     (LAYER_ADD).l
         addq.l  #4,%sp
@@ -493,6 +499,8 @@ rmx_leds:
         moveq   #16,%d0
         cmp.l   %d0,%d2
         blt     1b
+        moveq   #-1,%d0                     | the track keys in full too
+        move.l  %d0,rmx_trk_ctx
         bsr     rmx_trk_leds
         movem.l (%sp),%d2-%d4/%a2
         lea     16(%sp),%sp
@@ -513,48 +521,90 @@ rmx_state:
         and.l   %d1,%d0
         rts
 
-| The track keys show the buffers: recording red, playing green, both
-| orange (the trigs' red full, green part way), stopped off. Rewritten on
-| every pass, so a stock repaint (a track key's select) lasts one pass.
+| d0 = what the track keys answer to besides the buffers: the active track
+| (top byte) and solo / mute / cue (low 24 bits). Stock relights the track
+| keys when one of them changes (a track key, FUNC + track, CUE + track).
+rmx_ctx:
+        move.l  (SMC_WORD).l,%d0
+        and.l   #0x00ffffff,%d0
+        moveq   #0,%d1
+        move.b  (CUR_TRACK).l,%d1
+        swap    %d1
+        lsl.l   #8,%d1
+        or.l    %d1,%d0
+        rts
+
+| The track keys show the buffers: playing green, recording red, both amber
+| (the trigs' red full, green part way), stopped off; a muted track's
+| colour flashes (DTCN3's FLASH_BIT). A key is written only when what it
+| shows changes; after stock relit the keys (rmx_ctx changed), all of them.
 rmx_trk_leds:
         lea     -16(%sp),%sp
-        movem.l %d2-%d4/%a2,(%sp)
+        movem.l %d2-%d5,(%sp)
+        bsr     rmx_ctx
+        cmp.l   rmx_trk_ctx,%d0
+        beq.s   1f
+        move.l  %d0,rmx_trk_ctx
+        moveq   #-1,%d0                     | every key rewritten
+        move.l  %d0,rmx_trk_shown
+        move.l  %d0,rmx_trk_shown+4
+1:      move.l  (DTCN3).l,%d5               | d5 = the flash phase
+        moveq   #0,%d4
+        move.b  (MUTE_BYTE).l,%d4           | d4 = the muted tracks
         moveq   #0,%d2                      | d2 = the track
-1:      move.l  %d2,%d0
+2:      move.l  %d2,%d0
         bsr     rmx_state
+        btst    %d2,%d4
+        beq.s   3f
+        btst    #FLASH_BIT,%d5
+        bne.s   3f
+        moveq   #0,%d0                      | muted, the dark half
+3:      lea     rmx_trk_shown,%a0
+        moveq   #0,%d1
+        move.b  (%a0,%d2.l),%d1
+        cmp.l   %d1,%d0
+        beq.s   4f
+        move.b  %d0,(%a0,%d2.l)
+        bsr     rmx_trk_write
+4:      addq.l  #1,%d2
+        moveq   #8,%d0
+        cmp.l   %d0,%d2
+        blt.s   2b
+        movem.l (%sp),%d2-%d5
+        lea     16(%sp),%sp
+        rts
+
+| Track d2's key shows colour d0 (0..3, rmx_trk_col). Keeps d2.
+rmx_trk_write:
+        lea     -12(%sp),%sp
+        movem.l %d3-%d4/%a2,(%sp)
         lea     rmx_trk_col,%a2
         add.l   %d0,%d0
         add.l   %d0,%a2                     | a2 = its {red, green} levels
         move.l  %d2,%d3
         add.l   %d3,%d3
         add.l   #TRK_LED0,%d3               | d3 = its red LED's id
-        moveq   #0,%d4                      | d4 = the die
-2:      move.l  %d3,-(%sp)
+        moveq   #2,%d4                      | two dies
+1:      move.l  %d3,-(%sp)
         jsr     (LED_NOBLINK).l
         addq.l  #4,%sp
         moveq   #0,%d0
         move.b  (%a2)+,%d0                  | the die's level, 0 off
-        beq.s   3f
+        beq.s   2f
         move.l  %d0,-(%sp)
         move.l  %d3,-(%sp)
         jsr     (LED_LEVEL).l
         addq.l  #8,%sp
-        move.l  #0x7fffffff,%d0             | lit until the next pass
-3:      move.l  %d0,-(%sp)
+        move.l  #0x7fffffff,%d0             | lit until rewritten
+2:      move.l  %d0,-(%sp)
         move.l  %d3,-(%sp)
         jsr     (SET_LED).l
         addq.l  #8,%sp
         addq.l  #1,%d3
-        addq.l  #1,%d4
-        moveq   #2,%d0
-        cmp.l   %d0,%d4
-        blt.s   2b
-        addq.l  #1,%d2
-        moveq   #8,%d0
-        cmp.l   %d0,%d2
-        blt.s   1b
-        movem.l (%sp),%d2-%d4/%a2
-        lea     16(%sp),%sp
+        subq.l  #1,%d4
+        bne.s   1b
+        movem.l (%sp),%d3-%d4/%a2
+        lea     12(%sp),%sp
         rts
 
 | The track keys' LEDs off at stock's level, for stock's select to relight.
@@ -606,7 +656,13 @@ rmx_leds_off:
 rmx_on_leds:
         tst.l   rmx_editing
         beq.s   1f
-        bsr     rmx_leds                    | the row and the track keys
+        bsr     rmx_ctx                     | the track or solo/mute/cue changed:
+        cmp.l   rmx_trk_ctx,%d0             | stock relit the keys, all rewritten
+        beq.s   3f
+        bsr     rmx_leds
+        bra.s   4f
+3:      bsr     rmx_trk_leds                | else only the keys whose colour changed
+4:
         moveq   #0,%d0                      | the title's icon: redrawn when the
         move.b  (CUR_TRACK).l,%d0           | active buffer's state changed
         bsr     rmx_state
@@ -955,5 +1011,9 @@ rmx_icon_drawn:
         .long   -1                          | the state the title's icon shows
 rmx_in_wincb:
         .long   0                           | 1 inside rmx_win_closed (the manager's callback)
+rmx_trk_ctx:
+        .long   -1                          | rmx_ctx when the track keys were last written in full
+rmx_trk_shown:
+        .byte   -1, -1, -1, -1, -1, -1, -1, -1   | the colour each track key shows
 
         .include "remix.inc"                | rmx_cue_keys (manifest.py cue_keys_inc)
