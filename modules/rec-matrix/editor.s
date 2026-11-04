@@ -60,6 +60,17 @@
         .equ    WIN_TEXT,   0x40057008      | (window, text, 0, font): cleared, text centred
         .equ    TOAST_FONT, 0x400ba862
         .equ    QUANT_MAX,  5               | QUANT: 0 OFF, 1 1/2, 2..5 one to four trigs
+| The buffers' state, as stock's track status icons have it: the renderer
+| (0x4004be88..0x4004c0a4) stores per track playing + 2 * recording (+ 4 for
+| a third flag it draws nothing for) in ICON_CACHE; REC TRIG MUTE stores 8/9
+| (muted, idle/playing) and REC THRESHOLD 0x10 + the state (its blink).
+| Measured on the unit with the matrix open: the cache stays current.
+        .equ    ICON_CACHE, 0x400c0cb8      | a long per track
+        .equ    BLIT,       0x400128a8      | (descriptor, surface, x, y): the renderer's glyph draw
+        .equ    TRK_LED0,   40              | track n: id 40 + 2n red, 41 + 2n green (tools/panel/KEYMAP.md)
+        .equ    TRK_LEVEL,  15              | stock's level for both track-key LEDs
+        .equ    ICON_X,     84              | the title's icon: its 7 x 5 cell's left
+        .equ    ICON_Y,     56              | and bottom (y up): rows 3..7, the title bar's band
 
 | mask bits: 0 A, 1 B, 2 C, 3 D, 4 AB, 5 CD, 6..13 T1..T8, 14 MAIN, 15 CUE
         .equ    GREEN_LEVEL, 8              | of 15; the unit: 15/8 orange, 15/4 red-orange
@@ -206,6 +217,18 @@ rmx_close:
         move.l  %d0,-(%sp)
         jsr     (LEDS_SITE).l
         addq.l  #4,%sp
+        bsr     rmx_trk_leds_off
+| The track keys back to stock: its track select on the active track, as a
+| press of that track's key (it lights the keys). Not from the window
+| manager's close callback (rmx_win_closed): the select redraws and touches
+| windows; there the keys keep the buffers' colours until a track key.
+        tst.l   rmx_in_wincb
+        bne.s   9f
+        moveq   #0,%d0
+        move.b  (CUR_TRACK).l,%d0
+        move.l  %d0,-(%sp)
+        jsr     (SEL_TRACK).l
+        addq.l  #4,%sp
 9:      rts
 
 | NO or knob E inside the editor, or CUE + MIX again: (code, edge). Opened
@@ -349,7 +372,10 @@ rmx_win_closed:
         tst.l   rmx_win
         beq.s   9f
         clr.l   rmx_win                     | already gone: not freed twice
-        bra     rmx_close
+        moveq   #1,%d0
+        move.l  %d0,rmx_in_wincb
+        bsr     rmx_close
+        clr.l   rmx_in_wincb
 9:      rts
 
 | 0x4002ee88, a "jmp" detour: the setup window's close. The editor closes
@@ -467,9 +493,96 @@ rmx_leds:
         moveq   #16,%d0
         cmp.l   %d0,%d2
         blt     1b
+        bsr     rmx_trk_leds
         movem.l (%sp),%d2-%d4/%a2
         lea     16(%sp),%sp
         rts
+
+| d0 = track (0..7) -> d0 = its state: 0 stopped, 1 playing, 2 recording,
+| 3 both, from stock's icon cache. Clobbers d1, a0.
+rmx_state:
+        lea     (ICON_CACHE).l,%a0
+        move.l  (%a0,%d0.l*4),%d0
+        moveq   #0x0f,%d1
+        and.l   %d1,%d0                     | REC THRESHOLD's blink phase off
+        btst    #3,%d0
+        beq.s   1f
+        moveq   #1,%d1                      | REC TRIG MUTE's 8 / 9: idle / playing
+        and.l   %d1,%d0
+1:      moveq   #3,%d1
+        and.l   %d1,%d0
+        rts
+
+| The track keys show the buffers: recording red, playing green, both
+| orange (the trigs' red full, green part way), stopped off. Rewritten on
+| every pass, so a stock repaint (a track key's select) lasts one pass.
+rmx_trk_leds:
+        lea     -16(%sp),%sp
+        movem.l %d2-%d4/%a2,(%sp)
+        moveq   #0,%d2                      | d2 = the track
+1:      move.l  %d2,%d0
+        bsr     rmx_state
+        lea     rmx_trk_col,%a2
+        add.l   %d0,%d0
+        add.l   %d0,%a2                     | a2 = its {red, green} levels
+        move.l  %d2,%d3
+        add.l   %d3,%d3
+        add.l   #TRK_LED0,%d3               | d3 = its red LED's id
+        moveq   #0,%d4                      | d4 = the die
+2:      move.l  %d3,-(%sp)
+        jsr     (LED_NOBLINK).l
+        addq.l  #4,%sp
+        moveq   #0,%d0
+        move.b  (%a2)+,%d0                  | the die's level, 0 off
+        beq.s   3f
+        move.l  %d0,-(%sp)
+        move.l  %d3,-(%sp)
+        jsr     (LED_LEVEL).l
+        addq.l  #8,%sp
+        move.l  #0x7fffffff,%d0             | lit until the next pass
+3:      move.l  %d0,-(%sp)
+        move.l  %d3,-(%sp)
+        jsr     (SET_LED).l
+        addq.l  #8,%sp
+        addq.l  #1,%d3
+        addq.l  #1,%d4
+        moveq   #2,%d0
+        cmp.l   %d0,%d4
+        blt.s   2b
+        addq.l  #1,%d2
+        moveq   #8,%d0
+        cmp.l   %d0,%d2
+        blt.s   1b
+        movem.l (%sp),%d2-%d4/%a2
+        lea     16(%sp),%sp
+        rts
+
+| The track keys' LEDs off at stock's level, for stock's select to relight.
+rmx_trk_leds_off:
+        move.l  %d2,-(%sp)
+        moveq   #TRK_LED0,%d2
+1:      pea     TRK_LEVEL
+        move.l  %d2,-(%sp)
+        jsr     (LED_LEVEL).l
+        addq.l  #8,%sp
+        clr.l   -(%sp)
+        move.l  %d2,-(%sp)
+        jsr     (SET_LED).l
+        addq.l  #8,%sp
+        addq.l  #1,%d2
+        moveq   #TRK_LED0+16,%d0
+        cmp.l   %d0,%d2
+        blt.s   1b
+        move.l  (%sp)+,%d2
+        rts
+
+| {red, green} per state: stopped, playing, recording, both
+rmx_trk_col:
+        .byte   0, 0
+        .byte   0, 15
+        .byte   15, 0
+        .byte   15, GREEN_LEVEL
+        .balign 2
 
 | Every trig LED off; stock's refresh redraws its own on its next pass.
 rmx_leds_off:
@@ -493,7 +606,14 @@ rmx_leds_off:
 rmx_on_leds:
         tst.l   rmx_editing
         beq.s   1f
-        bra     rmx_leds
+        bsr     rmx_leds                    | the row and the track keys
+        moveq   #0,%d0                      | the title's icon: redrawn when the
+        move.b  (CUR_TRACK).l,%d0           | active buffer's state changed
+        bsr     rmx_state
+        cmp.l   rmx_icon_drawn,%d0
+        beq.s   2f
+        bsr     rmx_draw
+2:      rts
 1:      lea     -68(%sp),%sp
         movem.l %d2-%d6/%a2-%a5,(%sp)
         jmp     (LEDS_CONT).l
@@ -539,6 +659,11 @@ rmx_draw:
         move.l  %a4,-(%sp)
         jsr     (CLEAR_BODY).l
         addq.l  #4,%sp
+        moveq   #0,%d0                      | the active buffer's state in the
+        move.b  (CUR_TRACK).l,%d0           | title bar, as stock's icon
+        bsr     rmx_state
+        move.l  %d0,rmx_icon_drawn
+        bsr     rmx_icon
         move.l  4(%a4),%d0                  | the surface's height (64)
         sub.l   #HDR_FROM_TOP,%d0
         move.l  %d0,%d6                     | d6 = the header's baseline
@@ -667,6 +792,55 @@ rmx_mark:
         bgt.s   1b
         rts
 
+| The title bar's icon for state d0 (0..3), with stock's own glyphs: the
+| 7 x 5 cell cleared, the glyph drawn (the single ones 2 px in, as the
+| renderer places them beside its 7-wide "+>"), the cell inverted, so a
+| dark icon on the lit bar as the title's text. a4 = surface. Clobbers d0,
+| d1, a0, a1.
+rmx_icon:
+        move.l  %d2,-(%sp)
+        move.l  %d0,%d2
+        clr.l   -(%sp)                      | ink 0: the cell cleared
+        bsr.s   rmx_icon_cell
+        lea     rmx_icon_dx,%a0
+        moveq   #0,%d0
+        move.b  (%a0,%d2.l),%d0
+        add.l   #ICON_X,%d0
+        pea     ICON_Y
+        move.l  %d0,-(%sp)
+        move.l  %a4,-(%sp)
+        lea     rmx_icon_desc,%a0
+        move.l  (%a0,%d2.l*4),-(%sp)
+        jsr     (BLIT).l
+        lea     16(%sp),%sp
+        pea     -1                          | ink -1: inverted
+        bsr.s   rmx_icon_cell
+        move.l  (%sp)+,%d2
+        rts
+| INVERT over the cell with the ink on the stack (popped here).
+rmx_icon_cell:
+        move.l  4(%sp),%d0                  | the ink
+        move.l  %d0,-(%sp)
+        pea     ICON_Y+4
+        pea     ICON_X+6
+        pea     ICON_Y
+        pea     ICON_X
+        move.l  %a4,-(%sp)
+        jsr     (INVERT).l
+        lea     24(%sp),%sp
+        move.l  (%sp)+,%a0                  | the return address
+        addq.l  #4,%sp                      | the ink
+        jmp     (%a0)
+
+        .balign 4
+| stock's status glyph descriptors {w, h, 1, columns, mask}: stopped,
+| playing, recording, both (the renderer's switch, 0x4004bfbe..0x4004c01e)
+rmx_icon_desc:
+        .long   0x400bb306, 0x400bb2f2, 0x400bb31a, 0x400bb32e
+rmx_icon_dx:
+        .byte   2, 2, 2, 0
+        .balign 2
+
 | x0, dy0, x1, dy1 (dy from the row's box bottom): a left-pointing arrowhead
 | 5 px tall, centred on the box, its outer column reaching into the gaps
 | between rows
@@ -777,5 +951,9 @@ rmx_win:
         .long   0
 rmx_toast_h:
         .long   0                           | the toast window this editor last opened
+rmx_icon_drawn:
+        .long   -1                          | the state the title's icon shows
+rmx_in_wincb:
+        .long   0                           | 1 inside rmx_win_closed (the manager's callback)
 
         .include "remix.inc"                | rmx_cue_keys (manifest.py cue_keys_inc)
