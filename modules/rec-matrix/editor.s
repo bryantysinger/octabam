@@ -74,6 +74,12 @@
         .equ    DTCN3,      0xfc07c00c      | DMA timer 3: free-running at the 132 MHz bus (PANEL.md)
         .equ    FLASH_BIT,  26              | its bit 26: ~0.5 s lit, ~0.5 s dark
         .equ    PAINT_CONT, 0x400346ac      | stock's track-key painter after its lea/movem
+        .equ    PAINT2_CONT, 0x40034888     | its second form (the lock scan), after its lea/movem
+| A panel LED is lit while its steady bit (0x460ba98c, a bit per id) is set
+| or its set_led countdown runs (0x460ba9cc, 120 Hz). Stock paints the track
+| keys with the steady bits; so does the editor, its countdowns held at 0.
+        .equ    LED_ON,     0x400131a0      | (id): the steady bit set
+        .equ    LED_OFF,    0x400131c8      | (id): the steady bit cleared
         .equ    PULSE_CONT, 0x40034434      | the track keys' green pulse, after pea 2; move.l (a3),d3
         .equ    PULSE_SKIP, 0x4003443c      | the same loop's next track
         .equ    ICON_X,     104             | the title's icon: its 7 x 5 cell's left, clear of the title tab's corners
@@ -586,7 +592,9 @@ rmx_trk_leds:
         lea     16(%sp),%sp
         rts
 
-| Track d2's key shows colour d0 (0..7, rmx_trk_col). Keeps d2.
+| Track d2's key shows colour d0 (0..7, rmx_trk_col), with the steady bits as
+| stock paints these keys: each die's countdown stopped, its level set and
+| its steady bit set when lit, cleared when not. Keeps d2.
 rmx_trk_write:
         lea     -12(%sp),%sp
         movem.l %d3-%d4/%a2,(%sp)
@@ -595,11 +603,12 @@ rmx_trk_write:
         add.l   %d0,%a2                     | a2 = its {red, green} levels
         move.l  %d2,%d3
         add.l   %d3,%d3
-        add.l   #TRK_LED0,%d3               | d3 = its red LED's id
+        add.l   #TRK_LED0,%d3               | d3 = its first LED's id
         moveq   #2,%d4                      | two dies
-1:      move.l  %d3,-(%sp)
-        jsr     (LED_NOBLINK).l
-        addq.l  #4,%sp
+1:      clr.l   -(%sp)                      | no countdown
+        move.l  %d3,-(%sp)
+        jsr     (SET_LED).l
+        addq.l  #8,%sp
         moveq   #0,%d0
         move.b  (%a2)+,%d0                  | the die's level, 0 off
         beq.s   2f
@@ -607,11 +616,12 @@ rmx_trk_write:
         move.l  %d3,-(%sp)
         jsr     (LED_LEVEL).l
         addq.l  #8,%sp
-        move.l  #0x7fffffff,%d0             | lit until rewritten
-2:      move.l  %d0,-(%sp)
         move.l  %d3,-(%sp)
-        jsr     (SET_LED).l
-        addq.l  #8,%sp
+        jsr     (LED_ON).l
+        bra.s   3f
+2:      move.l  %d3,-(%sp)
+        jsr     (LED_OFF).l
+3:      addq.l  #4,%sp
         addq.l  #1,%d3
         subq.l  #1,%d4
         bne.s   1b
@@ -631,6 +641,9 @@ rmx_trk_leds_off:
         move.l  %d2,-(%sp)
         jsr     (SET_LED).l
         addq.l  #8,%sp
+        move.l  %d2,-(%sp)
+        jsr     (LED_OFF).l
+        addq.l  #4,%sp
         addq.l  #1,%d2
         moveq   #TRK_LED0+16,%d0
         cmp.l   %d0,%d2
@@ -703,6 +716,18 @@ rmx_on_paint:
 1:      lea     -184(%sp),%sp
         movem.l %d2-%d7/%a2-%a6,(%sp)
         jmp     (PAINT_CONT).l
+
+| 0x40034880, a "jmp" detour: the same painter's second form (the lock
+| scan; levels 15 and 7, ids from 0x400a72a8). Open: skipped. Closed: the
+| displaced `lea -136(sp),sp; movem.l d2-d7/a2-fp,(sp)` and on.
+        .global rmx_on_paint2
+rmx_on_paint2:
+        tst.l   rmx_editing
+        beq.s   1f
+        rts
+1:      lea     -136(%sp),%sp
+        movem.l %d2-%d7/%a2-%a6,(%sp)
+        jmp     (PAINT2_CONT).l
 
 | 0x4003442e, a "jmp" detour inside the loop that pulses a track key's green
 | LED for 2 ticks (set_led(id + 1, 2), ids from 0x400a759e). Open: that
