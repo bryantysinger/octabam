@@ -56,6 +56,32 @@ its channels never carried it. The channel count is 16 × TRACKS(≠ OFF) +
 combination's full-speed form is two channels, and IN is served at high
 speed only.
 
+### Descriptor counts with MIDI off (#1039, 4 Nov 2026)
+
+Reported by yvesrosius (MKII, image STEMS11, two Windows 11 laptops). With
+MIDI at OFF, DISK MODE did not mount on Windows: Device Manager showed "USB
+Mass Storage Device" with Code 10, USBSTOR `0xC0000182`. The reporter read
+the configuration descriptor off the hub port: the MSC interface declared
+`bNumEndpoints` 1 and two endpoints (bulk IN `0x81`, bulk OUT `0x01`)
+followed. Windows trusts the count, finds no bulk OUT, and the driver fails.
+
+- `msc_only_config` and `audio_config` (MIDI off) declared 1. Stock 1.40C's
+  four MSC interface descriptors declare 2 (read from the stock bytes at
+  `0x400e2025..0x400e2085`); both builders now do, whatever MIDI is.
+- `descriptors.check_config` walks a configuration and refuses it when
+  `wTotalLength`, `bNumInterfaces` or an interface's `bNumEndpoints` disagree
+  with what follows; `_blob` runs it over all four tables of all 256 sets, so
+  a bad combination fails the build. It found a second count off by one:
+  every audio configuration with MIDI off declared `bNumInterfaces` 2 (3 with
+  IN) for MSC, AudioControl and AudioStreaming (+ the IN stream), now 3 (4).
+  `verify_usb` had copied that formula; it expects the corrected counts.
+- Inferred, not tried on a unit: the interface count could also stop a strict
+  host from using the audio function with MIDI off. macOS and Linux were not
+  tried by the reporter.
+- Gate: `tools/verify/tests/test_usb_descriptors.py` (every set passes; MSC
+  declares its two endpoints with MIDI off and on; the old count and a wrong
+  total or interface count are refused). Not flashed.
+
 ## USB MIDI
 
 Class-compliant USB-MIDI in and out on the Octatrack's own USB port,
@@ -107,9 +133,9 @@ Causes (read from the stock disassembly; the measurements above agree):
   bulk max packet at high speed.
 - The dTD token's status bits were not read.
 
-`usbmidi_rx.s` (octabam's; `usbmidi.s` is unchanged and still matches his
-build) takes over the SET_CONFIGURATION and usb_isr detours and hands on to
-his shims:
+The receive path in `usbmidi.s` (octabam's; the unit started as his text and
+is no longer compared with his build) takes over the SET_CONFIGURATION and
+usb_isr detours and hands on to the shims it started from:
 
 - Before the bytes of each event are enqueued, `count + event bytes` must be
   at most 32; otherwise the framer is entered from the decoder with a
@@ -228,7 +254,7 @@ EP2_INIT at SET_CONFIGURATION rewrites the queue head of an endpoint that
 may still be primed (the ChipIdea hazard `usbaudio.s` already guards EP3
 against).
 
-`usbmidi_rx.s` now takes EP2 down on a bus reset (`0x4001e91c`, the
+`usbmidi.s` now takes EP2 down on a bus reset (`0x4001e91c`, the
 USBSTS.URI handler) and on session end (`0x4001e952`, OTGSC.BSVIS, before
 the stock code clears USBCMD.RS), and again at SET_CONFIGURATION before
 EP2_INIT: `usbmidi_up` and `usbmidi_tx_busy` cleared, the queued bytes
@@ -275,12 +301,54 @@ The `usb-midi` remix (this module on the stock effects) has not been flashed.
 
 - Not measured: clock jitter over USB against DIN (bulk transfers have no schedule; the
   gate sends one `0xF8` per transfer, a host can bunch several into one
-  packet, and each then gets a near-zero interval); a CC flood against the
-  256-byte queue; DISK MODE entered with a MIDI session open; Windows.
+  packet, and each then gets a near-zero interval); how late a clock byte
+  goes out behind a ring backlog; the ring on a unit; DISK MODE entered with a MIDI session open; Windows.
+
+### A completion between the two ENDPTCOMPLETE reads (#1017, 4 Nov 2026)
+
+Reported by xynta, under the port on Octatrick 2.21's pin (`6e4aeb76`); the
+path is unchanged on main. `usbmidi_rx_isr_shim` reads ENDPTCOMPLETE, takes an
+EP2 OUT completion and re-primes the 512-byte dTD, then jumps to his
+`usbmidi_isr_shim`, which reads ENDPTCOMPLETE again and still takes bit 2 the
+64-byte way. A transfer completing between the two reads was cleared there with
+`64 - remaining <= 0` bytes and not decoded, and the stock 64-byte
+`usb_midi_rx_prime` left `usbmidi_rx_state` at 2, so the next transfer decoded
+as `448 + n` bytes: the tail of an older transfer replayed. Measured by the
+reporter, paced bench under the port: 174,012 bytes enqueued for 12,348 sent,
+500 of 1,000 short transfers lost, 55,888 stale events. On a unit that is a lost
+packet now and then (a lost note-off is a stuck note) and the rest of an earlier
+chord after the next one (inferred).
+
+- The fix: `usbmidi_rx_isr_shim` reads ENDPTCOMPLETE once, w1c's the EP2 bits
+  it saw in one write and handles EP2 OUT and EP2 IN from that snapshot. The
+  hand-over shim, its 64-byte decoder, the detour at `usb_midi_rx_prime`
+  (`0x4001d184`) and the `usbmidi_rx_late` counter are gone. usb_isr's own tail
+  handles EP0 and EP1 only, so nothing else reads the EP2 bits. A completion
+  after the read raises a new UI interrupt, because stock w1c's USBSTS.UI at
+  `0x4001e600`, before the hook (inferred from the code; not measured on a
+  unit). With the session down (`usbmidi_up` = 0) the bits are cleared and not
+  handled, as before. Masking the old second read could not close the window
+  (the controller sets the bit, not an interrupt); owning the file is what
+  allowed removing it.
+- The reporter's form (a detour at `usb_midi_rx_prime`) ran 12,348 of 12,348
+  bytes once each and in order on the same bench (late branch taken 500 times)
+  and has been on their MKI since 2 Nov 2026. The single-read form replaces it
+  and is not on a unit.
+- Still open, from the same report: a transfer over 64 bytes sent between
+  SET_CONFIGURATION and the next USB interrupt lands in the dormant init's
+  64-byte dTD (port: taken as 64 bytes; on silicon a data buffer error,
+  inferred). Not changed here.
 
 ### Gates
 
 - `verify_usb` (`make check REMIX=usb`).
+- `verify_usbmidi_isr` (image stage, unicorn): runs the usb_isr hook with
+  ENDPTCOMPLETE as a controllable register and checks one read per entry, a
+  write of exactly the EP2 bits seen, a 16-byte and a 464-byte transfer decoded
+  whole and once, an errored dTD counted and not decoded, the stock 64-byte
+  prime at full speed, an EP2 IN completion handing the queued bytes to the
+  encoder, both completions from one read, and the bits cleared with the
+  session down.
 - `verify_usbmidi_rx` (image stage): the four packets of "Receive path",
   parsed bytes compared with sent bytes, and each packet accepted whole by
   the dTD. Five of its nine checks fail on the code before this change.
@@ -315,18 +383,23 @@ primitives, reached by nothing, and no receive decoder. The module:
 - dispatches EP2 completions from the USB ISR: IN completion frees the
   transmit slot and drains the queue, OUT completion runs the receive
   decoder, which feeds `midi_rx_enqueue` (`0x40092bbc`), the byte path DIN
-  MIDI uses, then re-primes (`usbmidi_rx.s`, see "Receive path");
+  MIDI uses, then re-primes (`usbmidi.s`, see "Receive path");
 - mirrors both senders into the encoder: `midi_send` (channel messages)
   and the priority byte sender (clock, transport). Messages are queued in
-  a 256-byte accumulator behind one transfer; a message that would
-  overflow it is counted in `usbmidi_tx_drops`, never sent corrupt.
+  a 256-byte accumulator behind one transfer, and behind that in a 4 KB
+  ring of whole messages, moved into the accumulator at each kick, in
+  order. A message longer than 255 bytes or one the ring has no room for
+  is counted in `usbmidi_tx_drops`, never sent corrupt. Bus reset, session
+  end and SET_CONFIGURATION empty both (`usbmidi_tx_reset`). Before the
+  ring, a burst longer than the accumulator lost its tail (#1016: 86 of
+  283 CCs under the port, `usbmidi_tx_drops` +197;
+  `verify_usbmidi_tx_ring`: 283 of 283 in order, drops +0). The ring adds
+  4,104 bytes of DRAM to the unit. The design is xynta's (#1016).
 
-Nine detours, four descriptor-pointer rewrites, no pokes. The `usbmidi`
-unit is his file verbatim (two of the detours reach `usbmidi_rx` first, and two more, bus reset and session end, are `usbmidi_rx`'s own), and the build proves it: every build re-links
-it at his zone address `0x400d24f0` and compares with the 1,124-byte blob
-his `usb-midi.py` produced from our stock bytes (`Linked.reference`, the
-port-is-a-proof rule). The clamps are a second unit (`clamp.s`, his
-usb-audio.s shims reading `cfg_len`).
+Eight detours, four descriptor-pointer rewrites, no pokes. `usbmidi` is one
+unit, started from markandrus's `usb-midi.s` (`6a9ff68`, MIT) and octabam's
+from the TX ring on; it is no longer compared with his blob. The clamps are a
+second unit (`clamp.s`, his usb-audio.s shims reading `cfg_len`).
 
 ### Ground
 

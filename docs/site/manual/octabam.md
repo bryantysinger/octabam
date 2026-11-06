@@ -4,7 +4,7 @@ Octabam is Octatrack OS 1.40C with more built in. It keeps what you know:
 all 14 stock effects, both effect menus and the way a project is laid out.
 On top of that it adds features for sequencing, Kits and scenes, MIDI and
 USB, and three new effects. Every feature is credited to the person who wrote
-it, and each has its own page in this manual. This is version 0.3.
+it, and each has its own page in this manual. This is version 0.4.
 
 ### What changes on the unit
 
@@ -47,8 +47,8 @@ it, and each has its own page in this manual. This is version 0.3.
 - **Fixes.** The recorder loop click, stock LO-FI's AMF knob and a few
   sequencer and card-write faults are [corrected](fixes/recorder-loop-fix.md).
 
-SPECTRUM, CHARACTER and MODULATION are copied into the audio processor only
-while a track uses them. Until the code arrives, about 25 ms after you choose
+SPECTRUM, CHARACTER, MODULATION and SHATTER, and COMPRESSOR's side-chain, are copied
+into the audio processor only while a track uses them. Until the code arrives, about 25 ms after you choose
 the effect, it passes the audio through. A pattern change that puts one of
 them on all eight tracks, or takes it off them, leaves about 0.34 s of silence
 at the switch. See
