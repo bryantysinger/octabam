@@ -1,5 +1,5 @@
 """DLCOPY -- the demand loader's copier: a frame hook on payload B that moves a block the ColdFire has
-staged into the shared window and publishes it (docs/proposals/DEMAND_LOAD.md).
+staged into the shared window and publishes it (docs/contributing/DEMAND_LOADER.md).
 """
 from remix.schema import Category, Claims, DspHook, DspRange, DspSection, Gate, Kind, Module, Proof
 
@@ -20,8 +20,8 @@ MODULE = Module(
         asm="modules/dlcopy/dlcopy.asm",
         priority=22,
         payloads=frozenset({"B"}),
-        hooks=(DspHook({"B": 0x76}, (0x667000, 0x000207), "dlc_start",
-                       "frame head, after the host handlers' masks are set: the staged block is copied"),),
+        hooks=(DspHook({"B": 0x342}, (0x67F400, 0x000426), "dlc_start",
+                       "frame end, after the last track and before the jump back to the frame wait: the staged block is copied"),),
     ),
     gates=(Gate("tools/verify/verify_dlstub.py"), Gate("tools/verify/verify_dlwrap.py"), Gate("tools/verify/verify_dlhook.py")),
 )

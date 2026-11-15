@@ -83,7 +83,7 @@ the gate. A remix declares `family` (`rig`, `effects`, `mods`,
 `reference`, `probes`) and the same `proof` pair.
 
 Settings a module keeps on the card (a checkbox, a profile) go in BRAIN
-(`modules/brain`; `docs/proposals/BRAIN.md` is the design), and in no
+(`modules/brain`; `docs/specs/BRAIN.md` is the design), and in no
 file of the module's own; `docs/contributing/MODULES.md` "Settings on the
 card".
 
@@ -227,6 +227,11 @@ is seen.
 Rebase onto current main. Gates run before the rebase are not a result: a
 branch that merges without a conflict can still fail on main (PR #396's
 stress fixture named a knob that #415 had renamed).
+
+PRs merge one at a time. Before a merge, the maintainer updates the branch
+only when main has moved under it since its last green run, in a file the
+PR also changed or in a module, hook, cave or remix its gates build with;
+a PR main has not moved under merges as it stands.
 
 CI's `Gates — make reach` job runs the `make reach RUN=1 KEEP=1` line below
 on every PR push, against the 1.40C it downloads for that run; link the run

@@ -35,6 +35,7 @@ import os
 import pathlib
 import re
 import shutil
+import struct
 import subprocess
 import sys
 
@@ -47,6 +48,7 @@ from panel_link import PanelLink  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 LIVE = 0x46c76de0                         # MIDI track t's live setup record: + 68 * t
+STEP_REC = 0x46c76dc0                     # stock's output a5 for MIDI track t: + 32 * t
 KEY, EXT = 0x11, 0x12                     # EXT: a native byte SCALES must leave alone (MIDI HARMONY's)
 BANK0 = 0x400e21e0
 PART_SETUP = 0x400e21e0 + 0x8f262         # bank 1, Part 1, track 1's setup record
@@ -170,7 +172,7 @@ def snap(note, tonic, ident):
 def machine_gate(remix):
     import midi_scales_machine as h
     from unicorn.m68k_const import UC_M68K_REG_A0, UC_M68K_REG_D5, UC_M68K_REG_D7, UC_M68K_REG_A2
-    from unicorn.m68k_const import UC_M68K_REG_A6
+    from unicorn.m68k_const import UC_M68K_REG_A5, UC_M68K_REG_A6, UC_M68K_REG_A7
 
     def symbols():
         raw = subprocess.check_output(["m68k-elf-nm", str(ROOT / "out/platform/runtime/runtime.elf")],
@@ -286,28 +288,79 @@ def machine_gate(remix):
             if got != want:
                 bad.append(f"sc_track KEY {key} ID {ext}: {got:#x} != {want:#x}")
 
+    # Beside CHORDS FACTORY a chord step (its NOT2-4, a5 + 547..549, not all
+    # 64) plays as written, on any KEY; without it SCALES snaps it as any step.
+    # a5 is stock's own: STEP_REC + 32 * track (set at 0x4009f9b8, stepped at
+    # 0x4009fffe), the record stock reads NOTE (544) and NOT2-4 from at 0x4009f9f2.
+    beside_chords = "CHORDS FACTORY" in registry.remix(remix).modules
+    CHORDLESS = (64, 64, 64)
+    CHORDS = ((67, 71, 74), (64, 64, 63), (64, 76, 64), (40, 64, 64))
     installed = 0
     for track in range(8):
         for key in (0, 1, 2, 24, 25, 30, 84, 85):
             for ext in (0, 8, 41, 47, 53):
                 set_track(track, key, ext)
                 for note in (0, 37, 60, 61, 66, 127):
-                    u.mem_write(m.scratch - 1, bytes((0xa5, note, 0xa5)))
                     stock = key == 0 or key > 84 or not holds(key, ext) and key <= 24
-                    for flag in (0, 1):     # stock's -64(fp): a KEY to quantize
-                        u.mem_write(m.scratch + 0x100 - 64, flag.to_bytes(4, "big"))
-                        dest = (0x4009fb5e if flag else 0x4009fb80) if stock else 0x4009fb80
+                    for flag, nots in ((0, CHORDLESS), (1, CHORDLESS)) + tuple((1, c) for c in CHORDS):
+                        u.mem_write(m.scratch - 1, bytes((0xa5, note, 0xa5)))           # snapped in place: again
+                        u.mem_write(m.scratch + 0x100 - 64, flag.to_bytes(4, "big"))   # stock's -64(fp): a KEY to quantize
+                        u.mem_write(STEP_REC + 32 * track + 547, bytes(nots))          # a5: the step's NOT2-4
+                        chord = beside_chords and nots != CHORDLESS
+                        dest = (0x4009fb5e if flag else 0x4009fb80) if stock and not chord else 0x4009fb80
                         m.call("sc_output", 0x12345678, 0xabcdef01, stop=dest,
                                regs={UC_M68K_REG_D7: track, UC_M68K_REG_A2: m.scratch,
-                                     UC_M68K_REG_A6: m.scratch + 0x100})
+                                     UC_M68K_REG_A6: m.scratch + 0x100, UC_M68K_REG_A5: STEP_REC + 32 * track})
                         ts = track_scale(key, ext)
-                        want = note if stock or ts is None else snap(note, *ts)
+                        want = note if stock or ts is None or chord else snap(note, *ts)
                         if bytes(u.mem_read(m.scratch - 1, 3)) != bytes((0xa5, want, 0xa5)):
-                            bad.append(f"output t{track} KEY {key} ID {ext} note {note}")
+                            bad.append(f"output t{track} KEY {key} ID {ext} note {note} NOT2-4 {nots}")
                         if m.uc.reg_read(h.UC_M68K_REG_D0) != 0x12345678:
                             bad.append("output: d0 not kept")
                         installed += 1
-    print(f"  [{'FAIL' if bad else 'ok'}] sc_track: 256 KEY x 9 IDs; output: {installed} notes on 8 tracks")
+    print(f"  [{'FAIL' if bad else 'ok'}] sc_track: 256 KEY x 9 IDs; output: {installed} notes on 8 tracks "
+          f"(a chord step {'as written: CHORDS FACTORY beside' if beside_chords else 'snapped: no CHORDS FACTORY'})")
+
+    # sc_keyboard(track, first note, green mask): SET_LEVEL / LED_ON stood in for,
+    # each key's red and green levels read back against the model.
+    levels = {}
+
+    def stand_in(uc, record):
+        sp = uc.reg_read(UC_M68K_REG_A7)
+        ret, led, level = struct.unpack(">III", bytes(uc.mem_read(sp, 12)))
+        if record:
+            levels[led] = level
+        uc.reg_write(UC_M68K_REG_A7, sp + 4)
+        uc.reg_write(h.UC_M68K_REG_PC, ret)
+    hooks = [u.hook_add(h.UC_HOOK_CODE, lambda uc, a, n, x: stand_in(uc, True), begin=0x400135b0, end=0x400135b0),
+             u.hook_add(h.UC_HOOK_CODE, lambda uc, a, n, x: stand_in(uc, False), begin=0x400131a0, end=0x400131a0)]
+    drawn = 0
+    for key in (0, 1, 2, 13, 25, 30, 84):
+        for ext in (0, 8, 41):
+            set_track(3, key, ext)
+            for first, green in ((48, 0), (60, 0b1001_0001), (55, 0xffff), (0, 0b10), (112, 0x8000)):
+                levels.clear()
+                u.mem_write(m.stack + 4, struct.pack(">III", 3, first, green))
+                got = m.call("sc_keyboard")
+                ts = track_scale(key, ext)
+                if ts is None:
+                    if got != 0 or levels:
+                        bad.append(f"sc_keyboard KEY {key}: drew on KEY OFF")
+                    continue
+                tonic, ident = ts
+                want = {}
+                for k in range(16):
+                    deg = (first + k - tonic) % 12
+                    inside = deg in CATALOGUE[ident][4]
+                    g = green >> k & 1
+                    want[2 * k] = 0 if g else 15 if inside else 0
+                    want[2 * k + 1] = 15 if g or (inside and deg == 0) else 0
+                if got != 1 or levels != want:
+                    bad.append(f"sc_keyboard KEY {key} ID {ext} from {first} green {green:#x}: {got} {levels}")
+                drawn += 1
+    for hk in hooks:
+        u.hook_del(hk)
+    print(f"  [{'FAIL' if bad else 'ok'}] sc_keyboard: {drawn} keyboards (KEY x ID x first note x green), KEY OFF draws nothing")
 
     turns = 0
     for key in range(85):

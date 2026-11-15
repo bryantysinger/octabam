@@ -18,7 +18,7 @@ a demand effect on a chooser is refused, with a toast, while the FX2 slot that s
 its memory is on a stock reverb, and choosing a stock reverb on that slot is refused while
 the effect is loaded. A song that sets both by another route leaves the reverb or the
 effect dry, and says which at the next page key. The design and what has been measured:
-[`DEMAND_LOAD.md`](../../docs/proposals/DEMAND_LOAD.md).
+[`DEMAND_LOAD.md`](../../docs/contributing/DEMAND_LOADER.md).
 
 | effect | FX1 | FX2 | id | what it is | module |
 |---|---|---|---|---|---|
@@ -57,10 +57,16 @@ The same set is in [`octabam-bus`](../octabam-bus/README.md), with LOFI AMF FIX
 | | [CC MAP](../../modules/cc-map/README.md), [CC FEEDBACK](../../modules/cc-feedback/README.md) | CC onto page 2; knob changes out as CC |
 | | [DIRECT_JUMP_KYOTI](../../modules/direct-jump-kyoti/README.md), [RELOAD_FROM_PROJECT](../../modules/reload-from-project/README.md) | clock-locked direct jump; reload one track from the card |
 | | [SCALE QUANTIZER](../../modules/quantizer/README.md), [TUNER](../../modules/tuner/README.md) | scale quantizing on PTCH; a tuner window (UP + TEMPO) |
+| | [SCALES](../../modules/scales/README.md) | 52 scales for a MIDI track's ARP SETUP KEY, a scale chooser, the CHROMATIC trig keys lit with the scale (SCALE QUANTIZER's on audio tracks) |
+| | [CHORDS FACTORY](../../modules/chords/README.md), [PAGES](../../modules/pages/README.md) | chord progressions for a MIDI track, sixteen slots a bank, voice-led; PAGES is the page-key cycle its page joins |
+| | [SLOW LFO](../../modules/slow-lfo/README.md), [BAR LED](../../modules/bar-led/README.md) | LFO MULT 1/2X, 1/4X, 1/8X; the tempo LED green on the pattern's 1 |
+| | [SCREEN](../../modules/screen/README.md) | answers Elektron's screenshot SysEx request with the screen |
 | USB | [USB](../../modules/usb/README.md) | MIDI both ways; tracks, MAIN and CUE to a computer (TRACKS PRE, MAIN, CUE, MIDI on by default; settings in BRAIN) |
 | recorder and fixes | [RECORDER LOOP FIX](../../modules/recorder-loop-fix/README.md), [RLEN PLEN](../../modules/rlen-plen/README.md) | the loop click; RLEN value PLEN |
 | | [BATCH_BUGFIXES](../../modules/batch-bugfixes/README.md), [ERASE_EMPTY_TRIGLESS_LOCKS](../../modules/erase-empty-trigless-locks/README.md), [QUANTIZE_LIVE_REC_TOGGLE](../../modules/quantize-live-rec-toggle/README.md), [REC_TRIG_MUTE](../../modules/rec-trig-mute/README.md), [MUTE_MODES](../../modules/mute-modes/README.md) | Zac-Kyoti's fixes and mute modes (MUTE_MODES runs from DRAM) |
 | | [ATA WRITE GUARD](../../modules/ata-write-guard/README.md) | keeps the first PIO card write and its bookkeeping atomic against the completion interrupt |
+| | [FRAME GUARD](../../modules/frame-guard/README.md) | a frame interrupt that enters late at START or a program change waits out the window in which the DSP's frame exchange stalls |
+| | [REC CS1 SKIP](../../modules/rec-cs1-skip/README.md) | the recorder's per-frame update without its redundant CS1 writes |
 
 ## Where it has run
 
@@ -73,7 +79,8 @@ transitions between BASE, the stock reverbs, MODULATION, SPECTRUM and CHARACTER 
 `scenes-sweep` (2,289 operations) and `djump-burst` (536) pass; crossfader to lock CC 0.77 to 0.95 ms median; DIRECT_JUMP
 lands within 0 to 5 steps with the toggle on and at the pattern end with it off.
 
-VARISPEED was added and FX2 LOCK removed after `OCTABAMR3`; `OCTABAMV5` (that composition) was flashed on 2 Nov 2026 and FX2 picks take effect; the suite was not run on it. In a loader soak on 2 Nov 2026
+CHORDS FACTORY, PAGES, SCREEN, SLOW LFO, BAR LED and REC CS1 SKIP were added on 7 Nov 2026 and have not run on a unit in this
+composition (each has, in its author's images: the modules' READMEs). VARISPEED was added and FX2 LOCK removed after `OCTABAMR3`; `OCTABAMV5` (that composition) was flashed on 2 Nov 2026 and FX2 picks take effect; the suite was not run on it. In a loader soak on 2 Nov 2026
 the image without VARISPEED left 3 of 32 program changes unapplied and the image with it 4
 ([FAILURE_MODES.md](../../docs/contributing/FAILURE_MODES.md)).
 

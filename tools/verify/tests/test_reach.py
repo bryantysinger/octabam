@@ -202,6 +202,11 @@ class DependencyTests(unittest.TestCase):
         self.assertEqual(commands(["tools/verify/verify_burn.py"], c=c),
                          ['make check-shared REMIXES="bamsep26 usb" MODULES="SEND"'])
         self.assertIn("a gate of SEND", note("tools/verify/verify_burn.py"))
+        # once=True and the command of a split unit (it needs a project): that remix's line as well
+        with mock.patch.dict(reach.SPLIT_EXTRA_UNITS, {"usb": {"burn": ("SEND", "python3 tools/verify/verify_burn.py usb")}}):
+            self.assertEqual(commands(["tools/verify/verify_burn.py"], c=c),
+                             ['make check-shared REMIXES="bamsep26 usb" MODULES="SEND"',
+                              'make check-remix REMIX=usb MODULES="SEND"'])
 
     def test_a_harness_file_reaches_what_runs_it(self):
         # send_probe: the knob census (shared), Character's gate (shared), the burn (SEND's remixes), the acceptance machinery via pressure
@@ -432,12 +437,12 @@ class PlanTests(unittest.TestCase):
         script = "tools/verify/verify_store_part_selection.py"
         self.assertEqual(context.gate_owners[script], ["STORE"])
         self.assertEqual(context.gate_remixes[script],
-                         {"hooks-boot", "midi-follow", "midi-follow-events", "midi-loopback",
-                          "scales", "scales-quantizer"})
+                         {"chords", "chords-alone", "hooks-boot", "midi-follow", "midi-follow-events",
+                          "midi-loopback", "octabam", "octabam-bus", "octabam-verbs", "scales", "scales-quantizer"})
         rows = reach.classify([script], context)
         self.assertEqual(reach.remixes_reached(rows),
-                         ["hooks-boot", "midi-follow", "midi-follow-events", "midi-loopback",
-                          "scales", "scales-quantizer"])
+                         ["chords", "chords-alone", "hooks-boot", "midi-follow", "midi-follow-events",
+                          "midi-loopback", "octabam", "octabam-bus", "octabam-verbs", "scales", "scales-quantizer"])
 
     def test_remixes_reached(self):
         rows = reach.classify(["modules/character/a.asm", "remixes/miniverb/remix.py"], ctx())
@@ -615,7 +620,7 @@ class PlanJsonTests(unittest.TestCase):
             got = {e["name"]: e["items"][0][1] for e in reach.entries(items, 3)}
         pre = 'python3 tools/verify/check_shards.py --jobs 3 --modules "K1" '
         self.assertEqual(got["check-remix x"], pre + "x")
-        self.assertEqual(got["check-remix octabam"], pre + "--skip-jobs remix-switch,set,plocks-p2,brain,brain-stores,brain-templates,brain-panes,brain-screens octabam")
+        self.assertEqual(got["check-remix octabam"], pre + "--skip-jobs remix-switch,set,plocks-p2,brain,brain-stores,brain-templates,brain-panes,brain-screens,scenes octabam")
         self.assertEqual(got["check-remix octabam (long)"], pre + "--only-jobs remix-switch octabam")
         self.assertEqual(got["check-remix octabam (project)"], pre + "--only-jobs set,plocks-p2 octabam")
         for line in got.values():

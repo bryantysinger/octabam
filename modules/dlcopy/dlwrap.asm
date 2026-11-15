@@ -1,6 +1,6 @@
 ; ---------------------------------------------------------------------------
 ; DLWRAP -- keeps the stock buffered reverbs off demand-loaded code
-; (docs/proposals/DEMAND_LOAD.md). One body, in the window once, serves every guarded
+; (docs/contributing/DEMAND_LOADER.md). One body, in the window once, serves every guarded
 ; reverb on both payloads. The build puts a pair of trampolines per reverb and payload
 ; in front of it (the stock entries differ between payloads) and points the reverbs'
 ; ids at them.
@@ -121,8 +121,7 @@ dw_over:
         move    #>$33da3,r5
         do      #4,>dw_next
         move    x:(r5),a
-        move    #>$b0a5ed,x0
-        cmp     x0,a
+        cmp     #>$b0a5ed,a
         bne     dw_skip
         move    x1,a
         move    x:(r5+4),x0

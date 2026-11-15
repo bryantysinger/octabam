@@ -198,7 +198,7 @@ class Param:
     widget_word: int | tuple[str, str] | None = None
     word_12a: int | tuple[str, str] | None = None
     # The knob's stable identity in a stored default or template
-    # (docs/proposals/BRAIN.md section 4.1): 1..65535, never reused, so a
+    # (docs/specs/BRAIN.md section 4.1): 1..65535, never reused, so a
     # renamed or moved knob keeps its stored value. A module that keys one
     # drawn slot keys every drawn slot; brain.lock holds the released keys.
     key: int | None = None
@@ -284,7 +284,7 @@ def enable_words(active, linked=(), inherited=(), donor=(0, 0)):
     return lo, hi
 
 
-# ---- settings (docs/proposals/BRAIN.md section 4) -------------------------
+# ---- settings (docs/specs/BRAIN.md section 4) -------------------------
 # A module's settings, resolved through four layers: the manifest's default,
 # the remix's (`Remix.settings`, a value or a Pin), the card's and the
 # project's. Without the BRAIN module in the remix only the first two exist
@@ -429,7 +429,7 @@ class Store:
 
 @dataclass(frozen=True)
 class Setting:
-    """One setting of a module (docs/proposals/BRAIN.md section 4.1).
+    """One setting of a module (docs/specs/BRAIN.md section 4.1).
 
     `default` None takes the kind's zero (0, the first label, b"" or, for a
     Number whose range excludes 0, its nearer bound). An Option takes a
@@ -556,8 +556,16 @@ class MenuEntry:
     # tap). Requires `replaces`; the build leaves both dispatch words of
     # the id as the pristine image has them and verify_replaces checks it.
     stock_dsp: bool = False
+    # RUNS ANOTHER MODULE'S CODE (6 Nov 2026): the key of a module the remix carries whose DSP this row runs. The
+    # module declares no DspSection; its id dispatches to that module's init and proc as placed on each payload.
+    # A chooser row with its own name, defaults and id over one copy of code: octabam-verbs' Verb Plate, Room
+    # and Hall on the stock reverbs' ids, each VERBERATION with its MODE preset. The build refuses a key the remix
+    # does not carry or that has no dispatched code of its own.
+    dsp_of: str | None = None
 
     def __post_init__(self):
+        if self.dsp_of and self.stock_dsp:
+            raise ValueError("dsp_of runs another module's code and stock_dsp keeps the stock effect's: one or the other")
         if self.stock_dsp and not self.replaces:
             raise ValueError(f"stock_dsp keeps the donor's dispatch entry, so "
                              f"it needs replaces=<the stock effect's key>")
@@ -1057,6 +1065,12 @@ class Harness:
     # literals as for a client, but `on_the_bus` does not count it, so a
     # remix of readers alone may use fallback NONE.
     bus_reader: bool = False
+    # Key of the module whose published keybus this module reads (CHARACTER's
+    # KEY = T1..T8 reads KEYBUS's words, modules/keybus). The source carries the read
+    # between `; KEYTAP_BEGIN` and `; KEYTAP_END` and the entry at
+    # `; KEYTAP_PRE`; the build keeps them when that module is in the remix
+    # and removes them otherwise. The module claims nothing of the tap's.
+    key_tap: str | None = None
     # THE STATE BLOCK A LOCAL RENDER RUNS THE MODULE AT: dsp_host's -r7
     # index n (X:0x6000 + 0x100 n; R7_ALLOC gives its allocator entry).
     # None = the default, FX2 position 0 (n = 2), or FX1 (n = 1) for an
@@ -1508,7 +1522,7 @@ class DspOverride:
     The build does not plant the overridden module's jsr there; the one other hook at the site,
     which must be a Remix.window_demand module's, gets a resident stub that runs its own body
     when the module is loaded and then jumps to the overridden hook's entry, which replays the
-    displaced instruction (docs/proposals/SC_DEMAND_LOAD.md: SIDECHAIN_COMPRESSOR's moncommit
+    displaced instruction (docs/contributing/DEMAND_LOADER.md: SIDECHAIN_COMPRESSOR's moncommit
     and LOAD METER's otop_e2 at P:0x50e / 0x303). `site` is one int for every payload or
     {"A": addr, "B": addr}, as DspHook.site."""
 
@@ -1614,7 +1628,7 @@ class Module:
     # Such a machine owns the source seam and SPRING REV's words: the build
     # refuses a remix with two, with SPRING REV, or with any DspSection.
     dsp_source: str = ""
-    # ---- settings (docs/proposals/BRAIN.md section 4.1) --------------------
+    # ---- settings (docs/specs/BRAIN.md section 4.1) --------------------
     # The id the module's settings and stored defaults are filed under, and
     # the settings themselves. tools/remix/brain.py resolves them for a
     # remix; modules/<name>/brain.lock holds the released keys.
@@ -1787,6 +1801,9 @@ class Module:
             raise ValueError(f"{self.name}: stock_dsp keeps {self.menu.replaces}'s "
                              f"dispatch entry, so its DspSection is reached only "
                              f"through DspHooks and must declare at least one")
+        if self.menu is not None and self.menu.dsp_of and self.dsp is not None:
+            raise ValueError(f"{self.name}: dsp_of={self.menu.dsp_of!r} runs that module's code, so it "
+                             f"declares no DspSection of its own")
         if self.dsp is not None and self.menu is None and not self.dsp.hooks:
             raise ValueError(f"{self.name}: DSP code with no menu entry and no "
                              f"DspHook is unreachable -- nothing dispatches it")
@@ -2107,7 +2124,7 @@ class Remix:
     # A module with DspHooks and no init/proc is reached by its hooks alone; its LFO table, ptable and ptable2 follow
     # the code in that order. It has no tail and no pins.
     window: tuple[tuple[str, int], ...] = ()
-    # DEMAND-LOADED WINDOW EFFECTS (docs/proposals/DEMAND_LOAD.md): module keys, each also in `window`
+    # DEMAND-LOADED WINDOW EFFECTS (docs/contributing/DEMAND_LOADER.md): module keys, each also in `window`
     # (at the address its code runs from). The module is assembled and placed as above but left out of
     # payload A's upload: its words, address, entry points and id go to out/dsp/demand_records.json for
     # the ColdFire loader (modules/dlpump). Its id's dispatch entries point at a trampoline of the stub
@@ -2126,7 +2143,7 @@ class Remix:
     # `window_demand` effect.
     window_guard: tuple[str, ...] = ()
     # Where the stub and then the two wrapper copies are laid out, one after the other (P address, in a
-    # run of window words no stock effect writes: docs/proposals/DEMAND_LOAD.md).
+    # run of window words no stock effect writes: docs/contributing/DEMAND_LOADER.md).
     window_loader: int = 0
     # THE HOST PAGE DRAWS ITS FIRST SLOTS ONLY (26 Sep 2026, Sam: "want
     # all the tracks to look the same"): (key, n) pairs. The hidden
@@ -2182,13 +2199,13 @@ class Remix:
     # whatever else the registry gains. A pinned id above 0x1f needs
     # id_space=64, and a module in `fx1` stays below 0x20.
     ids: Mapping = field(default_factory=dict, hash=False)
-    # LAYER 2 OF EACH SETTING (docs/proposals/BRAIN.md section 4.2):
+    # LAYER 2 OF EACH SETTING (docs/specs/BRAIN.md section 4.2):
     # (store id, setting name) -> a value (a new default the card and the
     # project may still change) or Pin(value) (fixed: no row, nothing stored).
     # An Option takes a label or an index. tools/remix/brain.py checks every
     # entry against the selected modules.
     settings: Mapping = field(default_factory=dict, hash=False)
-    # LAYER 2 OF EACH KNOB DEFAULT (docs/proposals/BRAIN.md section 4.2):
+    # LAYER 2 OF EACH KNOB DEFAULT (docs/specs/BRAIN.md section 4.2):
     # (module key, mode, knob) -> byte. `mode` is the MODE select's label or
     # value, or None for the knob's own default (Param.default); `knob` is the
     # Param's name, or the name the mode's view gives it. It replaces that

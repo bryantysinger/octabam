@@ -1,14 +1,18 @@
-"""RELOAD_FROM_PROJECT -- reload one track's sequence from the CF card without stopping the transport: [PTN] + [TRACK n], or [BANK] + [TRACK n] to re-apply the saved Part.
+"""RELOAD_FROM_PROJECT -- reload from the CF card without stopping the transport: [PTN] + [TRACK n] a track's sequence, [BANK] + [TRACK n] with its Part slice (machine, FX, pages, scene locks, LFO designer), [PTN] + [BANK] + trig a whole pattern. Running, a reload lands on the next step, in phase.
 
 Source: `upstream/` is Zac Kyoti's repository (Zac-Kyoti/octatrack-kyoti-fw,
-submodule, pinned to `6a2da8d`). The declaration is
+submodule, pinned to `27ab725`). The declaration is
 `upstream/octabam-modules/reload-from-project/manifest.py`: one DRAM unit (`patch_reload3.s`), each re-linked and
 compared with the author's own bytes (`reference`) every build. Its source
 paths are derived from its own directory, so it is executed here from the
 source on disk, as the registry does for every manifest, and this file only
 re-exports its MODULE. Nothing inside `upstream/` is edited here.
 
-On hardware: the author's MKI (standalone image), sequencer and metronome phase kept; 1 Oct 2026 from DRAM in an octabam image with all six KYOTI modules.
+On hardware: the author's MKI (standalone image), sequencer and metronome phase kept; 1 Oct 2026 from DRAM in an octabam image with all six KYOTI modules; 9 Nov 2026 the card reloads and the quantized landing, from DRAM in the KYOTI V1.7 image (this octabam form not flashed).
+
+Beside FREE LOOP the UI task's tick 0x40056c28, which both detour, goes through
+HOOKS (ui_tick): FREE LOOP's detour stays and jumps to rl_uitick where it replayed
+stock; this unit's own detour there is overridden and its bytes are unchanged.
 """
 
 import dataclasses
@@ -25,4 +29,4 @@ MODULE = runpy.run_path(str(_UPSTREAM), run_name="remix_manifest_reload_from_pro
 # dropped: Octakit is not in octabam since 6 Oct 2026 (KITS replaces it).
 MODULE = dataclasses.replace(
     MODULE, conflicts=tuple(c for c in MODULE.conflicts if c[0] != "OCTAKIT"), category=Category.MACHINES, author="Zac Kyoti", author_url="https://github.com/Zac-Kyoti",
-    proof=Proof.HARDWARE, proof_note="the author's MKI (standalone image), sequencer and metronome phase kept; 1 Oct 2026 from DRAM in an octabam image with all six KYOTI modules")
+    proof=Proof.HARDWARE, proof_note="the author's MKI (standalone image), sequencer and metronome phase kept; 1 Oct 2026 from DRAM in an octabam image with all six KYOTI modules; 9 Nov 2026 the card reloads and quantized landing from DRAM in the KYOTI V1.7 image (this octabam form not flashed)")

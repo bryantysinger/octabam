@@ -3,6 +3,29 @@
 Symptom → cause (measured, inferred or open) → fix. Add an entry the moment
 a mode is seen on hardware.
 
+## FREE LOOP: the first PLAY after a reboot, in MIDI mode, records T1 with T1 idle 🟡 guarded, cause inferred, open at the source
+
+- **Seen:** djib's MKII, live-djib rig (OCTABAM41), 5 Nov 2026: the first
+  PLAY after a power-on, in MIDI mode, started T1's recorder although
+  FREE LOOP had started nothing (T1 idle, its popup said FINISHING, R1
+  filled). A double STOP before that PLAY prevented it. Gone on images
+  42-43 with the guard below.
+- **Cause (inferred, not measured):** a quantized recording start left
+  staged in `0x800018be` / `0x800018de` (the QREC branch of REC_POST,
+  `0x40005178`) and fired by the first PLAY. The port does not reproduce
+  the boot state that leaves it there, so neither the writer of the staged
+  start nor why a double STOP clears it has been traced.
+- **Guard, not a fix at the source (#1044):** FREE LOOP's `stray_guard`
+  (`modules/free-loop/adapter.c`) stops any recording it did not start on a
+  FREE or GRID track within one UI tick (`REC_POST(t, 0x80, 0)`), clears the
+  buffer on a track with no loop yet, and says REC: FREE LOOP ONLY. Under
+  the port, `REC_POST(T1, 0x9010)` after the load records for the whole run
+  without the guard and is stopped within a tick, R1 empty, with it.
+  `verify_free_loop stray` covers a stock T1 + REC AB on a looping T1.
+- **Open:** the source of the staged start. It would also hit a track
+  FREE LOOP does not run (ROLE OFF), which the guard leaves alone; a probe
+  of `0x800018be` / `0x800018de` at boot on the unit is the next step.
+
 ## FX PAGE 2 LOCKS NOT LOADED at every load: SAVE PROJECT wrote empty page-2 lock files with no header ✅ measured, fixed
 
 - **Seen:** an MKII, 2 Nov 2026: STORE's prompt (FX PAGE 2 LOCKS NOT LOADED /
@@ -838,7 +861,7 @@ Entries from here to the end of the file (5 Oct 2026) were recorded in other doc
   layout's figure; the silence reads 1,480 ms, the ColdFire longest run in the window about 240 us (a plain switch:
   340 ms and 440 to 500 us).
 - **Unapplied in 32:** `F1` 0, `L1` 0, `A1` (`L1` plus PATTERN MUTE and TRACK PATTERNS) 0, `H2` (`L1` plus OCTA303, MORPH,
-  REC THRESHOLD, BUFFER SAVER, COPY PROJECT, EUCLID FILL, FX2 LOCK) 0, `K1` (the stations, PATTERN MUTE, TRACK PATTERNS and
+  REC THRESHOLD, BUFFER SAVER, COPY PROJECT, SEQ, FX2 LOCK) 0, `K1` (the stations, PATTERN MUTE, TRACK PATTERNS and
   those seven) 0; `C1` (`L1` plus STEM REC) 2, `B1` (STEM REC and VARISPEED) 2, `H1` (`L1` plus PATTERN MUTE, STEM REC,
   SCOPE, TRACK PATTERNS, VARISPEED, MIDI SCALES, RND NAME) 5, `R2` (the extra ColdFire modules but CX OSC and STEM REC)
   4. `R1` (all 14 extra ColdFire modules but CX OSC): the unit stopped answering USB within 3 transitions of a
@@ -858,5 +881,145 @@ Entries from here to the end of the file (5 Oct 2026) were recorded in other doc
   before it. `bad 0` and 300 to 340 ms of silence throughout. The 0-of-32 figures above are from 1 Nov; no image of
   that set was run on 2 Nov. All four of `V1`'s and four of `V4`'s five are BASE to MODULATION. Run-to-run spread is not
   measured (one run per image).
+- **8 Nov 2026, Yves's MKII, the same probe on `v0.4`, STEM REC alone added:** `OCTABAM04` (`v0.4` as the web builder
+  publishes it: patch sha256 `9159aca1…` reproduced) against `OCTABAMS4` (the same remix plus STEM REC at `00a23502`,
+  STEMS13's code, a local remix; its reserve 18 MiB against 10). Projects from `ot_suite.py build` on Yves's fresh
+  project, each run on a copy loaded from the card. Host: WSL2 with usbipd-win (`ot_midi_alsa.py`); its USB audio
+  capture delivered about a quarter of the frames (1.27 s of audio in 5 s), so no row has a silence figure.
+  `OCTABAM04`: 32 of 32 applied (busy core 0 / core 1: BASE 0.240 / 0.163, MODULATION 0.266 / 0.189, PLATE REV 0.470 /
+  0.392), no stall. `OCTABAMS4`: three runs, each ended by the DSP's frame count stopping, `healthy()` failing at the
+  next transition. Run 1 at its first START (program 51 sent while stopped, the project on BASE since the load), the
+  count's last advance 0.023 s after START. Runs 2 and 3 at a MODULATION to BASE switch during play (transitions 3 and
+  15): the count's last advance 8.014 and 8.026 s after START (the switch lands at 8.0), LOAD METER's `bad` up 2 at
+  that reading, the change unapplied. MODULATION to BASE during play stalled 2 of 5 times on `OCTABAMS4`, 0 of 8 on
+  `OCTABAM04`. After a stall the panel and MIDI answered and the sequencer stopped at step 1 or 2 at every START (Yves);
+  a power-cycle cleared it. At rest both images read 2,756 records a second (the CX OSC images 2,745 to 2,748).
+- **Not stalled, `OCTABAMS4`, same day:** `ot_dspwatch.py` (STOP, program change, START; no change during play), 20
+  cycles each of programs 0,1 and 0,51 with and without `--audio`, and 0,51 with `--audio --poll-hz 400` (100 cycles;
+  BASE is program 0, PLATE REV FX2 def 48, MODULATION FX2 def 51); A01, D01 and D04 switched by hand during play and
+  from STOP, about 20 switches with no USB cable and about 20 with LOAD METER read 313 to 433 times a second (no MIDI,
+  no audio).
+- **Not established (8 Nov): whose fault it is.** Two readings fit, and they can both hold.
+  - STEM REC: the stops came only on the image with it, 3 of 9 switches between BASE and MODULATION against 0 of 16 on
+    `OCTABAM04`. Its frame hook (`0x40004b12`) runs in the frame routine that hands the effect swap to the DSP, and its
+    18 MiB reserve puts `dsp_tail_A` 15,360 bytes lower. Both are inferred, not measured, to matter.
+  - The demand loader's BASE/MODULATION transition: every stop was a switch between BASE and MODULATION, while the 10
+    switches between MODULATION and PLATE REV on `OCTABAMS4`, which also load and withdraw MODULATION, ran clean. On
+    2 Nov `C0`, with none of the five modules, left 3 of 32 unapplied, and all four of `V1`'s and four of `V4`'s five
+    were BASE to MODULATION (above). So that transition misbehaves without STEM REC, which may only widen it.
+  - Also open: why the host's clock and a change landing during play are both needed; whether this host's partial
+    audio read or its USB timing take part.
+  - The counts are small. One control run: 3 stops on the test image's 19 transitions against none in the control's 32
+    is about a 1-in-20 result by chance; 3 of 9 against 0 of 10 between the two kinds of switch, about 1 in 11.
+  - What would separate them, on `OCTABAMS4` unless named: the same soak with another demand-loaded effect (SPECTRUM,
+    CHARACTER or SHATTER) in MODULATION's place; with STEM REC's hook reduced to the stock call, the layout unchanged;
+    `v0.4` with another ColdFire module in STEM REC's place; DLPUMP's `DL_DIAG` words (`tools/hw/dl_poll.py`) read in
+    the soak's own poll, so a stop shows where the loader was.
+- **9 Nov 2026, Yves's MKII, the same probe on `OCTABAMS5`:** `OCTABAMS4`'s code (`00a23502`) with the demand
+  loader's copy-loop, repeat and pump changes (`CHANGELOG.md`, "Unreleased"), the same remix. The two images differ
+  only in the loader. Each run used a pristine copy of the project from the card. `DL_DIAG` is DLPUMP's counter block,
+  read over USB (`tools/hw/dl_state.py`).
+
+  | run | project copy | `DL_DIAG` read | polls a second | DSP stops | changes one cycle late |
+  |---|---|---|---|---|---|
+  | `s5-run1` | SOAK5 | every poll | 224 | none in 32 | 1 (transition 26) |
+  | `s5-run2` | SOAK6 | every poll | 226 | none in 32 | 2 (21, 25) |
+  | `s5-run3` | SOAK1 | every poll | 225 | none in 32 | 1 (2) |
+  | `s5-full1` | SOAK2 | never | 430 | none in 32 | 0 |
+  | `s5-full2` | SOAK3 | never | not recorded | **froze at transition 22** | 2 of 21 (1, 21) |
+  | `s5-dl10-1` | SOAK4 | every 10th poll | 393 | none in 32 | 1 (23) |
+  | `s5-dl10-2` | SOAK5 | every 10th poll | 384 | none in 32 | 1 (10) |
+
+  Reading `DL_DIAG` on every poll halves the poll rate (`soak_dl.py`); the 8 Nov runs polled at 401 to 447 a second
+  with plain `ot_matrix.py`, as `s5-full1` and `s5-full2` did. `soak_dl10.py` reads it on every 10th poll and appends
+  each reading to `dl.jsonl` as it reads it, so a freeze still leaves the record. This rig reaches about 500 polls a
+  second at most (two or three polling threads; one thread 340 at rest). In every run but `s5-run1` a switch to
+  MODULATION read DSP busy 99.7 % in the window of its copy (`s5-run1`'s highest: 64.0 %); none of those stopped the
+  DSP. A late change shows no ColdFire spike in its window, and the next transition starts from the new layout's level.
+- **The freeze, `s5-full2`:** at transition 22 (PLATE REV to MODULATION, just after transition 21's change landed late)
+  the unit stopped answering everything: the panel, the audio, USB. LOAD METER's request (`0xc0/0x57`) timed out at 1 s,
+  and the host's next USB transfer hung until the power-cycle. On 8 Nov the panel, MIDI and LOAD METER still answered
+  after the DSP stopped. A power-cycle cleared it. Why the ColdFire froze is not established. Two waits in the frame
+  interrupt have no time limit: DLPUMP's wait before every host word (`dl_xfer`, `HOST+8`), and stock's spin at
+  `0x4000ab26` until the DSP takes the frame's `0x8c` host command (`docs/firmware/STEM_REC.md`). If the DSP stops
+  taking host words, either spins for good; on 8 Nov the DSP must still have taken the host commands (inferred).
+- **Reading (9 Nov):** at full polling (384 to 447 a second) `OCTABAMS4` stopped the DSP in 19 switches 3 times (3
+  runs), `OCTABAMS5` once in 118 (4 runs), `OCTABAM04` (no STEM REC) never in 32. At about 224 a second `OCTABAMS5`
+  had no stop in 96.
+  - The loader is the larger factor. Changing only the loader took the rate from about 1 stop in 6 switches to 1 in
+    118. At `OCTABAMS4`'s rate, one stop or fewer in 118 switches would come far less than once in a million (each
+    switch treated as independent).
+  - STEM REC is not cleared. With the old loader, `OCTABAM04` ran 32 switches clean, which at `OCTABAMS4`'s rate comes
+    about 4 times in 1,000: STEM REC, or the 18 MiB layout it brings, seems to take part beside the old loader. The one
+    `OCTABAMS5` stop had STEM REC in the image too.
+  - The `OCTABAMS5` stop was a total freeze and the `OCTABAMS4` stops were the DSP's alone, so it may be another fault,
+    or the same one with the pump caught mid-send (above).
+  - Which loader change made the difference is not separated. The candidate is the repeat: the old copier cleared
+    BOUND and rewrote MODULATION's code twice more after every load, while core A could run it (inferred). That does
+    not explain why the 8 Nov stops came at MODULATION to BASE switches, where the pump sends nothing.
+  - Whether the poll rate takes part is not separated: no stop in 96 switches at 224 a second against 1 in 118 at full
+    rate is no difference at these counts.
+  - The late changes are a separate fault: `C0` had them without STEM REC on 2 Nov.
+- **Not yet run:** more `OCTABAM04` runs at full polling, which would show STEM REC's part (`octabam` 0.5 would take
+  STEM REC on that evidence); a stop caught by `soak_dl10.py`; images with each loader change alone; the changes listed
+  under "Next changes" in `DEMAND_LOADER.md`.
 - **Fix:** those five modules are left out of `octabam`; `R3` (`K1`'s set) applied 18 of 18 `loader01` transitions and
   the 2 of `loader02`. 2 Nov 2026: VARISPEED is back in `octabam`, since `C0` without it also left unapplied changes.
+
+## The DSP's frame exchange stops at START or a program change: the frame interrupt after a long one enters about 150 µs late ✅ window measured, fixed by FRAME GUARD; the DSP-side mechanism inferred
+
+- **Seen:** Sam's MKII, 12 Nov 2026, `octabam` builds A1 and E1 and the `_hw-oct-pre` control C1, a USB audio capture
+  open. The sequencer holds step 1 at PLAY, LOAD METER's DSP count is constant, the frame-interrupt count stops 3 to 5
+  above it, the panel and USB answer; a power-cycle clears it. First START after boot and load: 5 of 8 (A1 and C1, 20
+  channels), 5 of 8 (E1, 4 channels); program changes: 1 in 27 (E1, 20 channels). No capture: 0 in 13 first STARTs
+  and 64 program changes.
+- **Measured (frame log, `tools/hw/framelog.patch`, read by `tools/hw/ot_stall.py`):** the transfer chain's last
+  state comes 224 to 245 µs after the frame interrupt's entry on every frame. The START frame interrupt runs 473 to
+  481 µs with no capture, 488 to 527 µs with one. The next entry 128 to 149 µs late: one back-to-back frame
+  interrupt, runs on (8 STARTs). 155 to 223 µs late: one frame skipped, runs on (23). The two stalls logged: 149 and
+  155 µs late, two back-to-back frame interrupts, the second 16 and 36 µs before its grid time, then none.
+- **Ruled out on the unit:** the channel count at first START (4 channels stalled as often as 20); frame-interrupt
+  time by itself (60 µs added to every frame interrupt, no capture: 0 of 8, START frames 524 to 541 µs); the USB
+  controller's crossbar priority (stock priorities, 20 channels: 1 of 8, the same signature).
+- **Inferred:** at that lateness the transfer chain is still sending when the DSP starts its next frame (a core A log
+  from a STALL PROBE build reported a 513th word in the 512-word block).
+- **Fix:** FRAME GUARD (`modules/frame-guard/README.md`), in `octabam`, `octabam-bus` and `octabam-verbs`: 32 first
+  STARTs and 192 program changes at 20 channels without a stall. **Gate:** `verify_frame_guard`.
+- **Open:** on the test image with 60 µs added and 20 channels (frame interrupt 91 % of the ColdFire), 1 of 16 first
+  STARTs stalled with the next entry 209 µs late, and 7 of 16 froze the whole unit 8.2 s after START at the pattern's
+  wrap; not seen without the added delay. `octabam-bus` and `octabam-verbs` not run with the guard. The whole-unit
+  freezes, the USB device absent after a REMIX SWITCH double boot and the boot freezes of 12 Nov are not explained by
+  this. Audio through the skipped frame is not measured.
+
+## DSP stall after a demand load during play: the copier ran at the frame head, between core B's two handshakes with core A ✅ place measured, fixed by moving the hook; the mechanism inside core B's first track not known
+
+- **Seen:** Sam's MKII, 12 to 15 Nov 2026, `octabam` with FRAME GUARD, 20-channel USB capture, sequencer playing. A
+  program change at a pattern wrap switches the tracks to a demand effect that is not loaded (SPECTRUM and
+  SIDECHAIN_COMPRESSOR logged; none after a switch to MODULATION). The audio stops, the panel and USB answer, a
+  power-cycle clears it. `ot_fuzz.py` profile pc, seed 3101 (`ot_suite.py` phase kits-identity, 76 changes and about 21
+  loads in 10 min) on `SFX_01`: a stall in roughly 2 runs of 3 on eleven test images; the longest clean streak was 3
+  runs.
+- **Measured (frame log, and test images that read the stalled DSP; the window read-back is `tools/hw/dlprobe.patch`, read by `tools/hw/dl_probe.py`):**
+  - The pump's last chunk, two frames with the doorbell due, the doorbell, two more frame interrupts, then none. Every
+    frame on the grid, none bad, none held by FRAME GUARD.
+  - Core A takes host commands and sits at `P:$a3`, its wait on the link to core B. Core B takes no host command.
+  - The loaded effect's entry is BOUND, published = received, refused 0. Its words in the window equal the staged
+    block, and the resident code equals the image.
+  - Core B's last frame: its frame-start hook ran, it left the copier, passed the second link wait and reached
+    `P:$268` in the first track; it entered no effect slot. The frame before was 18 % busy.
+  - A core in the illegal-instruction trap answers host commands with `P:$04`; core B's stack-error vector was not
+    taken (a flag set there read clear).
+- **Ruled out on the unit:** a frame running over its time (a copy plus 40 % of a frame burnt, about 200 times, no
+  stall); the copy alone (an image that copies and never binds: none of this kind in 6 runs); a copy landing outside
+  its span; the stub's stale `x:$213`.
+- **Not known:** what core B does between `P:$268` and `P:$2a7` in that frame, and why binding is needed (the copy
+  alone at the same place did not stall).
+- **Fix:** DLCOPY's hook moved from `P:0x76` (the frame head) to `P:0x342` (the frame's end, before the jump back to
+  the frame wait). The same test image with only that change: 12 runs of 12 without a stall, 251 loads (15 Nov 2026).
+  **Gates:** `verify_dlstub`, `verify_dlhook`, `verify_dlwrap`, `verify_dlload`; none of them can see this fault (the
+  port and `dsp_host` run one core).
+- **Open:** one stall with no loader activity, the same end state (core A at `P:$a3`, core B deaf): a program-change
+  frame of 564 µs with the next entry 205 µs late, past FRAME GUARD's 190 µs. One whole-unit freeze on an image that
+  never binds (panel frozen, USB gone), cause not established. 27 to 35 bad DSP records per 10 min at pattern wraps
+  while MODULATION's code runs, with and without this fix.
+

@@ -800,7 +800,7 @@ Three kinds of state, three homes:
 | personal material: Kits, grooves, presets, anything a musician would copy to another project on its own | files the module owns, beside the stock project files | the module |
 | the module's settings: how it behaves or looks (a checkbox, a menu option, a USB profile) | today: nowhere, or a private file (KITS keeps two in its `kits.work` header; octalab writes `octalab_grooves.map` and `octalab_generators.map`, "OTGM" v1). Designed: the brain | the core |
 
-The design is [`docs/proposals/BRAIN.md`](../proposals/BRAIN.md) (6 Oct
+The design is `docs/specs/BRAIN.md` (6 Oct
 2026): settings, defaults and templates in one registry, resolved through
 four layers (manifest, remix, card, project), kept in a `.work` / `.strd`
 pair at the card root and one in the project. The BRAIN module
@@ -808,8 +808,8 @@ pair at the card root and one in the project. The BRAIN module
 PROJ, BRAIN, SETTINGS (10 Oct 2026; its own two settings are MIDI LOG and
 DEFAULTS, `modules/brain/README.md`). The project layer and the CS1 block
 are not built. It starts from nordseele's OTX proposal
-([`OTX_PROJECT_PROPOSAL.md`](../proposals/OTX_PROJECT_PROPOSAL.md),
-[`OTX_MODULE_GUIDELINES.md`](../proposals/OTX_MODULE_GUIDELINES.md)), and
+(`git show 76fd8466:docs/proposals/OTX_PROJECT_PROPOSAL.md`,
+`git show 76fd8466:docs/proposals/OTX_MODULE_GUIDELINES.md`), and
 its section 14 lists what is taken from OTX and what differs.
 
 What a module declares (BRAIN.md section 4): a `Store` with a stable
@@ -1188,13 +1188,15 @@ checks both tables in both directions.
 
 ## Shared native events
 
-Use [EVENTS](../../modules/events/README.md) for transport notifications,
+Which of STORE, EVENTS, HOOKS and `Override` fits a contested site: [SHARED_SITES.md](../specs/SHARED_SITES.md).
+
+Use [EVENTS](../specs/EVENTS.md) for transport notifications,
 accepted-note notifications, held-step ownership and native copy notifications.
 Register by event family and select `EVENTS`; clients must not also claim its
 native detours. STORE continues to own project/Part persistence.
 
 For native Part settings, edited/playing context lookup and replacement
-history, use [STORE native Part access](../../modules/store/README.md#native-part-access).
+history, use [STORE native Part access](../specs/STORE.md#native-part-access).
 Register the smallest read windows and writable offsets, keep field semantics
 in the client, and let STORE own native Part copy/reset hooks.
 

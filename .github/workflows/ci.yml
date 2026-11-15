@@ -221,6 +221,27 @@ jobs:
       - name: 📦 Install Remixer Dependencies
         run: pip install uv && make emu-setup && git checkout -- uv.lock   # uv sync rewrites it; reach would read it as a change
 
+      # The ColdFire gates that run fractional EMAC code under Unicorn (modules/wavecf/test_wavecf.py) need the EMAC-fixed
+      # library: stock 2.1.4 halves every fractional product (scripts/build_unicorn.sh). Built once per script and patch,
+      # into .venv/lib/unicorn-emac, where the gates pick it up.
+      - name: 💾 Restore the EMAC-fixed Unicorn
+        id: unicorn
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .venv/lib/unicorn-emac
+          key: unicorn-emac-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build_unicorn.sh', 'tools/patches/unicorn_emac_fractional.patch') }}
+
+      - name: 🦄 Build the EMAC-fixed Unicorn
+        if: steps.unicorn.outputs.cache-hit != 'true'
+        run: make emu-unicorn
+
+      - name: 💾 Save the EMAC-fixed Unicorn
+        if: steps.unicorn.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .venv/lib/unicorn-emac
+          key: unicorn-emac-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build_unicorn.sh', 'tools/patches/unicorn_emac_fractional.patch') }}
+
       # the ColdFire port, built once per source state into .git/octabam-port
       # (tools/emu/port_store.py); `reach` and its shards install from there
       - name: 🔑 Key the ColdFire Port
@@ -287,14 +308,14 @@ jobs:
       # in .git/octabam-fresh-cache by image, port and script. Only the `(project)` unit of a remix (reach.SPLIT_REMIX_JOBS)
       # runs the jobs that read it; the `image:` jobs are not among them: with a project they ran 2869 s and verify_brain failed.
       # The `(brain)`, `(brain-templates)`, `(brain-panes)` and `(brain-screens)` units (reach.SPLIT_EXTRA_UNITS) run verify_brain's
-      # sections with one, through check_shards (gate cache).
+      # sections with one, through check_shards (gate cache); the `(scenes)` unit runs verify_scenes (MIDI SCENES) with one.
       - name: 📁 Fresh Project
-        if: contains(matrix.name, ' (project)') || contains(matrix.name, ' (brain')
+        if: contains(matrix.name, ' (project)') || contains(matrix.name, ' (brain') || contains(matrix.name, ' (scenes)')
         env:
           UNIT: ${{ matrix.name }}
         run: |
           remix="${UNIT#check-remix }"
-          remix="$(echo "$remix" | sed -E 's/ \((project|brain[a-z-]*)\)$//')"
+          remix="$(echo "$remix" | sed -E 's/ \((project|scenes|brain[a-z-]*)\)$//')"
           make emu-get
           .venv/bin/python3 tools/hw/ot_fresh.py --remix "$remix" --out out/fresh
           echo "OT_PROJECT=$PWD/out/fresh/$remix/NOPROJ" >> "$GITHUB_ENV"

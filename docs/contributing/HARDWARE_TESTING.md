@@ -7,6 +7,11 @@ matrix itself (flags, limits, measured results) is
 [HARDWARE_MATRIX.md](HARDWARE_MATRIX.md); what has gone wrong on a unit is in
 [FAILURE_MODES.md](FAILURE_MODES.md).
 
+Four documents cover testing on a unit: this walk-through; [HARDWARE_MATRIX.md](HARDWARE_MATRIX.md), the reference for the
+matrix, the stress sequences, MIDI SCENES and DIRECT_JUMP_KYOTI runs, the flags and the limits;
+[HARDWARE_SUITE.md](HARDWARE_SUITE.md), the `octabam` remix's phases and results; [HARDWARE_MANUAL.md](HARDWARE_MANUAL.md), the plan
+for what the cable cannot reach.
+
 The rig needs one USB cable between the Mac and the unit. It sends USB MIDI
 (program change, START, a host clock, CCs), captures the unit's USB audio, and
 reads LOAD METER over a USB vendor request (`0xc0/0x57`). No audio interface,
@@ -15,9 +20,35 @@ MIDI interface or second device is involved.
 ## What you need
 
 - A Mac. `tools/hw/ot_midi.py` and the tools that use it drive the unit over
-  CoreMIDI; a Linux or Windows host has not been tried.
+  CoreMIDI. On Linux they use ALSA raw MIDI instead (`tools/hw/ot_midi_alsa.py`).
+  `ot_djump.py` and `ot_xflag.py` call CoreMIDI directly and stay macOS-only. A
+  native Windows host has not been tried. On Linux or WSL2:
+  - On Windows, for WSL2: `winget install usbipd`, then in an admin terminal
+    `usbipd list` and `usbipd bind --busid <id>` once. Then
+    `usbipd attach --wsl --busid <id> --auto-attach` (no admin), left running:
+    it attaches the unit again after each power-cycle. WSL2 shuts down when no
+    WSL session is open, and the unit detaches with it; keep a terminal or a
+    `wsl.exe -- sleep 86400` open for the whole session. The bus id changes
+    with the USB port.
+  - `sudo apt install libportaudio2 libusb-1.0-0 usbutils alsa-utils`, and
+    `sudo modprobe snd-usb-audio` if `/dev/snd` has no `midiC*` once the unit
+    is attached.
+  - Your user in the `audio` group, for `/dev/snd`, and a udev rule for LOAD
+    METER's vendor request:
+    `SUBSYSTEM=="usb", ATTR{idVendor}=="1935", MODE="0666"` in
+    `/etc/udev/rules.d/99-elektron.rules` (a name that sorts after
+    `50-udev-default.rules`, which otherwise resets the mode to 0664).
+  - What ran, 8 Nov 2026 (Yves's MKII, WSL2 on Windows 11, usbipd-win 5.3.0):
+    `ot_matrix.py switch` (3 runs and a 32-transition run), `ot_dspwatch.py`
+    (100 cycles, with and without `--audio`, polling at 20 and 400 a second),
+    `load_meter.py` (313 to 433 reads a second, 0 read errors), `ot_suite.py
+    build` and `ot_matrix.py audit`. MIDI, transport and LOAD METER worked. The
+    USB audio capture did not keep up: over usbip it delivered about a quarter
+    of the frames (1.27 s of audio in 5 s, no PortAudio status flag), so every
+    measure that reads the audio (`switch`'s silence, `run`'s CRASH, FREEZE,
+    CLICKS and the rest) is not usable on this host.
 - An Octatrack MKI or MKII with the user's own 1.40C OS, and a CF card.
-- `.venv/bin/python3 -m pip install pyusb libusb-package sounddevice numpy`, and
+- `.venv/bin/python3 -m pip install pyusb libusb-package sounddevice numpy`, and, on a Mac,
   `brew install portaudio` for `sounddevice`.
 - A fresh project made on the unit (PROJECT > NEW), copied off the card to your
   machine. `python3 tools/hw/ot_matrix.py audit <dir>` must find nothing. A
@@ -146,18 +177,8 @@ replays sequences under the ColdFire port with no unit.
   its state back to the card when the project is replaced: copy the pristine
   project folder over the card's copy (step 3) before loading it again.
 - A project with no samples is silent: `--no-silence-check` skips the -80 dB check.
-- MIDI SCENES: `python3 tools/hw/ot_scenes.py stamp <project> [--all-scenes]` writes MIDI track 1 (channel 11,
-  CC1..CC10 on, scene A = 1, scene B = 9), MIDI trigs, CC 1 locks and the run settings (clock and transport receive
-  on) into a copy of a fresh project; `show` prints the locks. Use profile `scenes` (scene select over 0..15, the
-  range the unit takes) with `--all-scenes`. Record the track output with
-  `python3 tools/hw/ot_midi.py -p "Elektron Octatrack DPS-1" listen <seconds>` alongside the run.
-  `python3 tools/hw/ot_xflag.py` times a crossfader step to the lock CC (stopped, playing, with a CC flood).
-- DIRECT_JUMP_KYOTI: stamp with `--pattern-steps 2=1,2,4,7,8,11,13`, turn the toggle on by hand ([PTN] + [YES]; OFF
-  at every power-on, so after any restart), then `python3 tools/hw/ot_djump.py` prints the landing step and the
-  position pattern 2 plays from for each of a series of program changes. Run it once with the toggle off for the
-  control (landing at the pattern end).
-- The audio check needs at least three unmuted tracks, counted from the
-  sequence's own mute operations, and assumes every track starts unmuted.
+- MIDI SCENES and DIRECT_JUMP_KYOTI runs (`ot_scenes.py`, `ot_xflag.py`, `ot_djump.py`, the `scenes` profile, the toggle set by hand): [HARDWARE_MATRIX.md](HARDWARE_MATRIX.md), "MIDI SCENES on a unit" and "DIRECT_JUMP_KYOTI on a unit".
+- The audio check's rule (three unmuted tracks, every track starting unmuted) is in [HARDWARE_MATRIX.md](HARDWARE_MATRIX.md), "Stress sequences".
 - A 56-minute run crosses the 50.7-minute mark after power-up, which is where
   an unfixed frame counter stopped the unit (FAILURE_MODES.md).
 

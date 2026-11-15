@@ -36,14 +36,16 @@ it, and each has its own page in this manual. This is version 0.4.
   [recorder trig mute](sequencer/rec-trig-mute.md),
   [mute modes](sequencer/mute-modes.md),
   [per-pattern mutes](sequencer/pattern-mute.md), a
-  [scale quantizer](sequencer/quantizer.md) and a [tuner](sequencer/tuner.md).
+  [scale quantizer](sequencer/quantizer.md), [52 scales](midi-usb/scales.md) for a
+  MIDI track's KEY and a [tuner](sequencer/tuner.md).
   Also [track patterns](sequencer/trackpatterns.md) (each track plays its own
-  pattern), [Euclidean fills](sequencer/euclid-fill.md),
+  pattern),
   [varispeed](sequencer/varispeed.md) for STATIC and FLEX tracks, a track's scene
   [morph](parts/morph.md) played on its own, and a recorder TRIG mode that
   waits for the input ([rec threshold](sequencer/rec-threshold.md)).
 - **Utilities.** [Copy a project](utilities/copy-project.md) without loading
-  it and [save the recorder buffers](utilities/buffer-saver.md) with the project.
+  it, [save the recorder buffers](utilities/buffer-saver.md) with the project,
+  and [SEQ](sequencer/seq.md) (TRACK + PAGE).
 - **Fixes.** The recorder loop click, stock LO-FI's AMF knob and a few
   sequencer and card-write faults are [corrected](fixes/recorder-loop-fix.md).
 

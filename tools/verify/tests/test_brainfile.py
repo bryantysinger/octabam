@@ -1,4 +1,4 @@
-"""The brain file against its byte corpus (docs/proposals/BRAIN.md
+"""The brain file against its byte corpus (docs/specs/BRAIN.md
 section 7): every outcome, byte-for-byte round trips, kept bytes after an
 edit, and the .work / .strd pair rule of section 6.2."""
 import json

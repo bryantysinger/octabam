@@ -60,18 +60,18 @@ SECTIONS = (
 # Where a module's page goes, by registry key. A module not named here goes by its
 # category (BY_CATEGORY), so a new module is never left out of the manual.
 PLACE = {
-    "OCTA303": "machines",
+    "OCTA303": "machines", "WAVE CF": "machines",
     "DIRECT_JUMP_KYOTI": "sequencer", "RELOAD_FROM_PROJECT": "sequencer", "RLEN PLEN": "sequencer",
     "REC_TRIG_MUTE": "sequencer", "REC THRESHOLD": "sequencer", "PATTERN MUTE": "sequencer",
     "MUTE_MODES": "sequencer", "SCALE QUANTIZER": "sequencer", "QUANTIZE_LIVE_REC_TOGGLE": "sequencer",
-    "EUCLID FILL": "sequencer", "TRACK PATTERNS": "sequencer", "TUNER": "sequencer",
+    "SEQ": "sequencer", "TRACK PATTERNS": "sequencer", "TUNER": "sequencer",
     "KITS": "parts", "MIDI SCENES": "parts", "SCENES P2": "parts", "PLOCKS P2": "parts", "MORPH": "parts",
     "CC MAP": "midi-usb", "CC FEEDBACK": "midi-usb", "USB": "midi-usb",
     "BRAIN": "brain",
     "COPY PROJECT": "utilities", "BUFFER SAVER": "utilities", "FX2 LOCK": "utilities",
     "MODE DEFAULTS": "utilities", "REMIX SWITCH": "utilities",
     "LOFI AMF FIX": "fixes", "RECORDER LOOP FIX": "fixes", "BATCH_BUGFIXES": "fixes",
-    "ERASE_EMPTY_TRIGLESS_LOCKS": "fixes", "ATA WRITE GUARD": "fixes",
+    "ERASE_EMPTY_TRIGLESS_LOCKS": "fixes", "ATA WRITE GUARD": "fixes", "FRAME GUARD": "fixes",
     "EVENTS": "inside", "STORE": "inside", "HOOKS": "inside", "MEMORY": "inside",
     "DLPUMP": "inside", "DLCOPY": "inside", "LOAD METER": "inside",
 }

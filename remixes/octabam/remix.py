@@ -7,9 +7,9 @@ CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "QUANTIZE_LIVE_REC_TOGGLE", "REC_TRIG_MUTE", "MUTE_MODES", "PATTERN MUTE",
         "SCALE QUANTIZER", "TUNER", "DIRECT_JUMP_KYOTI", "RELOAD_FROM_PROJECT", "RLEN PLEN",
         "ATA WRITE GUARD", "EVENTS",
-        "LOAD METER")
+        "LOAD METER", "FRAME GUARD")
 # COMPRESSOR's row is SIDECHAIN_COMPRESSOR's: stock COMPRESSOR with a side-chain KEY on page 2, its DSP
-# loaded on demand while a track uses COMPRESSOR (docs/proposals/SC_DEMAND_LOAD.md). Out 1 Nov 2026 (433e22e)
+# loaded on demand while a track uses COMPRESSOR (docs/contributing/DEMAND_LOADER.md). Out 1 Nov 2026 (433e22e)
 # with TRANSIENT and DISTORX, back 4 Nov 2026: KEY reads "--" while the side-chain is not loaded (#934).
 STOCK14 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
            "COMB FILTER", "SIDECHAIN_COMPRESSOR", "LO-FI", "DELAY", "PLATE REV", "SPRING REV", "DARK REV")
@@ -25,8 +25,11 @@ OURS = ("MODULATION", "SPECTRUM", "CHARACTER", "SHATTER")
 # STEM REC, SCOPE, MIDI SCALES and RND NAME are not here either: images with them left program changes
 # unapplied in a loader soak (2 to 5 of 32 transitions; none in the images without them) on Sam's MKII, 1 Nov 2026.
 # FX2 LOCK is not here: it makes the FX2 chooser's YES close without selecting, and this remix has no engine to lock to a track.
-COLDFIRE = ("OCTA303", "MORPH", "REC THRESHOLD", "BUFFER SAVER", "COPY PROJECT", "EUCLID FILL",
-            "TRACK PATTERNS", "VARISPEED")
+# Added 7 Nov 2026 (each builds beside the rest; not yet soaked here): CHORDS FACTORY with PAGES, the page
+# key it cycles; SCREEN, SLOW LFO, BAR LED and REC CS1 SKIP.
+COLDFIRE = ("SCALES", "OCTA303", "WAVE CF", "MORPH", "REC THRESHOLD", "BUFFER SAVER", "COPY PROJECT", "SEQ",
+            "TRACK PATTERNS", "VARISPEED",
+            "CHORDS FACTORY", "PAGES", "SCREEN", "SLOW LFO", "BAR LED", "REC CS1 SKIP")
 STOCK_FX1 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
              "COMB FILTER", "SIDECHAIN_COMPRESSOR", "LO-FI")
 
@@ -38,9 +41,10 @@ REMIX = Remix(
                "(74 layouts, no crash), loader01-02, kits-identity, scenes-sweep, scenes-latency, djump-off/on/burst; "
                "mix-soak and the manual plan not run (docs/contributing/HARDWARE_SUITE.md). With it: not flashed",
     doc="The core ColdFire modules and every other ColdFire module that fits, all 14 stock effects, and SPECTRUM, CHARACTER and MODULATION, loaded on demand, with COMPRESSOR's side-chain.",
-    modules=CORE + ("LOFI AMF FIX", "MODE DEFAULTS", "DLPUMP", "DLCOPY", "SC LOAD METER BRIDGE") + STOCK14 + OURS
+    modules=CORE + ("LOFI AMF FIX", "MODE DEFAULTS", "DLPUMP", "DLCOPY", "SC LOAD METER BRIDGE",
+                     "KEYBUS", "SC KEYBUS BRIDGE") + STOCK14 + OURS
             + COLDFIRE,
-    # The window words no stock effect writes (docs/proposals/DEMAND_LOAD.md): the top of each FX2
+    # The window words no stock effect writes (docs/contributing/DEMAND_LOADER.md): the top of each FX2
     # slot from 0x3da3 up, and below 0x37f00, where payload B's boot zero loop starts. DLCOPY is the
     # lowest upload; the stub and the reverb guards follow it (window_loader); LOAD METER's DSP half
     # fills the next gap. The three effects sit at offset 0x3820 of three of the four slots (core A tracks 7
@@ -50,7 +54,7 @@ REMIX = Remix(
     # which only DARK REV on T4's FX2 reaches; its four hooks go to resident stubs.
     fx1=("SPECTRUM", "CHARACTER", "MODULATION") + STOCK_FX1,   # the chooser order on FX1; the stations also run live on FX2 (SLOTS pin below)
     # DLCOPY follows the five demand entries (x:$33da3 + 8 k, k = 0..4).
-    window=(("DLCOPY", 0x33DCB), ("LOAD METER", 0x37DA3), ("LOAD METER:B", 0x37E50),
+    window=(("DLCOPY", 0x33DCB), ("KEYBUS", 0x33E5E), ("LOAD METER", 0x37DA3), ("LOAD METER:B", 0x37E50),
             ("SPECTRUM", 0x33820), ("CHARACTER", 0x37820), ("MODULATION", 0x3B820),
             ("SIDECHAIN_COMPRESSOR", 0x3F820), ("SHATTER", 0x37C10)),
     # DLPUMP loads in this order, and the first free home wins: SIDECHAIN_COMPRESSOR has one home, the fourth
@@ -68,7 +72,9 @@ REMIX = Remix(
                   ("CHARACTER", 0x33820), ("CHARACTER", 0x3B820), ("CHARACTER", 0x3F820),
                   ("SHATTER", 0x33820), ("SHATTER", 0x3B820), ("SHATTER", 0x3F820)),
     window_guard=("PLATE REV", "DARK REV", "SPRING REV"),
-    window_loader=0x33E66,
+    # KEYBUS (17 words) fills DLCOPY's tail gap and the loader follows it; SC's bridged stubs then
+    # end at 0x33FFF, the block's last resident word.
+    window_loader=0x33E6F,
     fallback="NONE",
     settings={("octabam.usb", "TRACKS"): "PRE", ("octabam.usb", "MAIN"): 1,
               ("octabam.usb", "CUE"): 1, ("octabam.usb", "MASTER"): 0,

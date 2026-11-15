@@ -112,6 +112,11 @@ extern uint32_t fl_trim[FL_TRACKS];    /* a loop end to write once the take has 
 extern uint32_t fl_trim_t24[FL_TRACKS], fl_trim_bars[FL_TRACKS];   /* and its tempo, its bars x 100 */
 extern uint32_t fl_keep[FL_TRACKS][6]; /* recorder r's buffer kept whole through a cut (keep_buffer) */
 extern uint8_t  fl_keep_n[FL_TRACKS];  /* 0 none; 1 its stop awaited; then 1 + the ticks it has held */
+extern uint32_t fl_snap[FL_TRACKS][6]; /* recorder r's slot as keep_buffer reads it, at the last tick it did not record */
+extern uint8_t  fl_auth[FL_TRACKS];    /* recorder t: FL_AUTH_RUN while a recording FREE LOOP let start runs,
+                                          FL_AUTH_STRAY(_KEEP) one it stopped, else the ticks left for one to start */
+extern uint32_t fl_takes_seen[FL_TRACKS];   /* fl_takes as the guard last saw it */
+enum { FL_AUTH_TICKS = 30, FL_AUTH_STRAY_KEEP = 0xfd, FL_AUTH_STRAY = 0xfe, FL_AUTH_RUN = 0xff };   /* 30 UI ticks: 1 s */
 extern FlAction fl_toast_act;
 extern uint8_t  fl_toast_up, fl_win_pushed;
 extern uint32_t fl_win;
@@ -365,10 +370,14 @@ static void stop_recorder(unsigned r) {
  * and written again once the recorder is done (fl_ui_tick). */
 static const uint16_t KEEP_AT[5] = {SLOT_END, SLOT_TEMPO, SLOT_TEMPOQ, SLOT_BARS, SLOT_BARS2};
 
-static void keep_buffer(unsigned r) {
+static void read_slot(unsigned r, uint32_t to[6]) {
     uint32_t slot = SLOT_REC + r * SLOT_STRIDE;
-    for (unsigned k = 0; k < 5; ++k) fl_keep[r][k] = U32(slot + KEEP_AT[k]);
-    fl_keep[r][5] = U32(LIMIT + 4 * r);
+    for (unsigned k = 0; k < 5; ++k) to[k] = U32(slot + KEEP_AT[k]);
+    to[5] = U32(LIMIT + 4 * r);
+}
+
+static void keep_buffer(unsigned r) {
+    read_slot(r, fl_keep[r]);
     fl_keep_n[r] = 1;
 }
 
@@ -601,6 +610,7 @@ static char *put_u(char *p, unsigned v) {
 }
 
 static unsigned pop_state(unsigned t) {
+    if (fl_auth[t] == FL_AUTH_STRAY || fl_auth[t] == FL_AUTH_STRAY_KEEP) return FL_POP_NONE;   /* a stray recording */
     return fl_pop_state(&fl_st, &fl_cfg, t, recording(pass_recorder(t)) || recording(t));
 }
 
@@ -843,6 +853,43 @@ static void lend_setup(unsigned t, unsigned r) {
     }
 }
 
+/* A recording FREE LOOP did not start, on a track it runs (FREE, GRID), is
+ * stopped at once and, on a track with no loop yet, its buffer cleared once
+ * the recorder is done. FREE LOOP starts a track's recorder three ways, each
+ * seen here: a free take (FL_TAKE), a recorder trig its gate lets through and
+ * an injected pass (both count fl_takes). On the owner's MKII (OCTABAM41,
+ * 5 Nov 2026), the first PLAY after a reboot, in MIDI mode, started T1's
+ * recorder by a path the step gate does not see (T1 idle: the popup said
+ * FINISHING), and a double STOP before it prevented it; a QREC start staged
+ * at 0x800018be / 0x800018de (REC_POST's quantized branch) is inferred, not
+ * measured: the port does not reproduce it. */
+static void stray_guard(unsigned t) {
+    if (fl_takes[t] != fl_takes_seen[t] || fl_st.st[t] == FL_TAKE) {
+        fl_takes_seen[t] = fl_takes[t];
+        if (fl_auth[t] < FL_AUTH_STRAY_KEEP) fl_auth[t] = FL_AUTH_TICKS;
+    }
+    if (recording(t)) {
+        if (fl_auth[t] && fl_auth[t] < FL_AUTH_STRAY_KEEP) fl_auth[t] = FL_AUTH_RUN;
+        else if (fl_cfg.role[t] != FL_ROLE_OFF && !fl_auth[t]) {
+            fl_auth[t] = fl_st.has[t] ? FL_AUTH_STRAY_KEEP : FL_AUTH_STRAY;
+            FN(REC_POST, uint32_t, uint32_t, uint32_t)(t, 0x80, 0);    /* now, not at QREC's next step */
+            if (fl_st.has[t]) {           /* a loop before it: its end, tempo, bars and LIMIT as they */
+                for (unsigned k = 0; k < 6; ++k) fl_keep[t][k] = fl_snap[t][k];   /* were before the */
+                fl_keep_n[t] = 1;         /* start (the recorder writes them from its start), put back */
+            }                             /* once it is done (keep_tick); its first frames are the input's */
+            FlAction why = act_toast(t, FL_T_STRAY);                    /* the UI task: the stock toast */
+            toast(&why);
+        }
+    } else if (fl_auth[t] == FL_AUTH_STRAY || fl_auth[t] == FL_AUTH_STRAY_KEEP) {
+        if (fl_auth[t] == FL_AUTH_STRAY) clear_buffer(t);   /* has[t] is 0 already: STRAY means no loop */
+        fl_auth[t] = 0;
+    } else if (fl_auth[t] == FL_AUTH_RUN) {
+        fl_auth[t] = 0;
+    } else if (fl_auth[t]) {
+        --fl_auth[t];
+    }
+}
+
 unsigned fl_ui_tick(void) {
     ++fl_now;
     unsigned run = playing();
@@ -853,6 +900,7 @@ unsigned fl_ui_tick(void) {
         fl_qany = 0;
         for (unsigned t = 0; t < FL_TRACKS; ++t) fl_pat_t[t] = fl_bpat[t] = 0xff;   /* PLAY: entered again */
     }
+    for (unsigned t = 0; t < FL_TRACKS; ++t) stray_guard(t);
     for (unsigned t = 0; t < FL_TRACKS; ++t) {                       /* a fade-out's end: the mute */
         if (!fl_fade[t] || --fl_fade[t]) continue;
         mute_bit(t, 1);
@@ -954,6 +1002,8 @@ unsigned fl_ui_tick(void) {
             fl_st.has[t] = U32(slot_end(r)) != 0;
     }
     for (unsigned r = 0; r < FL_TRACKS; ++r) keep_tick(r);
+    for (unsigned r = 0; r < FL_TRACKS; ++r)                         /* stray_guard's copy */
+        if (!recording(r) && !fl_keep_n[r]) read_slot(r, fl_snap[r]);
     for (unsigned r = 0; r < FL_TRACKS; ++r) {        /* a borrowed setup, until its pass is over */
         if (!fl_src[r] || fl_st.inj[r] || recording(r)) continue;
         unsigned t = fl_src[r] - 1;

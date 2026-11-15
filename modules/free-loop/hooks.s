@@ -21,6 +21,7 @@
         .globl  fl_toast_up, fl_win_pushed, fl_win, fl_text, fl_path, fl_path2, fl_layer, fl_takes
         .globl  fl_keep, fl_keep_n
         .globl  fl_keys, fl_st_answer, fl_settle, fl_stock_cc, fl_msg, fl_trim_t24, fl_trim_bars
+        .globl  fl_auth, fl_takes_seen, fl_snap
         .globl  fl_qany, fl_qrefresh, fl_qinj, fl_src, fl_injd3, fl_glyph, fl_draw
         .globl  fl_pop, fl_pop_key, fl_pop_t, fl_pop_idle, fl_pop_last, fl_pop_closed
         .globl  fl_armed, fl_odub, fl_qplay, fl_stopm, fl_pop_msg, fl_pop_mt, fl_pop_mticks, fl_pat_t, fl_fade, fl_fade_lv, fl_bpat
@@ -256,15 +257,15 @@ fire:
 
 | ---- the track's mark at the screen edge, beside its status icon: a dot
 | over it while it overdubs, a ring blinking at 2 Hz while armed. The form of
-| REC_TRIG_MUTE's rtm_glyph and rtm_draw (Zac-Kyoti/octatrack-kyoti-fw, MIT),
-| with FREE LOOP's states.
+| REC_TRIG_MUTE's former rtm_glyph and rtm_draw (Zac-Kyoti/octatrack-kyoti-fw,
+| MIT, before its pin moved past 553d8d2), with FREE LOOP's states.
 |
 | The edge renderer 0x4004bee2: `jsr fl_glyph` replaces `lea 0x400c0cb8,%a0`.
 | d3 = track, a4 = state (bit 0 playing, bit 1 the recorder live); folded in:
 | 12 | playing overdubbing (the pass may be another recorder's), 10 | playing
 | armed (blink on) and not recording, so the stock cache
 | redraws on each change.
-fl_glyph:                               | d0 / d1 only, as rtm_glyph: the rest is the renderer's
+fl_glyph:                               | d0 / d1 only: the rest is the renderer's
         mvz.b   fl_odub,%d0
         btst    %d3,%d0
         beq.s   1f
@@ -306,11 +307,7 @@ fl_draw:
         lea     fl_dot_play,%a0         | 13: overdubbing, playing
         subq.l  #1,%d0
         beq.s   2f
-        .ifdef  HK_ICON_DRAW            | beside REC_TRIG_MUTE (modules/hooks icon_draw):
-        jmp     rtm_draw                | its mute dots (8 / 9), else nothing to draw
-        .else
         jmp     0x4004c02a              | nothing to draw
-        .endif
 2:      pea     49(%a2)
         move.l  %a3,-(%sp)              | 7 wide, at x like stock's "+>"
         pea     0x400bf10a              | the plane
@@ -364,8 +361,12 @@ fl_ui_stub:
         beq     tick
         rts
 tick:
+        .ifdef  HK_UI_TICK              | beside RELOAD_FROM_PROJECT (modules/hooks ui_tick): its
+        jmp     rl_uitick               | tick replays the displaced read and goes on at 0x40056c2e
+        .else
         move.l  0x460d1e6c,%d0          | displaced
         jmp     0x40056c2e
+        .endif
 
 | The recorder routine's setup pointer, 0x40006d1a: `adda.l #0x80000cf4,%a4`
 | displaced (a4 = the track's published RECORDING SETUP, 12 bytes: INAB
@@ -519,6 +520,7 @@ fl_trim:        .space  32
 fl_trim_t24:    .space  32
 fl_trim_bars:   .space  32
 fl_keep:        .space  192
+fl_snap:        .space  192
 fl_takes:       .space  32
 fl_win:         .long   0
 fl_toast_act:   .space  16
@@ -550,9 +552,11 @@ fl_pop_key:     .long   0
 fl_src:         .space  8
         .balign 4
 fl_injd3:       .space  32
+fl_takes_seen:  .space  32
         .balign 2
 fl_settle:      .space  8
 fl_keep_n:      .space  8
+fl_auth:        .space  8
 fl_playing_was: .byte   0
 fl_clear_all:   .byte   0
 fl_bank_seen:   .byte   0xff

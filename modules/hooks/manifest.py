@@ -14,7 +14,7 @@ participants in it (registry.remix), as it appends MEMORY; no remix lists
 it. The participants' sources are not edited: a submodule's stays its
 author's (REC_TRIG_MUTE), an in-tree module's keeps its proven bytes.
 
-docs/proposals/SHARED_HOOKS.md is the design. Bridges:
+docs/specs/SHARED_SITES.md says how HOOKS relates to STORE, EVENTS and Override. Bridges:
 
   * track_key -- the [TRACK]-held key layer 0x400d164a. Its keys field
     0x400d164e points at stock's six records at 0x400d1594 (0x1a bytes
@@ -29,13 +29,25 @@ docs/proposals/SHARED_HOOKS.md is the design. Bridges:
     participant is added to TRACK_KEY.
   * status_icon -- the track status icon renderer's state-cache load
     0x4004bee2 (`lea 0x400c0cb8,%a0`), d3 the track, a4 the state about to be
-    compared and drawn. REC_TRIG_MUTE (rtm_glyph) folds a mute into a4 as
-    8 | playing; REC THRESHOLD (blink_gate) ORs 0x10 into a4 on an armed
-    track's off phase. Both are `jsr` detours that redo the lea and may
-    clobber d0/d1/a0/a1, which the renderer reloads before reading.
-    Bridged: one jsr calls rtm_glyph, then blink_gate -- the fold first, so
-    the blink bit survives it (in the other order rtm_glyph's `and #1`
-    would clear 0x10).
+    compared and drawn. REC THRESHOLD (blink_gate) ORs 0x10 into a4 on an
+    armed track's off phase; FREE LOOP (fl_glyph) folds its ring / dot in
+    as 10..13 | playing on a track it manages. Both are `jsr` detours that
+    redo the lea and may clobber d0/d1/a0/a1, which the renderer reloads
+    before reading. Bridged: one jsr calls blink_gate, then fl_glyph, so
+    FREE LOOP's mark is drawn over the blink on a track it manages.
+    REC_TRIG_MUTE left this site at its pin after 553d8d2: its mute dots are
+    drawn beside the tab's machine letter (0x40040146), a site of its own.
+  * ui_tick -- the UI task's 1/60 s tick 0x40056c28, the toast countdown's
+    `move.l 0x460d1e6c,%d0` (the routine's first instruction: a leaf called
+    through a register from the task loop, d0 its only register). FREE LOOP
+    (fl_ui_stub: its pattern entry modes, clears, loop ends, toasts) and
+    RELOAD_FROM_PROJECT (rl_uitick: a landing while stopped, the landed
+    reload's toast and redraw, a deferred Part apply) are both jmp detours that
+    replay the read and go on at 0x40056c2e. RELOAD_FROM_PROJECT is a
+    submodule, so it goes last: FREE LOOP's detour stays and, built with
+    HK_UI_TICK, jumps to rl_uitick where it replayed stock. A tick on which
+    FREE LOOP shows a toast returns before stock's countdown, as alone; RELOAD's
+    UI half then runs on the next tick, 1/60 s later.
   * frame_tail -- the frame interrupt's epilogue 0x4000d9a6 (`movem.l
     (%sp),%d0-%d7/%a0-%a6 ; lea 252(%sp),%sp ; rte`, every exit path).
     LOAD METER (lm_out), CF METER (m_tail) and BOOT TRACE (tr_frame_end)
@@ -128,27 +140,34 @@ ICON_SITE = 0x4004BEE2
 ICON_STOCK = H("41f9400c0cb8")          # lea 0x400c0cb8,%a0
 # (module key, its jsr routine at ICON_SITE), in call order.
 STATUS_ICON = (
-    ("REC_TRIG_MUTE", "rtm_glyph"),
     ("REC THRESHOLD", "blink_gate"),
     # last: on a track it manages, its ring (armed) or dot (overdubbing) is drawn over
-    # REC_TRIG_MUTE's mute dots and REC THRESHOLD's blink; elsewhere it folds nothing
+    # REC THRESHOLD's blink; elsewhere it folds nothing
     ("FREE LOOP", "fl_glyph"),
 )
 
-# ---- rec_gate, icon_draw (codeless) ---------------------------------------
-# The step handler's recorder-trig test 0x4009d9a4 and the status icon
-# drawer 0x4004c00c, which FREE LOOP and REC_TRIG_MUTE both detour (jmp,
-# each replaying stock and jumping back). REC_TRIG_MUTE is pinned to its
-# author's bytes, so it goes last: FREE LOOP's detour stays and, built with
-# HK_REC_GATE / HK_ICON_DRAW (its own defsyms, FREE LOOP's select), hands on
-# to rtm_gate / rtm_draw where it replayed stock. The gate is an AND: a
-# FREE / GRID track's recorder trig fires only when FREE LOOP arms it and
-# REC_TRIG_MUTE has not muted it. The drawer: FREE LOOP's states 10..13,
-# then REC_TRIG_MUTE's 8 / 9 (state values disjoint by design).
+# ---- rec_gate (codeless) ----------------------------------------------------
+# The step handler's recorder-trig test 0x4009d9a4, which FREE LOOP and
+# REC_TRIG_MUTE both detour (jmp, each replaying stock and jumping back).
+# REC_TRIG_MUTE is pinned to its author's bytes, so it goes last: FREE LOOP's
+# detour stays and, built with HK_REC_GATE (its own defsym, FREE LOOP's
+# select), hands on to rtm_gate where it replayed stock. The gate is an AND:
+# a FREE / GRID track's recorder trig fires only when FREE LOOP arms it and
+# REC_TRIG_MUTE has not muted it. (The status icon drawer 0x4004c00c was a
+# second codeless bridge, icon_draw, until REC_TRIG_MUTE's mute dots moved to
+# the tab's letter: FREE LOOP is now its only claimant.)
 REC_GATE_SITE = 0x4009D9A4
-ICON_DRAW_SITE = 0x4004C00C
 REC_GATE = (("FREE LOOP", "fl_gate_stub"), ("REC_TRIG_MUTE", "rtm_gate"))
-ICON_DRAW = (("FREE LOOP", "fl_draw"), ("REC_TRIG_MUTE", "rtm_draw"))
+
+# ---- ui_tick (codeless) -----------------------------------------------------
+# The UI task's tick 0x40056c28 (`move.l 0x460d1e6c,%d0`, the toast countdown),
+# which FREE LOOP and RELOAD_FROM_PROJECT both detour (jmp, each replaying the
+# read and going on at 0x40056c2e). RELOAD_FROM_PROJECT is pinned to its
+# author's bytes, so it goes last: FREE LOOP's detour stays and, built with
+# HK_UI_TICK (its own defsym, FREE LOOP's select), jumps to rl_uitick where it
+# replayed stock.
+UI_TICK_SITE = 0x40056C28
+UI_TICK = (("FREE LOOP", "fl_ui_stub"), ("RELOAD_FROM_PROJECT", "rl_uitick"))
 
 
 # ---- frame_tail, frame_entry, boot -----------------------------------------
@@ -167,6 +186,7 @@ FRAME_TAIL = (
 )
 FRAME_ENTRY = (
     ("BOOT TRACE", "tr_frame"),
+    ("FRAME GUARD", "fg_in"),                    # before LOAD METER: the demand loader's pump runs after the wait
     ("LOAD METER", "lm_in"),
 )
 BOOT = (
@@ -178,6 +198,7 @@ BOOT = (
 PITCH_SITE = 0x4004FC58
 CHROM_PITCH = (
     ("OCTA303", "o3_chrom"),            # first: a 303 track's own; every other track ->
+    ("WAVE CF", "wc_chrom"),            # a WAVE track's own; every other track ->
     ("SCALE QUANTIZER", "qz_chrom"),
 )
 CHROMATIC_SITES = (                     # (site, stock bytes, HOOKS's routine)
@@ -201,10 +222,19 @@ MACHINE_ROWS = (
     ("ANALOG BD", "ab_row_type"),
     ("OCTA303", "o3_type"),
     ("CX OSC", "fm_type"),
+    ("WAVE CF", "wc_type"),
 )
 # PB_TABLE (0x400d5f38) has slots 0..6 and a spare zero word at 0x400d5f54 that
 # no code reads; the FX1 table starts at 0x400d5f58: three rows at most.
 MC_MAX = 3
+# The machines a Part may hold at once, all kinds together. Each present machine is built with it
+# (`MC_LIMIT`) and counts every machine's signature (`mc_sig_table`), not only its own. One MKII, meter
+# only, fresh start, 2 Nov 2026: ColdFire frame-interrupt share 25.3 % idle, 65.5 % with 2 OCTA-303
+# machines, 83.2 % with 4; near 98 % the panel stops answering.
+MC_LIMIT = 2
+# What each machine signs a FLEX track with: Part' + 0x3c + 30 * track, three bytes
+# (OCTA303 'T' 'B' 1; ANALOG BD 'A' 'B' 1; CX OSC 'C' 'X' 1, page.s SIG_OFF 0x8edbc = PART_OFF + 0x3c).
+MACHINE_SIGS = {"ANALOG BD": b"AB\x01", "OCTA303": b"TB\x01", "CX OSC": b"CX\x01", "WAVE CF": b"WV\x01"}
 # Each machine's routine for each chained hook. A routine is entered as at its
 # hook's site; None: the machine has no such hook. `publish` (its PLAYBACK
 # record into PB_TABLE[its row], called from the head's tick) and `title` (its
@@ -213,17 +243,21 @@ MACHINES = {
     "ANALOG BD": dict(TYPE="ab_row_type", NAME="ab_machine_name", MAIN_COMMIT="ab_main_commit",
                       SRC_COMMIT="ab_src_commit", SRC_COMMIT2="ab_src_commit2",
                       VALIDATE="ab_validate", RENDER="ab_render", PAGE=None, RETRIG=None,
-                      publish=None, title=None),
+                      LFO_NAME=None, publish=None, title=None),
     "OCTA303": dict(TYPE="o3_type", NAME="o3_machine_name", MAIN_COMMIT="o3_main_commit",
                     SRC_COMMIT="o3_src_commit", SRC_COMMIT2="o3_src_commit2",
                     VALIDATE="o3_validate", RENDER="o3_render", PAGE="o3_page", RETRIG="o3_retrig",
-                    publish="o3_publish", title="o3_title"),
+                    LFO_NAME="o3_lfo_name", publish="o3_publish", title="o3_title"),
     # CX OSC's commit is at 0x40079816, before the others' 0x4007981c: fm_main_commit_hk
     # undoes the stock `adda` the chain's head site follows (modules/cxosc/machine.s)
     "CX OSC": dict(TYPE="fm_type", NAME="fm_machine_name", MAIN_COMMIT="fm_main_commit_hk",
                    SRC_COMMIT="fm_src_commit", SRC_COMMIT2="fm_src_commit2",
                    VALIDATE="fm_validate", RENDER="sy_render", PAGE="pg_resolve", RETRIG="po_retrig",
-                   publish="fm_publish", title="fm_name"),
+                   LFO_NAME="po_lfdname", publish="fm_publish", title="fm_name"),
+    "WAVE CF": dict(TYPE="wc_type", NAME="wc_machine_name", MAIN_COMMIT="wc_main_commit",
+                    SRC_COMMIT="wc_src_commit", SRC_COMMIT2="wc_src_commit2",
+                    VALIDATE="wc_validate", RENDER="wc_render", PAGE="wc_page", RETRIG="wc_retrig",
+                    LFO_NAME=None, publish="wc_publish", title="wc_title"),
 }
 # The hooks whose chain is not the row order. CX OSC heads the render chain:
 # its page code and SCALE QUANTIZER find its records in the words before the
@@ -232,13 +266,16 @@ MACHINES = {
 # calls stock's 0x40004008 itself, so it is the last. CX OSC's STATIC entry
 # chains the same way: OCTA303 claims a voice only by a FLEX signature or a
 # TB303* sample's settings record (o3_marker), and stock renders the rest.
-MC_ORDER = {"RENDER": ("CX OSC", "OCTA303", "ANALOG BD"),
-            "PAGE": ("OCTA303", "CX OSC"), "RETRIG": ("OCTA303", "CX OSC")}
+# LFO_NAME: OCTA303 then CX OSC at 0x4003bff0 — each names its own track's
+# PMTRs and hands every other track on (Sam #1068).
+MC_ORDER = {"RENDER": ("CX OSC", "OCTA303", "WAVE CF", "ANALOG BD"),
+            "PAGE": ("OCTA303", "WAVE CF", "CX OSC"), "RETRIG": ("OCTA303", "WAVE CF", "CX OSC"),
+            "LFO_NAME": ("OCTA303", "CX OSC")}
 MC_CHAINED = ("TYPE", "NAME", "MAIN_COMMIT", "SRC_COMMIT", "SRC_COMMIT2", "VALIDATE",
-              "RENDER", "PAGE", "RETRIG")
+              "RENDER", "PAGE", "RETRIG", "LFO_NAME")
 # The row chain's head-owned sites, and the machines that claim each (CX OSC
 # has no second name lookup and commits at 0x40079816).
-_ALL3, _AO = ("ANALOG BD", "OCTA303", "CX OSC"), ("ANALOG BD", "OCTA303")
+_ALL3, _AO = ("ANALOG BD", "OCTA303", "CX OSC", "WAVE CF"), ("ANALOG BD", "OCTA303", "WAVE CF")
 MC_HEAD_SITES = {
     0x400334D8: _ALL3, 0x4003C928: _ALL3, 0x4003D718: _ALL3, 0x4004C36A: _AO,
     0x4003C980: _ALL3, 0x400585DC: _ALL3, 0x4005221E: _ALL3, 0x40078886: _ALL3,
@@ -249,6 +286,7 @@ MC_HEAD_SITES = {
 MC_KIND_FLEX = 0x400D6438               # the FLEX kind entry: the render chain's head
 MC_PAGE_SITE = 0x40031ECE               # the PLAYBACK page resolver (CX OSC: PLACE=DRAM's)
 MC_RETRIG_SITE = 0x4000C634
+MC_LFO_NAME_SITE = 0x4003BFF0           # LFO SETUP PMTR PLAYBACK names (OCTA303 / CX OSC)
 MC_CX_COMMIT = 0x40079816               # CX OSC's machine-window commit, never a head
 # The list's count and bound sites, HOOKS's for any number of rows: each
 # machine's own six-row pokes (CX OSC: detours, and five cursor clamps).
@@ -299,7 +337,10 @@ def machine_inc(key, modules):
     if len(on) > MC_MAX:
         raise ValueError(f"HOOKS machine_rows: {', '.join(on)} need {len(on)} rows "
                          f"after the stock five; PB_TABLE has room for {MC_MAX}")
-    out = [f".set MC_ROW, {5 + on.index(key)}", f".set MC_ROWS_END, {5 + len(on)}"]
+    out = [f".set MC_ROW, {5 + on.index(key)}", f".set MC_ROWS_END, {5 + len(on)}",
+           f".set MC_LIMIT, {MC_LIMIT}", ".macro mc_sig_table"]
+    out += [f"    .long 0x{int.from_bytes(MACHINE_SIGS[k], 'big'):08x}" for k in on]
+    out += ["    .long 0", ".endm"]
     for hook in MC_CHAINED:
         chain = _chain(hook, modules)
         nxt = chain[chain.index(key) + 1:] if key in chain else ()
@@ -325,7 +366,8 @@ def _mc_overrides(modules):
         out += [Override(site, k) for k in on]
     if "CX OSC" in on:
         out += [Override(site, "CX OSC") for site in MC_CLAMPS + (MC_CX_COMMIT,)]
-    for hook, site in (("RENDER", MC_KIND_FLEX), ("PAGE", MC_PAGE_SITE), ("RETRIG", MC_RETRIG_SITE)):
+    for hook, site in (("RENDER", MC_KIND_FLEX), ("PAGE", MC_PAGE_SITE),
+                       ("RETRIG", MC_RETRIG_SITE), ("LFO_NAME", MC_LFO_NAME_SITE)):
         out += [Override(site, k) for k in _chain(hook, modules)[1:]]
     return out
 
@@ -333,12 +375,12 @@ def _mc_overrides(modules):
 BRIDGES = {"track_key": TRACK_KEY, "status_icon": STATUS_ICON, "frame_tail": FRAME_TAIL,
            "frame_entry": FRAME_ENTRY, "boot": BOOT, "chrom_pitch": CHROM_PITCH,
            "chromatic": CHROMATIC, "machine_rows": MACHINE_ROWS,
-           "rec_gate": REC_GATE, "icon_draw": ICON_DRAW}
+           "rec_gate": REC_GATE, "ui_tick": UI_TICK}
 # The flag each bridge sets in its participants' remix.inc (flags_inc).
 FLAGS = {"frame_tail": "HK_FRAME_TAIL", "frame_entry": "HK_FRAME_ENTRY", "boot": "HK_BOOT",
          "chrom_pitch": "HK_CHROM_PITCH", "machine_rows": "HK_MACHINE_ROWS"}
 # Bridges that need no code of HOOKS's own: a participant's flagged build does it.
-CODELESS = {"chrom_pitch", "rec_gate", "icon_draw"}
+CODELESS = {"chrom_pitch", "rec_gate", "ui_tick"}
 
 
 _STORE_PARTS = runpy.run_path(str(Path(__file__).resolve().parents[1] / "store" / "parts.py"))
@@ -362,7 +404,21 @@ def flags_inc(key, modules) -> str:
     machine on a shared list also gets its place in the chain (machine_inc)."""
     on = bridged(modules)
     return "".join(f".set {flag}, {int(b in on and any(p[0] == key for p in BRIDGES[b]))}\n"
-                   for b, flag in FLAGS.items()) + machine_inc(key, modules)
+                   for b, flag in FLAGS.items()) + machine_inc(key, modules) + _chrom_inc(key, modules)
+
+
+def _chrom_inc(key, modules):
+    """chrom_pitch: the macro a participant ends its not-mine path with, a jump to the next participant's routine."""
+    if "chrom_pitch" not in bridged(modules):
+        return ""
+    syms = [s for _k, s in _present(CHROM_PITCH, modules)]
+    keys = [k for k, _s in _present(CHROM_PITCH, modules)]
+    if key not in keys:
+        return ""
+    if keys.index(key) + 1 >= len(keys):      # the last participant: the stock lea, as plain arithmetic
+        return (".macro hk_chrom_next\n    move.l %a2,%d0\n    lsl.l #2,%d0\n    add.l %a2,%d0\n"
+                "    addq.l #4,%d0\n    move.l %d0,%a2\n.endm\n")
+    return f".macro hk_chrom_next\n    jmp {syms[keys.index(key) + 1]}\n.endm\n"
 
 
 def track_key_records(modules):
@@ -469,11 +525,12 @@ def select(modules):
             detours.append(Detour(site, stock, "hooks", sym, note, kind=kind, pad_to=pad))
             overrides += [Override(site, key) for key, _sym in _present(BRIDGES[b], modules)]
     if "chrom_pitch" in on:
-        overrides.append(Override(PITCH_SITE, "SCALE QUANTIZER"))   # OCTA303's detour stays
+        # the first participant's detour stays (OCTA303's, else WAVE CF's) and hands on down the list
+        overrides += [Override(PITCH_SITE, key) for key, _sym in _present(CHROM_PITCH, modules)[1:]]
     if "rec_gate" in on:
         overrides.append(Override(REC_GATE_SITE, "REC_TRIG_MUTE"))  # FREE LOOP's detour stays
-    if "icon_draw" in on:
-        overrides.append(Override(ICON_DRAW_SITE, "REC_TRIG_MUTE"))
+    if "ui_tick" in on:
+        overrides.append(Override(UI_TICK_SITE, "RELOAD_FROM_PROJECT"))  # FREE LOOP's detour stays
     if "chromatic" in on:
         for site, stock, sym in CHROMATIC_SITES:
             detours.append(Detour(site, stock, "hooks", sym,

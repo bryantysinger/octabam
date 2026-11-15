@@ -149,6 +149,7 @@ HOMES = {}                                                              # key ->
 for _hk, _ha in REMIX.window_homes:
     HOMES.setdefault(_hk, []).append(_ha)
 DL_ENTRY, DL_STRIDE = 0x33DA3, 8         # effect k's entry is x:$33da3 + 8 k (modules/dlcopy/dlcopy.asm)
+DL_BOUND = 0xB0A5ED                      # the entry's +0 while the code is resident (dlcopy.asm, dlstub.asm, dlwrap.asm)
 DL_SLOTS = max(4, len(DEMAND))          # entries the reverb guard checks: 4 as before, more when the remix has more
 if DEMAND and DL_ENTRY + DL_STRIDE * len(DEMAND) > WINDOW.get("DLCOPY", 0x33DC3):
     sys.exit(f"Remix.window_demand: {len(DEMAND)} effects; their entries end at x:${DL_ENTRY + DL_STRIDE * len(DEMAND):x}, "
@@ -289,7 +290,7 @@ PAGE2_COUNTS = {m.key: {i: p.count for i, p in enumerate(m.params)
 STEPPED_SLOTS = {m.key: m.stepped_slots for m in _CLONED if m.stepped_slots}
 BIPOLAR_SLOTS = {m.key: m.bipolar_slots for m in _CLONED if m.bipolar_slots}
 PLAIN_SLOTS = {m.key: m.plain_slots for m in _CLONED if m.plain_slots}
-_DEF_ASM = {m.key: m.dsp.asm for m in _CLONED}
+_DEF_ASM = {m.key: m.dsp.asm for m in _CLONED if m.dsp is not None}   # a MenuEntry.dsp_of row has none
 # DSP code reached from STOCK code rather than a chooser row
 # (schema.DspSection.hooks with no MenuEntry): placed like an effect, on
 # the payloads it names, with no dispatch entry. USB's audio-in RX inject.
@@ -803,6 +804,13 @@ def main():
             _virt[a - idspace.VIRT:a - idspace.VIRT + 4] = v.to_bytes(4, "big")
             return
         img[a - BASE:a - BASE + 4] = v.to_bytes(4, "big")
+
+    def rdw_p(a):
+        if _virt is not None and a >= idspace.VIRT:
+            i = a - idspace.VIRT
+            return _virt[i] | _virt[i + 1] << 8 | _virt[i + 2] << 16
+        i = a - BASE
+        return img[i] | img[i + 1] << 8 | img[i + 2] << 16
 
     def wrw_p(a, v):
         if _virt is not None and a >= idspace.VIRT:
@@ -2564,7 +2572,7 @@ mkgo:""",
     stub_syms = {}
     if DEMAND:
         # one stub body for every demand effect; INIT[id] is `init`, PROCESS[id] a trampoline that names the entry
-        _tr = "".join(f"dls_p{k}:\n        move    #>${0x33DA3 + 8 * k:x},x0\n        move    x0,x:>$3f4c\n        bra     proc\n"
+        _tr = "".join(f"dls_p{k}:\n        move    #>${DL_ENTRY + DL_STRIDE * k:x},x0\n        move    x0,x:>$3f4c\n        bra     proc\n"
                       for _dk2, k in DEMAND.items() if not remix_modules()[_dk2].dsp.hooks)   # a hooked one has no id
         _sw, stub_syms = assemble_syms(pathlib.Path("modules/dlcopy/dlstub.asm").read_text().replace("; TRAMPOLINES\n", _tr),
                                        loader_next, label="demand stub")
@@ -2576,11 +2584,6 @@ mkgo:""",
     if GUARD:
         # One body (modules/dlcopy/dlwrap.asm) for both payloads, behind each payload's trampolines; the
         # trampolines hold the stock entries, which differ between payloads, and point at the body.
-        def _rdx(tag, a):
-            _x = PP[tag]["xtab"] + a
-            buf, i = (_virt, _x - idspace.VIRT) if (_virt is not None and _x >= idspace.VIRT) else (img, _x - BASE)
-            return buf[i] | (buf[i + 1] << 8) | (buf[i + 2] << 16)
-
         _body_src = pathlib.Path("modules/dlcopy/dlwrap.asm").read_text()
         if _body_src.count("        do      #4,>dw_next\n") != 1:
             sys.exit("modules/dlcopy/dlwrap.asm: dw_over's entry loop (`do #4,>dw_next`) is not where the build expects it")
@@ -2595,7 +2598,7 @@ mkgo:""",
         for _tag in ("A", "B"):
             for _n, _gk in enumerate(GUARD):
                 _gid = stock_mod.BY_KEY[_gk].menu.fx2_id
-                _gi, _gq = _rdx(_tag, _gid * 3), _rdx(_tag, (PROC_OFF + _gid) * 3)
+                _gi, _gq = rdw_p(PP[_tag]["xtab"] + _gid * 3), rdw_p(PP[_tag]["xtab"] + (PROC_OFF + _gid) * 3)
                 _gx = stock_mod.SLOT_EXTENT[_gk] + 1
                 guard_records[f"{_gk}:{_tag}"] = {"stock_init": _gi, "stock_proc": _gq, "extent": _gx}
                 _recs += [_gi, _gq, _gx]
@@ -2637,7 +2640,7 @@ mkgo:""",
         print(f"  reverb guard  trampolines P:0x{loader_next:05x}..0x{_rat:05x} ({_lt} words), records P:0x{_rat:05x}..0x{_bat:05x} "
               f"({len(_recs)} words), body P:0x{_bat:05x}..0x{_bat + len(_bw):05x} ({len(_bw)} words)")
         loader_next = _bat + len(_bw)
-    # ---- HOOKED DEMAND MODULES (docs/proposals/SC_DEMAND_LOAD.md) --------------------------------------
+    # ---- HOOKED DEMAND MODULES (docs/contributing/DEMAND_LOADER.md) --------------------------------------
     # A Remix.window_demand module reached by DspHooks, not by an id (SIDECHAIN_COMPRESSOR): its hooks
     # run whether or not its code is loaded, so each jsr goes to a resident stub, reserved here and
     # assembled once the body's and any bridged hook's addresses are known (_hook_stub_words). The stub
@@ -2669,7 +2672,13 @@ mkgo:""",
             _groups = {}
             for _t in _tags:
                 _br = (_t, _h.site_on(_t)) in DSP_OVR
-                _groups.setdefault(("bridge", _t) if _br else ("plain", tuple(_h.stock_on(_t))), []).append(_t)
+                # A bridge to a module with ONE window copy (no "KEY:B" entry, e.g. KEYBUS) jumps to the
+                # same entry from both payloads, so one stub serves both; one with a copy per payload
+                # (LOAD METER, LOAD METER:B) gets a stub per payload.
+                _ovr = DSP_OVR.get((_t, _h.site_on(_t)))
+                _one = _br and _ovr in WINDOW_KEYS and f"{_ovr}:B" not in WINDOW
+                _groups.setdefault(("bridge", _ovr if _one else _t) if _br
+                                   else ("plain", tuple(_h.stock_on(_t))), []).append(_t)
             for (_kind, _), _ts in _groups.items():
                 _n = BRIDGE_WORDS if _kind == "bridge" else STUB_WORDS
                 _rk = f"hook stub {_k} {_h.label} {''.join(_ts)}"
@@ -3109,6 +3118,22 @@ mkgo:""",
                     print(f"  SUBST: {_k} payload {tag} -- "
                           + ", ".join(f"{a} -> {b}" for a, b
                                       in sorted(_mk.dsp.subst[tag].items())))
+                if _mk is not None and _mk.harness is not None and _mk.harness.key_tap:
+                    for _mark in ("; KEYTAP_PRE\n", "; KEYTAP_BEGIN\n", "; KEYTAP_END\n"):
+                        if _src_k.count(_mark) != 1:
+                            sys.exit(f"{_k}: a keybus reader carries exactly one {_mark.strip()!r} line")
+                    if _mk.harness.key_tap in REMIX.modules:
+                        _src_k = _src_k.replace(
+                            "; KEYTAP_PRE\n",
+                            "        tst     a\n"
+                            "        beq     ch_kself                ; SELF\n"
+                            "        move    x:(r7+$25),b\n"
+                            "        tst     b\n"
+                            "        bne     ch_kself                ; the master keys on its own input\n"
+                            "        bra     ch_kbus                 ; the keybus\n")
+                    else:
+                        _src_k = re.sub(r"; KEYTAP_BEGIN\n.*?; KEYTAP_END\n", "", _src_k,
+                                        flags=re.S).replace("; KEYTAP_PRE\n", "")
                 if (_mk is not None and _mk.harness is not None
                         and _mk.harness.bus_reader and _src_k.count("; NOBUS_KEY\n") != 1):
                     sys.exit(f"{_k}: a bus reader carries exactly one '; NOBUS_KEY' line")
@@ -3909,6 +3934,20 @@ hostquit:
                   f"0x{NEW_IDS[_abs]:02x} aliased to SEND P:0x{fb_init:05x} "
                   f"(selecting it here makes the track a send, not silence)")
 
+        # MenuEntry.dsp_of: a row with no DSP of its own runs another module's code, so its id takes that
+        # module's entry points as placed on this payload (after every other write to the table above).
+        for _k in CARRIED:
+            _of = _MODS[_k].menu.dsp_of
+            if not _of:
+                continue
+            if _of not in NEW_IDS or _MODS[_of].dsp is None or _of in HOOKED or _of in STOCK_DSP:
+                sys.exit(f"{_k}: dsp_of={_of!r} is not a module this remix carries with dispatched code of its own")
+            _i = rdw_p(pp["xtab"] + NEW_IDS[_of] * 3)
+            _p = rdw_p(pp["xtab"] + (PROC_OFF + NEW_IDS[_of]) * 3)
+            wrw_p(pp["xtab"] + NEW_IDS[_k] * 3, _i)
+            wrw_p(pp["xtab"] + (PROC_OFF + NEW_IDS[_k]) * 3, _p)
+            print(f"  {_k:13} id 0x{NEW_IDS[_k]:02x} -> {_of}'s code P:0x{_i:05x}/0x{_p:05x} (MenuEntry.dsp_of)")
+
         if probe == "silence":
             words, init_a, proc_a = assemble(
                 pathlib.Path("dsp/silence_stub.asm").read_text(), cursor,
@@ -4199,10 +4238,13 @@ hostquit:
         as target - the branch's own address."""
         bound = DL_ENTRY + DL_STRIDE * DEMAND[key]
         body = hook_bodies[(key, hook.label)]
-        head = (f"zqhs:\n        move    x:>${bound:x},a\n        cmp     #>$b0a5ed,a\n")
+        head = (f"zqhs:\n        move    x:>${bound:x},a\n        cmp     #>${DL_BOUND:x},a\n")
         if bridged:
             t = tags[0]
             chain = hook_chain.get((t, hook.site_on(t)))
+            if any(hook_chain.get((_u, hook.site_on(_u))) != chain for _u in tags):
+                sys.exit(f"hook stub {key} {hook.label}: one stub serves payloads {'/'.join(tags)}, but the "
+                         f"bridged hook's entries differ between them")
             if chain is None:
                 sys.exit(f"hook stub {key} {hook.label}: the bridged hook at P:0x{hook.site_on(t):05x} on payload "
                          f"{t} was not placed in the window, so the stub has no entry to jump to")

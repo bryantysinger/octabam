@@ -62,8 +62,15 @@ Never claim something works because it assembled or linked. `make check` (run by
 the floor; `docs/contributing/TESTING.md` says what each gate proves and what
 none of them can see.
 
-**Before opening a PR, and again before merging one:** rebase onto
-`origin/main`. CI's reach job runs the gates the diff reaches, and the
+**Before opening a PR:** rebase onto `origin/main`. **Merging:** one PR at
+a time, oldest ready first. Update a PR's branch once, just before its
+merge, and only when main has moved under it since its last green run: a
+file both changed (`git diff --name-only $(git merge-base origin/main
+HEAD) origin/main` against the PR's files), or a module, hook, cave or
+remix its gates build with. Otherwise merge it as it stands. Updating every
+open PR after every merge is a full CI run each (`check-remix octabam`
+took 72 min on sambanks/octabam#1087, 12 Nov 2026) that re-proves what no
+merge touched (owner's rule, 13 Nov 2026). CI's reach job runs the gates the diff reaches, and the
 `refhash` bit-identity pass for a build change, on every push to `main` and every
 PR, fork PRs included, on a runner that downloads the 1.40C for that run
 (`CONTRIBUTING.md` "Before you open a PR" is the rule and the reason); the
@@ -179,12 +186,15 @@ moment it costs real work, and add its line here.
 - [A gate that models a setting must boot that setting](docs/contributing/TRAPS.md#trap-post-cs1) — `--cs1-in` the block; an empty run reports which watch was empty, never crashes.
 - [The bench socket drops a large reply on EAGAIN](docs/contributing/TRAPS.md#trap-bench-socket) — poll POLLOUT in the write loop; a short line in the port log is display-only.
 - [Payload B's frame routine writes `x:$3f7f..$3fbf` every frame](docs/contributing/TRAPS.md#trap-stock-x-scratch) — the guard's base cells were there; read what the stock writes before putting state in X, and read the cells back on a unit.
+- [A frame hook that holds core B at its frame head can stop the core](docs/contributing/TRAPS.md#trap-frame-head) — DLCOPY's copy between core B's two handshakes with core A; long work on core B goes at the frame's end (`P:$342`); read a stalled DSP with `tools/hw/dlprobe.patch` and `dl_probe.py`.
 
 **ColdFire / DRAM side**
 
 - [A nonzero popup pointer is not an open FX SETUP window](docs/contributing/TRAPS.md#trap-popup-redraw) — check the open flag and geometry; verify held-lock edits on the decoded LCD.
 
 - [The page plane `0x46c7e0ea` is not the screen](docs/contributing/TRAPS.md#trap-page-plane) — windows are other layers the flush composites; the shown frame is `[0x400b970c]`; check against the decoded panel stream.
+
+- [Stock icon blit: bit 31 is the bottom row](docs/contributing/TRAPS.md#trap-icon-bit31) — `lsll` nudges DOWN, `lsrl` UP; CX OSC FDBK = `lsll #1`, DEC HOLD = hollow h=10.
 
 - [A shared string helper's bound cut the load's path](docs/contributing/TRAPS.md#trap-strcat-bound) — REMIX SWITCH's 30-byte `strcat` cut `/BRAIN/REMIXES/` + a name over 14 characters; bound each buffer at the buffer, and give a fixture the longest name the build writes.
 
@@ -225,6 +235,9 @@ moment it costs real work, and add its line here.
 - [`--watch-mem` given to a `--scenario` child logs nothing](docs/contributing/TRAPS.md#trap-scenario-watch) — watch with a direct run.
 - [Audio and MIDI playing Parts are independent](docs/contributing/TRAPS.md#trap-part-engine-context) — use the matching STORE context reader; seed different engine Parts in fixtures.
 - [A MIDI-only fixture leaves audio frame checks with no playing Part](docs/contributing/TRAPS.md#trap-midi-only-frame-fixture) — activate an audio trig within the probe and use the selected module's actual parameters.
+- [A stock call returns with a0, a1, d0 and d1 changed](docs/contributing/TRAPS.md#trap-stock-scratch-regs) — MIDI SCENES kept `scn_snap` in a1 across the CC sender; reload scratch registers after every stock `jsr`.
+- [A held scene replaces every encoder's handler](docs/contributing/TRAPS.md#trap-scene-encoders) — `0x40053498` over the SETUP editors; a panel gesture's gate drives the panel.
+- [A frame interrupt entering about 150 µs late stops the DSP's frame exchange](docs/contributing/TRAPS.md#trap-late-frame) — START and program changes; ColdFire time added to the frame interrupt moves it on or off the window; FRAME GUARD holds a late entry to 190 µs.
 
 ## How claims are written here
 

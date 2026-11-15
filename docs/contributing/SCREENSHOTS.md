@@ -54,10 +54,10 @@ Groups and what each captures, from the `shot(...)` calls:
 |---|---|---|
 | `core` | `octabam` | rec-trig-mute, quantize-live-rec-toggle, mute-modes, quantizer, rlen-plen, midi-scenes, scenes-p2, plocks-p2, direct-jump-kyoti, reload-from-project |
 | `plocks` | `octabam`, PLATE REV on track 1 | plocks-p2 held lock and released Part value; use a disposable project with trig 1 empty |
-| `features` | `octabam` with REC THRESHOLD, EUCLID FILL, RND NAME and STEM REC added and REC TRIG MUTE and LOAD METER removed (a scratch selection; THR and REC_TRIG_MUTE share a hook, and LOAD METER declares a conflict with STEM REC) | euclid-fill, rec-threshold, stems, rnd-name |
+| `features` | `octabam` with REC THRESHOLD, SEQ, RND NAME and STEM REC added and REC TRIG MUTE and LOAD METER removed (a scratch selection; THR and REC_TRIG_MUTE share a hook, and LOAD METER declares a conflict with STEM REC) | seq, rec-threshold, stems, rnd-name |
 | `inserts` | `octabam`, one effect per track (T1 to T3 FX1, T4 FX2) | setup and main pages of SPECTRUM, CHARACTER, MODULATION, DELAY |
 | `bus` | `octabam-bus` | fx2-lock, tempo-bus, load-meter, memory, usb, and the DELAY SERVER, SEND and REVERB SERVER pages |
-| `extras` | one test remix per module (character-txtr, testgen, resonator, vibrato, sidechain-compressor, miniverb, tapeecho, vocoder, wave, distorx, devilish, transient, gateverb; also alone as `distorx` and `vibrato`) | setup and main page of each |
+| `extras` | one test remix per module (character-txtr, testgen, resonator, vibrato, sidechain-compressor, miniverb, tapeecho, vocoder, wave, distorx, devilish, transient, verberation; also alone as `distorx`, `vibrato` and `verberation`) | setup and main page of each |
 | `machines` | `analog-bassdrum`, `octatrick`, `blackpyramids-303`, `octa303`, `cxosc` | analog-bassdrum, synth, direct-jump, blackpyramids-303, octa303, cxosc |
 | `octa303` | `octa303` (test remix) | octa303 alone (its two pages), without re-capturing the other machines |
 | `cxosc` | `cxosc` (test remix) | cxosc alone (PLAYBACK + SRC SETUP), without re-capturing the other machines |
@@ -87,6 +87,23 @@ checkout"), and the submodules initialised (`git submodule update --init`).
 A new module is therefore one of: a capture step in `capture_manual.py` and
 its PNGs, or an entry in `screen-notes.json`. Without either it shows as
 "Capture pending."
+
+## Never duplicate panel screenshots
+
+`tools/site/gen_pages.py` already embeds every `screenshots.json` image for a
+module (hero under the title, then **Screen reference**). Do **not** also
+`![](../../img/<module>/….png)` those same panel shots in
+`docs/site/usage/<module>.md` — the module page shows them twice (burned CX
+OSC, Nov 2026).
+
+| Put here | Do not put here |
+|---|---|
+| `screenshots.json` + `docs/site/img/<module>/*.png` | `usage/<module>.md` embeds of those same PNGs |
+| Diagrams / SVGs only in usage (path, mix, etc.) | A second copy of source.png / setup.png in usage |
+| PR body **Screenshots** (raw.githubusercontent.com) for Sam | Re-embedding the same PNGs again inside usage for the site |
+
+PR descriptions still embed changed PNGs once (ritual). That is for GitHub
+reviewers — not a second site copy.
 
 ## Review each capture
 

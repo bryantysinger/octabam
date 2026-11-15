@@ -1023,7 +1023,7 @@ def main():
     _rig = ("FILTER", "SPATIALIZER", "EQUALIZER", "PHASER", "FLANGER", "CHORUS",
                  "PLATE REV", "SPRING REV", "DARK REV", "COMPRESSOR", "LO-FI",
                  "DJ EQ", "COMB FILTER")
-    _want = {"midi-follow": (), "midi-loopback": (), "midi-scales": (), "scales": (), "scales-quantizer": (), "mods": (), "ata-write-guard": (), "usb-out-tracks-main-cue": ("PLATE REV",), "usb-out-tracks": (), "usb-out-master": (),
+    _want = {"chords": (), "chords-alone": (), "midi-follow": (), "midi-loopback": (), "midi-scales": (), "scales": (), "scales-quantizer": (), "mods": (), "ata-write-guard": (), "frame-guard": (), "usb-out-tracks-main-cue": ("PLATE REV",), "usb-out-tracks": (), "usb-out-master": (),
              "usb-out-tracks-post": (),
              "remix-switch": (), "remix-switch-trace": (),   # REMIX SWITCH's park in dead vectors, no region words
              "rs64": (),   # remix-switch with BBD placed in the shared window: no region words
@@ -1038,9 +1038,11 @@ def main():
              "hooks-chrom-bp": ("SPRING REV",),   # BLACKPYRAMIDS's voice in SPRING's words, as blackpyramids-303
              "hooks-core": ("PHASER", "DARK REV"),   # LOAD METER's DSP half in PHASER's (as stock-meter-a), CF METER's readout in DARK's (as cfmeter)
              "hooks-free-loop": (),   # FREE LOOP + REC_TRIG_MUTE + REC THRESHOLD: ColdFire, no DSP words
+             "hooks-reload": (),   # FREE LOOP + RELOAD_FROM_PROJECT: ColdFire, no DSP words
              "hooks-machines": ("SPRING REV",),   # ANALOG BD's voices in SPRING's words, as analog-bassdrum
              "hooks-machines-all": ("SPRING REV",),   # the same, with CX OSC
              "hooks-machines-cx": (),   # OCTA303 + CX OSC: ColdFire, no DSP words
+             "wavecf": (), "wavecf-octa303": (),   # WAVE CF (+ OCTA303): ColdFire, no DSP words
              "analog-bassdrum": ("SPRING REV",),
               "blackpyramids-303": ("SPRING REV",),   # its DSP voice in SPRING's words, as ANALOG BD's
              "sidechain-compressor": ("SPRING REV",), "kyoti-mute-sidechain": ("SPRING REV",),   # its DSP section in SPRING's words
@@ -1048,7 +1050,7 @@ def main():
              **{_k: () for _k in ("direct-jump-kyoti", "batch-bugfixes", "reload-from-project",
                                   "quantize-live-rec-toggle", "erase-empty-trigless-locks",
                                   "mute-modes", "kyoti-mute-jump", "kyoti-fixes", "rec-trig-mute",
-                                  "euclid-fill", "varispeed", "copy-project",
+                                  "seq", "varispeed", "copy-project",
                                   "pattern-mute-modes",  # PATTERN MUTE beside MUTE_MODES, stock effects
                                   "scope",  # SCOPE: ColdFire window, no DSP words
                                   "cxosc", "cxosc-core",
@@ -1056,16 +1058,17 @@ def main():
              "trackpatterns": (),   # pgstath's ColdFire module on the stock effects, no DSP words
              "trackpatterns-core": (),   # TRACK PATTERNS on the core modules and the 14 stock effects, which gives up nothing
              "free-loop": (),   # FREE LOOP: ColdFire, no DSP words, on the 14 stock effects
+             "drummer": (), "drummer-probe": (),   # DRUMMER (+ STORE) and its probe: ColdFire, no DSP words
              "rec-cs1-skip": (),   # REC CS1 SKIP: ColdFire, no DSP words, on the 14 stock effects
              "slow-lfo": (),   # SLOW LFO: ColdFire, no DSP words, on the 14 stock effects
              "bar-led": (),   # BAR LED: ColdFire, no DSP words, on the 14 stock effects
+             "xfcurve": (), "xfcurve-scurve": (),   # XF CURVE: ColdFire, no DSP words, on the 14 stock effects
              # the twelve io remixes: the IN module's RX inject is placed in SPATIALIZER's words
              **{f"usb-io-{o}-{i}": ("SPATIALIZER",) for o in ("tracks", "tracks-main-cue", "main-cue", "main") for i in ("ab", "cd", "abcd")},
              "octatrick": ("SPATIALIZER",),   # USB's ABCD input inject, as in the io remixes
              "pext-probe": ("EQUALIZER", "PLATE REV", "SPRING REV"),   # the probe takes EQUALIZER's id and the two reverbs' words
              "window-mod": ("CHORUS", "PLATE REV", "SPRING REV", "DARK REV"), "window-ctl": ("CHORUS", "PLATE REV", "SPRING REV", "DARK REV"),   # MODULATION takes CHORUS's id; the reverbs' words hold LOAD METER and CORE
              "octabam": (),   # all 14 stock effects stay; ours, SC and LOAD METER run from the window
-             "octabam-full": (),   # octabam with TRANSIENT, DISTORX and SIDECHAIN_COMPRESSOR as well
              "dlspike": (),   # all 14 stock effects stay; MODULATION is loaded on demand
              "dl-probe": ("EQUALIZER",), "dl-probe-any": ("EQUALIZER",),   # DLPROBE takes EQUALIZER's id
              "ext-probe": ("EQUALIZER",),   # EXTPROBE takes EQUALIZER's id
@@ -1073,7 +1076,6 @@ def main():
              "sos-capture": ("SPATIALIZER",),   # usb-io-tracks-ab + the recorder fixes
              "cfmeter": ("DARK REV",), "cfmeter-port": ("DARK REV",), "cfmeter-post": ("DARK REV",), "cfmeter-tracks": ("DARK REV",),   # the readout insert's words
              "waveload": ("DARK REV",), "waveload-port": ("DARK REV",),   # CF METER's readout insert, as cfmeter
-             "wave": ("SPRING REV", "DARK REV"),   # WAVE runs in their words
              "usb-out-tracks-main-cue": ("PLATE REV",),   # USB's inject is placed in its words (the remix lists 13)
              "transient": ("PLATE REV",),   # TRANSIENT runs in its words; the other 13 stay
              "void": ("PLATE REV",),        # VOID SCRAPE runs in its words; the other 13 stay
@@ -1087,7 +1089,7 @@ def main():
              "testgen": ("PLATE REV",),     # TESTGEN runs in its words; the other 13 stay
              "resonator": ("PLATE REV",),   # RESONATOR runs in its words; the other 13 stay
              "vibrato": ("PLATE REV",),
-             "vibrato-fx2": ("PLATE REV",),   # the same, with SLOTS = FX1+FX2   # VIBRATO's 563 words run in PLATE REV's 594; its table in PLATE's X data
+             "vibrato-fx2": ("PLATE REV",),   # the same, with SLOTS = FX1+FX2   # VIBRATO's 593 words run in PLATE REV's 594; its table in PLATE's X data
              "vocoder": ("PLATE REV", "DJ EQ"),   # VOCODER runs in PLATE's words; DJ EQ out so the tables sit in X
              "vocoder-usb": ("PLATE REV", "DJ EQ"),   # the vocoder remix + USB MIDI and USB AUDIO (ColdFire, no DSP words)
              "events-empty": ("SPRING REV", "DARK REV"),

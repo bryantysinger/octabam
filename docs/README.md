@@ -21,17 +21,32 @@ Where each doc is, by who reads it. A module's own page is
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | the contract: the one rule, your first PR, the oracle rule, the gates before a PR |
 | [contributing/MODULES.md](contributing/MODULES.md) | writing a module: manifests, descriptors, DSP and ColdFire declarations, the ledger |
 | [contributing/PLACEMENT.md](contributing/PLACEMENT.md) | where a module's code goes and what is free, measured |
+| [contributing/DEMAND_LOADER.md](contributing/DEMAND_LOADER.md) | the demand loader: effects copied into the DSP's shared window while a track uses them; DLPUMP, DLCOPY, the stub, the reverb guard, SIDECHAIN_COMPRESSOR's hook stubs, the window layout, measurements on a unit |
 | [contributing/COSTS.md](contributing/COSTS.md) | what each effect costs on a unit, per slot, and the worst-case DSP load of a remix; `tools/remix/costs.py` |
 | [contributing/TESTING.md](contributing/TESTING.md) | every gate, what it proves and cannot see; `make check`, `make reach`, shards, `make accept`, bit-identity, CI |
 | [contributing/TOOLING.md](contributing/TOOLING.md) | every tool by pipeline stage, and which README each tool directory has |
 | [contributing/HARDWARE_TESTING.md](contributing/HARDWARE_TESTING.md) | testing a remix on your own unit: the session step by step, stress sequences, recovering from a failure |
 | [contributing/HARDWARE_MATRIX.md](contributing/HARDWARE_MATRIX.md) | one remix in many configurations on a unit over one USB cable: project generation, the run, the flags, the limits |
 | [contributing/HARDWARE_SUITE.md](contributing/HARDWARE_SUITE.md) | the `octabam` remix's hardware suite: projects with generated audio, the phases over the one cable, what each measures |
+| [contributing/HARDWARE_PLAN.md](contributing/HARDWARE_PLAN.md) | the run sheet for the next unit session: `octabam`, `octabam-bus` and `octabam-verbs` after #1067, the control images, the soak's decision rule, the checks by hand, where results go |
 | [contributing/HARDWARE_MANUAL.md](contributing/HARDWARE_MANUAL.md) | the manual test plan for what the cable cannot reach: panel gestures, listening, card, MIDI controllers |
 | [contributing/SCREENSHOTS.md](contributing/SCREENSHOTS.md) | re-capturing the manual site's LCD screenshots: when, `capture_manual.py` groups, the records and coverage page, the probe scripts, FX page behaviour |
 | [contributing/FAILURE_MODES.md](contributing/FAILURE_MODES.md) | what has gone wrong on a unit: symptom, cause, fix, the gate that catches it |
 | [contributing/TRAPS.md](contributing/TRAPS.md) | the trap register: what has cost real work in the code, build, emulators and harness — symptom, fix, the gate that catches it |
 | [../AGENTS.md](../AGENTS.md) | working rules, worktrees, build and check, and the trap index (for people and coding agents) |
+
+## Specs
+
+[specs/](specs/README.md): the contracts between modules, and between modules and tools. A spec says what is guaranteed and what a client must do;
+measurements and history stay in the module's README.
+
+| doc | what it is |
+|---|---|
+| [specs/SHARED_SITES.md](specs/SHARED_SITES.md) | two modules on one stock site: STORE, EVENTS, HOOKS and `Override`, which to use, the machine chain, what is open |
+| [specs/STORE.md](specs/STORE.md) | save/load/copy events, side-file calls, refused files, native Part access, the MIDI SETUP byte table, the register ABI |
+| [specs/EVENTS.md](specs/EVENTS.md) | transport, accepted-MIDI, held-editor and copy boundaries; the registration form and each family's contract |
+| [specs/HOOKS.md](specs/HOOKS.md) | every bridge, its site and participants; adding one |
+| [specs/BRAIN.md](specs/BRAIN.md) | settings declarations, the four layers, the files on the card and in the project, the brain file's byte format |
 
 ## The tools
 
@@ -50,27 +65,27 @@ Where each doc is, by who reads it. A module's own page is
 is the silicon and the cycle budget, [DSP.md](firmware/DSP.md) the audio
 DSP, and the rest one subsystem each (kernel, tables, parameter pages,
 menus, panel, MIDI, LFO, level law, recorder, sample save, storage,
-the MIDI tracks' setup record, writers, outgoing MIDI and CTRL labels in [MIDI_TRACKS.md](firmware/MIDI_TRACKS.md), Parts and pattern changes in [PARTS.md](firmware/PARTS.md), step locks, the ColdFire delay routine in [COLDFIRE_DELAY.md](firmware/COLDFIRE_DELAY.md),
+the MIDI tracks' setup record, writers, outgoing MIDI and CTRL labels in [MIDI_TRACKS.md](firmware/MIDI_TRACKS.md), Parts and pattern changes in [PARTS.md](firmware/PARTS.md), step locks, the ColdFire delay routine in [COLDFIRE_DELAY.md](firmware/COLDFIRE_DELAY.md), the reset path and OS entry in [BOOT.md](firmware/BOOT.md),
 REPITCH in [REPITCH.md](firmware/REPITCH.md)).
 
 ## Proposals
-
-[proposals/](proposals/): [BRAIN.md](proposals/BRAIN.md), the design for
-settings, defaults and templates (6 Oct 2026; `modules/brain` builds it and
-measures it under the port, not on a unit), the two
-OTX documents it starts from, nordseele's shared settings store (draft, not
-implemented): [OTX_PROJECT_PROPOSAL.md](proposals/OTX_PROJECT_PROPOSAL.md)
-and [OTX_MODULE_GUIDELINES.md](proposals/OTX_MODULE_GUIDELINES.md), and
-[USB.md](proposals/USB.md), merging the four USB modules into one with
-run-time settings held by the brain (14 Oct 2026).
-[SHARED_HOOKS.md](proposals/SHARED_HOOKS.md): one owner per contested
-ColdFire site (STORE, EVENTS and a new PARTS), so conflicting modules can
-share an image (28 Oct 2026, not implemented).
 
 [proposals/remixes/](proposals/remixes/README.md): remix proposals, each
 taken on hardware to verified stable before it lands under `remixes/`.
 
 ## History
+
+Removed proposals, each recovered with `git show 76fd8466:docs/proposals/<file>`:
+
+| file | why removed | where it went |
+|---|---|---|
+| `FIRMWARE_SWITCHER.md`, `BOOT_DEFAULT.md` | REMIX SWITCH shipped | firmware facts in [firmware/BOOT.md](firmware/BOOT.md); behaviour in [REMIX SWITCH](../modules/remix-switch/README.md) |
+| `OTX_PROJECT_PROPOSAL.md`, `OTX_MODULE_GUIDELINES.md` | replaced by BRAIN and the modules that use it | section 14 of the removed BRAIN design lists what BRAIN took from OTX |
+| `USB_HANDOFF.md`, `USB.md` | session handoff (15 Oct 2026) and the design that merged four USB modules into one with run-time settings; built, with six settings where it proposed two (LAYOUT, INPUTS) | [USB](../modules/usb/README.md) |
+| `SHARED_HOOKS.md` | built as HOOKS; PARTS dropped | [specs/SHARED_SITES.md](specs/SHARED_SITES.md) |
+| `BRAIN.md` | built | sections 1-8 (declarations, layers, files, format) are [specs/BRAIN.md](specs/BRAIN.md); sections 9-15 (menu, tooling, gates, phases, OTX) stay in git; [BRAIN module](../modules/brain/README.md) |
+| `SCOPE.md` | shipped | [SCOPE](../modules/scope/README.md) |
+| `DEMAND_LOAD.md`, `SC_DEMAND_LOAD.md` | merged | [contributing/DEMAND_LOADER.md](contributing/DEMAND_LOADER.md) |
 
 [../CHANGELOG.md](../CHANGELOG.md) has one entry per image that reached a
 unit. Records that were closed and removed are cited in place as

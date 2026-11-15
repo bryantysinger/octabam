@@ -1,6 +1,6 @@
 ; ---------------------------------------------------------------------------
 ; DLSTUB -- the lazy-binding stub in front of the demand-loaded effects
-; (docs/proposals/DEMAND_LOAD.md). One body serves them all; the build adds a
+; (docs/contributing/DEMAND_LOADER.md). One body serves them all; the build adds a
 ; trampoline per effect where the marker below is.
 ;
 ; Each effect's id dispatches to the stub. While the real code is not resident the
@@ -35,8 +35,7 @@ proc:
         move    a1,x:>$3f4b              ; proc is called with a = 0 or 1 in a: kept for the real code
         move    x:>$3f4c,r2
         move    x:(r2),a
-        move    #>$b0a5ed,x0
-        cmp     x0,a
+        cmp     #>$b0a5ed,a
         bne     dl_pass
         move    r7,a
         asr     #$8,a,a

@@ -619,7 +619,7 @@ mask a page word with `and #>$7f0000` before any shift, compare, select or
 `asr` then leaves a clean low word. After `and`, store from `a1`/`b1`
 (`move a1,x:`), not `move a,x:` (the A2-staleness trap above). The
 `dsp_host -pword k:off=hex` option writes a raw word after `-params`, and
-`verify_wave` / `verify_one_bus` render dirty words.
+`verify_wave` (removed with the DSP WAVE: `git show 755a02ac:tools/verify/verify_wave.py`) / `verify_one_bus` render dirty words.
 
 <a name="trap-name-nul"></a>
 
@@ -1255,6 +1255,28 @@ UART stream decoded by `tools/panel/panel_link.py`, not against the
 plane. `verify_screen` does this with the boot popup and MIXER up,
 on an empty card.
 
+<a id="trap-icon-bit31"></a>
+### Stock icon blit: bit 31 is the bottom row
+
+**Seen:** CX OSC SETUP icons (6 Nov 2026, flashes CX 24–28). Agents
+nudged FDBK with `lsrl` expecting “down”, and the icon climbed the box;
+`lsll` moved it down. DEC HOLD filled the column or used row h=11 and
+read as a white square / clipped top stroke on SETUP.
+
+**Cost:** five remix flashes chasing one pixel of vertical position and
+a hollow HOLD line, because screen-y intuition was applied to the blit
+word.
+
+**Rule:** the column long for blit `0x400128a8` (mask `0xfff80000`, 13
+rows) has **bit 31 = bottom**, bit 19 = top. `pg_vline`-style row `0` is
+that bottom bit; higher row indices are higher on the LCD. On a column
+long, **`lsll` moves content down**, **`lsrl` moves it up**. Do not
+invert from “y grows up on the page”. CX OSC settled values (unit OK on
+CX 28): FDBK after Tim art + loop OR → `lsll #1`; DEC HOLD → single
+hollow line at **h=10** (not h=11, not a fill). Documented in
+`modules/cxosc/page.s` (header + `pg_ic_fdbk` / `pg_ic_decay`) and
+`modules/cxosc/README.md`.
+
 <a name="trap-movem-sp"></a>
 
 ### `moveml %sp@` is the mode-2 form: it stores at sp and leaves sp unchanged
@@ -1604,3 +1626,77 @@ them all, and STORE's prompt came up at every load. Rule: while a file is open, 
 file layer; write from anything else. **Gate:** `verify_plocks_p2`'s save
 case stages a bank with no `p2lkNN.work` and checks the header SAVE PROJECT
 gives its `.strd`.
+
+<a id="trap-stock-scratch-regs"></a>
+
+### A stock call returns with a0, a1, d0 and d1 changed
+
+**A REGISTER KEPT ACROSS A `jsr` INTO STOCK IS ONLY SAFE IF THE CALLEE SAVES
+IT.** MIDI SCENES' `mix` held the trig-snapshot pointer `scn_snap` in a1 for
+the whole track × flat loop and called the stock CC sender `0x4009eec8`
+inside it, which saves d2-d7/a2-a5 only (`docs/firmware/MIDI_SCENES.md`
+section 4). After the first CC a pass sent, a1 was garbage (`0xffffffba` at
+the next track, measured under the port, 5 Nov 2026), and every later
+unlocked side read its "snapshot" from wherever that pointed. A user saw it
+as a jump in a scene fade with CC locks on two channels: on one track the
+first send comes after the reads, so the oracle comparisons (`b7`, `tg`, `tg2`,
+one MIDI track) never saw it. Under the port T2's CC 1 went 31, **0**, 30 at
+the unlocked end. Rule: after a call into stock, reload a0, a1, d0 and d1
+before using them, or save them around the call. **Gate:** `verify_scenes`'s
+`tt` scenario (two tracks, scene B locks only, a fader sweep): each channel's
+CC 1 must fall monotonically to its Part value.
+
+<a id="trap-scene-encoders"></a>
+
+### A held scene replaces every encoder's handler: a window's editor never sees the turn
+
+**PRESSING A SCENE KEY WRITES STOCK'S SCENE-LOCK KNOB HANDLER `0x40053498` INTO
+EVERY ENCODER SLOT** of the dispatch table `0x46c7dede + 20·encoder`
+(`0x40031944` jumps through it; the writer is `0x40031406`), over whatever the
+open window installed. SCENES P2 hooked the FX SETUP page-2 editors
+(`0x4003a9dc`, `0x4003abe4`) and checked "scene held" inside them, and its gate
+called the editor directly, so it passed while no panel turn with a scene held
+ever reached it: zero calls with SCENE A held, three without (`--watch-pc`, 5
+Nov 2026). The user report was "trig locks on FX page 2 work but not scene
+lock". The fix detours `0x40053498` itself. Rule: a gate for a panel gesture
+drives the panel (`--live-script`), not the routine you think it reaches; and
+in FX SETUP the first encoder event only shows the readout, the next ones
+edit. **Gate:** `verify_scenes_p2`'s `panel` scenario.
+
+<a id="trap-late-frame"></a>
+**A FRAME INTERRUPT THAT ENTERS ABOUT 150 µs LATE STOPS THE DSP'S FRAME
+EXCHANGE.** At START and at a program change one frame interrupt runs 475 to
+585 µs on every image measured, so the next enters late. Sam's MKII, 12 Nov
+2026, a log of the last frame interrupts read over USB: an entry up to 149 µs
+late is followed by one back-to-back frame interrupt and the unit runs on; an
+entry 155 µs or more late by one skipped frame; the two stalls logged entered
+149 and 155 µs late (two back-to-back frame interrupts, the second before its
+grid time, then none; the sequencer holds step 1). A USB capture adds 25 to
+30 µs to the START frame and moved it onto that boundary: 5 of 8 first STARTs
+stalled with a capture open, 0 of 8 without, and 0 of 8 with 60 µs MORE in
+every frame interrupt and no capture. Cost: the 0.5 hardware suite parked, a
+day of first-START trials, and stalls earlier put down to the modules that
+happened to move the timing (the CX OSC and STEM REC entries in
+`FAILURE_MODES.md` have the same signature; not re-run). The mechanism on the
+DSP side is inferred, not measured. Fix: FRAME GUARD holds an entry 110 to
+190 µs late until it is 190 µs late (`modules/frame-guard/README.md`); with
+it, 32 first STARTs and 192 program changes without a stall. Rule: ColdFire
+time added to the frame interrupt can cause or cure a DSP stall by a few
+microseconds either way, so an A/B that only adds or removes a module is not
+evidence about that module; read the frame log (`tools/hw/framelog.patch`,
+`tools/hw/ot_stall.py`) for the entry lateness before the stop. **Gate:**
+`verify_frame_guard` (the guard's arithmetic; the window itself is a unit
+measurement).
+
+<a id="trap-frame-head"></a>
+**A FRAME HOOK THAT HOLDS CORE B AT ITS FRAME HEAD CAN STOP THE CORE.** Core B has no idle of its own: its frame
+head (`P:$51..$8d`) is two word-by-word handshakes with core A, and DLCOPY's hook sat between them at `P:$76`. A copy
+there takes most of a frame. On Sam's MKII (12 to 15 Nov 2026) core B stopped in the first track of the frame of a
+copy that bound an effect, about 2 runs in 3 of a 10-minute program-change walk; core A then waits at `P:$a3` for
+good and the audio stops. Cost: three days of unit runs and eleven test images; a frame overrun, the copy's
+destination, the stack and the effect's own code were each ruled out by measurement before the hook's place was
+tried. Fix: the hook is at `P:$342`, the frame's end (12 of 12 runs clean). What core B does in that first track is
+not known, and the port and `dsp_host` run one core, so no gate sees it. Rule: long work on core B goes at the end of
+its frame, after the last track; to see a stalled DSP, read it (`tools/hw/dlprobe.patch`, `tools/hw/dl_probe.py`: the shared
+window through the core that still takes host commands), do not infer it from the ColdFire's side.
+
