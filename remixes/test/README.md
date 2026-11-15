@@ -75,6 +75,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`plocks-p2`](plocks-p2/README.md) | Page-2 parameter locks (PLOCKS P2) and page-2 scene locks (SCENES P2), stock effects. | port-gated: verify_plocks_p2 under the port |
 | [`quantize-live-rec-toggle`](quantize-live-rec-toggle/README.md) | stock effects with QUANTIZE_LIVE_REC_TOGGLE: QUANTIZE LIVE REC from [REC] + [PLAY]. | `make check` |
 | [`rec-cs1-skip`](rec-cs1-skip/README.md) | stock effects with REC CS1 SKIP: the recorder's control-record update without its redundant CS1 writes. | `make check` |
+| [`rec-matrix`](rec-matrix/README.md) | Stock effects with recorder SRC3 = MTRX recording a per-recorder sum of sources, kept in the project by BRAIN. | `make check`: the matrix as BRAIN PROJECT settings REC1..REC8 |
 | [`rec-threshold`](rec-threshold/README.md) | stock effects with the threshold-armed recorder TRIG THR, its LEV and an IN meter: the image for a unit. | on hardware: Chupitnik's MKII, 11-13 Oct 2026, THR1 to THR9 from the card: armed with TRACK 1 + REC AB, silence never records, the input starts the take, a second press cancels, LEV and IN on RECORDING SETUP 2, TRIG moved off THR while armed drops the arm and the blink, an armed track's icon blinks, armed inside RECORDING SETUP 1 it records; THR9 is this code |
 | [`rec-trig-mute`](rec-trig-mute/README.md) | stock effects with REC_TRIG_MUTE: [TRACK]+[REC] mutes/unmutes a track's recorder trigs. | `make check` |
 | [`reload-from-project`](reload-from-project/README.md) | stock effects with RELOAD_FROM_PROJECT: reload one track's sequence from the card while the transport runs. | `make check` |
@@ -100,6 +101,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`stems-brain`](stems-brain/README.md) | STEM REC (UP+REC) with BRAIN on the root: coexistence without two menu growers. | port-gated: verify_stems_menu under ot_emu |
 | [`stock-meter-a`](stock-meter-a/README.md) | CORE with LOAD METER and the stock effects except PHASER. | `make check` |
 | [`stock-meter-b`](stock-meter-b/README.md) | CORE with LOAD METER and the stock effects except SPATIALIZER. | `make check` |
+| [`stretch-analysis-gate`](stretch-analysis-gate/README.md) | stock effects with STRETCH ANALYSIS GATE: the sample-analysis task skips voices whose TSTR is off. | `make check` |
 | [`stuttr`](stuttr/README.md) | STUTTR beside the stock effects (all but PLATE REV, whose words it takes). | local render: verify_stuttr; chance-engage redesign. |
 | [`tapeecho`](tapeecho/README.md) | Tape Echo replacing Spring Reverb, alone. | on hardware: the author's unit (OCTACLID4): six instances; a seventh freezes it, open |
 | [`testgen`](testgen/README.md) | TESTGEN on FX1 beside the stock effects (all but PLATE REV, whose words it takes). | on hardware: Ignorato's MKII, OCTABAM6, 4 Oct 2026 |
