@@ -251,6 +251,12 @@ form, grep it in `out/dsp/payload_*.asm`
 first and then a PR adding the register row with the evidence, or the form
 everything else uses.
 
+What now gates it: `verify_dsp_forms` in `make check` refuses a form with
+no stock site, no register row and no module at `Level.UNIT`
+(`docs/contributing/TESTING.md`). `verify_cf_forms` reports the ColdFire
+forms with none of the three (`docs/contributing/COLDFIRE_FORMS.md`); it does
+not refuse them yet.
+
 <a name="trap-rep-dma"></a>
 
 ### No `rep` in an effect's `init` or `proc`, and no dense X work in a DMA's 8K block
@@ -1089,6 +1095,27 @@ copies each backing object into a private one after the fork. Anything
 new the port maps shared (a window, a ring for the host) needs the same
 treatment, or the children interfere and the failure moves between runs.
 
+<a name="trap-job21"></a>
+
+### `{byte 21, fn}` on the engine queue runs fn on the sys task, not the engine
+
+**Seen:** 5 Nov 2026, read from the image and run under the port while designing a module that saves a
+recorder buffer, following REMIX SWITCH's and COPY PROJECT's "engine job". Job 21 (`0x40085ab6`) posts event
+43 to the sys queue `0x460d17ae`, and `0x40062454` calls `fn(1)` on the sys task, the task that handles the
+panel's keys. A long file write there holds every key for its length.
+
+**Fix:** a job of its own, taken at the engine's receive (`0x40084854`, or `0x4008485e` where BRAIN takes
+its own). **Gate:** a key pressed during the job is answered before the job ends.
+
+<a name="trap-step-ahead"></a>
+
+### A gate at the step handler is a step early: the first trig at PLAY was computed before PLAY
+
+**Seen:** 5 Nov 2026, under the port: a gate on REC TRIG MUTE's site `0x4009d9a4` read "idle" for a
+recorder trig that sounded on PLAY, because the step handler computes the first trig before PLAY sets the
+state the gate reads. **Fix:** gate at the arm `0x40005ff0`, where a sequencer's word carries bit 9
+(`0x4000c9a4`). **Gate:** a keyed recording started, then PLAY, with a recorder trig on step 1.
+
 <a name="trap-rosetta"></a>
 
 ### The port ran under Rosetta in every shard, and nothing said so
@@ -1522,6 +1549,65 @@ whose behaviour leans on the changed rule (here, anything reading the ESAI's
 input pages), not only the one the change was made for. Gate:
 `verify_rec_threshold` and `verify_remix_switch`, both under the reverted port.
 
+<a name="trap-wall-timeout"></a>
+
+### A wall-clock timeout in a port gate failed on a loaded runner
+
+**THE SAME TREE PASSED ON ITS PR AND FAILED ON MAIN.** On 15 Nov 2026 main's
+merge of #1116 (`636460a`, a tree bit-identical to the PR head `1d7d96e`)
+failed `verify_remote`'s `COMMAND 1 and 2`: NEWPROJ and the PATTERN records
+arrived after COMMAND 2, the LOADALL did not "in 120.0 s". The PR's run had
+passed the shard in 474 s; main's took 958 s. The 120 s was wall time
+(`ot_events.Events.wait_for` read `time.monotonic()`) while each tick advanced
+the port 10 emulated ms, so a slower runner gave the reload fewer emulated
+seconds. Every PR whose image moved then failed the same check
+(sambanks/octabam#1130). `MenuPort.run` had the same blind spot: it passed the
+port a soft wall cap (`run <ms> wall <s>`), and a capped slice "advances less
+than ms" with nothing said. (`verify_copy_project`'s "no PROJECT
+261014/project.work on card" on sambanks/octabam#1119 was first put down to
+that cap; retracted -- it failed again with the cap fixed. Its cause is a fixed
+20 s of emulated time for a copy of the generated project that takes 20-40 s:
+`4a0e9e0` waits for the job's dialog instead.)
+Measured: the identical-tree pass and fail, and the two shard times. Inferred:
+that runner load is the cause (no run was repeated on one runner).
+Fix: `Events(..., clock=)` -- `verify_remote` passes the emulated clock, so its
+timeouts are emulated seconds -- and `MenuPort.run` runs further capped slices
+until the asked emulated ms have passed (a slice that advances nothing ends
+it). A slice's cap must also sit inside the reply timeout: `ms/50` asked
+`run 15000 wall 300` against `PortProc.BACKSTOP`'s 120 s, and on main's run of
+#1119 (16 Nov 2026) a slow port was declared dead mid-slice ("PortDied: no reply
+to 'run 15000 wall 300' within 120 s"); the cap is now at most BACKSTOP / 2.
+Rule: under the port, a timeout or a settle is emulated time; a wall cap
+only bounds a slice, sits inside the reply timeout, and the caller checks what
+the slice advanced. Gate:
+`test_ot_events.test_wait_for_times_out_on_the_given_clock`.
+
+<a name="trap-two-clocks"></a>
+
+### A gate timed its input from boot and its keys from the load's end
+
+**THE INPUT AND THE KEYS RAN ON TWO CLOCKS.** `verify_rec_threshold`'s `late`,
+`cancel` and `untrig` fed 10 s of silence from the DSP boot
+(`--audio-in-from-boot`) and pressed TRACK 1 + REC AB 2 s into the live script,
+which starts when the port marks the load ended. The press led the onset only
+while boot and load took under about 8 s. On 16 Nov 2026 every branch merged
+with main failed `cancel: stock's own start path ran under THR`
+(sambanks/octabam#1129, #1132): from sambanks/octabam#1133 on octabam the
+gate's bare project (a `project.work`, no bank files) was marked loaded after
+9.1 s, not 3.4 s; the press found the signal already there, armed and started
+at once, and the second press ran stock's start. Measured under the port: the
+1.40C itself and the images before and after #1133 all write the 15 missing
+banks after that load (the bank writer `0x400917c8`, mask `0xfffe`, called from
+`0x40084dc8`); with SEQ registered as a STORE Part client the load-end mark
+(the engine idle at its queue receive) falls after those writes instead of
+before them, and with SEQ's registration removed it falls before them again.
+A project with its banks loads in 15,081 ms before and after #1133 with the same
+card traffic. Inferred: that STORE's Part hooks move the idle gap (not traced).
+Fix: `--audio-in-on-cue` holds a WAV silent until the script's `<ms> audio
+start` line, and the gate cues every WAV at script 6 s and stages a complete
+project from `tools/hw/ot_fresh.py`. Rule: a gate that compares two events
+puts both on the script's clock; boot and load time move with every module.
+
 <a name="trap-cf-frame"></a>
 
 ### A ColdFire save frame sized for the wrong register count overwrites the return address
@@ -1700,3 +1786,26 @@ not known, and the port and `dsp_host` run one core, so no gate sees it. Rule: l
 its frame, after the last track; to see a stalled DSP, read it (`tools/hw/dlprobe.patch`, `tools/hw/dl_probe.py`: the shared
 window through the core that still takes host commands), do not infer it from the ColdFire's side.
 
+<a id="trap-pitch-destination"></a>
+
+### PLAYBACK slot A depends on the machine
+
+SEQ treated destination 0 as pitch when drawing its Harmony hint and
+handling RIGHT. On THRU, that destination is INAB, so the manual screenshot
+offered Harmony for an input selector. The old gate checked only the
+destination index and missed this case. Both paths now use the resolved
+PTCH label for audio, or NOTE on MIDI. The capture fixture assigns FLEX to
+T1 in every Part before selecting PTCH. `verify_seq_tonal_port` checks
+THRU INAB and FLEX PTCH, including the hint pixels and the RIGHT gesture.
+
+<a id="trap-sequential-limiter"></a>
+
+### Sequential sample loops were priced as alternative modes
+
+A two-pass limiter runs both `do n7` loops. The counter previously took
+the maximum, silently omitting the gain pass. Mark such modules with
+`; CYCLES_SEQUENTIAL_LOOPS`; `cycle_count.measure` adds every loop.
+`test_cycle_ceiling.py` checks sequential sums and preserves mode maxima.
+The original limiter also used the previous block's level, allowing the
+first transient through. The shared render gates now inject signed impulses
+at and around block boundaries and check the actual first-block peak.

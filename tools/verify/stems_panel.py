@@ -23,7 +23,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools")); import toolpath  # noqa: E402,F401
 sys.path.insert(0, str(ROOT / "tools" / "panel"))
 from panel_link import PanelLink  # noqa: E402
-from panel_server import PORT_BIN, PortProc, PortRt  # noqa: E402
+from panel_server import PORT_BIN, SAMPLE_HZ, PortProc, PortRt  # noqa: E402
 
 KEYS = json.loads((ROOT / "tools/panel/key_map.json").read_text())["keys"]
 MENU_FOCUS = 0x400cbda8     # the list descriptor the menu's cursor is in (MAINMENU.md 4)
@@ -70,10 +70,24 @@ class MenuPort:
             self.proc.kill()
 
     def run(self, ms, wall=None):
-        # Soft wall cap so a stuck interactive run cannot outlast the gate.
+        # Soft wall cap per slice so a stuck interactive run cannot outlast the gate. A slice the cap ends
+        # advances less than `ms` (the port's `run <ms> wall <s>`), so on a loaded runner a gate's emulated
+        # time would be cut short with nothing said. The rest runs as further slices until `ms` emulated ms
+        # have passed; a slice that advances nothing ends it.
+        # The cap stays well inside the reply timeout (PortProc.BACKSTOP, 120 s): main's run of #1119 asked
+        # `run 15000 wall 300` and the port, slower than 1/8 real time there, was declared dead at 120 s with
+        # the slice still running (verify_remote, 16 Nov 2026). A shorter slice is only more slices.
         if wall is None:
             wall = max(5.0, float(ms) / 50.0)
-        self.rt.run(ms=ms, wall=wall)
+        wall = min(wall, PortProc.BACKSTOP / 2)
+        left = float(ms)
+        while True:
+            s0 = self.rt.sample
+            stop = self.rt.run(ms=left, wall=wall)
+            done = (self.rt.sample - s0) / SAMPLE_HZ * 1000.0
+            left -= done
+            if stop != "wall" or done <= 0 or left <= 0:
+                break
         self.rt.poll_tx()
         tx = self.rt.uart64.tx
         self.link.feed(bytes(tx[self.pos:]))

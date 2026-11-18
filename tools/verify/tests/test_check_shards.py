@@ -87,6 +87,21 @@ class FailureExcerpt(unittest.TestCase):
         self.assertEqual(check_shards.failure_excerpt("a\nb", tail=40), ["a", "b"])
 
 
+class StatusOf(unittest.TestCase):
+    """A job that exited 0 with SKIP lines is not reported as a plain `ok` (sambanks/octabam#1051)."""
+
+    def test_plain_ok_and_cached(self):
+        self.assertEqual(check_shards.status_of(dict(rc=0, skips=[])), "ok")
+        self.assertEqual(check_shards.status_of(dict(rc=0, skips=[], cached={"head": "x"})), "cached")
+
+    def test_skips_are_in_the_status(self):
+        self.assertEqual(check_shards.status_of(dict(rc=0, skips=["[SKIP] a", "[SKIP] b"])), "ok, 2 SKIP")
+        self.assertEqual(check_shards.status_of(dict(rc=0, skips=["[SKIP] a"], cached={"head": "x"})), "cached, 1 SKIP")
+
+    def test_a_failure_stays_a_failure(self):
+        self.assertEqual(check_shards.status_of(dict(rc=2, skips=["[SKIP] a"])), "FAILED (2)")
+
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -129,13 +144,12 @@ class PickJobs(unittest.TestCase):
                 self.assertTrue((ROOT / script).is_file(), unit)
                 self.assertIn(script, {g.script for g in registry.by_key(module).gates}, unit)
 
-    def test_octabams_long_share_names_real_jobs(self):
-        import reach
-        names = {j[0] for j in check_shards.remix_jobs("octabam", ROOT)}
-        parts = reach.SPLIT_REMIX_JOBS["octabam"]
-        every = [n for jobs in parts.values() for n in jobs]
-        self.assertLessEqual(set(every), names)
-        self.assertEqual(len(every), len(set(every)))      # no job in two parts
+    def test_job_names_are_the_remix_jobs_without_the_placeholder(self):
+        names = check_shards.job_names("octabam")
+        self.assertEqual(names, [j[0] for j in check_shards.remix_jobs("octabam", ROOT) if j[0] != "module-gates"])
+        self.assertEqual(len(names), len(set(names)))
+        self.assertLess(set(check_shards.job_names("octabam", ["BRAIN"])), set(names))
+        self.assertIsNone(check_shards.SCOPE)           # the scope is restored
 
 
 class Split(unittest.TestCase):

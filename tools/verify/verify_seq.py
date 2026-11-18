@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SEQ: Euclidean bit patterns + UI contract (fast, no port).
+"""SEQ: Euclidean bit patterns + panel/source contract (fast, no port).
 
 Math matches modules/euclid/control.c. UI checks audit seq.s so the
 popup keeps filter-EUCLID names (PULSE / ROT) plus LANE / DEST / DEPTH,
@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import pathlib
 import re
+import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -131,13 +132,13 @@ def pitch_candidates(
 ) -> list[int]:
     """Absolute st = base_st+delta for delta in [-rad..+rad] on-scale.
 
-    PC = (root + st) mod 12. base_st is the Part PLAYBACK PTCH decoded to
+    PC relative to the selected root = (st - root) mod 12. base_st is the Part PLAYBACK PTCH decoded to
     semitones (overall knob); 0 = unison / raw 64.
     """
     out: list[int] = []
     for delta in range(-rad, rad + 1):
         st = base_st + delta
-        pc = (root + st) % 12
+        pc = (st - root) % 12
         if mask & (1 << pc):
             out.append(st)
     return out
@@ -213,18 +214,35 @@ def check_ui(src: str) -> None:
     check("no stock ARRUP/ARRDN icons (this window has no arrow legend)",
           "ARRUP" not in src and "ARRDN" not in src and "0x400b9d8c" not in src)
 
-    # Arrow / nav keys: omit from EF_KEYS entirely. A 0 swallows; a -1
-    # record still writes aux/sub-map 0 and can break DOWN after
-    # Euclid → PROJECT. TEMPO BUS must still own the arrow codes.
+    # UP/DOWN remain unbound; LEFT/RIGHT select the knob page. TEMPO BUS
+    # keeps its existing arrow handlers as well.
     tb = (ROOT / "modules/tempo-bus/tempobus.s").read_text()
     tb_keys = re.search(r"TB_KEYS:(.*?)TB_ENCS:", tb, re.S)
     assert tb_keys, "TEMPO BUS key table missing"
     ef_keys = _block(src, "EF_KEYS:", "EF_ENCS:")
-    for code, name in (("0x33", "UP"), ("0x20", "DOWN"), ("0x34", "LEFT"), ("0x21", "RIGHT")):
+    for code, name in (("0x33", "UP"), ("0x20", "DOWN")):
         check(f"arrow {name} {code} in TEMPO BUS",
               code in tb_keys.group(1))
         check(f"arrow {name} {code} unbound in EF_KEYS",
               not re.search(rf"\.byte\s+{code},", ef_keys))
+    check("LEFT/RIGHT select knob pages", ".byte   0x34, 0" in ef_keys
+          and ".byte   0x21, 0                 | RIGHT" in ef_keys
+          and "ef_page_left" in ef_keys and "ef_page_right" in ef_keys)
+    draw = _block(src, "ef_draw:", "d9:")
+    check("padded page affordances are hidden unless available",
+          "T_PAGE1" in draw and "T_PAGE2" in draw
+          and "X_PAGE_R" in draw and ".set    X_PAGE_R,  X_GRID-1" in src
+          and "ef_rtext" in draw
+          and '.asciz " 1>"' in src and '.asciz "<2 "' in src
+          and "bsr.w   ef_pitch_selected" in draw)
+    right = _block(src, "ef_page_right:", "ef_enc:")
+    check("RIGHT and the page hint share the pitch-destination check",
+          "bsr.w   ef_pitch_selected" in right and "beq.s   9f" in right
+          and right.index("bsr.w   ef_pitch_selected")
+          < right.index("movel   %d0,ef_page_no"))
+    check("page 2 redraw keeps shared step grid", "ef_draw_pat" in draw
+          and "ef_grid" in draw and "ef_draw_tonal" in draw
+          and "Page 2 keeps the rhythm grid" in src)
     for code, name in (("0x1c", "PROJ"), ("0x1d", "PART"),
                        ("0x1e", "AED"), ("0x1f", "ARR")):
         check(f"nav {name} {code} unbound in EF_KEYS",
@@ -299,12 +317,20 @@ def check_ui(src: str) -> None:
           re.search(r"\.set\s+SLOT_B,\s*28\b", src) is not None)
     check("ef_bank has 8 slots",
           re.search(r"ef_bank:\s*\n\s*\.rept\s+8\b", src) is not None)
-    check("per-DEST depth + plock tables + euclid.work v4",
+    check("per-DEST depth + audio/MIDI PLOCK recipes and tonal state in euclid.work v9",
           "ef_dep_mem:" in src and "ef_dep_load:" in src and "ef_dep_save:" in src
           and "ef_plk_mem:" in src and "ef_plk_load:" in src and "ef_plk_save:" in src
           and "ef_lane_mem:" in src and "ef_lane_load:" in src and "ef_lane_save:" in src
           and "ef_plk_expand_v3:" in src
-          and re.search(r"\.set\s+EF_VER,\s*4\b", src) is not None
+          and re.search(r"\.set\s+EF_VER,\s*9\b", src) is not None
+          and "EF_FILE_V4" in src and "el_v4:" in src
+          and "EF_FILE_V5" in src and "el_v5:" in src
+          and "ef_midi_bank" in src and "ef_midi_dep_mem" in src
+          and "ef_midi_plk_mem" in src and "ef_midi_lane_mem" in src
+          and "EF_FILE_V6" in src and "el_v6:" in src
+          and "ef_midi_defaults" in src
+          and "ef_tone_mem" in src and "ef_tone_save" in src and "ef_tone_load" in src
+          and "el_v7:" in src and "ef_tone_defaults" in _block(src, "el_v7:", "el_v6:")
           and re.search(r"\.set\s+EF_PLK_SLOT,\s*12\b", src) is not None
           and "EF_FILE_B" in _block(src, "ef_write_due:", "ef_load_file:")
           and "ef_dep_load" in _block(src, "ef_nudge:", "ef_nudge_rts:")
@@ -315,6 +341,57 @@ def check_ui(src: str) -> None:
           and "ef_dep_mem" in _block(src, "ef_defaults:", "ef_copy_file:")
           and "EF_PLK_B" in _block(src, "ef_defaults:", "ef_copy_file:")
           and "EF_LANE_B" in _block(src, "ef_defaults:", "ef_copy_file:"))
+    midi_fill = _block(src, "ef_write_midi_mask:", "ef_drop_clr_undo:")
+    check("MIDI TRIG/PLOCK fills write note mask or independent lock rhythm",
+          "0x48d0" in midi_fill and "0x8b0" in midi_fill
+          and "MIRROR+0x48d0" in midi_fill
+          and "ef_write_midi_mask" in _block(src, "ef_midi_fill:", "tnext:")
+          and "ef_write_midi_locks" in _block(src, "ef_midi_fill:", "tnext:")
+          and "ef_write_midi_plocks" in _block(src, "ef_midi_fill:", "tnext:")
+          and "ef_midi_lock_store" in midi_fill
+          and "ef_write_mask" not in _block(src, "ef_midi_fill:", "tnext:"))
+    check("MIDI mode keeps PULSE/ROT recipes separate from audio recipes",
+          "lea     ef_midi_bank,%a0" in _block(src, "ef_store_slot:", "ef_load_slot:")
+          and "lea     ef_midi_bank,%a0" in _block(src, "ef_load_slot:", "ef_dep_ptr:")
+          and "lea     ef_midi_dep_mem,%a0" in _block(src, "ef_dep_ptr:", "ef_dep_load:"))
+    check("MIDI DEST spans all 30 page-1 flats and uses NOTE/LFO/ARP/CTRL descriptors",
+          "dn_midi:" in src
+          and "ef_midi_desc_tab" in src
+          and "moveq   #DEST_LAST,%d0" in _block(src, "ef_dest_max:", "ef_is_cx:"))
+    check("MIDI lock bases follow STORE's playing MIDI Part, not the UI Part",
+          "jsr     store_part_midi_context" in _block(src, "ef_midi_part_flat:", "ef_part_setup:")
+          and "jsr     store_part_read" in _block(src, "ef_midi_part_flat:", "ef_part_setup:")
+          and "jsr     store_part_ui_context" in _block(src, "ef_midi_part_flat:", "ef_part_setup:"))
+    check("MIDI [YES] places selected locks on note-trig hits and clears misses",
+          "ef_write_midi_locks:" in midi_fill
+          and "bsr.w   ef_write_dest" in _block(src, "ef_write_midi_locks:", "ef_midi_lock_store:")
+          and "wmil_clear:" in _block(src, "ef_write_midi_locks:", "ef_midi_lock_store:"))
+    check("MIDI lock writer restores the whole saved value before storing its low byte",
+          "movel   (%sp)+,%d0" in _block(src, "ef_midi_lock_store:", "ef_drop_clr_undo:")
+          and "moveb   (%sp),%d0" not in _block(src, "ef_midi_lock_store:", "ef_drop_clr_undo:"))
+    check("MIDI C switches TRIG/PLOCK and saves independent per-flat rhythms",
+          "ef_midi_plk_mem" in src and "ef_midi_lane_mem" in src
+          and "ef_phit" in _block(src, "ef_write_midi_plocks:", "ef_midi_lock_store:")
+          and "lea     ef_midi_lane_mem,%a0" in _block(src, "ef_lane_load:", "ef_lane_save:")
+          and "lea     ef_midi_lane_mem,%a0" in _block(src, "ef_lane_save:", "ef_follow_ui:"))
+    check("MIDI confirmation resumes editing without filling",
+          "ef_pending_edit" in _block(src, "ef_dlg_answer:", "ef_trk_baked:")
+          and "ef_fill" not in _block(src, "ef_dlg_answer:", "ef_trk_baked:"))
+    check("MIDI clear menu dispatches to MIDI-specific actions",
+          "MIDI_MODE" not in _block(src, "ef_clear_menu:", "ecm_rts:")
+          and "bne.w   ef_midi_clear_dest" in _block(src, "ef_clear_cur_dest:", "ef_reset_cur_plk:")
+          and "bne.w   ef_midi_clear_all" in _block(src, "ef_clear_all_dest:", "ef_reset_all_plk:")
+          and "bne.w   ef_midi_clear_trigs" in _block(src, "ef_clear_trigs:", "ctr_midi_rts:"))
+    check("MIDI overwrite prompt scans the MIDI note mask",
+          "bne.w   bkd_midi" in _block(src, "ef_trk_baked:", "ef_trac_focus:")
+          and "0x48d0" in _block(src, "bkd_midi:", "ef_trac_focus:")
+          and _block(src, "bkd_midi:", "ef_trac_focus:").count("0x8b0") == 1)
+    check("MIDI CUE mask writer preserves its destination across the rhythm reader",
+          "movel   %a0,-(%sp)" in _block(src, "wmid_loop:", "wmid_clear:")
+          and "moveal  (%sp)+,%a0" in _block(src, "wmid_loop:", "wmid_clear:"))
+    check("MIDI mask helper preserves the outer target loop register",
+          "movem.l %d2-%d7/%a0-%a1,(%sp)" in midi_fill
+          and "movem.l (%sp),%d2-%d7/%a0-%a1" in midi_fill)
     check("ef_bank defaults DEST=LOCK_VOL",
           re.search(r"ef_bank:.*?\.long\s+5,\s*0,\s*LOCK_VOL,\s*0,\s*0",
                     src, re.S) is not None)
@@ -338,13 +415,19 @@ def check_ui(src: str) -> None:
     ef_objs = sorted((ROOT / "out/platform/runtime").glob("*_ef.o"))
     if ef_objs:
         newest = max(ef_objs, key=lambda p: p.stat().st_mtime)
-        blob = newest.read_bytes()
+        dis = subprocess.check_output(
+            ["m68k-elf-objdump", "-d", str(newest)],
+            text=True,
+        )
+        start = dis.find("<ef_load_slot>:")
+        end = dis.find("<ef_dep_ptr>:", start)
+        body = dis[start:end] if start >= 0 and end > start else ""
+        opcodes = re.findall(r"^\s*[0-9a-f]+:\s+([0-9a-f]{4})\b", body, re.M)
         # after adda to bank: must stage via Dn (2218), never 23d8 mem-to-mem
         check(f"assembled {newest.name}: no load mem-to-mem 23d8",
-              bytes.fromhex("23d8") not in blob,
-              f"23d8 at {blob.find(bytes.fromhex('23d8'))}")
+              bool(opcodes) and "23d8" not in opcodes)
         check(f"assembled {newest.name}: load stages via d1 (2218)",
-              bytes.fromhex("2218") in blob)
+              "2218" in opcodes)
     else:
         print("  [ -- ] assembled ef.o absent (skip mem-to-mem opcode check)")
     check("ef_follow_ui avoids CUR_TRACK (HW brick; pending/UI_TRACK only)",
@@ -379,7 +462,9 @@ def check_ui(src: str) -> None:
           "ef_rhythm_gate" in nudge and "ARE YOU SURE?" in src)
     check("CUE gates through ef_rhythm_gate when baked",
           "ef_rhythm_gate" in _block(src, "ef_cue:", "cue_go:"))
-    check("ARE YOU SURE? stock DIALOG; YES unlocks only; soft-restore",
+    gate = _block(src, "\nef_rhythm_gate:", "\nef_dlg_answer:")
+    dlg_answer = _block(src, "ef_dlg_answer:", "ef_trk_baked:")
+    check("ARE YOU SURE? stock DIALOG; audio unlocks, MIDI applies fill",
           "DIALOG" in src and "ef_dlg_answer" in src and "ef_unlocked" in src
           and "ef_dlg_guard" in src and "ef_need_restore" in src
           and "ef_mkwin" in src
@@ -389,7 +474,15 @@ def check_ui(src: str) -> None:
           and "YES: UNLOCK" not in src and "NO: CANCEL" not in src
           and "ef_clr_trigs" not in src
           and "ef_soft_layer" not in src
-          and "ef_fill" not in _block(src, "ef_dlg_answer:", "ef_trk_baked:"))
+          and "ef_pending_edit" in dlg_answer
+          and "ef_fill" not in dlg_answer)
+    check("ARE YOU SURE? soft-hides SEQ before DIALOG (not under SEQ)",
+          "jsr     WDESTROY" in gate and "ef_need_restore" in gate
+          and "jsr     DIALOG" in gate
+          and gate.find("jsr     WDESTROY") < gate.find("jsr     DIALOG"))
+    poll = _block(src, "\nef_cl_poll:", "\nef_cl_close:")
+    check("ef_cl_poll skips restore while ARE YOU SURE? (ef_ask)",
+          "ef_ask" in poll and poll.find("ef_ask") < poll.find("ef_cl_ours"))
     close = _block(src, "ef_close:", "ef_no:")
     soft = re.search(
         r"tstl\s+ef_dlg_guard\s*\n\s*beq\.s\s+close_nosoft\n(.*?)close_nosoft:",
@@ -497,6 +590,20 @@ def check_ui(src: str) -> None:
           "ef_trkkey:" in src
           and "ef_pending" in _block(src, "ef_trkkey:", "ef_dest_label:")
           and "ef_load_slot" not in _block(src, "ef_trkkey:", "ef_dest_label:"))
+    check("ef_trkkey forwards to stock TRACK + CUE overlay",
+          ("TRK_STOCK" in _block(src, "ef_trkkey:", "ef_dest_label:")
+           or "0x40040250" in _block(src, "ef_trkkey:", "ef_dest_label:"))
+          and ("CUE_TRK" in _block(src, "ef_trkkey:", "ef_dest_label:")
+               or "0x40083dc4" in _block(src, "ef_trkkey:", "ef_dest_label:"))
+          and "ef_cue_chord" in _block(src, "ef_trkkey:", "ef_dest_label:")
+          and ("CUE_HELD" in _block(src, "ef_trkkey:", "ef_dest_label:")
+               or "0x460d168c" in _block(src, "ef_trkkey:", "ef_dest_label:")))
+    check("ef_trkkey skips SEQ redraw when stock stole UI_WINDOW",
+          "UI_WINDOW" in _block(src, "ef_trkkey:", "ef_dest_label:")
+          or "0x460d175c" in _block(src, "ef_trkkey:", "ef_dest_label:"))
+    check("EF_KEYS CUE/TRACK wire press and release (not swallow release)",
+          re.search(r"\.byte\s+0x2a,.*?\n\s*\.long\s+ef_cue,\s*ef_cue\b", keys, re.S)
+          and re.search(r"\.byte\s+0x10,.*?\n\s*\.long\s+ef_trkkey,\s*ef_trkkey\b", keys, re.S))
     check("ef_trkkey calls stock SEL_TRACK (sequencer view)",
           ("0x40083bf8" in _block(src, "ef_trkkey:", "ef_dest_label:")
            or "SEL_TRACK" in _block(src, "ef_trkkey:", "ef_dest_label:")))
@@ -511,11 +618,18 @@ def check_ui(src: str) -> None:
           and "ef_load_slot" in _block(src, "ef_follow_ui:", "ef_sync_len:"))
 
     cue = _block(src, "ef_cue:", "ef_rng:")
-    check("ef_cue fills focused mask", "ef_mask" in cue and "ef_pmask" in cue)
-    check("ef_cue sets focused free", "ef_free" in cue and "ef_pfree" in cue)
-    check("ef_cue uses LCG (ef_rng)", "ef_rng" in cue)
+    check("ef_cue press/release poke CUE_HELD (stock modifier byte)",
+          "CUE_HELD" in cue or "0x460d168c" in cue)
+    check("ef_cue random on bare release (ef_cue_random)",
+          "ef_cue_random:" in src
+          and "ef_cue_chord" in cue
+          and ("ef_cue_snap" in cue or "MUTE_CUE" in cue))
+    rnd = _block(src, "ef_cue_random:", "ef_rng:")
+    check("ef_cue fills focused mask", "ef_mask" in rnd and "ef_pmask" in rnd)
+    check("ef_cue sets focused free", "ef_free" in rnd and "ef_pfree" in rnd)
+    check("ef_cue uses LCG (ef_rng)", "ef_rng" in rnd)
     check("ef_cue respects ef_pulses (k-subset)",
-          "ef_pulses" in cue and "clrl    ef_pulses" not in cue)
+          "ef_pulses" in rnd and "clrl    ef_pulses" not in rnd)
     check("ef_hit serves free + Euclid",
           "ef_hit:" in src and "ef_free" in _block(src, "ef_hit:", "ef_enc:"))
 
@@ -531,14 +645,14 @@ def check_ui(src: str) -> None:
           re.search(r"\.byte\s+3,\s*0[^\n]*\n\s*\.long\s+ef_enc\b", encs) is not None)
     check("encoder E (4) -> ef_enc",
           re.search(r"\.byte\s+4,\s*0[^\n]*\n\s*\.long\s+ef_enc\b", encs) is not None)
-    check("encoder F (5) -> ef_enc (noop empty)",
+    check("encoder F (5) -> ef_enc (page-specific)",
           re.search(r"\.byte\s+5,\s*0[^\n]*\n\s*\.long\s+ef_enc\b", encs) is not None)
     check("encoder LEVEL (6) -> ef_level",
           re.search(r"\.byte\s+6,\s*0[^\n]*\n\s*\.long\s+ef_level\b", encs) is not None)
     enc = _block(src, "ef_enc:", "ef_level:")
-    check("ef_enc rejects F only (C=LANE)",
-          re.search(r"moveq\s+#5,%d0", enc) is not None
-          and "C empty" not in enc)
+    check("ef_enc routes page 2 to tonal controls and page 1 leaves F empty",
+          "ef_enc_tonal" in enc and "ef_tonal_nudge" in enc
+          and "F empty" in src)
     check("ef_enc keeps A..E as cursor 0..4 (no D/E remap)",
           "subql   #1,%d1" not in enc and "subql\t#1,%d1" not in enc
           and "ef_cursor" in enc)
@@ -600,11 +714,71 @@ def check_ui(src: str) -> None:
           "wm_plock:" in _block(src, "ef_write_mask:", "ef_tl_bit_addr:")
           and "ef_tl_set" in _block(src, "wm_plock:", "wm_dest_clr:")
           and "ef_phit" in _block(src, "wm_plock:", "wm_dest_clr:"))
+    check("LANE=PLOCK leaves sample trigs alone (wm_keep_trig, no mask-0 rewrite)",
+          "wm_keep_trig:" in _block(src, "ef_write_mask:", "ef_tl_bit_addr:")
+          and "bne.w   wm_keep_trig" in _block(src, "ef_write_mask:", "wm_plock:")
+          and "ef_hit" not in _block(src, "wm_keep_trig:", "wm_dest_clr:")
+          and "ef_bit_addr" in _block(src, "wm_keep_trig:", "wm_plock:"))
     check("PULSE0 / dest-clear drops orphan TL (ef_tl_reconcile, stack-safe)",
           "ef_tl_reconcile:" in src
           and "ef_tl_reconcile" in _block(src, "wm_mtl:", "9:")
           and "ef_cx_bits" in _block(src, "ef_tl_reconcile:", "ef_write_dest:")
           and "moveq   #31,%d1" in _block(src, "ef_tl_reconcile:", "ef_write_dest:"))
+    check("PULSE 0 shares ef_clear_dest_step with DEPTH 0 / miss (ignore stale pfree)",
+          "ef_clear_dest_step:" in src
+          and "ef_clear_dest_step" in _block(src, "wm_dest_clr:", "wm_mtl:")
+          and "bra.w   ef_clear_dest_step" in _block(src, "ed_clear:", "ed_store:")
+          and "tstl    ef_ppulses" in _block(src, "wm0b:", "wm_on:")
+          and "beq.s   wm_off" in _block(src, "wm0b:", "wm_on:")
+          and "ef_pfree" not in _block(src, "wm0b:", "wm_on:"))
+    man = (ROOT / "modules/seq/manifest.py").read_text()
+    check("FUNC+BANK clear LISTPOP (soft-close SEQ; restore on list close)",
+          "ef_clear_menu:" in src
+          and "M_OPEN" in src and "EF_CL_CBS" in src
+          and "ef_cl_dest:" in src and "ef_cl_all:" in src
+          and "ef_cl_all_trigs:" in src
+          and "ef_dlg_guard" in _block(src, "ef_clear_menu:", "ef_cl_rest:")
+          and "ef_mkwin" not in _block(src, "ecm_open:", "ef_cl_rest:")
+          and "ef_cl_rest:" in src and "ef_mkwin" in _block(src, "ef_cl_rest:", "ef_cl_dest:")
+          and "ef_close" not in _block(src, "ef_clear_menu:", "ef_cl_rest:")
+          and "ef_fb_mki:" in src and "ef_fb_mkii:" in src
+          and "ef_layer_on" in _block(src, "ef_fb_mkii:", "ef_cl_ours:")
+          and "FUNC_BANK_STOCK_MKI" in src and "MKII_TRIG_EDIT_CONT" in src
+          and "0x400bf4a4" in man and "0x4007c0d0" in man
+          and "brain_func_keys" in man
+          and "verify_seq_func_bank.py" in man)
+    keys = _block(src, "EF_KEYS:", "EF_ENCS:")
+    check("EF_KEYS omits BANK (Detour-only FUNC+BANK; no double-fire)",
+          "ef_bank_key" not in src
+          and ".byte   0x2f" not in keys
+          and "ef_fb_mkii:" in src)
+    check("NO over clear LISTPOP: cancel layer closes list and restores SEQ",
+          "ef_cl_cancel:" in src
+          and "EF_CL_NO_LAYER:" in src
+          and "ef_cl_nolayer" in src
+          and "ef_cl_nolayer_off:" in src
+          and "LPUSH" in _block(src, "ecm_do:", "ef_cl_rest:")
+          and "LPOP" in _block(src, "ef_cl_nolayer_off:", "ef_cl_cancel:")
+          and "ef_cl_nolayer_off" in _block(src, "ef_cl_rest:", "ef_cl_dest:")
+          and "ef_cl_cancel" in _block(src, "EF_CL_NO_KEYS:", "L_LEN:")
+          and "ef_cl_rest" in _block(src, "ef_cl_cancel:", "ef_clear_menu:")
+          and "ef_cl_ours" in _block(src, "ef_no:", "ef_yes:")
+          and "ef_cl_rest" in _block(src, "ef_no:", "ef_yes:"))
+    check("clear LISTPOP YES rows restore SEQ via ef_cl_rest",
+          "ef_cl_rest" in _block(src, "ef_cl_done:", "ef_trac_n:")
+          and "M_CLOSE" in _block(src, "ef_cl_done:", "ef_trac_n:")
+          and "ef_cl_done" in _block(src, "ef_cl_dest:", "ef_cl_all:")
+          and "ef_cl_done" in _block(src, "ef_cl_all:", "ef_cl_all_trigs:")
+          and "ef_cl_done:" in src
+          and _block(src, "ef_cl_all_trigs:", "ef_cl_done:").strip() != "")
+    check("clear DEST resets DEPTH/PULSE/ROT to 0 immediately (list YES)",
+          "ef_reset_cur_plk:" in src
+          and "ef_reset_cur_plk" in _block(src, "ef_clear_cur_dest:", "ef_clear_all_dest:")
+          and "clrl    ef_depth" in _block(src, "ef_reset_cur_plk:", "ef_clear_all_dest:")
+          and "clrl    ef_ppulses" in _block(src, "ef_reset_cur_plk:", "ef_clear_all_dest:")
+          and "clrl    ef_prot" in _block(src, "ef_reset_cur_plk:", "ef_clear_all_dest:")
+          and "ef_clear_finish" in _block(src, "ef_clear_cur_dest:", "ef_clear_all_dest:")
+          and "LOCK_COLL" in _block(src, "ef_clear_finish:", "EF_LAYER:"))
     check("TRIG reshape keeps other DEST locks (reconcile SETs TL when !thit)",
           "tr_keep:" in _block(src, "ef_tl_reconcile:", "ef_write_dest:")
           and "ef_tl_set" in _block(src, "tr_keep:", "ef_write_dest:")
@@ -620,9 +794,14 @@ def check_ui(src: str) -> None:
           "ef_from_cue" in src
           and "ef_from_cue" in _block(src, "ef_write_mask:", "wm_off:")
           and "ef_from_cue" in _block(src, "cdone:", "ef_cue_rts:"))
-    check("ARE YOU SURE? dialog YES unlocks only (no fill in callback)",
-          "ef_fill" not in _block(src, "ef_dlg_answer:", "ef_trk_baked:")
-          and "ef_unlocked" in _block(src, "ef_dlg_answer:", "ef_trk_baked:"))
+    check("confirmation unlocks and resumes the pending MIDI preview edit",
+          "movel   %d0,ef_unlocked" in dlg_answer
+          and "ef_pending_delta" in dlg_answer
+          and "ef_cue_random" in dlg_answer
+          and "ef_fill" not in dlg_answer)
+    yes = _block(src, "ef_yes:", "ef_no:")
+    check("explicit fill relocks rhythm editing before writing the pattern",
+          yes.index("clrl    ef_unlocked") < yes.index("bsr.w   ef_fill"))
     check("PLCK miss clears DEST on note trigs (overwrites TRIG bake, no PTCH carry)",
           "ef_ptch_carry" not in src
           and _block(src, "wm_plock:", "wm_dest_clr:").count("wm_dest_clr") >= 2
@@ -689,7 +868,8 @@ def check_ui(src: str) -> None:
           and "ef_rng" in dest
           and "subi.l  #64,%d0" not in dest)
     check("sequential: page-1 lock or ef_cx_store (CX SETUP stacks)",
-          "ef_cx_store" in dest and "ef_cx_clear" in dest
+          "ef_cx_store" in dest
+          and ("ef_cx_clear" in dest or "ef_clear_dest_step" in dest)
           and "LOCK_PTCH" not in dest)
     vol = _block(src, "ef_write_vol:", "ef_write_ptch:")
     check("ef_write_vol unipolar below Part VOL (r*DEPTH/127)",
@@ -701,9 +881,19 @@ def check_ui(src: str) -> None:
           and "subl" in vol
           and "ed_store" in vol)
     ptch = _block(src, "ef_write_ptch:", "ef_part_flat:")
-    check("ef_write_ptch guards SCALE_AT",
-          "SCALE_AT" in ptch and "0x4ef9" in ptch)
+    check("ef_write_ptch uses SEQ scale mask and root, independent of quantizer",
+          "ef_tone_mask" in ptch and "ef_tone_root" in ptch
+          and "SCALE_AT" not in ptch and "NV_ROOT" not in ptch)
+    check("RANG 0 returns Part PTCH; audio INTV is applied only in ranged path",
+          "ep_base:" in ptch
+          and "ef_part_ptch" in _block(src, "ep_base:", "ep_clear:")
+          and "beq.w   ep_base" in ptch
+          and "ef_pitch_offset" in ptch
+          and "ep_dst: addl    ef_pitch_offset" in ptch)
     check("ef_write_ptch writes LOCK_PTCH", "LOCK_PTCH" in ptch)
+    check("ef_is_synth accepts CX with FM/SY",
+          "0x4358" in _block(src, "ef_is_synth:", "ef_bit_addr:")
+          and "0x464d" in _block(src, "ef_is_synth:", "ef_bit_addr:"))
     check("ef_write_ptch rad = max_rad*DEPTH/127",
           "ef_depth" in ptch
           and re.search(r"moveq\s+#127,%d1", ptch) is not None
@@ -720,8 +910,9 @@ def check_ui(src: str) -> None:
           re.search(r"\.set\s+PIT_RAD,\s*24", src) is not None
           and re.search(r"\.set\s+PIT_SAMP,\s*12", src) is not None
           and "PIT_RAD" in ptch and "PIT_SAMP" in ptch)
-    check("ef_write_ptch uses ROOT for absolute pitch class",
-          "NV_ROOT" in ptch and re.search(r"addl\s+%d6,%d0", ptch) is not None)
+    check("ef_write_ptch tests pitch class relative to SEQ ROOT",
+          "ef_tone_root" in ptch and "negl    %d0" in ptch
+          and re.search(r"addl\s+%d6,%d0", ptch) is not None)
     check("ef_write_ptch centers on Part PLAYBACK PTCH (ef_part_ptch)",
           "ef_part_ptch" in ptch
           and re.search(r"\.set\s+PLAY_SLOTS,\s*0x8edaa", src) is not None
@@ -862,16 +1053,13 @@ def check_pitch_behavior() -> None:
     major_c = sum(1 << p for p in major_pcs)
     cands = pitch_candidates(24, root=0, mask=major_c)
     check("major/C ±24: only scale PCs",
-          all(((0 + st) % 12) in major_pcs for st in cands)
+          all((st % 12) in major_pcs for st in cands)
           and len(cands) > 0)
-    # ROOT = D (2): SCALE_AT absolute mask = major degrees on D.
-    major_d_mask = 0
-    for bit in (2, 4, 6, 7, 9, 11, 1):  # D E F# G A B C#
-        major_d_mask |= 1 << bit
-    cands_d = pitch_candidates(12, root=2, mask=major_d_mask)
-    check("major/D ±12: (ROOT+st)%12 in mask, includes unison",
-          all(major_d_mask & (1 << ((2 + st) % 12)) for st in cands_d)
-          and 0 in cands_d
+    # ROOT = D (2): the same relative major mask is anchored on D.
+    cands_d = pitch_candidates(12, root=2, mask=major_c, base_st=2)
+    check("major/D ±12: (st-ROOT)%12 in relative scale, includes unison",
+          all(major_c & (1 << ((st - 2) % 12)) for st in cands_d)
+          and 2 in cands_d
           and len(cands_d) > 0)
 
     # Relative to Part PLAYBACK PTCH (overall knob), not unison.

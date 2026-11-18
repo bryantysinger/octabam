@@ -87,10 +87,13 @@ a shortened FX1 list drops has its cursor row clamped to 0.
 
 A remix is one directory, `remixes/<name>/`: `remix.py` holds the
 selection, `README.md` says what is in it and where it has run. The
-registry discovers every `remixes/*/remix.py` and `remixes/test/*/remix.py`;
-nothing else registers it. A remix that carries one module for that
-module's gates goes in `remixes/test/<name>/`; names are unique across
-both, and every tool takes the bare name (`make check REMIX=miniverb`).
+registry discovers every `remixes/*/remix.py`, `remixes/test/*/remix.py`
+and `remixes/community/*/remix.py`; nothing else registers it. A remix
+that carries one module for that module's gates goes in
+`remixes/test/<name>/`; one you compose for your own card and want in the
+repository goes in `remixes/community/<name>/`, named after you or its
+purpose, never `octabam-*` (CONTRIBUTING.md "Remixes"). Names are unique
+across the three, and every tool takes the bare name (`make check REMIX=miniverb`).
 
 Copy an existing `remix.py` and edit it. `remixes/octabam-bus/remix.py`
 is the bus with stations, hosts and ColdFire mods,
@@ -98,14 +101,13 @@ is the bus with stations, hosts and ColdFire mods,
   `remixes/test/kits/remix.py` one ColdFire mod and no DSP code.
 
 ```python
-from remix.schema import Proof, Remix
+from remix.schema import Evidence, Level, Remix
 
 REMIX = Remix(
     name="mine",                       # == the directory name
     doc="One line: what is in it.",
     family="effects",                  # index section: rig, effects, mods, reference, probes
-    proof=Proof.CHECK,                 # CHECK, RENDER, PORT, HARDWARE
-    proof_note="make check, 28 Sep 2026",
+    evidence=(Evidence(Level.EMULATOR, ref="make check", date="2026-09-28"),),   # docs/contributing/MODULES.md
     modules=("REVERB SERVER", "DELAY SERVER", "SEND", "TEMPO SYNC",
              "FILTER", "LO-FI"),       # the FX2 chooser, in row order
     fallback="SEND",                   # or "NONE"
@@ -132,7 +134,7 @@ REMIX = Remix(
   Only a buffer-free insert may take a row; the build refuses the rest by
   name. A row costs no words and does cost cycles: four more slots per
   core.
-- `family`, `proof`, `proof_note` are the columns of the remix index.
+- `family` and `evidence` are the columns of the remix index.
   Without them the remix lists under Reference with proof `?`.
 - Seven FX2 rows fit in place; up to 32 go to a longer list, whose
   scrolling on the panel is inferred from stock's fifteen-row list, not

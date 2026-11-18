@@ -1,13 +1,13 @@
-"""octabam -- the core ColdFire modules, every other ColdFire module that fits, all 14 stock effects, and MODULATION, SPECTRUM, CHARACTER and SHATTER loaded on demand, with COMPRESSOR's side-chain (SIDECHAIN_COMPRESSOR) loaded the same way. TRANSIENT and DISTORX are not in this remix."""
-from remix.schema import Pin, Proof, Remix
+"""octabam -- the core ColdFire modules, SCOPE and TUNER, every other ColdFire module that fits, all 14 stock effects, and MODULATION, SPECTRUM, CHARACTER and SHATTER loaded on demand, with COMPRESSOR's side-chain (SIDECHAIN_COMPRESSOR) loaded the same way. TRANSIENT and DISTORX are not in this remix."""
+from remix.schema import Pin, Evidence, Level, Remix
 
 CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "CC MAP", "CC FEEDBACK", "USB",
         "RECORDER LOOP FIX", "BATCH_BUGFIXES", "ERASE_EMPTY_TRIGLESS_LOCKS",
         "QUANTIZE_LIVE_REC_TOGGLE", "REC_TRIG_MUTE", "MUTE_MODES", "PATTERN MUTE",
-        "SCALE QUANTIZER", "TUNER", "DIRECT_JUMP_KYOTI", "RELOAD_FROM_PROJECT", "RLEN PLEN",
+        "SCALE QUANTIZER", "TUNER", "SCOPE", "DIRECT_JUMP_KYOTI", "RELOAD_FROM_PROJECT", "RLEN PLEN",
         "ATA WRITE GUARD", "EVENTS",
-        "LOAD METER", "FRAME GUARD")
+        "LOAD METER", "FRAME GUARD", "REMOTE")
 # COMPRESSOR's row is SIDECHAIN_COMPRESSOR's: stock COMPRESSOR with a side-chain KEY on page 2, its DSP
 # loaded on demand while a track uses COMPRESSOR (docs/contributing/DEMAND_LOADER.md). Out 1 Nov 2026 (433e22e)
 # with TRANSIENT and DISTORX, back 4 Nov 2026: KEY reads "--" while the side-chain is not loaded (#934).
@@ -22,7 +22,7 @@ OURS = ("MODULATION", "SPECTRUM", "CHARACTER", "SHATTER")
 # CF METER IDLE and WAVE LOAD (CF METER's FX2 id is MODULATION's),
 # MIDI LOOPBACK (MIDI SCENES), DIRECT JUMP and PERSISTENT BUFFERS (DIRECT_JUMP_KYOTI and BUFFER
 # SAVER do their jobs), and the bus and diagnostic modules (TEMPO SYNC, TEMPO BUS, RIG HOSTS, BOOT TRACE).
-# STEM REC, SCOPE, MIDI SCALES and RND NAME are not here either: images with them left program changes
+# STEM REC, MIDI SCALES and RND NAME are omitted: images with them left program changes
 # unapplied in a loader soak (2 to 5 of 32 transitions; none in the images without them) on Sam's MKII, 1 Nov 2026.
 # FX2 LOCK is not here: it makes the FX2 chooser's YES close without selecting, and this remix has no engine to lock to a track.
 # Added 7 Nov 2026 (each builds beside the rest; not yet soaked here): CHORDS FACTORY with PAGES, the page
@@ -35,12 +35,28 @@ STOCK_FX1 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPA
 
 REMIX = Remix(
     name="octabam",
-    family="mods", proof=Proof.CHECK,
-    proof_note="Without SIDECHAIN_COMPRESSOR: Sam's MKII, image OCTABAMR3 (this remix before the rebase onto fa49e92f), "
-               "USB TRACKS PRE, 1 Nov 2026: ot_suite.py phases pre-meter, pre-transport, pre-usb, dsp-watch, fx01-fx03 "
-               "(74 layouts, no crash), loader01-02, kits-identity, scenes-sweep, scenes-latency, djump-off/on/burst; "
-               "mix-soak and the manual plan not run (docs/contributing/HARDWARE_SUITE.md). With it: not flashed",
-    doc="The core ColdFire modules and every other ColdFire module that fits, all 14 stock effects, and SPECTRUM, CHARACTER and MODULATION, loaded on demand, with COMPRESSOR's side-chain.",
+    family="mods", evidence=(
+        Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", image="OCTA S3.RMX", date="2026-11-16",
+            commit="854ea9c055d9dea89a91763ed43f065e3a24de10",
+            note="Author confirmed the OCTA S3 handoff checklist: loads in BRAIN, SEQ PTCH opens Harmony, "
+                 "and THRU INAB has no RIGHT hint. This report covers those checks only."),
+        Evidence(Level.EMULATOR,
+        note="Without SIDECHAIN_COMPRESSOR: Sam's MKII, image OCTABAMR3 (this remix before the rebase onto "
+             "fa49e92f), USB TRACKS PRE, 1 Nov 2026: ot_suite.py phases pre-meter, pre-transport, pre-usb, dsp-"
+             "watch, fx01-fx03 (74 layouts, no crash), loader01-02, kits-identity, scenes-sweep, scenes-latency, "
+             "djump-off/on/burst; mix-soak and the manual plan not run (docs/contributing/HARDWARE_SUITE.md). With"
+             " it: not flashed. SCOPE/TUNER loader A/B on the S2 unit image, 15 Nov 2026: 30 transitions closed "
+             "and 30 open; zero bad records in both. Median window CF peak 537.36/544.96 us, steady CF "
+             "355.77/359.37 us, DSP window max 49/48%, DSP steady max 49/48%, and audio gap 340/340 ms "
+             "(closed/open). Maximum gap 1,480/360 ms; all transitions carried the 40 ms GAP flag because the "
+             "loader silence is about 340 ms. This compares SCOPE closed/open on that image only."),
+        Evidence(Level.UNIT_MEASURED, image="OCTA S2", date="2026-11-15",
+            note="Flashed S2 image. With SCOPE closed/open, 30 loader transitions per state "
+                 "had zero bad records. Median CF window peak 537.36/544.96 us, steady 355.77/359.37 us; median "
+                 "DSP window max 49/48%, steady max 49/48%; median audio gap 340/340 ms. Maximum gap "
+                 "1,480/360 ms. The 40 ms GAP flag appeared on all transitions because the loader silence is "
+                 "about 340 ms. These results cover this flashed image and transition set.")),
+    doc="The core ColdFire modules, SCOPE and TUNER, every other ColdFire module that fits, all 14 stock effects, and SPECTRUM, CHARACTER and MODULATION, loaded on demand, with COMPRESSOR's side-chain.",
     modules=CORE + ("LOFI AMF FIX", "MODE DEFAULTS", "DLPUMP", "DLCOPY", "SC LOAD METER BRIDGE",
                      "KEYBUS", "SC KEYBUS BRIDGE") + STOCK14 + OURS
             + COLDFIRE,
@@ -56,12 +72,12 @@ REMIX = Remix(
     # DLCOPY follows the five demand entries (x:$33da3 + 8 k, k = 0..4).
     window=(("DLCOPY", 0x33DCB), ("KEYBUS", 0x33E5E), ("LOAD METER", 0x37DA3), ("LOAD METER:B", 0x37E50),
             ("SPECTRUM", 0x33820), ("CHARACTER", 0x37820), ("MODULATION", 0x3B820),
-            ("SIDECHAIN_COMPRESSOR", 0x3F820), ("SHATTER", 0x37C10)),
+            ("SIDECHAIN_COMPRESSOR", 0x3F820), ("SHATTER", 0x3BE00)),
     # DLPUMP loads in this order, and the first free home wins: SIDECHAIN_COMPRESSOR has one home, the fourth
     # block, which the others reach only as their second or later home.
-    # SHATTER (378 words, FX2 only) first goes to the second block behind CHARACTER's 1,008 words, so its first
-    # address is no other demand effect's (each id-dispatched effect needs its own); the fourth block, SC's only
-    # home, is its last.
+    # SHATTER (FX2 only) used to sit behind CHARACTER at 0x37c10 (378 words). CHARACTER grew to
+    # 1,029 words (ends 0x37c25) and LIM pushed SHATTER over the LOAD METER floor at 0x37da3, so
+    # its window record now sits after MODULATION (ends 0x3bdda) at 0x3be00. Demand homes omit the same block; the fourth block (SC's only home) stays last.
     window_demand=("MODULATION", "SPECTRUM", "CHARACTER", "SIDECHAIN_COMPRESSOR", "SHATTER"),
     # The other homes: each effect can be loaded into any block it fits (the code is assembled once per home). The loader
     # sends the first home whose block holds no other demand effect and whose FX2 slot is not a stock reverb that reaches
@@ -70,7 +86,7 @@ REMIX = Remix(
     window_homes=(("MODULATION", 0x3F820),
                   ("SPECTRUM", 0x37820), ("SPECTRUM", 0x3B820), ("SPECTRUM", 0x3F820),
                   ("CHARACTER", 0x33820), ("CHARACTER", 0x3B820), ("CHARACTER", 0x3F820),
-                  ("SHATTER", 0x33820), ("SHATTER", 0x3B820), ("SHATTER", 0x3F820)),
+                  ("SHATTER", 0x33820), ("SHATTER", 0x3F820)),
     window_guard=("PLATE REV", "DARK REV", "SPRING REV"),
     # KEYBUS (17 words) fills DLCOPY's tail gap and the loader follows it; SC's bridged stubs then
     # end at 0x33FFF, the block's last resident word.

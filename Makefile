@@ -328,6 +328,8 @@ verify-remix-impl:
 	@# RAM is not zeroed.
 	$(PY) tools/verify/step.py --cards python3 tools/verify/verify_dirty_state.py $(REMIX)
 	$(PY) tools/verify/step.py --cards python3 tools/verify/verify_init_regs.py $(REMIX)
+	$(PY) tools/verify/step.py --cards python3 tools/verify/verify_dsp_forms.py $(REMIX)
+	$(PY) tools/verify/step.py --cards python3 tools/verify/verify_cf_forms.py $(REMIX)
 	REMIX=$(REMIX) $(PY) tools/verify/step.py --cards python3 tools/verify/verify_dram_boot.py
 	@# The three ColdFire-port checks need the .venv (make emu-setup). Without
 	@# it they SKIP; with it a failure FAILS (until 16 Sep 2026 `|| echo SKIP`
@@ -455,7 +457,7 @@ BASE ?= origin/main
 identity: ## Which remixes' images this branch moved: every remix built from BASE (a kept worktree under out/identity/base) and from this tree, compared byte for byte
 	python3 tools/verify/image_identity.py --base $(BASE)
 .PHONY: reach
-reach: ## The gates this branch's changes reach (the diff against BASE=origin/main), QUICK by default (the carrying remixes, no identity or accept, a shard per free gate slot (at least 2), nice 10); FULL=1 every gate at full speed; TESTS=1 includes remixes/test/; RUN=1 runs them, KEEP=1 every one then a table, JOBS=n the per-remix work over n worktrees
+reach: ## The gates this branch's changes reach (the diff against BASE=origin/main), QUICK by default (the carrying remixes, no identity or accept, a shard per free gate slot (at least 2), nice 10); FULL=1 every gate at full speed; TESTS=1 includes remixes/test/ and remixes/community/; RUN=1 runs them, KEEP=1 every one then a table, JOBS=n the per-remix work over n worktrees
 	$(PY) tools/verify/reach.py --base $(BASE) $(if $(FULL),--full,) $(if $(TESTS),--tests,) $(if $(RUN),--run,) $(if $(KEEP),--keep-going,) $(if $(JOBS),--jobs $(JOBS),) $(if $(filter 0,$(CACHE)),--no-cache,) $(REACHARGS)
 
 .PHONY: modules
@@ -577,6 +579,15 @@ ghidra: ## One Ghidra project: the MAIN OS and both DSP payloads (out/ghidra). G
 ghidra-install: ## A copy of a stock Ghidra 12.1.4 with the DSP56300 module and the ColdFire EMAC patch. GHIDRA=<stock install> [GHIDRA_DEST=dir]
 	@test -n "$(GHIDRA)" || { echo "usage: make ghidra-install GHIDRA=<stock Ghidra 12.1.4 install> [GHIDRA_DEST=dir]"; exit 1; }
 	tools/ghidra/install.sh $(GHIDRA) $(GHIDRA_DEST)
+
+.PHONY: evidence
+evidence: ## Every module's proof level, then the modules whose sources changed after their unit run
+	python3 tools/build/evidence.py
+	python3 tools/build/evidence.py stale
+
+.PHONY: symbols
+symbols: ## Build out/symbols.sqlite (addresses, names, sizes, doc citations): make symbols [REMIX=] ; then tools/build/sym.py
+	python3 tools/build/symdb.py build $(if $(REMIX),--remix $(REMIX))
 
 .PHONY: where
 where: ## Every doc paragraph citing one ColdFire address + a disasm window. make where A=0x40004d40 [N=128]

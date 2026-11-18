@@ -146,7 +146,7 @@ moment it costs real work, and add its line here.
 - [`lua (rN+d)` takes d in −64..63 and wraps silently](docs/contributing/TRAPS.md#trap-lua) — past ±63: `move r7,r5 / move #imm,n5 / move (r5)+n5`.
 - [`dsp_asm` resolves labels by prefix](docs/contributing/TRAPS.md#trap-label-prefix) — no new label may have an existing label as its prefix (`warmz2` next to `warmz` branched into hyperspace).
 - [Build-time markers and base literals count in comments](docs/contributing/TRAPS.md#trap-markers) — don't spell `$30000` or the `; X` markers in comments.
-- [A form the chip has never run is not proven by the port](docs/contributing/TRAPS.md#trap-chip-form) — grep stock payloads before using a form.
+- [A form the chip has never run is not proven by the port](docs/contributing/TRAPS.md#trap-chip-form) — `verify_dsp_forms` refuses a form with no stock site, register row or unit-proven module.
 - [No `rep` in `init`/`proc`; no dense X work in a DMA's 8K block](docs/contributing/TRAPS.md#trap-rep-dma) — `tools/build/norep.py` refuses the former; the port models neither.
 - [`SPEC=1` requires `XBUS=1`](docs/contributing/TRAPS.md#trap-spec-xbus) — build-guarded; do not ungate.
 - [The track↔core mapping is inverted](docs/contributing/TRAPS.md#trap-track-core) — A = tracks 5-8 (BusVerb), B = 1-4 (BusDelay). Test reverb on track 5.
@@ -158,6 +158,7 @@ moment it costs real work, and add its line here.
 - [The vendored AGU mis-stepped a pre-decrement from a modulo base](docs/contributing/TRAPS.md#trap-agu-modulo) — fixed in `agu.h`; the bit-identity gates audit it.
 - [A rewritten trampoline is not retranslated](docs/contributing/TRAPS.md#trap-trampoline) — never rewrite emulated code in place (`r.emac_slots`).
 - [A measurement can be structurally blind to what it rules out](docs/contributing/TRAPS.md#trap-blind-instrument) — before a null result, ask what the instrument cannot see.
+- [Sequential sample loops were priced as alternative modes](docs/contributing/TRAPS.md#trap-sequential-limiter): mark sequential loops explicitly; first-transient render gates catch previous-block gain lag.
 - [A bus client that registers and writes zero steals everyone's level](docs/contributing/TRAPS.md#trap-bus-zero-client) — N/(N+1) dilution; gate registration on the knob.
 - [r7 scratch `$00..$83` is the per-instance block; `$84+` hangs the unit](docs/contributing/TRAPS.md#trap-r7-scratch) — the slot census of the source is the truth, not the header map.
 - [A dump can resolve a dispatch entry for an effect it does not contain](docs/contributing/TRAPS.md#trap-dump-alias) — `SPEC=1` aliases the absent server to SEND; check which code the entry points at before believing negatives.
@@ -209,6 +210,8 @@ moment it costs real work, and add its line here.
 - [Fixed `/tmp` names corrupted parallel builds](docs/contributing/TRAPS.md#trap-tmp-race) — mkdtemp per process now; a failure moving between remixes is a shared-scratch race.
 - [The memory word-count fixture can race reach and shard snapshots](docs/contributing/TRAPS.md#trap-word-fixture) — ignore its scratch path so it is not planned or copied as a real remix.
 - [Replacing a stock routine can halt every other caller](docs/contributing/TRAPS.md#trap-stock-callee) — diff the routine and its callers with `tools/build/where.py`.
+- [`{byte 21, fn}` on the engine queue runs fn on the sys task](docs/contributing/TRAPS.md#trap-job21) — the task that handles the keys; a long job needs a type of its own at the engine's receive.
+- [A gate at the step handler is a step early](docs/contributing/TRAPS.md#trap-step-ahead) — the first trig at PLAY was computed before PLAY; gate at the arm `0x40005ff0`.
 - [A forked port shares its DSP memory with its siblings](docs/contributing/TRAPS.md#trap-fork-shm) — `unshareRanges`; new shared maps need the same.
 - [The port ran under Rosetta and nothing said so](docs/contributing/TRAPS.md#trap-rosetta) — `file out/emu/ot_emu` is the check.
 - [The report is API and prints paths](docs/contributing/TRAPS.md#trap-report-api) — re-save refhash only after the artifacts are shown identical.
@@ -227,6 +230,9 @@ moment it costs real work, and add its line here.
 - [A runtime's own bytes can spell the clones' staging range](docs/contributing/TRAPS.md#trap-staging-coincidence) — the build moves staging and re-checks; a word that moves with it is stale.
 - [The machine list's key handlers clamp the cursor to 5](docs/contributing/TRAPS.md#trap-machine-clamp) — a sixth row fits by accident, a seventh needs the ten `moveq`s; a port key held 0.25 s repeats.
 - [Narrowing the port's DMA arm rule broke a gate whose image never moved](docs/contributing/TRAPS.md#trap-dma-arm) — a port change is every port gate's instrument; CI's cached passes hide it.
+- [A wall-clock timeout in a port gate failed on a loaded runner](docs/contributing/TRAPS.md#trap-wall-timeout) — the same tree passed on its PR and failed on main; under the port, waits and settles are emulated time (`Events(clock=)`, `MenuPort.run` finishes a capped slice).
+
+- [A gate timed its input from boot and its keys from the load's end](docs/contributing/TRAPS.md#trap-two-clocks) — the load-end mark moved 5.7 s with a STORE Part client; cue the input on the script's clock (`--audio-in-on-cue`, `<ms> audio start`).
 
 - [Resident relinks can republish imported staging addresses](docs/contributing/TRAPS.md#trap-resident-import-exports) — publish only owned exports; `midi-follow-events` exercises descriptor relocation with MIDI Part State.
 - [A ColdFire save frame sized for the wrong register count overwrites the return address](docs/contributing/TRAPS.md#trap-cf-frame) — `lea -4N(%sp)` + `movem.l regs,(%sp)`; no pre-decrement `movem`, no `eor <mem>,Dn`, no `st <mem>`, no `move.b #imm,abs.l`.
@@ -238,6 +244,8 @@ moment it costs real work, and add its line here.
 - [A stock call returns with a0, a1, d0 and d1 changed](docs/contributing/TRAPS.md#trap-stock-scratch-regs) — MIDI SCENES kept `scn_snap` in a1 across the CC sender; reload scratch registers after every stock `jsr`.
 - [A held scene replaces every encoder's handler](docs/contributing/TRAPS.md#trap-scene-encoders) — `0x40053498` over the SETUP editors; a panel gesture's gate drives the panel.
 - [A frame interrupt entering about 150 µs late stops the DSP's frame exchange](docs/contributing/TRAPS.md#trap-late-frame) — START and program changes; ColdFire time added to the frame interrupt moves it on or off the window; FRAME GUARD holds a late entry to 190 µs.
+
+- [PLAYBACK slot A depends on the machine](docs/contributing/TRAPS.md#trap-pitch-destination): THRU has INAB where FLEX has PTCH; resolve the parameter before offering pitch controls.
 
 ## How claims are written here
 

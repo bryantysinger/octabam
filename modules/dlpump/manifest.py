@@ -5,7 +5,7 @@ METER's entry code (docs/contributing/DEMAND_LOADER.md, decision 9).
 import json
 import pathlib
 
-from remix.schema import Apply, Category, Detour, FormatterReg, Gate, Kind, Linked, Module, Option, Proof, Setting, Store
+from remix.schema import Apply, Category, Detour, FormatterReg, Gate, Kind, Linked, Module, Option, Evidence, Level, Setting, Store
 
 RECORDS = pathlib.Path("out/dsp/demand_records.json")
 CAPACITY = 2600                 # code words a block may hold: the staging area X:0x2906..0x3d55 takes 2 per word; the table is this size on every link
@@ -106,7 +106,7 @@ MODULE = Module(
     key="DLPUMP",
     kind=Kind.CF_PATCH,
     category=Category.REFERENCE, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.CHECK, proof_note="",
+    evidence=(Evidence(Level.EMULATOR),),
     doc="Host-writes a staged block to a DSP core, a chunk per frame interrupt (demand loader).",
     # dl_keyfmt wraps SIDECHAIN_COMPRESSOR's KEY formatter (sc_cf's key_fmt, named as a defsym:
     # its ROM cave's export, or the same link's label when PLACE is DRAM): "--" while the
@@ -130,5 +130,5 @@ MODULE = Module(
               Setting(2, "GRACE", Option("10 S", "2 S"), default="10 S", apply=Apply.BUILD,
                       doc="how long an unused effect stays loaded before it is withdrawn; a project load leaves every id at its "
                           "default for about 4 s (measured on a unit), so 10 S keeps the effects through it; 2 S is for the port gates"),),
-    gates=(Gate("tools/verify/verify_dlload.py", venv=True),),
+    gates=(Gate("tools/verify/verify_dlload.py", venv=True, project=True),),
 )

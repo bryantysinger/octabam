@@ -145,8 +145,17 @@ nothing there.
 | MKII FUNC + PART | `0x4002dc9c`, the Part edit menu (`0x4006d94c`, four rows) |
 | MKI FUNC + MIDI (`0x35`) | `0x4002e7b8` |
 | MKI FUNC + BANK (`0x2f`) | `0x40058a64`, which opens the Part edit menu only while the PART window is open (`0x4002dc3c`); otherwise PATTERN SETTINGS (`0x40083440`) or one of two targets chosen by `0x460d1aec` / `0x460d1736`. RECORDING SETUP has its own key map (`0x400b9e36`) and does not reach it |
+| MKII FUNC + BANK (`0x2f`) | FUNC-held keys table (FUNC.sub → map+4 → `0x400bf628`, or BRAIN's `brain_func_keys` clone): press `0x4007c0d0` opens **TRACK TRIG EDIT**. Not the MKI site above. |
 | FUNC + CUE, both | `0x4004aab4` from `0x4005e05a` (return `0x4005e060`) |
 | FUNC + YES | `0x4005e3d8` (press, then release), not an open list's YES |
+
+✅ The PART window's cursor `0x460d10c8` is a cross: UP Part 1, RIGHT 2, DOWN 3, LEFT 4,
+from any Part; YES makes it the current Part and closes. FUNC + BANK over it opens the Part
+edit menu on that Part, four rows: RENAME, RELOAD `0x4002dd50`, SAVE `0x4002dd0c`, SAVE ALL
+`0x4002dcd0` (labels `0x400b9b14`, callbacks `0x400b9b04`; measured 5 Nov 2026,
+under the port, both models, from the panel's keys). A fresh project has no saved copies: RELOAD says SAVE PART FIRST!.
+FUNC + CUE reloads only the current Part, only while its unsaved bit is set, and reads no
+track key: stock has no per-track reload.
 
 The stock list menu `0x4006d94c(count, cursor, &cursor, labels,
 callbacks)`: `labels` and `callbacks` are tables of pointers, one per

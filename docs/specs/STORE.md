@@ -33,6 +33,12 @@ not re-enter.
 events it handles; the handler for event `e` is `<prefix>_st_<e>`. A client not
 in the remix is left out of the tables, and a handler named there that the
 link cannot find stops the build. A client declares `requires=("STORE",)`.
+A client's key may be a tuple of module keys, present when all of them are; a
+tuple nested in it is present when any one of its keys is. PAGES' locks
+(`pglocks.work`, client 10) take PAGES' `LOCKS_KEY`: PAGES, EVENTS, STORE and
+one of the clients in its `LOCKS` (DRUMMER's KIT BALANCE today), the condition
+PAGES links its locks unit on. The clients table writes such a key `A + B + C`,
+a nested tuple of one key as that key.
 
 | client | events |
 |---|---|
@@ -46,7 +52,10 @@ link cannot find stops the build. A client declares `requires=("STORE",)`.
 | CHORDS FACTORY (`ch`) | loadall_post, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
 | DRUMMER (`dr`) | loadall_pre, loadall_post, loadmask_pre, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
 | SEQ (`ef`) | loadall_post, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
+| PAGES + EVENTS + STORE + DRUMMER (`pg`) | loadall_pre/post, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
 | VARISPEED (`vs`) | partsaved, partclear |
+| REMOTE (`rmt`) | loadall_post, loadmask_post, newproj, bankw_post, pstore_post, preload_post |
+| PATTERN MUTE (`pm`) | loadall_pre, loadmask_pre, newproj, bankw_post, pstore_pre/post, preload_post, tocs1, fromcs1 |
 
 ## File calls
 
@@ -83,7 +92,7 @@ LEVEL scrolls the list; YES answers; NO closes it without an answer, leaving the
 entries listed and asking no more until the next load. No answer touches the
 card: the callbacks run in the UI task and the save in the engine task (a file
 copy called through the port's `--call` never returned). Client ids: 0 PLOCKS P2
-(argument = the bank), 1 KITS, 2 MIDI SCENES, 3 PERSISTENT BUFFERS, 4 MORPH, 5 FREE LOOP, 6 SCALES, 7 CHORDS FACTORY, 8 DRUMMER, 9 SEQ. PLOCKS P2 used
+(argument = the bank), 1 KITS, 2 MIDI SCENES, 3 PERSISTENT BUFFERS, 4 MORPH, 5 FREE LOOP, 6 SCALES, 7 CHORDS FACTORY, 8 DRUMMER, 9 SEQ, 10 PAGES' locks, 11 PATTERN MUTE. PLOCKS P2 used
 to read a refused `p2lkNN.work` as empty and overwrite it at the next bank write.
 
 ## Native Part access

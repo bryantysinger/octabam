@@ -1,11 +1,19 @@
 """SEQ -- TRACK + PAGE opens a Euclidean sample-trig + p-lock window.
 
-Hold a track key and press PAGE: title SEQ, LEN gutter, stock 3x2 grid
-A=PULSE B=ROT C=LANE / D=DEST E=DEPTH (F empty). LANE focuses TRIG or
+Hold a track key and press PAGE: title SEQ, LEN gutter, stock 3x2 grid.
+`[LEFT]` / `[RIGHT]` switches between two knob pages; the step grid stays fixed.
+Page 1 is A=PULSE B=ROT C=LANE / D=DEST E=DEPTH (F empty). Page 2 has
+SEQ-owned SCAL, ROOT, RANG and PHRS, MIDI VOIC 1-4 and CHRD,
+with audio C and F empty. MIDI writes a melody with FM SYNTH chord shapes;
+audio writes a single PTCH line. SEQ keeps its
+scale settings separate from SCALE QUANTIZER. LANE focuses TRIG or
 PLOCK; YES writes sample trigs and DEST locks (write-only - never
 re-reads live trigs). Per-track / per-DEST params in euclid.work (STORE).
-CUE places a random k-subset with density PULSE. NO closes; bare PAGE
-does not.
+CUE hold is stock; bare CUE release places a random k-subset with density
+PULSE; CUE+TRACK cues that track. TRACK keys forward to stock (QUICK
+ASSIGN, mute, PLAY/STOP/BANK) then retarget SEQ. FUNC+BANK opens a clear
+LISTPOP over SEQ (CLEAR DEST / ALL DEST / ALL+TRIGS). NO closes and
+restores SEQ; bare PAGE does not.
 
 Independent of PROJECT > SEQUENCER (SCALE QUANTIZER) and of the EUCLID
 DSP effect. FUNC + PAGE (SCALE SETUP) stays stock.
@@ -14,13 +22,24 @@ DSP effect. FUNC + PAGE (SCALE SETUP) stays stock.
 import runpy
 from pathlib import Path
 
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Proof
+from remix.schema import (
+    Category, Detour, Evidence, Gate, Kind, Level, Linked, Module, SymbolRef,
+)
 
 H = bytes.fromhex
 
 # PAGE opener prologue: lea -16(sp),sp ; movem.l d2-d4/a2,(sp)  (8 B)
 PAGE = 0x4004ffc4
 PAGE_STOCK = H("4feffff048d7041c")
+
+# FUNC+BANK / TRACK TRIG EDIT (PARTS.md MKI 0x40058a64; MKII opens via
+# 0x4007c0d0). BRAIN SymbolRefs the MKII FUNC keys pointer to a DRAM clone
+# (brain_func_keys), so a ROM press patch at 0x400bf7fe never runs on CX —
+# Detour the handler. MKI ROM table SymbolRef still covers non-BRAIN remixes.
+FUNC_BANK_PRESS_MKI = 0x400bf4a4
+FUNC_BANK_STOCK_MKI = 0x40058a64
+MKII_TRIG_EDIT = 0x4007c0d0
+MKII_TRIG_EDIT_STOCK = H("60ee00004ab9460e")  # bra.b 0x4007c0c0; ...
 
 
 def _sources(modules, _remix):
@@ -35,10 +54,23 @@ MODULE = Module(
     category=Category.MACHINES,
     author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
-    proof=Proof.HARDWARE,
-    proof_note="author's MKII, CX EUCL93, 11 Nov 2026: dual LANE, write-only, "
-               "LOCK_COLL + floor, PLCK overwrites TRIG-placed locks, TRIG "
-               "reshape keeps other DEST locks (TL promote); also verify_seq.",
+    evidence=(
+        Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", image="OCTA S3.RMX", date="2026-11-16",
+                 commit="854ea9c055d9dea89a91763ed43f065e3a24de10",
+                 note="Author confirmed the OCTA S3 handoff checklist: loads in BRAIN, PTCH opens Harmony, "
+                      "and THRU INAB has no RIGHT hint. No audio or timing measurements reported."),
+        Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", image="SEQ 83.RMX", date="2026-11-15",
+                 note="Author confirmed SEQ 83 works on the unit, including empty unused "
+                      "NOTE3/4 slots after a VOIC 2 fill. No separate audio or timing measurements."),
+        Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", date="2026-11-11",
+                 note="CX EUCL93, 11 Nov 2026: dual LANE, write-only, LOCK_COLL + floor, PLCK overwrites TRIG-placed locks,"
+                      " TRIG reshape keeps other DEST locks (TL promote); also verify_seq."),
+        Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", image="CX CJ.RMX", date="2026-11-14",
+                 note="all six reported device checks passed: PLCK PULS 0 clearing; all FUNC+BANK "
+                      "clear rows and NO cancel; ARE YOU SURE? layering and lock; "
+                      "stock TRACK shortcuts; CUE chord vs bare tap; SCALE-off "
+                      "Part PTCH. Does not claim audio testing."),
+    ),
     doc="TRACK + PAGE: Euclidean sample-trig + p-lock window (title SEQ; "
         "A/B=PULSE/ROT of focused LANE, C=TRIG|PLCK, D/E=DEST/DEPTH; "
         "CUE = focused-lane random k-subset; DEST = LFO PMTR 0..29 + CX "
@@ -50,7 +82,20 @@ MODULE = Module(
         Detour(PAGE, PAGE_STOCK, "ef", "ef_page",
                "PAGE: with a track held, open the SEQ window",
                pad_to=8),
+        Detour(MKII_TRIG_EDIT, MKII_TRIG_EDIT_STOCK, "ef", "ef_fb_mkii",
+               "MKII FUNC+BANK / TRACK TRIG EDIT: clear LISTPOP while SEQ open",
+               pad_to=8),
+    ),
+    symbol_refs=(
+        SymbolRef(FUNC_BANK_PRESS_MKI, FUNC_BANK_STOCK_MKI, "ef", "ef_fb_mki",
+                  "MKI FUNC+BANK: clear LISTPOP while SEQ open, else stock/KITS"),
     ),
     requires=("STORE",),
-    gates=(Gate("tools/verify/verify_seq.py", venv=True, stage="image"),),
+    gates=(
+        Gate("tools/verify/verify_seq.py", venv=True, stage="image"),
+        Gate("tools/verify/verify_seq_tonal.py", venv=True, stage="image"),
+        Gate("tools/verify/verify_seq_tonal_port.py", venv=True, stage="image"),
+        Gate("tools/verify/verify_seq_func_bank.py", venv=True, stage="image"),
+        Gate("tools/verify/verify_seq_scenarios.py", venv=True, stage="image"),
+    ),
 )

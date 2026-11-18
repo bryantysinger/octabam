@@ -36,7 +36,7 @@ nav:
       - Effects:
           - Character: reference/manual/octabam/effects/character.md
           - Modulation: reference/manual/octabam/effects/modulation.md
-          - Shatter: reference/manual/octabam/effects/shatter.md
+          - SHATTER: reference/manual/octabam/effects/shatter.md
           - Sidechain Compressor: reference/manual/octabam/effects/sidechain-compressor.md
           - Spectrum: reference/manual/octabam/effects/spectrum.md
       - Machines:
@@ -53,7 +53,7 @@ nav:
           - Reload from Project: reference/manual/octabam/sequencer/reload-from-project.md
           - RLEN PLEN: reference/manual/octabam/sequencer/rlen-plen.md
           - Scale Quantizer: reference/manual/octabam/sequencer/quantizer.md
-          - SEQ: reference/manual/octabam/sequencer/seq.md
+          - Seq: reference/manual/octabam/sequencer/seq.md
           - Slow LFO: reference/manual/octabam/sequencer/slow-lfo.md
           - Track Patterns: reference/manual/octabam/sequencer/trackpatterns.md
           - Tuner: reference/manual/octabam/sequencer/tuner.md
@@ -85,6 +85,7 @@ nav:
           - Copy Project: reference/manual/octabam/utilities/copy-project.md
           - Mode Defaults: reference/manual/octabam/utilities/mode-defaults.md
           - Remix Switch: reference/manual/octabam/utilities/remix-switch.md
+          - Scope: reference/manual/octabam/utilities/scope.md
       - Fixes to stock behaviour:
           - ATA Write Guard: reference/manual/octabam/fixes/ata-write-guard.md
           - Batch Bugfixes: reference/manual/octabam/fixes/batch-bugfixes.md
@@ -102,6 +103,7 @@ nav:
           - Load Meter: reference/manual/octabam/inside/load-meter.md
           - Memory: reference/manual/octabam/inside/memory.md
           - Pages: reference/manual/octabam/inside/pages.md
+          - Remote: reference/manual/octabam/inside/remote.md
           - Sc Keybus Bridge: reference/manual/octabam/inside/sc-keybus-bridge.md
           - Sc Load Meter Bridge: reference/manual/octabam/inside/sc-loadmeter-bridge.md
           - Store: reference/manual/octabam/inside/store.md
