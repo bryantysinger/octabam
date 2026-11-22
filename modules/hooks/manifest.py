@@ -48,6 +48,12 @@ docs/specs/SHARED_SITES.md says how HOOKS relates to STORE, EVENTS and Override.
     HK_UI_TICK, jumps to rl_uitick where it replayed stock. A tick on which
     FREE LOOP shows a toast returns before stock's countdown, as alone; RELOAD's
     UI half then runs on the next tick, 1/60 s later.
+  * beat_led -- the UI clock handler's beat flash, `jsr set_led` at
+    0x40056f24 (set_led(38, 3), once a beat). REC MATRIX (rmx_on_beat: stock's
+    call, then its muted track keys' flash flips) and BAR LED (bl_flash: the
+    tempo LED green on the pattern's 1) are both jsr detours. BAR LED ends in
+    set_led itself, so it goes last: REC MATRIX's detour stays and, built with
+    HK_BEAT_LED, calls bl_flash where it called set_led.
   * frame_tail -- the frame interrupt's epilogue 0x4000d9a6 (`movem.l
     (%sp),%d0-%d7/%a0-%a6 ; lea 252(%sp),%sp ; rte`, every exit path).
     LOAD METER (lm_out), CF METER (m_tail) and BOOT TRACE (tr_frame_end)
@@ -169,6 +175,16 @@ REC_GATE = (("FREE LOOP", "fl_gate_stub"), ("REC_TRIG_MUTE", "rtm_gate"))
 # replayed stock.
 UI_TICK_SITE = 0x40056C28
 UI_TICK = (("FREE LOOP", "fl_ui_stub"), ("RELOAD_FROM_PROJECT", "rl_uitick"))
+
+# ---- beat_led (codeless) ----------------------------------------------------
+# The UI clock handler's beat flash, `jsr set_led` at 0x40056f24 (set_led(38, 3),
+# once a beat), which REC MATRIX (rmx_on_beat: stock's call, then its muted
+# track keys' flash flips) and BAR LED (bl_flash: id 38 -> 39 on the pattern's
+# 1, then a tail jump to set_led) both detour. BAR LED goes last, as it ends in
+# set_led itself: REC MATRIX's detour stays and, built with HK_BEAT_LED (its
+# own defsym, REC MATRIX's select), calls bl_flash where it called set_led.
+BEAT_LED_SITE = 0x40056F24
+BEAT_LED = (("REC MATRIX", "rmx_on_beat"), ("BAR LED", "bl_flash"))
 
 
 # ---- frame_tail, frame_entry, boot -----------------------------------------
@@ -377,7 +393,7 @@ def _mc_overrides(modules):
 BRIDGES = {"track_key": TRACK_KEY, "status_icon": STATUS_ICON, "frame_tail": FRAME_TAIL,
            "frame_entry": FRAME_ENTRY, "boot": BOOT, "chrom_pitch": CHROM_PITCH,
            "chromatic": CHROMATIC, "machine_rows": MACHINE_ROWS,
-           "rec_gate": REC_GATE, "ui_tick": UI_TICK}
+           "rec_gate": REC_GATE, "ui_tick": UI_TICK, "beat_led": BEAT_LED}
 # SCOPE and TUNER have independent implementations but share TEMPO, frame
 # tail, and UI loop sites. HOOKS owns those sites only when both are present.
 SCOPE_TUNER = ("SCOPE", "TUNER")
@@ -389,7 +405,7 @@ BRIDGES["scope_tuner"] = tuple((key, sym) for key, sym in (
 FLAGS = {"frame_tail": "HK_FRAME_TAIL", "frame_entry": "HK_FRAME_ENTRY", "boot": "HK_BOOT",
          "chrom_pitch": "HK_CHROM_PITCH", "machine_rows": "HK_MACHINE_ROWS"}
 # Bridges that need no code of HOOKS's own: a participant's flagged build does it.
-CODELESS = {"chrom_pitch", "rec_gate", "ui_tick"}
+CODELESS = {"chrom_pitch", "rec_gate", "ui_tick", "beat_led"}
 
 
 _STORE_PARTS = runpy.run_path(str(Path(__file__).resolve().parents[1] / "store" / "parts.py"))
@@ -560,6 +576,8 @@ def select(modules):
         overrides.append(Override(REC_GATE_SITE, "REC_TRIG_MUTE"))  # FREE LOOP's detour stays
     if "ui_tick" in on:
         overrides.append(Override(UI_TICK_SITE, "RELOAD_FROM_PROJECT"))  # FREE LOOP's detour stays
+    if "beat_led" in on:
+        overrides.append(Override(BEAT_LED_SITE, "BAR LED"))  # REC MATRIX's detour stays
     if "chromatic" in on:
         for site, stock, sym in CHROMATIC_SITES:
             detours.append(Detour(site, stock, "hooks", sym,

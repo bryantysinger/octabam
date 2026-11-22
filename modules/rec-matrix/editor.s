@@ -774,12 +774,18 @@ rmx_on_tkeys:
 | 0x40056f24, a "jsr" detour: the UI task's clock handler lighting the beat
 | LED, set_led(38, 3), on the first of each beat's 24 clocks. Stock's call
 | first, then the muted keys' flash flips: lit one beat, dark the next,
-| switched on the beat. Stopped, no beats come and the keys hold.
+| switched on the beat. Stopped, no beats come and the keys hold. Beside
+| BAR LED (HOOKS beat_led, HK_BEAT_LED) this detour stays and calls bl_flash
+| in place of set_led, so the tempo LED is BAR LED's.
         .global rmx_on_beat
 rmx_on_beat:
         move.l  8(%sp),-(%sp)               | stock's (id, ticks)
         move.l  8(%sp),-(%sp)
+        .ifdef  HK_BEAT_LED                 | beside BAR LED (modules/hooks beat_led): its
+        jsr     bl_flash                    | flash, which may turn 38 into 39, then set_led
+        .else
         jsr     (SET_LED).l
+        .endif
         addq.l  #8,%sp
         moveq   #1,%d0
         eor.l   %d0,rmx_beat_phase

@@ -75,6 +75,14 @@ def selection():
     check(bridged({RTM, THR, FL}) == ("status_icon", "rec_gate"), "all three: status_icon and rec_gate")
     check(bridged({RL, FL}) == ("ui_tick",), "RELOAD_FROM_PROJECT + FREE LOOP: ui_tick only")
     check(bridged({RL}) == () and bridged({RL, RTM, THR}) == (), "RELOAD_FROM_PROJECT without FREE LOOP: no bridge")
+    check(bridged({"REC MATRIX", "BAR LED"}) == ("beat_led",), "REC MATRIX + BAR LED: beat_led only")
+    check(bridged({"REC MATRIX"}) == () and bridged({"BAR LED"}) == (), "REC MATRIX or BAR LED alone: no bridge")
+    check(DECL["select"]({"REC MATRIX", "BAR LED"})["overrides"] == (schema.Override(0x40056F24, "BAR LED"),),
+          "beat_led: BAR LED's claim at 0x40056f24 overridden, REC MATRIX's detour stays")
+    rmx = registry.modules()["REC MATRIX"]
+    check(rmx.select({"REC MATRIX"}) == {} and
+          dict(rmx.select({"REC MATRIX", "BAR LED"})["linked"][1].defsyms) == {"HK_BEAT_LED": 1},
+          "REC MATRIX's editor unit carries HK_BEAT_LED only beside BAR LED")
     check(bridged({"ANALOG BD", "OCTA303"}) == ("machine_rows",), "ANALOG BD + OCTA303: machine_rows only")
     check(bridged({"SCOPE"}) == (), "SCOPE alone keeps its own site handlers")
     check(bridged({"SCOPE", "TUNER"}) == ("scope_tuner",), "SCOPE + TUNER share TEMPO, frame and UI through HOOKS")
