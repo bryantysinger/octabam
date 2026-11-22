@@ -139,6 +139,7 @@ A module is one contribution: an effect, a machine, a sequencer or MIDI feature,
 | [**COPY PROJECT**](copy-project/README.md) | [ilia-murzinov](https://github.com/ilia-murzinov) | CHANGE project list > FUNC+BANK > COPY: duplicate the selected project folder on the card. |
 | [**LAZY CHOP**](lazy-chop/README.md) | [8thmyth](https://github.com/8thmyth) | Slice a sample by tapping TRIG 1..16 (four pages, 64 slices) while it plays, from the audio editor's slice menu. |
 | [**LOCK EDIT**](lock-edit/README.md) | [8thmyth](https://github.com/8thmyth) | [TRIG]+[BANK] in grid recording opens the audio editor on the step's sample, its slice selected and in view. |
+| [**REC MATRIX**](rec-matrix/README.md) | [Bryan T](https://github.com/bryantysinger) | Recorder SRC3 = MTRX: records a per-recorder sum of inputs, tracks, MAIN and CUE, chosen per recorder and stored with the project. |
 | [**REMIX SWITCH**](remix-switch/README.md) | [sanderlegit](https://github.com/sanderlegit) | MAIN MENU > BRAIN lists the raw OS images (.RMX) in /BRAIN/REMIXES/ and boots the one picked without writing the flash; remembers the choice across reboots. |
 | [**RND NAME**](rnd-name/README.md) | [ilia-murzinov](https://github.com/ilia-murzinov) | FUNC + CUE in a project-name editor fills in the date and a random name. |
 | [**SCOPE**](scope/README.md) | [ilia-murzinov](https://github.com/ilia-murzinov) | Full-screen scope of the track's audio (DOWN + TEMPO): waveform, XY or both, with gain and time on A and B. |

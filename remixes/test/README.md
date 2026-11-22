@@ -79,6 +79,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`plocks-p2`](plocks-p2/README.md) | Page-2 parameter locks (PLOCKS P2) and page-2 scene locks (SCENES P2), stock effects. |
 | [`quantize-live-rec-toggle`](quantize-live-rec-toggle/README.md) | stock effects with QUANTIZE_LIVE_REC_TOGGLE: QUANTIZE LIVE REC from [REC] + [PLAY]. |
 | [`rec-cs1-skip`](rec-cs1-skip/README.md) | stock effects with REC CS1 SKIP: the recorder's control-record update without its redundant CS1 writes. |
+| [`rec-matrix`](rec-matrix/README.md) | Stock effects with recorder SRC3 = MTRX recording a per-recorder sum of sources, kept in the project by BRAIN. |
 | [`rec-threshold`](rec-threshold/README.md) | stock effects with the threshold-armed recorder TRIG THR, its LEV and an IN meter: the image for a unit. |
 | [`rec-trig-mute`](rec-trig-mute/README.md) | stock effects with REC_TRIG_MUTE: [TRACK]+[REC] mutes/unmutes a track's recorder trigs. |
 | [`reload-from-project`](reload-from-project/README.md) | stock effects with RELOAD_FROM_PROJECT: reload one track's sequence from the card while the transport runs. |
