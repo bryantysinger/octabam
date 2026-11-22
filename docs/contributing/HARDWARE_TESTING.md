@@ -38,7 +38,7 @@ MIDI interface or second device is involved.
     `SUBSYSTEM=="usb", ATTR{idVendor}=="1935", MODE="0666"` in
     `/etc/udev/rules.d/99-elektron.rules` (a name that sorts after
     `50-udev-default.rules`, which otherwise resets the mode to 0664).
-  - What ran, 8 Nov 2026 (Yves's MKII, WSL2 on Windows 11, usbipd-win 5.3.0):
+  - What ran, (Yves's MKII, WSL2 on Windows 11, usbipd-win 5.3.0):
     `ot_matrix.py switch` (3 runs and a 32-transition run), `ot_dspwatch.py`
     (100 cycles, with and without `--audio`, polling at 20 and 400 a second),
     `load_meter.py` (313 to 433 reads a second, 0 read errors), `ot_suite.py
@@ -158,8 +158,73 @@ share, longest run and both DSP cores. It needs no USB audio device.
 `ot_matrix.py run` on the same project adds the audio detectors but needs the device.
 The ColdFire share depends on whether a host is reading the unit's USB audio:
 BASE (8 FLEX tracks, a hit on step 1) read 29.9 % with nothing reading the stream and
-67.7 % with a capture open, TRACKS PRE, on one MKII (2 Nov 2026). Compare layouts
+67.7 % with a capture open, TRACKS PRE, on one MKII. Compare layouts
 within one state.
+
+## Reading events on a unit
+
+An image with REMOTE (`octabam`, `octabam-bus`, `octabam-verbs`) keeps a ring of timestamped records (project
+load and save events, PLAYING, BANK, PATTERN, the queued pair, a COMMAND having run) and the last 512 frame
+interrupts' interrupted PCs, read over USB (`modules/remote/README.md`). Run on an MKII.
+
+```
+python3 tools/hw/ot_events.py                          # every record the ring holds
+python3 tools/hw/ot_events.py --follow                 # then each new one
+python3 tools/hw/ot_events.py --wait PATTERN --arg 3 --timeout 20   # exit 0 when it arrives, 1 at the timeout
+```
+
+In a script, `Events.wait_for(kind, arg, timeout)` returns the first record that matches and raises
+`TimeoutError` otherwise; `Events.lost` counts records overwritten before they were read. `trace` and `peek`
+read the PC samples and memory; `command` enters and leaves USB DISK MODE, `boot` starts a `.RMX` of
+REMIX SWITCH's list (`remixes` lists it as the unit holds it). On an image without REMOTE every request
+STALLs. The stamps are DMA timer 3's count (132 MHz, wrapping every 32.5 s).
+
+After a MIDI START the PLAYING 1 record arrives in 7 to 8 ms. A MIDI STOP writes PLAYING 2 and nothing when
+the sequencer was already stopped, so a stop is waited for through the playing byte, not a record
+(`ot_events.wait_stopped(remote, fallback)`: the old sleep without REMOTE, else PEEK of `0x800065bb` until it
+leaves 1, within the same `fallback`). `ot_events.connect()` gives the `Remote` or None. A program change while
+playing writes QPATTERN at once and PATTERN at the pattern's end (7.9 and 8.0 s at 120 BPM); with the sequencer
+stopped both arrive 4.5 to 5.9 ms after the send. A program change sent stopped is waited for through the
+bank and pattern bytes (`ot_events.wait_pattern(remote, program, fallback)`: PEEK of `0x800065bd` and `0x800065be`
+until they are bank `p // 16`, pattern `p % 16`; a change to the current pattern writes no record). `ot_matrix.py`
+(run, switch) and `ot_ladder.py` (through `Clock.stop_wait` and `Clock.pc_wait`) wait for stops and stopped
+program changes this way, each with the old sleep as the fallback; the program changes sent while playing
+(`ot_matrix.py` switch) are timed by the run. Every other `time.sleep` in `ot_matrix.py`, `ot_stall.py` and
+`ot_ladder.py` carries a comment naming what it waits for. `ot_suite.py` has none.
+
+## Without the panel: image and project over USB
+
+With an image that carries REMOTE, STORE and USB (`octabam`, `octabam-bus`, `octabam-verbs`), `tools/hw/ot_card.py`
+does the card and the image switch. Run on an MKII with the three BUILD 05 images.
+
+```
+python3 tools/hw/ot_card.py copy "OCTABAM-VRB 05.RMX" ...     # files into /BRAIN/REMIXES/, then COMMAND 4; no file: rescan only
+python3 tools/hw/ot_card.py boot "OCTABAM-VRB 05.RMX"         # COMMAND 3, waits for the unit to leave and return
+python3 tools/hw/ot_card.py load out/suite/octabam/SFX_01     # project onto the card, unit reloads it
+python3 tools/hw/ot_card.py fingerprint                       # which image is running
+python3 tools/hw/ot_suite.py run <label> --dest out/suite/<remix> --auto --phase pre-meter,pre-transport,pre-usb,pc-soak
+```
+
+- `load` enters DISK MODE (COMMAND 1), replaces `PRESETS/<name>` with the project (default `RMT_SFX_01`), removes
+  the `._*` files, compares every file, unmounts and leaves (COMMAND 2). Leaving reloads the project the unit has
+  loaded, so `<name>` must be that project: load it from the panel once, then every later load is this command.
+  The record that follows is NEWPROJ or LOADMASK.
+- `boot` needs the name in REMIX SWITCH's list; a fresh image's list is empty until a scan, which `boot` sends.
+- `ot_card.py image` reads the running image's name from memory over PEEK (2.5 s), and `boot` checks it against the name it asked for. The ring fingerprint cannot tell two builds apart that differ only in DSP code.
+- `fingerprint` prints the ring header's three linked addresses
+  (RMT_TRACE, REMIX SWITCH's name list and count); they differ per image. BUILD 05: `octabam`
+  `0x40b34f44 0x40af0238 0x40af0188`, `octabam-verbs` `0x40b22a84 0x40ae7fb8 0x40ae7f08`, `octabam-bus`
+  `0x40b20a84 0x40ae7520 0x40ae7470`. The boot screen shows the flashed image's name, not the running one's.
+- Leave DISK MODE with `diskutil unmount` and then `diskutil eject`, not unmount alone: after an unmount alone the Mac
+  keeps `diskN` and no later DISK MODE mounts the card (FAILURE_MODES.md). After COMMAND 1 the Mac did not always mount
+  the card; `ot_card.py` runs `diskutil mount` on the OCTATRACK partition after 8 s and repeats COMMAND 1 up to 4 times.
+- `load` and `boot` return when LOAD METER's health rule holds (the DSP's frame count advances); 0.4 s after the
+  reload record.
+- After a loader phase (`loader01`, `loader02`) a project reload left the DSP's frame count at 0 on `octabam` and `octabam-verbs`
+  (FAILURE_MODES.md); `ot_suite.py run --auto --image "<NAME>.RMX"` boots the image again after each loader phase, which cleared it.
+- `ot_matrix.py switch` prints the transitions left unapplied (`unapplied`: the DSP busy from 2.5 s after the switch
+  is nearer the previous layout's figure than the new one's) and puts none of that in its exit code, which is 1 when
+  any row carries a flag (`GAP` is on every transition: the 340 ms silence is the load).
 
 ## Stress sequences
 

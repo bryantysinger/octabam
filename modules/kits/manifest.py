@@ -9,7 +9,7 @@ Save; FUNC+CUE is the stock reload. kits.work / kits.strd hold the library
 beside the bank files. docs/firmware/PARTS.md says what of stock this reads.
 """
 
-from remix.schema import Category, Claims, Detour, Gate, Kind, Linked, Module, Proof
+from remix.schema import Category, Claims, Detour, Gate, Kind, Linked, Module, Evidence, Level
 
 H = bytes.fromhex
 
@@ -25,9 +25,10 @@ MODULE = Module(
     key="KITS",
     kind=Kind.CF_PATCH,
     category=Category.PARTS, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.HARDWARE, proof_note="Sam's MKII (image A6, 6 Oct 2026): importing Octakit-format kit files, ems-octakit #5, STOP/PTN+TRIG/PLAY with the Rytm, a rejected bank file, power cycles; `verify_kits` under the port",
-    doc="255 Kits per project: PART = LOAD KIT, FUNC+PART = SAVE KIT (MKI: FUNC+MIDI, "
-        "then FUNC+BANK); each pattern plays its Kit through the stock Part slots. Replaces the earlier Octakit implementation.",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-10-06",
+        note="(image A6, 6 Oct 2026): importing Octakit-format kit files, ems-octakit #5, STOP/PTN+TRIG/PLAY with "
+             "the Rytm, a rejected bank file, power cycles; `verify_kits` under the port"),),
+    doc="255 Kits per project: PART = LOAD KIT, FUNC+PART = SAVE KIT (MKI: FUNC+MIDI, then FUNC+BANK); each pattern plays its Kit through the stock Part slots.",
     linked=(Linked("kits", "modules/kits/kits.s", dram=True, include=kits_inc),),
     detours=(
         Detour(0x4001FB80, H("4eb940025848"), "kits", "kits_bootblank",
@@ -75,5 +76,5 @@ MODULE = Module(
     # and ASSIGN, over a power-off.
     claims=Claims(sram=((0x100F85A0, 0x48, "KITS: which Kit each Part slot holds"),
                         (0x100FFE00, 0x100, "KITS: each pattern's Kit"))),
-    gates=(Gate('tools/verify/verify_kits.py', once=True),),
+    gates=(Gate('tools/verify/verify_kits.py', once=True, project=True),),
 )

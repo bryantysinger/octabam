@@ -134,7 +134,7 @@ def capture_plocks(p,r):
 
 def capture_morph(p,r):
     p.key('t1',True);p.run(60);p.press('up',settle=120)
-    shot(p,'morph','window','T1 + UP: the MORPH window, T1 armed; STEPS, x and MODE on A, B and C.',r)
+    shot(p,'morph','window','T1 + UP: the MORPH window, T1 armed; STEPS, x and MODE on A, B and C; RET, CURV and END on D, E and F.',r)
     enc(p,0,-8);enc(p,1,-6);p.run(120)
     shot(p,'morph','settings','STEPS 8 and x 2: a cycle of 16 steps.',r)
     p.key('t1',False);p.run(300)
@@ -232,10 +232,27 @@ def capture_drummer(p,r):
     p.press('no',settle=600)
 
 
-def capture_features(p,r):
+def capture_seq(p,r):
     p.chord('t1','page')
-    shot(p,'seq','panel','SEQ: ring icon + LEN, stock 3×2 PULSE/ROT / DEST/DEPTH (C/F empty), 4×16 step squares.',r)
+    enc(p,3,-127);p.run(400)  # select PTCH regardless of the saved destination
+    shot(p,'seq','panel','SEQ Rhythm on an audio track.',r)
+    p.press('right',settle=400)
+    shot(p,'seq','tonal','SEQ Harmony on an audio track.',r)
+    p.press('left',settle=400)
+    p.chord('func','bank')
+    shot(p,'seq','clear','SEQ clear menu.',r)
+    p.press('no',settle=400)
     close(p)
+    p.press('midi',settle=300)
+    p.chord('t1','page')
+    p.press('right',settle=400)
+    shot(p,'seq','midi-tonal','SEQ Harmony on a MIDI track.',r)
+    close(p)
+    p.press('midi',settle=300)
+
+
+def capture_features(p,r):
+    capture_seq(p,r)
     p.chord('func','recab');enc(p,3,12);close(p)
     p.chord('func','recab')
     shot(p,'rec-threshold','trigger','TRIG set to THR in RECORDING SETUP 1.',r)
@@ -483,6 +500,11 @@ def prepare(remix,project,assignments):
         otp.set_fx(fixture,'fx2',1,'DELAY',page=values[:6],page2=values[6:],guard=False)
     if remix=='octabam-bus':
         otp.host_rig(fixture,remix,guard=False)
+    if remix=='test/seq':
+        for bank in fixture.glob('bank*.work'):
+            for part in range(1, otp.NPARTS + 1):
+                otp.set_machine_type(fixture, int(bank.stem[4:]), part, 1, 1,
+                                     guard=False)  # T1 FLEX: SRC/PTCH, not THRU's SRC/INAB
     for track,slot,key in assignments:
         m=registry.modules()[key]
         values=otp.module_defaults(m)
@@ -525,13 +547,14 @@ def prepare(remix,project,assignments):
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('groups',nargs='+',choices=['core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','midi-follow','utilities','varispeed','usb','octa303','cxosc','distorx','verberation','devilish','morph','free-loop','vibrato','drummer'])
+    ap.add_argument('groups',nargs='+',choices=['seq','core','plocks','features','inserts','bus','extras','machines','probes','midi-scales','midi-loopback','midi-follow','utilities','varispeed','usb','octa303','cxosc','distorx','verberation','devilish','morph','free-loop','vibrato','resonator','drummer'])
     cfg=Path.home()/'.octabam_project'
     ap.add_argument('--project',default=os.environ.get('OT_PROJECT') or (cfg.read_text().strip() if cfg.is_file() else ''))
     a=ap.parse_args();OUT.mkdir(parents=True,exist_ok=True)
     for group in a.groups:
         assignments=[]
-        if group=='core': jobs=[('octabam',capture_core,[])]
+        if group=='seq': jobs=[('test/seq',capture_seq,[])]
+        elif group=='core': jobs=[('octabam',capture_core,[])]
         elif group=='midi-loopback':jobs=[('midi-loopback',capture_midi_loopback,[])]
         elif group=='midi-follow':jobs=[('midi-follow',capture_midi_follow,[])]
         elif group=='plocks': jobs=[('octabam',capture_plocks,[(1,'fx2','PLATE REV')])]
@@ -540,7 +563,7 @@ def main():
             # A scratch selection: THR and REC_TRIG_MUTE share a hook and cannot coexist, and
             # LOAD METER declares a conflict with STEM REC (11 Oct 2026); its screens are the bus group's.
             scratch=OUT/'features.py'
-            scratch.write_text('import dataclasses,runpy\nbase=runpy.run_path("remixes/octabam/remix.py")["REMIX"]\nREMIX=dataclasses.replace(base,name="manual-features",modules=tuple(k for k in base.modules if k not in ("REC_TRIG_MUTE","LOAD METER"))+("REC THRESHOLD","SEQ","RND NAME","STEM REC"),window=tuple(w for w in base.window if not w[0].startswith("LOAD METER")))\n')
+            scratch.write_text('import dataclasses,runpy\nbase=runpy.run_path("remixes/octabam/remix.py")["REMIX"]\nREMIX=dataclasses.replace(base,name="manual-features",modules=tuple(k for k in base.modules if k not in ("REC_TRIG_MUTE","LOAD METER","SC LOAD METER BRIDGE","REC THRESHOLD","SEQ","RND NAME","STEM REC"))+("REC THRESHOLD","SEQ","RND NAME","STEM REC"),window=tuple(w for w in base.window if not w[0].startswith("LOAD METER")))\n')
             jobs=[('../out/manual-captures/features',capture_features,[])]
         elif group=='inserts':
             assignments=[(1,'fx1','SPECTRUM'),(2,'fx1','CHARACTER'),(3,'fx1','MODULATION'),(4,'fx2','DELAY')]
@@ -557,6 +580,7 @@ def main():
         elif group=='machines':jobs=[('analog-bassdrum',capture_analog,[]),('octatrick',capture_synth,[]),('blackpyramids-303',capture_blackpyramids,[]),('octa303',capture_octa303,[]),('cxosc',capture_cxosc,[])]
         elif group=='devilish':jobs=[('devilish',capture_fx,[(2,'fx2','DEVILISH')])]
         elif group=='vibrato':jobs=[('vibrato',capture_fx,[(2,'fx1','VIBRATO')])]
+        elif group=='resonator':jobs=[('resonator',capture_fx,[(2,'fx1','RESONATOR')])]
         elif group=='probes':jobs=[('cfmeter',capture_fx,[(8,'fx2','CF METER')])]
         elif group=='utilities':jobs=[('buffer-saver',capture_buffer_saver,[])]
         elif group=='varispeed':jobs=[('varispeed',capture_varispeed,[])]

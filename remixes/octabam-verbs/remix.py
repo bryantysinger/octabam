@@ -1,5 +1,5 @@
 """octabam-verbs -- octabam with VERBERATION in place of the three stock reverbs: the core ColdFire modules, every other ColdFire module that fits, the 11 other stock effects, and MODULATION, SPECTRUM, CHARACTER, SHATTER and COMPRESSOR's side-chain loaded on demand, and VIBRATO, TRANSIENT and RESONATOR resident in the reverbs' words. PLATE REV, SPRING REV and DARK REV are off both choosers and their ids are VERB PLATE, VERB ROOM and VERB HALL: VERBERATION's code starting in PLATE, ROOM and HALL mode."""
-from remix.schema import Pin, Proof, Remix
+from remix.schema import Pin, Evidence, Level, Remix
 
 CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "CC MAP", "CC FEEDBACK", "USB",
@@ -7,7 +7,7 @@ CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "QUANTIZE_LIVE_REC_TOGGLE", "REC_TRIG_MUTE", "MUTE_MODES", "PATTERN MUTE",
         "SCALE QUANTIZER", "TUNER", "DIRECT_JUMP_KYOTI", "RELOAD_FROM_PROJECT", "RLEN PLEN",
         "ATA WRITE GUARD", "EVENTS",
-        "LOAD METER", "FRAME GUARD")
+        "LOAD METER", "FRAME GUARD", "REMOTE")
 # COMPRESSOR's row is SIDECHAIN_COMPRESSOR's: stock COMPRESSOR with a side-chain KEY on page 2, its DSP
 # loaded on demand while a track uses COMPRESSOR (docs/contributing/DEMAND_LOADER.md). Out 1 Nov 2026 (433e22e)
 # with TRANSIENT and DISTORX, back 4 Nov 2026: KEY reads "--" while the side-chain is not loaded (#934).
@@ -41,8 +41,12 @@ STOCK_FX1 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPA
 
 REMIX = Remix(
     name="octabam-verbs",
-    family="mods", proof=Proof.CHECK,
-    proof_note="not flashed; `make check` (CI)",
+    image_name="OCTABAM-VRB",   # "OCTABAM-VERBS" + a two-character build tag is 16 characters: the tag was cut
+    family="mods", evidence=(Evidence(Level.EMULATOR,
+        note="`make check` (CI)"),
+        Evidence(Level.UNIT_MEASURED, unit="MKII", who="sambanks", image="OCTABAM-VRB 05 (REMIX SWITCH)", date="2026-11-22",
+            commit="382a478b03a1f788a335e57f318a234d29b194d0",
+            note="OCTABAM-VRB 05, built from main at 382a478b plus the v0.5 release commit and booted by REMIX SWITCH from the flashed image (not flashed itself). pre-meter, pre-transport, pre-usb and dsp-watch pass; 32 program changes (MODULATION FX2 dear, SPECTRUM FX2 dear, BASE): 0 unapplied, 32 bad DSP records (1 per transition, at the dear layouts' load; octabam's MODULATION dear logs the same), longest silence 340 ms. On the earlier BUILD 05 (5b991c85) also fx01-fx04 (VERBERATION in each MODE, VERB PLATE, ROOM and HALL), loader01-02, kits-identity, scenes-sweep, scenes-latency and djump-off ran. Not run: djump-on, djump-burst, mix-soak. The DARK REV stall of octabam needs the stock DARK REV, which this remix does not carry; not run to confirm.")),
     doc="octabam with VERBERATION and its PLATE, ROOM and HALL rows in place of PLATE REV, SPRING REV and DARK REV: the core ColdFire modules and every other ColdFire module that fits, the 11 other stock effects, and SPECTRUM, CHARACTER, MODULATION, SHATTER and COMPRESSOR's side-chain loaded on demand, with VIBRATO, TRANSIENT and RESONATOR resident in the reverbs' words.",
     modules=CORE + ("LOFI AMF FIX", "MODE DEFAULTS", "DLPUMP", "DLCOPY", "SC LOAD METER BRIDGE",
                      "KEYBUS", "SC KEYBUS BRIDGE") + STOCK11 + OURS
@@ -59,12 +63,11 @@ REMIX = Remix(
     # DLCOPY follows the five demand entries (x:$33da3 + 8 k, k = 0..4).
     window=(("DLCOPY", 0x33DCB), ("KEYBUS", 0x33E5E), ("LOAD METER", 0x37DA3), ("LOAD METER:B", 0x37E50),
             ("SPECTRUM", 0x33820), ("CHARACTER", 0x37820), ("MODULATION", 0x3B820),
-            ("SIDECHAIN_COMPRESSOR", 0x3F820), ("SHATTER", 0x37C10)),
+            ("SIDECHAIN_COMPRESSOR", 0x3F820), ("SHATTER", 0x3BE00)),
     # DLPUMP loads in this order, and the first free home wins: SIDECHAIN_COMPRESSOR has one home, the fourth
     # block, which the others reach only as their second or later home.
-    # SHATTER (378 words, FX2 only) first goes to the second block behind CHARACTER's 1,008 words, so its first
-    # address is no other demand effect's (each id-dispatched effect needs its own); the fourth block, SC's only
-    # home, is its last.
+    # SHATTER window record at 0x3be00 (after MODULATION); was behind CHARACTER until LIM + CHARACTER growth
+    # overlapped LOAD METER. Demand homes: 0x33820 and 0x3f820 (not 0x3b820 — same block as 0x3be00).
     window_demand=("MODULATION", "SPECTRUM", "CHARACTER", "SIDECHAIN_COMPRESSOR", "SHATTER"),
     # The other homes: each effect can be loaded into any block it fits (the code is assembled once per home). The loader
     # sends the first home whose block holds no other demand effect (no reverb here reaches a home). MODULATION (1,561 words) needs a block with 2,016
@@ -72,7 +75,7 @@ REMIX = Remix(
     window_homes=(("MODULATION", 0x3F820),
                   ("SPECTRUM", 0x37820), ("SPECTRUM", 0x3B820), ("SPECTRUM", 0x3F820),
                   ("CHARACTER", 0x33820), ("CHARACTER", 0x3B820), ("CHARACTER", 0x3F820),
-                  ("SHATTER", 0x33820), ("SHATTER", 0x3B820), ("SHATTER", 0x3F820)),
+                  ("SHATTER", 0x33820), ("SHATTER", 0x3F820)),
     # KEYBUS (17 words) fills DLCOPY's tail gap and the loader follows it; SC's bridged stubs then
     # end at 0x33FFF, the block's last resident word.
     window_loader=0x33E6F,

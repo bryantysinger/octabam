@@ -24,26 +24,6 @@ bottleservice keeps the plain station (244) until a unit has.
 Pages 1 and 2 otherwise as Character's: DRV FOLD WDTH COMP TONE MIX / SAT
 KEY KLVL TXTR.
 
-## Measured
-
-- Against `pockey2_ref.py` (a float transcription of `Pockey2Proc.cpp`):
-  mean |err| 0.00003–0.0034 at TXTR 8/43/64/100/127 and 0.25/0.8 FS, level
-  within 0.03 dB, L == R; TXTR 0 bit-exact (`verify_character_txtr.py`).
-- Cost (pricer `cycle_count.py`): 403 cycles per sample in INFL (TAPE 399,
-  TUBE 366); TXTR 163 of it: two `chtx2` calls (the codec by two 257-point
-  tables, interpolated; the quantiser's two multiplies and a mask; the hold
-  and blur) and the shared countdown. 1,093 words per payload; its tables
-  are 546 P words, parked in the stock curve bank by the build. Pockey
-  (the first version, 13–22 Sep 2026 in Character) priced 277.
-- Cursory testing on Sam's MKII (owner report, 16 Oct 2026). 22 Sep 2026's squeal on the master, which removed the
-  first TXTR, was never reproduced on the harness and is not addressed here.
-
-## Gates
-
-`verify_character_txtr.py` and `verify_char_key_txtr.py` (the manifest's:
-Character's two gates run on this module), `verify_dirty_state`, and the
-test remix's `make check`.
-
 ## Sources
 
 | stage | source | the law |

@@ -58,19 +58,6 @@ Swing uses the track's swing mask and amount, including Swing All changes.
 Rotation and odd Euclidean lengths do not rotate the track swing grid. The
 1/32 subdivision interpolates the surrounding track-step offsets.
 
-## On the unit
-
-Cursory testing on Sam's MKII (owner report, 16 Oct 2026).
-
-On radiohagen's MKII (`EUCL EVENTS 98`, owner report, 22 Oct 2026),
-start/resume/stop passed with one EUCLID instance, instances on several tracks
-and both FX slots on one track; ordinary and arpeggiated MIDI played and stopped
-normally.
-Ordinary and arpeggiated MIDI start/resume/stop also passed on optimized
-`EUCL EVENTS 99` the same day.
-EUCLID subscribes only to start/resume. Sample-accurate reset timing and multiple
-registered clients were not measured on the unit.
-
 ## Clock restart ordering
 
 `eu_clock_start` runs from the PLAY sites in task context; `eu_clock_update`
@@ -81,19 +68,6 @@ the call, restoring the SR saved after the displaced PLAYING store (mask and
 CCR). The ordering is by reading the code; the port is lock-step and cannot
 interleave the ISR with the task, so it is not measured on the port or the
 unit. The store order is checked under the port with `--watch-mem`.
-
-## Gates
-
-`make check REMIX=euclid` runs the Euclid suite as part of the normal verify
-target. It checks the native control laws, checked-in ColdFire assembly,
-executed hook traces, caller registers and PLAY condition codes, both DSP
-payloads, LP/BP/HP/NOTCH response, AMP unity/silence and instruction cost,
-rapid TYPE changes, cutoff sweeps, stock-row
-isolation and the real panel renderer. With `OT_PROJECT` it also boots a
-copied project under the ColdFire port and checks full playback. No test
-writes to the source project or hardware.
-
-Manifest gate: `tools/verify/verify_euclid.py` (stage `image`).
 
 ## Implementation
 

@@ -21,7 +21,7 @@ The stop kill (STOP, STOP, STOP) reaches BBD as it reaches the stock reverbs:
 kill.s adds BBD's id to the ColdFire pass that zeroes their slots, BBD's only
 (hidden slot 11, 127 otherwise), and BBD cuts to dry and clears its line."""
 
-from remix.schema import (Gate, Category, Proof, BusRole, Claims, Detour, DspSection, Formatter, Harness,
+from remix.schema import (Gate, Category, Evidence, Level, BusRole, Claims, Detour, DspSection, Formatter, Harness,
                           Kind, Linked, MenuEntry, Module, Param, YBase)
 
 FX2_ID = 0x1b
@@ -34,7 +34,8 @@ def id_inc(modules, remix):
 MODULE = Module(
     name="bbd", key="BBD", kind=Kind.DSP_EFFECT,
     category=Category.TRACK, author="JamCones", author_url="https://github.com/JamCones",
-    proof=Proof.HARDWARE, proof_note="JamCones' MKII, BBDOB4 (remixes/test/bbd, BUILD 4), 17 Oct 2026",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="JamCones", date="2026-10-17",
+        note="JamCones' MKII, BBDOB4 (remixes/test/bbd, BUILD 4), 17 Oct 2026"),),
     doc="Clocked BBD delay: compander, clock/3 filters, bucket noise, freeze, governor; FX2.",
     menu=MenuEntry(fx2_id=FX2_ID, donor_desc=0x400d58b8,
                    abbr=b"BBD", fullname=b"BBD DELAY", build_tag=False),
@@ -71,6 +72,6 @@ MODULE = Module(
                     "the stop kill's reverb test: BBD's id too, slot 11 only", pad_to=10),),
     harness=Harness(layout_char=None, is_server=False),
     gates=(Gate("tools/verify/verify_bbd.py", remix_arg=False),
-           Gate("tools/verify/verify_ids64_load.py", remix_arg=False, venv=True)),     # BBD is the module the 64-id test image carries on 0x25
+           Gate("tools/verify/verify_ids64_load.py", remix_arg=False, venv=True, project=True)),     # BBD is the module the 64-id test image carries on 0x25
     dear={"TIME": 0, "FDBK": 127, "TONE": 0, "FREQ": 127, "MIX": 64, "STGS": 1, "HPF": 64},
 )

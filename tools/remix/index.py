@@ -2,12 +2,13 @@
 """Print the module index and the available remixes; render the copies.
 
     python3 tools/remix/index.py            # the index, the matrix, the remixes
-    python3 tools/remix/index.py --write    # README.md's module table,
-                                            # remixes/README.md and
-                                            # remixes/test/README.md (make docs)
+    python3 tools/remix/index.py --write    # modules/README.md,
+                                            # remixes/README.md,
+                                            # remixes/test/README.md and
+                                            # remixes/community/README.md (make docs)
     python3 tools/remix/index.py --check    # 1 if any copy is stale
 
-The manifests are the authoritative list; the two Markdown tables are
+The manifests are the authoritative list; the Markdown tables are
 copies, rendered here and held current by tools/verify/verify_docs.py.
 """
 
@@ -19,7 +20,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 
 from remix import registry  # noqa: E402
-from remix.schema import CATEGORY_TITLE, PROOF_TEXT, Category, Proof  # noqa: E402
+from remix.schema import CATEGORY_TITLE, Category  # noqa: E402
 
 
 from remix.rig import touches_coldfire  # noqa: E402
@@ -108,16 +109,9 @@ def matrix(mods):
           "by FX2 id, buffer region and private Y instead)\n")
 
 
-BEGIN, END = "<!-- modules:begin -->", "<!-- modules:end -->"
 FAMILIES = (("rig", "The delay and reverb bus"), ("effects", "Effects"),
             ("mods", "Firmware mods on the stock effects"),
             ("reference", "Reference"), ("probes", "Probes"))
-
-
-def proof_text(x) -> str:
-    if x.proof is None:
-        return "?"
-    return PROOF_TEXT[x.proof] + (f": {x.proof_note}" if x.proof_note else "")
 
 
 def by_category(mods):
@@ -131,21 +125,33 @@ def by_category(mods):
     return out
 
 
-def module_table(mods) -> str:
-    lines = [BEGIN, ""]
+def _author(m) -> str:
+    """One spelling per person, as the manual's credits print it (gen_pages.who)."""
+    sys.path.insert(0, str(ROOT / "tools" / "site"))
+    import gen_pages
+    name, profile, _ = gen_pages.who(m)
+    return f"[{name}]({profile})" if profile else name
+
+
+def module_index(mods) -> str:
+    """modules/README.md: every contributed module, by category."""
+    lines = ["# Modules", "",
+             "A module is one contribution: an effect, a machine, a sequencer or "
+             "MIDI feature, a fix, or a service other modules use. Each is "
+             "`modules/<name>/` with a `manifest.py` and a `README.md`. What each "
+             "does on the unit is in the [manual](https://sambanks.github.io/octabam/); "
+             "writing one is [MODULES.md](../docs/contributing/MODULES.md). "
+             "Rendered from the manifests by `make docs`.", ""]
     for cat, ms in by_category(mods).items():
         if not ms:
             continue
-        lines += [f"### {CATEGORY_TITLE[cat]}", "",
-                  "| module | author | what it does | proof |", "|---|---|---|---|"]
+        lines += [f"## {CATEGORY_TITLE[cat]}", "",
+                  "| module | author | what it does |", "|---|---|---|"]
         for m in ms:
-            author = f"[{m.author}]({m.author_url})" if m.author_url else m.author
             doc = m.doc.replace("|", "\\|")
-            d = f"modules/{m.name}"
-            link = f"{d}/README.md" if (ROOT / d / "README.md").exists() else f"{d}/"
-            lines.append(f"| [**{m.key}**]({link}) | {author} | {doc} | {proof_text(m)} |")
+            link = f"{m.name}/README.md" if (ROOT / "modules" / m.name / "README.md").exists() else f"{m.name}/"
+            lines.append(f"| [**{m.key}**]({link}) | {_author(m)} | {doc} |")
         lines.append("")
-    lines.append(END)
     return "\n".join(lines)
 
 
@@ -153,11 +159,11 @@ REMIXES = ROOT / "remixes"
 
 
 def _rows(rs, base):
-    out = ["| remix | contains | proof |", "|---|---|---|"]
+    out = ["| remix | contains |", "|---|---|"]
     for r in rs:
         doc = r.doc.replace("|", "\\|")
         link = registry.remix_dir(r.name).relative_to(base)
-        out.append(f"| [`{r.name}`]({link}/README.md) | {doc} | {proof_text(r)} |")
+        out.append(f"| [`{r.name}`]({link}/README.md) | {doc} |")
     return out + [""]
 
 
@@ -167,17 +173,17 @@ def remix_index() -> str:
              "A remix is a named selection of modules; `make image REMIX=<name> "
              "BUILD=<n>` builds it into a card-flashable image from your own "
              "OS 1.40C. Each remix is a directory here: `remix.py` is the "
-             "selection, `README.md` says what is in it, where it has run and "
-             "how to flash it. This index is rendered from the selections "
+             "selection, `README.md` says what is in it and how to flash it. This index is rendered from the selections "
              "(`make docs`).", "",
              "- What to install first (the Xcode Command Line Tools, Homebrew, "
              "Python 3.10+, `cmake`, `uv`) and every step to a flashed unit: "
              "[BUILDING.md](../docs/guide/BUILDING.md).",
              "- Composing your own: [COMPOSING.md](../docs/guide/COMPOSING.md).",
              "- The remixes that carry one module for its gates: "
-             "[test/](test/README.md).", ""]
+             "[test/](test/README.md).",
+             "- Contributors' own selections: [community/](community/README.md).", ""]
     for fam, title in FAMILIES:
-        rs = [r for r in _remixes(False) if (r.family or "reference") == fam]
+        rs = [r for r in _remixes("project") if (r.family or "reference") == fam]
         if rs:
             lines += [f"## {title}", ""] + _rows(rs, REMIXES)
     lines += ["Never share a built image: it contains Elektron's OS.", ""]
@@ -190,22 +196,38 @@ def test_index() -> str:
              "Each carries one module, or one combination, for that module's "
              "gates: `make check REMIX=<name>`. Rendered by `make docs`; the "
              "remixes a user flashes are [one level up](../README.md).", ""]
-    return "\n".join(lines + _rows(_remixes(True), REMIXES / "test"))
+    return "\n".join(lines + _rows(_remixes("test"), REMIXES / "test"))
 
 
-def _remixes(test):
+def community_index() -> str:
+    """remixes/community/README.md: contributors' own selections for a card."""
+    lines = ["# Community remixes", "",
+             "A contributor's own selection of modules for a card: the image "
+             "they flashed, or a combination they use. Each is "
+             "`community/<name>/` with `remix.py` and a `README.md` saying "
+             "what is in it; the name is the contributor's or the remix's "
+             "purpose, never `octabam-` (CONTRIBUTING.md \"Remixes\"). "
+             "Rendered by `make docs`; the project's own remixes are "
+             "[one level up](../README.md).", ""]
+    rs = _remixes("community")
+    return "\n".join(lines + (_rows(rs, REMIXES / "community") if rs else ["None yet.", ""]))
+
+
+def _root(name):
+    return "test" if registry.is_test(name) else "community" if registry.is_community(name) else "project"
+
+
+def _remixes(root):
     return [r for r in (registry.remix(n) for n in registry.remix_names())
-            if registry.is_test(r.name) == test]
+            if _root(r.name) == root]
 
 
 def rendered() -> dict:
     """{path: text} of every copy as the manifests say it should read."""
-    readme = ROOT / "README.md"
-    cur = readme.read_text()
-    a, b = cur.index(BEGIN), cur.index(END) + len(END)
-    return {readme: cur[:a] + module_table(registry.modules()) + cur[b:],
+    return {ROOT / "modules" / "README.md": module_index(registry.modules()),
             REMIXES / "README.md": remix_index(),
-            REMIXES / "test" / "README.md": test_index()}
+            REMIXES / "test" / "README.md": test_index(),
+            REMIXES / "community" / "README.md": community_index()}
 
 
 def stale() -> list:
@@ -246,7 +268,7 @@ def _print_module(m):
     if m.cf_patches:
         bits.append(f"{len(m.cf_patches)} ColdFire cave"
                     f"{'s' if len(m.cf_patches) > 1 else ''}")
-    print(f"  {m.name:<12} {m.kind.value:<10} [{m.key}]  {m.author}  {proof_text(m)}")
+    print(f"  {m.name:<12} {m.kind.value:<10} [{m.key}]  {m.author}")
     print(f"      {m.doc}")
     print(f"      {' | '.join(bits)}")
     if m.menu is not None:
@@ -277,12 +299,13 @@ def _print_stock():
 
 def _print_remixes():
     from remix import stock
-    print("REMIXES  (remixes/<name>/remix.py; remixes/test/<name>/remix.py carries one module for its gates)\n")
+    print("REMIXES  (remixes/<name>/remix.py; remixes/test/<name>/remix.py carries one module for its gates;\n"
+          "          remixes/community/<name>/remix.py is a contributor's own)\n")
     for name in registry.remix_names():
         r = registry.remix(name)
         print(f"  {r.name:<12} {r.doc}")
-        fam = "test" if registry.is_test(name) else (r.family or "reference")
-        print(f"      {fam} | {proof_text(r)}")
+        fam = _root(name) if _root(name) != "project" else (r.family or "reference")
+        print(f"      {fam}")
         print(f"      modules: {', '.join(r.modules)}")
         if r.fx1:
             print(f"      also on the FX1 chooser: {', '.join(r.fx1)}")

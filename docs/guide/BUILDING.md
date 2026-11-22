@@ -3,6 +3,16 @@
 From a fresh machine to a flashed unit, and back to stock. Every image is
 built on your own computer from your own copy of Octatrack OS 1.40C.
 
+**To install a released remix you do not need this guide.** The manual's
+[Build and Install](https://sambanks.github.io/octabam/web-builder.html) page builds
+Octabam, Octabam Verbs or Octabam Bus (the release in `tools/site/release.py`)
+in the browser from your own 1.40C, with nothing uploaded, and has the same
+install steps as sections 5 and 5b here; [Safety and
+Recovery](https://sambanks.github.io/octabam/safety.html) is section 7's. This
+guide is for building any remix from source: a test or community remix, your
+own selection ([COMPOSING.md](COMPOSING.md)), a branch, or main ahead of the
+release.
+
 > **This is not official Elektron firmware.** Flashing a modified OS can
 > leave the unit unusable until you recover it (section 7), and puts your warranty
 > in question. Nothing here is endorsed by, supported by, or affiliated
@@ -11,8 +21,8 @@ built on your own computer from your own copy of Octatrack OS 1.40C.
 > **Do not share a built image.** A built `.bin` or `.syx` contains
 > Elektron's OS.
 
-Pick a remix from [the remix index](../../remixes/README.md). The commands below use `octabam-bus`
-(the core ColdFire modules plus the delay and reverb bus); substitute any
+Pick a remix from [the remix index](../../remixes/README.md). The commands below use `octabam`
+([its README](../../remixes/octabam/README.md)); substitute any
 remix name.
 
 ## 0. What you need
@@ -25,11 +35,7 @@ remix name.
   uv provisions `.venv` (`make emu-setup`: `unicorn`, `textual`,
   `sounddevice`) for the label gates in `make check`.
 - An Octatrack MKI or MKII on OS 1.40C. Elektron's MKI and MKII download
-  pages serve byte-identical OS files. octabam's own effects have only
-  been tested on an MKII; the DRAM platform has run on both (MKI: octalab;
-  MKII: OKMS1). octabam
-  images keep 1.40C's internal version code 0178, which the updater's
-  "MK1 not allowed" check (error −5, against "0156") accepts.
+  pages serve the same OS file, and octabam images install on both.
 - A CompactFlash card in the unit (the fast flashing path).
 - For recovery and the MIDI flashing path: a 5-pin DIN MIDI interface into
   the Octatrack's MIDI IN and an app that sends `.syx` files (SysEx
@@ -65,8 +71,7 @@ local patches and builds them. Re-running it is safe. It ends with
 The build uses Bash, Make, and CMake. It runs on macOS and Linux, including
 WSL2; it does not run in native Windows. See [Microsoft's WSL install
 guide](https://learn.microsoft.com/windows/wsl/install) to install WSL2.
-The Linux commands below were verified on Ubuntu 26.04.1 under WSL2 in
-September 2026.
+The commands below are for Ubuntu, including Ubuntu under WSL2.
 
 Clone into the Linux filesystem, not `/mnt/c`: over the 9p bridge the
 CMake build is slow, and a Windows-side clone loses the exec bit and can
@@ -96,7 +101,7 @@ source $HOME/.local/bin/env
   `scripts/disasm.sh emac 0x40003664 8` must print `msacl`, not
   `invalid`. The symlink goes in `/usr/local/bin`: `~/.local/bin` is on
   PATH only in login shells, and `wsl.exe -d Ubuntu -- bash script.sh`
-  from Windows is not one (observed 10 Sep 2026).
+  from Windows is not one.
 
 **The m68k cross-toolchain.** The build needs `m68k-elf-gcc`, `as`,
 `ld`, `objcopy` and `nm`: every remix with linked ColdFire units (KITS,
@@ -107,9 +112,8 @@ MIDI SCENES, the USB modules, every DRAM module) refuses without them, and
 `m68k-elf-binutils` and `m68k-elf-gcc` built from GNU's sources with
 binutils 2.47 and GCC 16.2.0. `scripts/m68k-toolchain.sh [PREFIX]` builds
 both (source hashes pinned; default PREFIX `$HOME/.local/m68k-elf`) and
-exits at once when PREFIX already has that gcc. The hand-built form of this
-setup was verified on Ubuntu 26.04 under WSL2 on 28 Sep 2026 with GCC 16.1.0
-and two compile jobs; allow about an hour on two jobs:
+exits at once when PREFIX already has that gcc. Allow about an hour on two
+compile jobs, and limit parallel jobs on a machine with under 4 GB of memory:
 
 ```bash
 sudo apt install -y libgmp-dev libmpfr-dev libmpc-dev libisl-dev zlib1g-dev libzstd-dev pkgconf texinfo
@@ -117,24 +121,11 @@ scripts/m68k-toolchain.sh /opt/m68k-elf
 export PATH=/opt/m68k-elf/bin:$PATH
 ```
 
-- `pkgconf` is needed: without `pkg-config`, binutils' configure stops on
-  `--with-zstd was given, but pkgconfig/libzstd.pc is not found`.
-- ✅ USB's `usbmidi` unit matches its author's build at `0x400d24f0`,
-  1,124 bytes (`make bus REMIX=octatrick`).
-- ✅ This repository's pinned ColdFire bytes still match
-  (`tools/build/label_fmt.py`), and `scripts/disasm.sh emac 0x40003664 8`
-  still prints `msacl`.
-- ✅ STEM REC's runtime differs by 48 bytes between the bare-metal and
-  Ubuntu toolchains because their assemblers encode a same-section global
-  PC-relative reference differently. Its gates pass with both toolchains
-  (`docs/firmware/STEM_REC.md` section 15.5).
-- A VM with 3.8 GB of memory ran out of memory when an eight-job port build
-  ran beside another compile. Limit parallel jobs on machines with similar
-  memory.
+`pkgconf` is needed: without `pkg-config`, binutils' configure stops on
+`--with-zstd was given, but pkgconfig/libzstd.pc is not found`.
 
-**Ubuntu's Linux-target tools.** Ubuntu's packages ship the tools under
-another prefix. The following setup was verified on Ubuntu 26.04 under WSL2
-on 27 Sep 2026:
+**Or Ubuntu's Linux-target tools**, which are quicker to install but do not
+build every remix. They ship under another prefix:
 
 ```bash
 sudo apt install -y gcc-m68k-linux-gnu      # GCC 15.2.0; binutils 2.46 comes with it
@@ -143,30 +134,11 @@ for t in as ld objcopy nm objdump gcc; do
 done
 ```
 
-- ✅ With these on PATH, `make setup` step 1 finds `m68k-elf-gcc`.
-- ✅ They produce this repository's own pinned ColdFire bytes:
-  `tools/build/label_fmt.py` re-assembles its twelve caves and matches,
-  `tools/build/mode_names.py` passes, and the DRAM loader they build boots
-  under the port (`verify_dram_boot`: it ran once and never reached
-  `fatal`).
-- ❌ They couldn't build Octakit's runtime. Its `firmware.json` pinned
-  `m68k-elf-gcc` 16.1.0, and binutils 2.46 refuses `runtime.S:438`
-  (`bne.s` to a `.global` label more than 127 bytes into the section: it
-  emits an `R_68K_PC8` relocation that overflows). The same loop with a
-  local label assembles at any offset.
-- ❌ USB's `usbmidi` unit links to 1,130 bytes that differ from its author's
-  (sha256 `b49af01e…`, not `6291d91e…`), so the build refuses it.
-- ✅ Both differences are caused by the toolchain: the bare-metal toolchain
-  above builds both units to match their authors' bytes from the same source.
-
-With these tools, `make check` passes for remixes the machine can build.
-The all-remix sweeps report unavailable remixes as `[SKIP]` with a reason
-(`tools/remix/prereq.py`). `make accept` requires every check to run, so it
-fails when a check is skipped. Use the bare-metal toolchain to build all
-remixes and run `make accept`.
-
-Flashing from a Windows host hasn't been done: the card copy is a plain
-file copy, and the MIDI path needs a SysEx app on the host.
+Their assembler encodes some branches differently, so USB's `usbmidi` unit
+does not match its author's build and the build refuses it. Remixes these
+tools cannot build report `[SKIP]` with the reason (`tools/remix/prereq.py`);
+`make accept` fails on a skip. Use the bare-metal toolchain to build every
+remix.
 
 ## 2. Get the stock OS
 
@@ -180,15 +152,15 @@ make recon
 `34695b606eb00e1b4dded5fd0c4b66f3a460522a632e47d7416dbd220599e1ad`,
 `OCTATRACK_OS1.40C.syx`
 `0a8d2d2b35c2cc78fa338576adc1af0cbc094cef973255103165c73edd87f2b6`. The zip's own
-hash is printed but not checked: since 28 Oct 2026 the zip carries an `Elektron
-EULA.txt` stamped at download time (the zip of record was `370c55a3…`).
+hash is printed but not checked, because the zip carries an `Elektron
+EULA.txt` stamped at download time.
 `make recon` unpacks it to `out/raw/section_3_MAIN_OS.bin`, the file every
 build reads. Both directories are gitignored.
 
 ## 3. Build the image
 
 ```bash
-make image REMIX=octabam-bus BUILD=1
+make image REMIX=octabam BUILD=1
 ```
 
 Output:
@@ -196,6 +168,7 @@ Output:
 ```
 out/OCTATRACK_OCTABAM1.bin            the card image
 out/OCTATRACK_OS1.40C_OCTABAM1.syx    the MIDI image
+out/<REMIX> <BUILD>.RMX               REMIX SWITCH: boots from the card without flashing (section 5c)
 ```
 
 `BUILD` is a one- or two-character tag of your choosing (digits; past
@@ -205,7 +178,7 @@ field). It becomes the
 unit's OS version string (`OCTABAM1`) and the suffix on any octabam
 effect's name, so a unit can always be traced to the build it runs. Bump
 it every time you flash. `VERSION=<up to 10 chars>` overrides the version
-string (`OKMS1` was built that way).
+string.
 
 The build prints what it did: every module placed, every hook wired,
 every identity checked against the author's own build, and the byte
@@ -216,7 +189,7 @@ cannot prove.
 
 ```bash
 make emu-cf                 # builds the local ColdFire emulator (cmake) and boots stock in it once
-make check REMIX=octabam-bus      # build + every gate + boot under the emulator
+make check REMIX=octabam          # build + every gate + boot under the emulator
 ```
 
 `make check` is two halves: `make check-shared` (the gates that do not
@@ -224,9 +197,8 @@ depend on the remix: the ledger selftest, the stock-id audit that builds
 every remix, the docs, the knob census, the module gates that build their
 own image) and `make check-remix` (the selected remix's build, cycles and
 its own gates). [docs/contributing/TESTING.md](../contributing/TESTING.md) says what
-each step proves. Measured on one machine, 27 Sep 2026, over the 25
-remixes of the day: 475 s for the shared half, 223 s per remix on average
-(`lofi-amf-fix` 51 s, `bottleservice` 1,143 s). Without `make emu-setup`
+each step proves. Expect several minutes for the shared half and a few
+minutes per remix. Without `make emu-setup`
 (the `.venv`) the label gates (`verify_labels`, `verify_mode_names`,
 `verify_hidden`) report `[SKIP]`; without `make emu-cf` the set gates do;
 without a project in `OT_PROJECT` the set gates do too.
@@ -269,14 +241,29 @@ decodes the official file, validates its checksum and round-trips ours.
 4. Send `out/OCTATRACK_OS1.40C_OCTABAM1.syx`: from a SysEx app, or
    `make midi-flash PORT=<port> SYX=<file.syx>` (`tools/hw/midi_flash.py`),
    which paces the ~7,460 messages at the DIN rate. Filter MIDI clock on
-   that port, and merge nothing else into it: through a Midihub, a blank
-   preset with one pipe (the computer's port to the Octatrack's MIDI IN)
-   flashed where a performance preset ended in CHECKSUM ERROR (7 Oct 2026). If the unit loses sync, re-enter the Startup Menu and send
+   that port, and merge nothing else into it (on a MIDI router, use a blank
+   preset with one pipe from the computer to the Octatrack). If the unit loses sync, re-enter the Startup Menu and send
    again slower (`--ms 60`, or 100–300 ms between messages in a SysEx app).
 5. Wait through PREPARING FLASH → UPDATING FLASH. Do not power off or
    disconnect during either.
 6. The unit may update its bootstrap. Let it finish booting, then
    power-cycle (section 5 step 5).
+
+### 5c. Boot from the card without flashing (REMIX SWITCH)
+
+On a unit already running an octabam image, BRAIN can boot another image
+from the card without writing the flash:
+
+1. Copy the `.RMX` file into `/BRAIN/REMIXES/` on the card (create the
+   folders if they are missing).
+2. On the unit: **PROJ → BRAIN → REMIXES**, select its name, YES at
+   `BOOT <NAME>?`. The choice is kept across reboots; the name under the
+   FLASHED separator returns to the flashed image.
+
+`make rmx REMIX=<name> BUILD=<nn>` writes only the `.RMX` (`RMX=<NAME>` names
+it, 15 characters); `make rmx-stock` writes `STOCK 1.40C.RMX`, which switches
+back to stock without a flash. [REMIX SWITCH](../../modules/remix-switch/README.md)
+is the module.
 
 ## 6. After the flash
 
@@ -300,7 +287,7 @@ decodes the official file, validates its checksum and round-trips ours.
    two sends; each engine's wet comes out on the track that hosts it.
 
 If the unit misbehaves, [FAILURE_MODES.md](../contributing/FAILURE_MODES.md)
-is the register of what has gone wrong on a unit and why.
+lists known faults and what to do about each.
 
 ## 7. If it goes wrong
 

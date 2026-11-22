@@ -40,7 +40,7 @@ ColdFire writes the quotient.
 
 import hashlib
 
-from remix.schema import Category, Proof, Detour, Gate, Kind, Linked, Module
+from remix.schema import Category, Evidence, Level, Detour, Gate, Kind, Linked, Module
 
 # The audio arena base, stock; the build resolves ARENA_BASE to the moved base.
 _ARENA = (("ARENA_BASE", 0x40a955e0),)
@@ -93,13 +93,11 @@ MODULE = Module(
     key="RECORDER LOOP FIX",
     kind=Kind.CF_PATCH,
     category=Category.FIXES, author="sambanks", author_url="https://github.com/sambanks",
-    proof=Proof.HARDWARE,
-    proof_note="OCTABAM83, 12 Sep 2026 (self-loop); Bryan T's MKII, sos-capture BUILD=95, 3 Oct 2026 (sound-on-sound); "
-               "the spacing cave's memo (2 Nov 2026): verify_recorder_loop_fix, call for call against the ratified "
-               "cave under unicorn, and Bryan T's MKII recording up to eight tracks at once",
-    doc="ColdFire caves: the recorder loop click -- seek on a same-sample FLEX re-bind, keep its "
-        "counter, record exactly the arm spacing, and repeat the last sample where sound-on-sound "
-        "would play a zero.",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="Bryan T", image="OCTABAM83", date="2026-09-12",
+        note="(self-loop); Bryan T's MKII, sos-capture BUILD=95, 3 Oct 2026 (sound-on-sound); the spacing cave's "
+             "memo (2 Nov 2026): verify_recorder_loop_fix, call for call against the ratified cave under unicorn, "
+             "and Bryan T's MKII recording up to eight tracks at once"),),
+    doc="Fixes the recorder's loop click: a re-bound sample keeps its place, a take is exactly the arm spacing, and sound-on-sound no longer plays a zero at the seam.",
     gates=(Gate("tools/verify/verify_recorder_loop_fix.py", remix_arg=False, venv=True),),
     # DRAM units since 8 Oct 2026 (floating ROM caves until then). Each is
     # linked alone at 0x400d7000 with ARENA_BASE at stock's 0x40a955e0 and

@@ -60,8 +60,9 @@ docs/specs/SHARED_SITES.md says how HOOKS relates to STORE, EVENTS and Override.
     -252(%sp),%sp ; movem.l %d0-%d7/%a0-%a6,(%sp)`). BOOT TRACE (tr_frame)
     and LOAD METER (lm_in) each replay the prologue and jmp to 0x4000aad8.
     Bridged (HK_FRAME_ENTRY), each enters after its replay and ends in
-    `rts`; HOOKS replays the prologue once, calls BOOT TRACE's note, then
-    LOAD METER's stamp last, so the duration it measures excludes the note.
+    `rts`; HOOKS replays the prologue once, calls BOOT TRACE's note,
+    FRAME GUARD's wait, LOAD METER's stamp, then REMOTE's watch, so LOAD
+    METER's duration includes the watch.
   * boot -- 0x40000512, the boot's `jsr 0x4000f938` after the DSP upload.
     BOOT TRACE (tr_dsp_done, a jmp) sends note 3 and replays the call; STORE
     (store_part_resident_activate, a jsr, selected only with a native Part
@@ -109,7 +110,7 @@ import os
 import runpy
 from pathlib import Path
 
-from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Override, Poke, Proof, SymbolRef
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Override, Poke, Evidence, Level, SymbolRef
 
 H = bytes.fromhex
 _HERE = os.path.relpath(os.path.dirname(os.path.realpath(__file__)))
@@ -188,6 +189,7 @@ FRAME_ENTRY = (
     ("BOOT TRACE", "tr_frame"),
     ("FRAME GUARD", "fg_in"),                    # before LOAD METER: the demand loader's pump runs after the wait
     ("LOAD METER", "lm_in"),
+    ("REMOTE", "rmt_in"),                           # last: LOAD METER's duration includes the watch
 )
 BOOT = (
     ("BOOT TRACE", "tr_dsp_done"),
@@ -376,6 +378,13 @@ BRIDGES = {"track_key": TRACK_KEY, "status_icon": STATUS_ICON, "frame_tail": FRA
            "frame_entry": FRAME_ENTRY, "boot": BOOT, "chrom_pitch": CHROM_PITCH,
            "chromatic": CHROMATIC, "machine_rows": MACHINE_ROWS,
            "rec_gate": REC_GATE, "ui_tick": UI_TICK}
+# SCOPE and TUNER have independent implementations but share TEMPO, frame
+# tail, and UI loop sites. HOOKS owns those sites only when both are present.
+SCOPE_TUNER = ("SCOPE", "TUNER")
+BRIDGES["scope_tuner"] = tuple((key, sym) for key, sym in (
+    ("SCOPE", "sc_tempo"), ("TUNER", "tu_tempo"),
+    ("SCOPE", "sc_frame"), ("TUNER", "tu_frame"),
+    ("SCOPE", "sc_tick"), ("TUNER", "tu_tick")))
 # The flag each bridge sets in its participants' remix.inc (flags_inc).
 FLAGS = {"frame_tail": "HK_FRAME_TAIL", "frame_entry": "HK_FRAME_ENTRY", "boot": "HK_BOOT",
          "chrom_pitch": "HK_CHROM_PITCH", "machine_rows": "HK_MACHINE_ROWS"}
@@ -395,7 +404,9 @@ def _present(participants, modules):
 def bridged(modules) -> tuple[str, ...]:
     """The bridges a selection of module keys needs: those with two or more
     participants in it."""
-    return tuple(b for b, parts in BRIDGES.items() if len(_present(parts, modules)) >= 2)
+    return tuple(b for b, parts in BRIDGES.items()
+                 if (b == "scope_tuner" and set(SCOPE_TUNER) <= set(modules))
+                 or (b != "scope_tuner" and len(_present(parts, modules)) >= 2))
 
 
 def flags_inc(key, modules) -> str:
@@ -454,7 +465,9 @@ def _handler(v):
 def hooks_inc(modules, remix=None):
     """remix.inc for bridge.s: which bridges are on and their tables."""
     on = bridged(modules)
-    out = [f".set hk_{b}, {int(b in on)}" for b in BRIDGES if b not in CODELESS]
+    out = [f".set hk_{b}, {int(b in on)}"
+           for b in BRIDGES if b not in CODELESS]
+    out.append(f".set hk_tuner_scope, {int('TUNER' in modules and 'SCOPE' in modules)}")
     out += [".macro hk_track_key_records"]
     if "track_key" in on:
         out += [f"    HKREC 0x{c:02x}, {_handler(p)}, {_handler(r)}"
@@ -514,6 +527,22 @@ def select(modules):
                               "track status icons: each participant's state fold, in order",
                               kind="jsr"))
         overrides += [Override(ICON_SITE, key) for key, _sym in _present(STATUS_ICON, modules)]
+    if "scope_tuner" in on:
+        has_tuner = "TUNER" in modules
+        detours.extend((
+            Detour(0x40059EF0, H("4ab9460d16a0"), "hooks", "hk_scope_tuner_tempo",
+                   "TEMPO: DOWN opens SCOPE, UP opens TUNER" if has_tuner else
+                   "TEMPO: DOWN opens SCOPE, else stock"),
+            Detour(0x4000D99A, H("23c180004800"), "hooks", "hk_scope_tuner_frame",
+                   "frame tail: SCOPE capture, then TUNER capture" if has_tuner else
+                   "frame tail: SCOPE capture"),
+            Detour(0x40056C72, H("4879460d1664"), "hooks", "hk_scope_tuner_tick",
+                   "UI loop: SCOPE draw, then TUNER analyse and draw" if has_tuner else
+                   "UI loop: SCOPE draw"),
+        ))
+        overrides.extend(Override(site, key) for site in
+                         (0x40059EF0, 0x4000D99A, 0x40056C72)
+                         for key in SCOPE_TUNER)
     for b, site, stock, sym, kind, pad, note in (
             ("frame_tail", TAIL_SITE, TAIL_STOCK, "hk_frame_tail", "jmp", 10,
              "the frame interrupt's epilogue: each participant, then the epilogue once"),
@@ -559,7 +588,8 @@ MODULE = Module(
     key="HOOKS",
     kind=Kind.CF_PATCH,
     category=Category.SETTINGS, author="Sam Banks", author_url="https://github.com/sambanks",
-    proof=Proof.PORT, proof_note="verify_hooks: the bridged tables and chains under Unicorn, and each bridged image's sites",
+    evidence=(Evidence(Level.EMULATOR, ref="verify_hooks",
+        note="verify_hooks: the bridged tables and chains under Unicorn, and each bridged image's sites"),),
     doc="Platform: owns a stock site two selected modules both claim, and calls each one's routine there.",
     linked=_ALL["linked"], detours=_ALL["detours"], symbol_refs=_ALL["symbol_refs"],
     overrides=_ALL["overrides"], pokes=_ALL["pokes"],

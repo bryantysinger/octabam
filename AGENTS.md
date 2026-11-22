@@ -2,14 +2,17 @@
 
 octabam is a remixer for the Octatrack's OS: it composes modules, each
 credited to its author, into one image built from the user's own 1.40C.
-`README.md` says what each module and remix is and where it has run;
-`CHANGELOG.md` records each flashed image. `docs/README.md` lists every doc
+`README.md` is the front door; `modules/README.md` lists every module and
+`remixes/README.md` every remix; `CHANGELOG.md` records each release. The musicians' manual,
+[sambanks.github.io/octabam](https://sambanks.github.io/octabam/), is built from
+`docs/site/` by `tools/site/` (its README) for the release in
+`tools/site/release.py`, with the web builder. `docs/README.md` lists every doc
 by reader; `docs/contributing/PLACEMENT.md` is the architecture record for
 where code goes and what is measured about the memory.
 
 The repo is organised as **modules** (`modules/<name>/manifest.py` declares one
 contribution) composed into **remixes** (`remixes/<name>/remix.py` selects a
-set, `README.md` beside it says where it has run; `remixes/test/<name>/`
+set, `README.md` beside it says what is in it; `remixes/test/<name>/`
 carries one module for its gates).
 `make modules` lists them, with the compatibility matrix.
 `docs/contributing/MODULES.md` is the contributor guide and
@@ -39,9 +42,8 @@ rewriting; run their build against the shared stock image first.
 bit-identical against the baseline of your branch's merge-base with
 origin/main (`tools/verify/refhash_store.py` saves it once per merge-base for
 every worktree; `REFHASH_LOCAL=1` compares against a `save` of this tree).
-(Since 10 Sep 2026 the report
-prints tool paths; a path change is a report change and needs a re-save
-after the artifacts are shown identical.)
+The report prints tool paths, so a path change is a report change and needs
+a re-save after the artifacts are shown identical.
 
 **Never an Elektron byte in the repo** — no image, no slice, no `.syx`, in a
 commit or on an issue. `.incbin` from the user's stock image at build time
@@ -68,9 +70,8 @@ merge, and only when main has moved under it since its last green run: a
 file both changed (`git diff --name-only $(git merge-base origin/main
 HEAD) origin/main` against the PR's files), or a module, hook, cave or
 remix its gates build with. Otherwise merge it as it stands. Updating every
-open PR after every merge is a full CI run each (`check-remix octabam`
-took 72 min on sambanks/octabam#1087, 12 Nov 2026) that re-proves what no
-merge touched (owner's rule, 13 Nov 2026). CI's reach job runs the gates the diff reaches, and the
+open PR after every merge costs a full CI run each, which re-proves what
+no merge touched. CI's reach job runs the gates the diff reaches, and the
 `refhash` bit-identity pass for a build change, on every push to `main` and every
 PR, fork PRs included, on a runner that downloads the 1.40C for that run
 (`CONTRIBUTING.md` "Before you open a PR" is the rule and the reason); the
@@ -80,12 +81,25 @@ and no reach or refhash pass locally before a PR: they take hours and CI runs
 them.** Locally, run only the one gate script for the change
 (`python3 tools/verify/verify_<name>.py <remix>`), push, and read
 `gh pr checks`; a local whole-remix run is for a failure CI has reported that
-the one script cannot reproduce. A change to
+the one script cannot reproduce. **A community remix is the exception**
+(below). A change to
 `.github/`, `scripts/` or the Makefile runs every CI job. Passes whose image
 and inputs did not move are reported `cached`.
 
-**A change that alters what a remix does — its modules, effects, menus,
-costs or proof status — updates the hand-written manual site pages under
+**A community remix** (`remixes/community/<name>/`, a contributor's own
+selection) is its author's to keep working: CI's runs leave it out
+(`tools/verify/reach.py`), so run `make check REMIX=<name>` locally before
+its PR and list the result in the PR body. The web builder offers it when it
+passes `make check` in the publish run (`tools/web/publish.py`); one that
+stops passing drops out of the builder at the next publish. Its name on the
+unit is `<image_name or name> <BUILD>`, upper case, cut at 15 characters:
+set `image_name` (at most 12) when the name is longer. The manual's
+Community Remixes page is generated from `remix.py` (its `doc` line and
+modules), so write a good `doc` and a `README.md` and edit nothing under
+`docs/site/`. `CONTRIBUTING.md` "Remixes" is the rule.
+
+**A change that alters what a remix does — its modules, effects, menus
+or costs — updates the hand-written manual site pages under
 `docs/site/` in the same PR.** The generated reference pages update
 themselves from the manifests (`tools/site/gen_pages.py`).
 
@@ -100,18 +114,15 @@ sessions share this repository at once; the main checkout's working tree,
 index and stash list are theirs as much as yours. Start every task with
 `git worktree add .claude/worktrees/<name> -b <branch> origin/main`, work
 and run the gates there, and open the PR from it. Never `git stash` or
-`git stash pop` in the main checkout: on 13 Sep 2026 a pop there took
-another session's stash (`o14 port edits`) instead of the caller's own
-and a `stash drop` removed it from the list -- restored by commit SHA,
-but only because the dangling commits were still there. In a worktree:
+`git stash pop` in the main checkout: a pop there can take another
+session's stash instead of yours. In a worktree:
 `vendor/` and `.venv/` are symlinks to the main checkout's (gitignored,
 and excluded in `.git/info/exclude`); `out/raw/section_3_MAIN_OS.bin`
 must be there too (`make os && make recon`, or copy it); without them the
 selftest reports "remix X does not build" and every gate fails before it
 starts. `git submodule update --init` in the worktree as well. **Do NOT
 symlink `out/emu`**: its CMake cache names the main checkout's sources,
-so `cmake --build` there compiles THEIR `tools/emu/ot_emu`, not yours
-(14 Sep 2026: a port edit "built" fine and the binary did not have it).
+so `cmake --build` there compiles THEIR `tools/emu/ot_emu`, not yours.
 Build the port into the worktree: `make emu-cf` (a fresh cache, ~1 min).
 `out/cache/` is the build's memo (the packed runtimes, keyed by the sha256
 of their inputs; `tools/remix/pack.py`), per worktree and safe to
@@ -119,10 +130,8 @@ delete; `OCTABAM_NO_CACHE=1` builds cold when a build result is in doubt.
 **The same holds for `dsp_host` and `dsp_asm`:** `scripts/setup.sh` builds
 them from a COPY staged into `vendor/dsp56300/source/dsp_host/`, so in a
 worktree the shared binary is the main checkout's, whatever the branch's
-`tools/harness/dsp_host/dsp_host.cpp` says, and `dsp_host` ignores an
-option it does not know (PR #356 was reviewed twice, 21–22 Sep 2026, as
-"MOD has no effect, residual 0.000": its `-paramfile` never ran and every
-render used default knobs). A branch that changes `dsp_host.cpp` is built
+`tools/harness/dsp_host/dsp_host.cpp` says, and `dsp_host` silently ignores an
+option it does not know, so a new option renders with default knobs. A branch that changes `dsp_host.cpp` is built
 in an isolated tree, never into `vendor/` — the CMake recipe is
 `docs/contributing/TOOLING.md` section 1 — then point the harness at it
 (`benchmark_reverbs.HOST`, `send_probe`'s host path) for that run.
@@ -130,8 +139,8 @@ in an isolated tree, never into `vendor/` — the CMake recipe is
 ## The trap register
 
 The traps that have already cost real work live in
-[`docs/contributing/TRAPS.md`](docs/contributing/TRAPS.md): symptom, what
-it cost, the fix, and what now gates each one. Add a new trap there the
+[`docs/contributing/TRAPS.md`](docs/contributing/TRAPS.md): the symptom,
+the cause, the fix, and the gate that now catches each one. Add a new trap there the
 moment it costs real work, and add its line here.
 
 **DSP side**
@@ -146,7 +155,7 @@ moment it costs real work, and add its line here.
 - [`lua (rN+d)` takes d in −64..63 and wraps silently](docs/contributing/TRAPS.md#trap-lua) — past ±63: `move r7,r5 / move #imm,n5 / move (r5)+n5`.
 - [`dsp_asm` resolves labels by prefix](docs/contributing/TRAPS.md#trap-label-prefix) — no new label may have an existing label as its prefix (`warmz2` next to `warmz` branched into hyperspace).
 - [Build-time markers and base literals count in comments](docs/contributing/TRAPS.md#trap-markers) — don't spell `$30000` or the `; X` markers in comments.
-- [A form the chip has never run is not proven by the port](docs/contributing/TRAPS.md#trap-chip-form) — grep stock payloads before using a form.
+- [A form the chip has never run is not proven by the port](docs/contributing/TRAPS.md#trap-chip-form) — `verify_dsp_forms` refuses a form with no stock site, register row or unit-proven module.
 - [No `rep` in `init`/`proc`; no dense X work in a DMA's 8K block](docs/contributing/TRAPS.md#trap-rep-dma) — `tools/build/norep.py` refuses the former; the port models neither.
 - [`SPEC=1` requires `XBUS=1`](docs/contributing/TRAPS.md#trap-spec-xbus) — build-guarded; do not ungate.
 - [The track↔core mapping is inverted](docs/contributing/TRAPS.md#trap-track-core) — A = tracks 5-8 (BusVerb), B = 1-4 (BusDelay). Test reverb on track 5.
@@ -158,6 +167,8 @@ moment it costs real work, and add its line here.
 - [The vendored AGU mis-stepped a pre-decrement from a modulo base](docs/contributing/TRAPS.md#trap-agu-modulo) — fixed in `agu.h`; the bit-identity gates audit it.
 - [A rewritten trampoline is not retranslated](docs/contributing/TRAPS.md#trap-trampoline) — never rewrite emulated code in place (`r.emac_slots`).
 - [A measurement can be structurally blind to what it rules out](docs/contributing/TRAPS.md#trap-blind-instrument) — before a null result, ask what the instrument cannot see.
+- [`dsp_host -trace` skips the body of a `do` loop](docs/contributing/TRAPS.md#trap-trace-do) — the interpreter runs the loop in one step; trace with `-steptrace`.
+- [Sequential sample loops were priced as alternative modes](docs/contributing/TRAPS.md#trap-sequential-limiter): mark sequential loops explicitly; first-transient render gates catch previous-block gain lag.
 - [A bus client that registers and writes zero steals everyone's level](docs/contributing/TRAPS.md#trap-bus-zero-client) — N/(N+1) dilution; gate registration on the knob.
 - [r7 scratch `$00..$83` is the per-instance block; `$84+` hangs the unit](docs/contributing/TRAPS.md#trap-r7-scratch) — the slot census of the source is the truth, not the header map.
 - [A dump can resolve a dispatch entry for an effect it does not contain](docs/contributing/TRAPS.md#trap-dump-alias) — `SPEC=1` aliases the absent server to SEND; check which code the entry points at before believing negatives.
@@ -175,7 +186,7 @@ moment it costs real work, and add its line here.
 - [A slot can draw a knob and publish nothing](docs/contributing/TRAPS.md#trap-knob-publish) — panel and DSP are separate; `docs/firmware/PARAM_PAGES.md`.
 - [Flash cycles are expensive](docs/contributing/TRAPS.md#trap-flash) — render locally and measure first.
 - [The unit misbehaves](docs/contributing/TRAPS.md#trap-failure-modes) — `docs/contributing/FAILURE_MODES.md` first; add new failures the moment they are seen.
-- [Window code above `0x37f00` is wiped at boot; below `0x33da3` DARK REV can write it](docs/contributing/TRAPS.md#trap-window-zero) — resident code in `0x33da3..0x37eff`; the build refuses the rest.
+- [Window code above `0x37f00` is wiped at boot; below `0x33da3` DARK REV can write it](docs/contributing/TRAPS.md#trap-window-zero) — resident code in `0x33da3..0x33fff` and `0x37da3..0x37eff`; the build refuses the rest, and a record inside a guarded reverb's slot extent.
 - [A host write at the frame interrupt's entry is lost on every other frame](docs/contributing/TRAPS.md#trap-host-mask) — send to core B on ping-0 frames; never to core A.
 - [`dsp_asm` does not assemble a backward `bra`](docs/contributing/TRAPS.md#trap-bra-back) — trampolines go before their target.
 - [A persistent slot init doesn't clear holds the previous effect's state](docs/contributing/TRAPS.md#trap-dirty-state) — zero every slot the sample loop reads; `verify_dirty_state` refuses.
@@ -209,6 +220,8 @@ moment it costs real work, and add its line here.
 - [Fixed `/tmp` names corrupted parallel builds](docs/contributing/TRAPS.md#trap-tmp-race) — mkdtemp per process now; a failure moving between remixes is a shared-scratch race.
 - [The memory word-count fixture can race reach and shard snapshots](docs/contributing/TRAPS.md#trap-word-fixture) — ignore its scratch path so it is not planned or copied as a real remix.
 - [Replacing a stock routine can halt every other caller](docs/contributing/TRAPS.md#trap-stock-callee) — diff the routine and its callers with `tools/build/where.py`.
+- [`{byte 21, fn}` on the engine queue runs fn on the sys task](docs/contributing/TRAPS.md#trap-job21) — the task that handles the keys; a long job needs a type of its own at the engine's receive.
+- [A gate at the step handler is a step early](docs/contributing/TRAPS.md#trap-step-ahead) — the first trig at PLAY was computed before PLAY; gate at the arm `0x40005ff0`.
 - [A forked port shares its DSP memory with its siblings](docs/contributing/TRAPS.md#trap-fork-shm) — `unshareRanges`; new shared maps need the same.
 - [The port ran under Rosetta and nothing said so](docs/contributing/TRAPS.md#trap-rosetta) — `file out/emu/ot_emu` is the check.
 - [The report is API and prints paths](docs/contributing/TRAPS.md#trap-report-api) — re-save refhash only after the artifacts are shown identical.
@@ -227,6 +240,9 @@ moment it costs real work, and add its line here.
 - [A runtime's own bytes can spell the clones' staging range](docs/contributing/TRAPS.md#trap-staging-coincidence) — the build moves staging and re-checks; a word that moves with it is stale.
 - [The machine list's key handlers clamp the cursor to 5](docs/contributing/TRAPS.md#trap-machine-clamp) — a sixth row fits by accident, a seventh needs the ten `moveq`s; a port key held 0.25 s repeats.
 - [Narrowing the port's DMA arm rule broke a gate whose image never moved](docs/contributing/TRAPS.md#trap-dma-arm) — a port change is every port gate's instrument; CI's cached passes hide it.
+- [A wall-clock timeout in a port gate failed on a loaded runner](docs/contributing/TRAPS.md#trap-wall-timeout) — the same tree passed on its PR and failed on main; under the port, waits and settles are emulated time (`Events(clock=)`, `MenuPort.run` finishes a capped slice).
+
+- [A gate timed its input from boot and its keys from the load's end](docs/contributing/TRAPS.md#trap-two-clocks) — the load-end mark moved 5.7 s with a STORE Part client; cue the input on the script's clock (`--audio-in-on-cue`, `<ms> audio start`).
 
 - [Resident relinks can republish imported staging addresses](docs/contributing/TRAPS.md#trap-resident-import-exports) — publish only owned exports; `midi-follow-events` exercises descriptor relocation with MIDI Part State.
 - [A ColdFire save frame sized for the wrong register count overwrites the return address](docs/contributing/TRAPS.md#trap-cf-frame) — `lea -4N(%sp)` + `movem.l regs,(%sp)`; no pre-decrement `movem`, no `eor <mem>,Dn`, no `st <mem>`, no `move.b #imm,abs.l`.
@@ -238,33 +254,39 @@ moment it costs real work, and add its line here.
 - [A stock call returns with a0, a1, d0 and d1 changed](docs/contributing/TRAPS.md#trap-stock-scratch-regs) — MIDI SCENES kept `scn_snap` in a1 across the CC sender; reload scratch registers after every stock `jsr`.
 - [A held scene replaces every encoder's handler](docs/contributing/TRAPS.md#trap-scene-encoders) — `0x40053498` over the SETUP editors; a panel gesture's gate drives the panel.
 - [A frame interrupt entering about 150 µs late stops the DSP's frame exchange](docs/contributing/TRAPS.md#trap-late-frame) — START and program changes; ColdFire time added to the frame interrupt moves it on or off the window; FRAME GUARD holds a late entry to 190 µs.
+- [Dropping a stock hold to keep a window open can drop the hold's release bookkeeping](docs/contributing/TRAPS.md#trap-hold-release-toggle) — LOCK EDIT's re-hold audition lost the step trig until `le_trighold` cleared stock's `0x460d1a9e` itself.
 
-## How claims are written here
+- [PLAYBACK slot A depends on the machine](docs/contributing/TRAPS.md#trap-pitch-destination): THRU has INAB where FLEX has PTCH; resolve the parameter before offering pitch controls.
 
-The project has been burned by stale confident numbers more than once — a
-cycle budget of 1080 that was never a ceiling, a burn probe that measured an
-engine we do not ship, a blocker our own bisect had already falsified.
+## How docs are written here
 
-So: **separate measured from inferred.** `docs/firmware/CHIP.md` marks every number with
-a confidence marker and keeps retracted values beside current ones. Do the
-same. Say what would falsify a claim. Do not write "found it" for something
-you have inferred, and when a retraction lands, propagate it to every document
-that repeated the old number — not just the one you were editing.
+Nothing reaches `main` without CI's full gates, so a doc never has to prove
+what it says. Write what the code does now, for the person reading.
 
-## Removed files stay cited
+- **No proof levels or run histories.** No "on a unit", "under the port
+  only", "not flashed", which image or whose unit it ran on, run tallies,
+  dates, PR numbers or build numbers in a doc. The gates are the proof; git
+  and `CHANGELOG.md` are the history.
+- **No retractions kept beside the fact.** When a fact changes, change it
+  everywhere it is repeated and delete the old one.
+- **Numbers a reader needs stay** (a cost, a limit, a range, a timing a
+  musician hears), stated plainly, without how they were measured.
+- **Firmware facts that are guesses** say so in a word ("probably",
+  "unconfirmed"). Don't record the method.
+- **Known faults a musician can hit** are stated as what happens and what
+  to avoid, without the test tallies behind them.
+- **Lead with what it does**, then how to use it, then how it works. Define
+  a term the first time a page uses it (`docs/GLOSSARY.md`). One idea per
+  sentence; a parenthesis is for an aside, not the main point.
+- **One home per fact.** Link to it rather than repeating it.
 
-The tree was pruned hard in the octabam refactor (~350 files of ColdFire
-archaeology, emulator scratch, voicing snapshots) and `docs/history/` (18
-closed records) was removed 16 Sep 2026; all are still reachable in git.
-Comments cite removed probes (`dsp/baseprobe.asm`, `dsp/ymemprobe.asm`) as
-the provenance of a measurement, and those statements remain true. Recover
-one with:
+`TRAPS.md` and `FAILURE_MODES.md` are working registers: symptom, cause,
+fix and the gate that now catches it. Keep entries to those four.
 
-```bash
-git log --all --oneline -- dsp/baseprobe.asm
-git show <sha>:dsp/baseprobe.asm
-```
+## Removed files
 
-Leave those citations alone — rewriting one to remove a filename erases
-how the number was obtained. A citation of a removed file uses the form
-`git show <sha>:<path>` (`docs/history/` records: sha `3ceba41`).
+The tree was pruned hard in the octabam refactor and `docs/history/` was
+removed 16 Sep 2026; all of it is reachable in git
+(`git log --all --oneline -- <path>`, then `git show <sha>:<path>`; the
+`docs/history/` records are at sha `3ceba41`). Existing citations of removed
+files may stay where they explain a number in code; don't add new ones to docs.

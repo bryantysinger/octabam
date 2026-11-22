@@ -53,84 +53,6 @@ FDBK, TONE, FREQ and HPF glide over about 6 ms; MIX glides per sample; TIME
 glides with the clock. `dear` is TIME 0, FDBK 127, TONE 0, FREQ 127, MIX 64,
 STGS 4096, HPF 64 (`cycle_count.py` prices HPF on).
 
-## Measured
-
-All 52 gates of `tools/verify/verify_bbd.py` pass on this tree (`dsp_host`, a
-private image with the stock code built in and BBD in the space of SPRING REV
-and PLATE REV, as `remixes/test/bbd` places it):
-
-- **Exact dry:** MIX 0 renders the input sample for sample, static, with every
-  other knob moving, and with trig splits (0 of 48,000 words differ).
-- **The DSP against `bbd_ref.py`:** −57 to −79 dB residual across TIME, STGS,
-  MIX, FDBK, TONE, FREQ, FRZ, LIM and HPF (1, 64, 127); splits at 1, 7 and 15; STGS
-  changed twice mid-signal, with TIME still and with TIME moving every block; FRZ 127 mid-signal.
-- **Stop kill:** slot 11 at 0 from block 2000 to 3300 over a ringing loop
-  (FDBK 110): the input exactly while it holds (0 of 41,600 words differ), no
-  tail after (−102.4 dBFS; −44.0 dBFS without the kill), the model at −74.4 dB.
-  Under the ColdFire port (`ot_emu`, this remix's image, a project's T1 with
-  its FX2 id poked to BBD's, STOP three times): from the kill on, only record
-  byte +53 (slot 11) is zeroed, by `kill.s`, every frame; with DARK REV's id
-  the stock pass zeroes +24, +34 and +53 as before.
-- **Freeze:** a 0.5 s crossfade into FRZ 127 keeps a self-oscillating loop's
-  level (+0.4 dB); FRZ 100 with TONE 0 and FDBK 20 lengthens the trails
-  without droning (−97.7 dBFS at 8.5–10 s).
-- **Idle and LIM:** tails die away (FDBK 90: −114 dBFS after 9 s); FDBK 127,
-  TONE 0 self-oscillates below full scale, and LIM 127 settles it 29.6 dB
-  under LIM 0.
-- **Isolation:** eight instances under `-guard 0x4000 -guard-shared -dirty
-  0x5a`: no stray write or clobber, each bit-identical alone.
-- **Garbage start:** silence from a garbage block renders exactly as from a
-  zeroed one (at most 2 LSB, −132.5 dBFS: the bucket noise).
-- **Zipper:** no block-rate step on any continuous knob.
-- **Placement:** BBD at `P:0x01000..0x01458` (payload A) and
-  `P:0x00dc0..0x01218` (B), inside PLATE REV's and SPRING REV's run and clear
-  of the 35 SPRING REV words DARK REV calls (`P:0x01586`, `P:0x01346`).
-- **DARK REV** renders bit-identically to the stock OS on both cores, fixed and
-  moving. A layout with BBD in SPRING REV's space alone covers that routine and
-  fails this gate (about 95 % of words differ).
-
-**Cost.** `cycle_count.py`: 378 cycles a sample per instance (the tick path,
-HPF on), so four per core take 1,512 of the 3,120 usable. Executed in
-`dsp_host` (`benchmark_reverbs.run`, eight instances, four per core, its fixed,
-modulated and trig-split cases including every synchronised split): at most
-399.9 instructions a sample per instance (25,592 a block per core, synchronised
-splits at 1), 365.8 modulated unsplit, 330.6 fixed; SPRING REV 318.4 under the
-same cases. HPF's section is rebuilt each call while it is on,
-so a split pays for it twice.
-
-**Sound** (measured before HPF became variable and POST was removed; the
-wet path is otherwise the same code). Wet-only audit tables at TIME 0 and 127: harmonics −44 to −76 dBc,
-DC −85 to −140 dBFS, nothing on the rails, idle 2 LSB. The aliasing limit
-(−60 dBc) fails by design: a bucket brigade is a sampler clocked at 5–20 kHz,
-and the charge-transfer curve bends the held samples, so harmonics fold at the
-clock (−44 dBc for 1.1 kHz at the fastest clock, −37 dBc at the slowest).
-
-## On the unit
-
-The author played this remix's image on an Octatrack MKII, OS 1.40C, on 17
-October 2026 (**BBDOB4**, `make image REMIX=bbd BUILD=4`, this tree's DSP; MAIN
-OS `4fb5486c…`). Earlier builds ran on the same unit, 11–12 October, in images
-built by Modwerk's builder (derived from octabam) with BBD at FX2 id `0x0e`.
-
-- **BBDOB4:** DARK REV still works on FX2; BBD on T1 behind FILTER and on T5
-  behind PHASER at once, clean; an LFO on the main page; STGS, LIM and HPF on
-  SETUP; STOP, STOP, STOP cuts the tail (the stop kill, `kill.s`); a project
-  save and reload and a power cycle restore the settings.
-
-- **BBD01–BBD02:** crackle on T1 and, after STGS changes, tracks 1–4 silent:
-  the `rep` divides (FAILURE_MODES.md, "Crackle on core B"). **BBD03**, every
-  `rep` a `do` loop: clean on T1 behind FILTER and PHASER, STGS clean on T1 and
-  T5, a heavy existing project fine.
-- **BBD04–BBD13:** FRZ, FREQ, the ±9 dB TONE, LIM (range and default set by
-  ear), the MIX curve and the then fixed 150 Hz PRE/POST switches (no
-  switch-on thump) as intended.
-- **BBD14**, BBD beside the stock effects with SPRING REV and PLATE REV given
-  up (`P:0x01000`/`P:0x00dc0`, as here): DARK REV works on FX2; two instances
-  at once; eight instances (FX2 on all eight tracks) for 30 minutes with
-  feedback and modulation running; a Part or project save and reload; a saved
-  project restored after a power cycle; FREQ swept end to end by an LFO; FRZ
-  and every other control played through the crossfader.
-
 ## Open
 
 - The stop kill works on the unit (BBDOB4); that the record's slot 11 byte is
@@ -166,13 +88,6 @@ Nothing above `+$2039` is read or written, so `buffer_words` is `0x203A`
 - Mono wet; the dry stays stereo.
 - Free-running TIME: the DSP side has no tempo word. Deliberate: TIME is the
   bucket clock, and gliding it is what bends the pitch.
-
-## Gates
-
-```bash
-python3 tools/verify/verify_bbd.py      # 52 render gates (make check runs them)
-make check REMIX=bbd
-```
 
 ## Design
 

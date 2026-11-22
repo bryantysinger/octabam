@@ -16,7 +16,7 @@ no tool or doc maps those names to a final name). Those shots are scratch.
 A screen that goes in the manual is a step in `capture_manual.py`, whose
 `shot(p, module, name, caption, remix)` call sets the final name.
 
-Confidence markers: **measured** = checked in the tree or on a run; **read**
+**read**
 = from the source of the tool, not run for this document.
 
 ## When to re-capture
@@ -55,6 +55,7 @@ Groups and what each captures, from the `shot(...)` calls:
 | `core` | `octabam` | rec-trig-mute, quantize-live-rec-toggle, mute-modes, quantizer, rlen-plen, midi-scenes, scenes-p2, plocks-p2, direct-jump-kyoti, reload-from-project |
 | `plocks` | `octabam`, PLATE REV on track 1 | plocks-p2 held lock and released Part value; use a disposable project with trig 1 empty |
 | `features` | `octabam` with REC THRESHOLD, SEQ, RND NAME and STEM REC added and REC TRIG MUTE and LOAD METER removed (a scratch selection; THR and REC_TRIG_MUTE share a hook, and LOAD METER declares a conflict with STEM REC) | seq, rec-threshold, stems, rnd-name |
+| `seq` | `test/seq` | SEQ window and FUNC + BANK clear menu, without capturing the other features |
 | `inserts` | `octabam`, one effect per track (T1 to T3 FX1, T4 FX2) | setup and main pages of SPECTRUM, CHARACTER, MODULATION, DELAY |
 | `bus` | `octabam-bus` | fx2-lock, tempo-bus, load-meter, memory, usb, and the DELAY SERVER, SEND and REVERB SERVER pages |
 | `extras` | one test remix per module (character-txtr, testgen, resonator, vibrato, sidechain-compressor, miniverb, tapeecho, vocoder, wave, distorx, devilish, transient, verberation; also alone as `distorx`, `vibrato` and `verberation`) | setup and main page of each |
@@ -90,16 +91,19 @@ its PNGs, or an entry in `screen-notes.json`. Without either it shows as
 
 ## Never duplicate panel screenshots
 
-`tools/site/gen_pages.py` already embeds every `screenshots.json` image for a
-module (hero under the title, then **Screen reference**). Do **not** also
-`![](../../img/<module>/….png)` those same panel shots in
-`docs/site/usage/<module>.md` — the module page shows them twice (burned CX
-OSC, Nov 2026).
+Place a panel screenshot in its relevant usage section with
+`![](../../img/<module>/<screen>.png)`. The page generators recognize these
+placements and omit those images from the automatic screenshots above and
+below the usage text. SEQ places its Rhythm and Harmony images under
+Controls and its clear-menu image beside the clear instructions.
+
+Images without an inline placement appear under the title or in Screen
+reference. If every image has a placement, Screen reference is omitted.
 
 | Put here | Do not put here |
 |---|---|
-| `screenshots.json` + `docs/site/img/<module>/*.png` | `usage/<module>.md` embeds of those same PNGs |
-| Diagrams / SVGs only in usage (path, mix, etc.) | A second copy of source.png / setup.png in usage |
+| `screenshots.json` + `docs/site/img/<module>/*.png` for capture records | A second inline copy of the same panel image |
+| Panel images beside their controls or instructions in usage | A separate screen inventory repeating those placements |
 | PR body **Screenshots** (raw.githubusercontent.com) for Sam | Re-embedding the same PNGs again inside usage for the site |
 
 PR descriptions still embed changed PNGs once (ritual). That is for GitHub
@@ -127,7 +131,7 @@ FX1, `0x26` FX2, `0x10` `0x11` `0x12` tracks 1-3, `0x32` NO, `0x28` PROJ.
 gitignored (measured: `git check-ignore` is silent); delete `raw/` and
 `raw2/` before committing.
 
-FX page behaviour, measured on the port 16 Oct 2026:
+FX page behaviour, measured on the port 
 
 - Boot restores the FX1 setup on **page 2** (the routing grid).
 - Track keys switch tracks on both pages.
@@ -135,7 +139,7 @@ FX page behaviour, measured on the port 16 Oct 2026:
 - NO on page 2 goes to page 1; YES on page 2 opens the routing-cell editor.
 - FX from page 1 stays on page 1; page 2 is reached only from boot or from the other FX slot's page 2.
 - The bus FX2 servers have one page and no routing page.
-- The tuner shows `--` under the live path: the port's DSP track chain produced no output (tone on the DSP input, gain table filled, TX0 ring all zero, 16 Oct 2026).
+- The tuner shows `--` under the live path: the port's DSP track chain produced no output (tone on the DSP input, gain table filled, TX0 ring all zero).
 
 ## Before the PR
 

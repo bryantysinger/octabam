@@ -16,7 +16,22 @@ including Image 90 (`usb-lean`). Other documents cite 94, 96 and 99 for
 
 The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
 
+## OCTA S3, 16 Nov 2026, octabam remix
+
+- The author confirmed the handoff checklist on his MKII: the image loads
+  in BRAIN, SEQ PTCH opens Harmony, and THRU INAB has no RIGHT hint.
+- Built from `854ea9c055d9dea89a91763ed43f065e3a24de10`, with upstream's
+  REC_TRIG_MUTE pin `91a58e9` restored after the rebase. The source image
+  predates the evidence and documentation updates. No audio or timing
+  measurements were reported.
+- Artifact SHA-256:
+  `c5efe642cab1de0d71d5ba8f5abb619147c8ea13877cc506bf21ad6bf14e086b`.
+
 ## Unreleased
+
+- **Site and builder version v0.5** (`tools/site/release.py`): the tag the web builder's patches are built from. The site and the builder publish three remixes, `octabam`, `octabam-verbs` and `octabam-bus`, each with its own overview page and manual; the builder page has a **Remix** picker. `octabam-verbs` names its image `OCTABAM-VRB <tag>`: `OCTABAM-VERBS` with a two-character tag is 16 characters, one past REMIX SWITCH's 15, so the tag was cut. `octabam` at v0.5 is the `main` composition at the release commit; against v0.4 it gains SCOPE, SCALES, WAVE (ColdFire), CHORDS FACTORY with PAGES, SCREEN, SLOW LFO, BAR LED, REC CS1 SKIP, KEYBUS with SC KEYBUS BRIDGE, FRAME GUARD and REMOTE; EUCLID FILL is renamed SEQ; PATTERN MUTE keeps its state in CS1 and `pmute.work` (#1143), and BRAIN's switch copy is fixed (#1134). Hardware (Sam's MKII, 22 Nov 2026, the three images built from `main` at `382a478b` plus the release commit, booted by REMIX SWITCH from the flashed image, none flashed): `pre-meter`, `pre-transport`, `pre-usb` and `dsp-watch` pass on all three; the 32-program-change soak left 3 of 32 unapplied on `octabam`, 0 on `octabam-verbs` (32 bad DSP records, 1 per transition at the `dear` layouts' load) and 0 on `octabam-bus`. Longer phases ran on the earlier BUILD 05 (`5b991c85`): `octabam` fx01 to fx03, the loader phases, kits, scenes and DIRECT_JUMP; `octabam-verbs` fx01 to fx04, the loader phases, kits, scenes and `djump-off`; `octabam-bus` fx01, kits, scenes and `djump-off`. `mix-soak` did not complete on any. **Known fault in `octabam`:** with MODULATION loaded in T3's block, a program change that puts DARK REV on all 8 tracks, then START, stops the DSP frame count (a power-cycle clears it). Cause not known; the entry is in `docs/contributing/FAILURE_MODES.md` with the frame log, the diagnostic builds and the controls. `octabam-verbs` carries no stock DARK REV and `octabam-bus` no loader; neither was run against it. Module changes that reached `main` after the tested commit (`382a478b`) are in the release without a unit run. In all three remixes: `batch-bugfixes` pin `2cd3109` ([BANK] lights trigless locks that carry a locked parameter), `erase-empty-trigless-locks` pin `2cd3109` (a second `jsr` on the erase store, so MIDI tracks too) and SEQ (RAND is the default phrase; JUMP spacing applies to RAND; RAND spacing is kept at DEPTH edges). In `octabam` and `octabam-verbs`: SHATTER (seven constants load as one-word short immediates; the BRR depth's +1 is a 6-bit immediate). In `octabam-verbs`: TRANSIENT and VIBRATO (the same short-immediate change), and RESONATOR (its default scale is 1).
+
+- **CX OSC: C28 remix handoff** (`cxosc-core`, built from `f4b11964`, 17 Nov 2026). On an MKII, Ilia reports CX OSC sounds good. The image contains the DEC envelope and startup waveform fixes. The ColdFire emulator booted the image to the RTOS handoff; `verify_cxosc.py` could not run because Unicorn raised an illegal instruction while initializing its M68K engine.
 
 - **Demand loader: one copy a load, a shorter copy loop, a simpler pump** (`modules/dlcopy`, `modules/dlpump`;
   `docs/contributing/DEMAND_LOADER.md`). DLPUMP still sends every load three times. DLCOPY now consumes a repeat
@@ -230,7 +245,7 @@ wrote at 387, and on lighter ones its eleven at 423 before `RING FULL`
 hook took 30 µs against 33: `mirror` 4.1 µs against 6.9, `gains` 0.78
 against 1.39 (20.10). Thirteen files, the inputs as four mono files,
 recorded too, at 261 µs a KB. `lm-stems` is STEMS12's 48 modules on main
-`c9cadc82`, with SHATTER for TRANSIENT (`modules/stems/FLASH.md` flash M).
+`c9cadc82`, with SHATTER for TRANSIENT (flash M).
 - STEM REC: a resting fader's gain slot holds one gain, and the track loops multiply by it without a ramp.
 - STEM REC: while a take records, each file writes whole clusters only, so the card never goes back to a cluster it left half written.
 
@@ -244,7 +259,7 @@ lines at seven tracks), and the mirror runs 3 to 4.5 µs over its
 instruction count, so the queue is to go (`docs/firmware/STEM_REC.md`
 20.9). Eleven files filled the ring in 10 s (`RING FULL`) with the card
 writing at 423 µs a KB, against 255 on STEMS11's eleven-file take; why
-isn't established (`modules/stems/FLASH.md` flash L). With the same ten
+isn't established (flash L). With the same ten
 files, other samples on the Static machines slowed the card from 252 to
 387 µs a KB. `lm-stems` as for STEMS11.
 - STEM REC: STATS.TXT splits the hook into four parts and probes the gain queue's cache lines; the mirror writes only the gains of the tracks a take records.
@@ -258,7 +273,7 @@ filled, ran 49 s with the ring at most 34% full, and no take reached 100%
 to take isn't measured on the unit yet. The `.ot`
 files hold the take's tempo and +12 dB. `lm-stems` is `octabam` plus STEM
 REC and MEMORY, with LOAD METER's refusal of STEM REC lifted in that build
-only; it isn't committed (`modules/stems/FLASH.md` flash K).
+only; it isn't committed (flash K).
 - STEM REC: a folder for each take, `<set>/AUDIO/!STEMS/<take>/<take>-<source>.wav`; T1 alone at 24 bits at boot.
 
 ## STEMS10 — 27 Oct 2026 (local remix `lm-stems`, branch `stems-next`)

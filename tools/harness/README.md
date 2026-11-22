@@ -87,9 +87,12 @@ reference.
   instance's own window (a stray write vs a clobber of a loaded module).
   `-dirty` pre-fills Y with garbage, as hardware never zeroes a buffer.
 - **Instrumentation:** `-track` dumps r7-relative state words every block,
-  `-peekx/-peeky/-pokey` read and seed words, `-dumpy` writes a region,
+  `-peekx/-peeky/-pokey/-xword` read and seed words, `-dumpy` writes a region,
   `-trace` logs the first N instructions; every run reports
-  instructions/sample per instance. `-dispatch` runs the payload's own
+  instructions/sample per instance. `-trace` alone skips the body of every
+  `do` loop, because the interpreter runs a loop in one step; `-steptrace`
+  steps loops one instruction at a time, as `ot_emu` does, and changes no
+  output (`docs/contributing/TRAPS.md#trap-trace-do`). `-dispatch` runs the payload's own
   dispatcher loop instead of the hand-rolled calling convention.
 - **Two cores:** `-mem A.mem -memB B.mem` boots both payloads in one
   process with X/Y `0x30000-0x3FFFF` of core 1 redirected into core 0's
@@ -198,7 +201,7 @@ come from the part with `--project` (the AMP row six bytes before the FX1
 row, the LEVEL pair at +0x1b) or the unit's defaults (VOL 64 = −11.9 dB,
 BAL 64, LEVEL 108 = −3.0 dB); `--mix T1:VOL=127,BAL=64,LEVEL=100`
 overrides; `--mixer off` is the old harness (`--amp 0.5`, no AMP stage,
-5.9 dB hotter than the unit; every voicing note before 12 Sep 2026
+5.9 dB hotter than the unit; every voicing note before 
 inherited that). A 0 dBFS stem enters the engine at 0.254 FS at the
 default VOL. Not modelled here: the main level, the cue mix, the master
 track — the same `(L/128)²` law, measured on MAIN/CUE by hardware capture
@@ -249,7 +252,7 @@ modulator, the delay's LFO) matches in scale and not in residual.
 | stock image, T1 THRU: SEND + EQ flat, tone | T1 chain | −0.001 dB | −121 dB |
 | same | mix (TX0 slot 2 vs `mix.wav` L) | −0.001 dB | −113 dB |
 | the one-aux bus, kick on T2's inputs | T2 chain (SPECTRUM + SEND) | −0.001 dB | −137 dB |
-| same | T8 return (delay → reverb, history; the return gone 20 Sep 2026) | −0.083 dB | −8 dB |
+| same | T8 return (delay → reverb, history; the return gone | −0.083 dB | −8 dB |
 | same | mix | −0.001 dB | −90 dB |
 
 A track whose record carries audio but whose chain output is digital zero
@@ -331,7 +334,7 @@ out/emu/ot_emu --image out/mainos_bus.bin --card out/stress-run/card.img \
 
 Check for `run ended REACHED` and nonzero audio. On hardware, copy the generated `.work` and `.strd` files into a project directory under your set, and keep the generated `AUDIO` folder inside that project so `AUDIO/STRESS_LOOP.wav` resolves. Select A01, then switch through A02-A04. Lower monitoring level before starting: eight tracks at their dearest settings sum loudly. Watch for a freeze, dropout, incorrect Part/effect mode, or a parameter that stops following locks or LFOs. Repeat after each feature change and compare with the same image and project. The emulator run checks loading and short playback; a long hardware soak and manual pattern switching remain separate checks.
 
-## The burn knob (hardware, retired 14 Oct 2026)
+## The burn knob (hardware, retired
 
 A temporary diagnostic, not a shipping feature: `make burn` built the
 shipping remix plus a `BURN` knob on SEND's second slot (`BURN=1` with
@@ -344,20 +347,19 @@ nobody was running the sweep any more; recover it with
 measurements below are kept for their numbers, from the ORIGINAL probe
 (the reverb's own burn blocks, predating the SEND knob):
 
-Measured with the original probe (before the 22 Sep 2026 clock
+Measured with the original probe (before the clock
 measurement, on a 4,535-cycle frame):
 
 | configuration | result | spare |
 |---|---|---|
-| FILTER on all four tracks | froze at `BURN = 87` (16× scale) | 1,392 ✅ |
-| FILTER disabled everywhere | froze at `BURN = 76` (32× scale) | 2,432 ✅ |
+| FILTER on all four tracks | froze at `BURN = 87` (16× scale) | 1,392 |
+| FILTER disabled everywhere | froze at `BURN = 76` (32× scale) | 2,432 |
 
-Four FILTERs cost 1,040 cycles/sample by difference (❌ superseded: one
-FILTER measures 192, `CHIP.md` section 2). FX2 bank (static) 957
+Four FILTERs cost 1,040 cycles/sample by difference. FX2 bank (static) 957
 + 4 × FILTER 1,040 + burn at the freeze 1,392 = 3,389 accounted; stock's
 own per-track work by difference ~1,150 of 4,535. The 16× probe topped out
 at 2,032 and the filters-off configuration passed it, so the absolute
-ceiling is unmeasured by it. ❌ "There is not real headroom": retracted.
+ceiling is unmeasured by it. 
 
 ## What the harness cannot see
 
@@ -367,6 +369,9 @@ ceiling is unmeasured by it. ❌ "There is not real headroom": retracted.
   a race fix holds (`modules/send/README.md`).
 - **The cycle budget.** The emulator renders an engine the chip cannot
   afford. `make cycles` bounds it; hardware proves it.
+  `tools/build/interlock_scan.py` prices the executed path with the DSP56300
+  Family Manual's cycle table and pipeline stalls, a model that fits the
+  unit's slot costs within a few percent (`docs/contributing/CYCLE_SCAN.md`).
 - **The ColdFire side.** `-params` pokes r6 directly, bypassing menus,
   descriptors, ranges and scene logic; the gain chain around the chain is
   modelled, the main level and the cue are not. A slot can draw a knob and

@@ -69,6 +69,9 @@ For other modules: register calls, d0-d1 / a0-a1 scratch, the rest kept.
 | `sc_family` | d0 ID | d0 = its family 0..8, -1 for no such ID |
 | `sc_snap` | d0 note 0..127, d1 = ID << 4 \| tonic | d0 = the nearest note of the scale, ties downward; every other register kept |
 | `sc_track` | d0 MIDI track 0..7 | d0 = ID << 4 \| tonic of its KEY, -1 for KEY OFF |
+| `sc_audio` | d1 a STORE context (bank * 4 + Part, 0..63) | d0 = ID << 4 \| tonic of that Part's audio scale, -1 for OFF |
+| `sc_audio_mask` | d1 a STORE context | d0 = the audio scale's pitch classes on its tonic (bit k = pitch class k from C), 0 for OFF |
+| `sc_audio_set` | d0 = ID << 4 \| tonic, or -1 for OFF; d1 a STORE context | d0 = 0 and `scales.work` due; -1 and nothing written for a context past 63 or an ID or tonic that is none |
 | `sc_keyboard` | C call: track, first note, green mask (bit k = key k) | the sixteen trig LEDs as a keyboard from that note (key k sounds it + k), the CHROMATIC keys' colours for the track's scale, a masked key green (the caller's notes: CHORDS FACTORY's chord while FUNC types it); d0 = 1, or 0 and nothing drawn on KEY OFF; d2-d7 / a2-a6 kept |
 | `sc_pick` | d0 the ID shown first, a0 the routine to call | the chooser (UI task only); a0 is called with the chosen ID in d0, as a C routine |
 
@@ -110,12 +113,16 @@ STORE (`store_part_midi_key`). SCALES is registered as a STORE Part client
 with the MIDI setup window to read and no byte to write.
 
 **scales.work** (a STORE client, `modules/store`): a 16-byte header
-(`SCLS`, version 1, length 512, the CRC-32 of the IDs) then `sc_lib`,
-beside the bank files. Written by the bank writer and before the project
+(`SCLS`, version 2, length 640, the CRC-32 of what follows) then `sc_lib`
+(512 bytes) and `sc_alib` (128 bytes: bank * 4 + Part, then the audio
+scale's ID and tonic), beside the bank files. A version 1 file (`sc_lib`
+alone, written before the audio scales) still reads, with every audio scale
+OFF, and the next write makes it version 2; an older build refuses a
+version 2 file. Written by the bank writer and before the project
 store when an ID changed; `scales.strd` is its copy at the project store,
 copied back at a project reload. A load of every bank reads every bank, a
 masked load those banks; no file is no scale past the KEY's own. Part
-Clear empties that Part's IDs. A file that is not version 1 or fails its
+Clear empties that Part's IDs and its audio scale. A file that is not version 1 or 2 or fails its
 CRC is refused: STORE's prompt (client 6, SCALES NOT LOADED), never
 written over unless the answer says so.
 
@@ -184,7 +191,7 @@ The keys ask one question; the answers are chosen at build time
 | --- | --- | --- |
 | MIDI | always | `sc_track`: the KEY and `sc_lib`, key 1 = C |
 | audio | SCALE QUANTIZER | its own `SCALE_AT` (`0x400d2ca8`, the pinned `jmp qz_scale_mask`: the SCALE's pitch classes rotated by ROOT, 0 = OFF) and ROOT (`0x100b14ee`); its keyboard plays ROOT on key 1 (its README), so key1 = tonic = ROOT |
-| audio | otherwise | none: stock's keyboard |
+| audio | otherwise | `sc_audio` on the Part the UI edits (`store_part_ui_context`): one scale and tonic per bank and Part, key 1 sounds the tonic; OFF: stock's keyboard. Set through `sc_audio_set`; the UI to set it is a later change |
 
 A module that knows a track's scale answers here instead of drawing LEDs
 of its own: one more `HAVE_<NAME>` in `_sources` and its branch in
@@ -222,65 +229,3 @@ author's later line does, at `0x4009fb80` (timhastie, #980), where
 SCALES' scale applies first and SCALE QUANTIZER's SCALE / ROOT after it,
 the order SCALE QUANTIZER documents for stock's KEY. Inferred from the
 two sites; not run until that line is pinned.
-
-## Measured
-
-- `tools/verify/verify_scales.py`, its model built from music (each
-  family's modes as rotations of its parent scale, the others as semitone
-  lists, SCALE QUANTIZER's 24 from its README), not from the module's
-  tables:
-  - the linked code under unicorn, the image's own bytes: every ID's mask,
-    family and names, the refusals; `sc_snap` for every ID x tonic x note
-    (79,872); `sc_track` for every KEY 0..255 x 9 IDs in `sc_lib` (the ID
-    held only while the KEY agrees); the installed output on 8 tracks
-    (3,840 notes, stock's paths included); the installed encoder for every
-    KEY 0..84 x 5 IDs x 7 movements (2,975); the formatter's two strings
-    and its bounds; the contexts and the KEY through STORE;
-  - under the ColdFire port, MKI and MKII, on `test/scales`: the trig
-    LEDs from the panel stream for every KEY 0..84 and every ID 8..52 on a
-    tonic, a KEY turned while CHROMATIC is shown; the chooser driven from
-    ARP SETUP's keys for each of the 52 IDs, the KEY read back from the
-    Part, the CS1 mirror and the live copy, the ID from `sc_lib`, `+0x12`
-    unchanged; reopened (YES YES keeps the scale), NO, F turned while
-    pushed (no window), the window left open after a plain push, RIGHT
-    into a family and LEFT back; CTRL1 SETUP's YES. 132 LED and 58
-    chooser runs per model, all equal;
-  - `scales.work` under the port, MKII: a scale picked then SAVE PROJECT
-    writes `scales.work` and `scales.strd` (header, CRC-32, the ID in bank
-    1 Part 1 track 1, nothing else); the saved card booted again gives the
-    ID and the KEY back; a run with no save writes no file. The window's six
-    states drawn under the port and looked at (families, a family, back,
-    scrolled, reopened with the marks).
-  - On `test/scales-quantizer`, the audio side as well: every SCALE 0..24
-    on ROOT C and A and every ROOT in MINOR, key k = ROOT + k.
-- Planted defects: the CS1 store removed fails every chooser run's CS1
-  read-back; the dispatcher call removed fails `refresh-midi`; the KEY /
-  ID agreement removed fails the unicorn checks; YES giving row + 1 as the
-  ID instead of `sc_order`'s fails the chooser-order check (every family
-  reversed in `sc_order`).
-- The keys' display and refresh (KEY LEDS, the module this one grew from)
-  on the user's MKII (OCTABAM22, 30 Oct 2026): the keys follow KEY, SCALE
-  and ROOT, MIDI and audio, without a key press.
-- On the user's MKII: the chooser in stock's list window, the KEY's turn,
-  the snapped notes and the keys (OCTABAM23, 30 Oct 2026); the window of
-  MAIN MENU's size (OCTABAM24, 30 Oct 2026); with the IDs in `scales.work`
-  (OCTABAM26, 31 Oct 2026): the chooser, the snapped notes and the keys,
-  the scale back after SAVE PROJECT and a power cycle; that image already
-  had FREE LOOP as STORE's client 5 and SCALES as 6, as `main` has now.
-- SCALE QUANTIZER's 24 scales against the catalogue, by its author
-  (timhastie, #980, at `b9cd1bc`): each matches one ID bit for bit, and
-  his snap (the pitch class to the nearest degree of the scale rotated to
-  ROOT, the lower on a tie) and `sc_snap` agree on all 52 masks, 12
-  tonics and 128 notes.
-
-## Inferred, open
-
-- The short names in the KEY field: the formatter's two 5-byte strings
-  draw 4 characters under the port (`PHRD`); lowercase `b` in names
-  (`DOb2`) is drawn by the port's font as the unit's is assumed to.
-- An unsaved ID does not survive a power cycle: the KEY does (stock's CS1
-  mirror), the ID is read from `scales.work` at the next load, so the track
-  plays the KEY's Major or Minor until the scale is picked again. A CS1
-  copy would need a CS1 range no module holds; none is claimed.
-- A Part reload or paste that leaves the KEY on the same Major / Minor
-  keeps the destination's ID: `sc_lib` follows Part Clear, not copies.

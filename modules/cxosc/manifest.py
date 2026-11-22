@@ -14,7 +14,7 @@ import os
 
 from remix.schema import (
     Apply, CavePatch, Category, Detour, Gate, Kind, Linked, Module, Option,
-    Proof, Setting, Store, SymbolRef,
+    Evidence, Level, Setting, Store, SymbolRef,
 )
 
 _HERE = os.path.relpath(os.path.dirname(os.path.realpath(__file__)))
@@ -307,17 +307,19 @@ MODULE = Module(
     category=Category.MACHINES,
     author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
-    proof=Proof.HARDWARE,
-    proof_note=(
-        "MKII CX 75 (author): unit PLAYBACK/SETUP shots via SCREEN; saw landmark left-drop+linear "
-        "rise; SYMM midline row 6 (±4, matches CAR/MOD). CX 67 CAR/MOD labels + outline ±4 + bipolar "
-        "PWM LCD. CX 66 outline; CX 65 silhouettes; CX 63 saw PWM skew liked on unit. "
-        "CX 48: sine→saw→square + PWM; FINE/FOLD/MIX; HOLD INF; slew. "
-        "MKII CX-CF 69 (9 Nov 2026): CF METER — 4× CX idle 22%/ISR 272 us; 6× ~12%/309; "
-        "7× idle 0%/355 max 446 (wall) → ML_FM_MAX=6; author confirmed 6 MAX toast on unit. Prior CX 41 / CX 28 / VRCS-CX VS. "
-        "verify_cxosc + make check REMIX=cxosc"
-    ),
-    doc="Buchla-style complex oscillator (FM + wavefolder + morphs + feedback): PTCH RATO INDX FINE FOLD MIX, SETUP CAR/MOD/DEC/SYMM/FDBK/PWM (sine→saw→square; PWM sine lean / saw phase-skew / square duty), LFO PMTR shows PLAYBACK names + 30..34 CAR/MOD/SYMM/FDBK/PWM (DEC not a destination). Local fork of FM SYNTH.",
+    evidence=(Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", image="CXOSC C28.RMX",
+        date="2026-11-17", commit="f4b11964534b48d0428e3ff303d75d7063f8d878",
+        note="CX 75 (author): unit PLAYBACK/SETUP shots via SCREEN; saw landmark left-drop+linear rise; SYMM "
+             "midline row 6 (±4, matches CAR/MOD). CX 67 CAR/MOD labels + outline ±4 + bipolar PWM LCD. CX 66 "
+             "outline; CX 65 silhouettes; CX 63 saw PWM skew liked on unit. CX 48: sine→saw→square + PWM; "
+             "FINE/FOLD/MIX; HOLD INF; slew. MKII CX-CF 69 (9 Nov 2026): CF METER — 4× CX idle 22%/ISR 272 us; 6× "
+             "~12%/309; 7× idle 0%/355 max 446 (wall) → ML_FM_MAX=6; author confirmed 6 MAX toast on unit. Prior "
+             "CX 41 / CX 28 / VRCS-CX VS. verify_cxosc + make check REMIX=cxosc. On C28 (17 Nov 2026), Ilia "
+             "reports CX OSC sounds good on the MKII."),
+        Evidence(Level.UNIT, who="ilia-murzinov", image="CXSEQ CV.RMX (BUILD 79)",
+            date="2026-11-20", commit="5e737dc4bddd27d2e6c02dc54b8de341493dbc08",
+            note="Ilia confirms INDX changes the saw and triangle carrier waveforms on this build.")),
+    doc="Buchla-style complex oscillator as a machine: FM, a wavefolder, waveform morphs and feedback.",
     conflicts=(
         ("SYNTH MACHINE", "both own the FLEX/STATIC kind-table renderers, page cave 0x400d24d0, and machine-list sites"),
         ("BLACKPYRAMIDS_303", "shares ColdFire ROM hooks (e.g. MIDI note-on 0x4000e746) — build refuses the pair"),

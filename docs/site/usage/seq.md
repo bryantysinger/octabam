@@ -1,34 +1,39 @@
-**SEQ** places Euclidean **sample trigs** and **parameter locks** on one
-audio track. Named after the SEQ submenu on Digitakt II / Digitone II. On
-Octatrack it is its own window on the track via **`[TRACK]`** + **`[PAGE]`**.
-It is separate from the DSP **EUCLID** effect, and it leaves
-`PROJECT > CONTROL > SEQUENCER` alone, so SCALE QUANTIZER stays beside it.
+![SEQ Rhythm page on an audio track.](../../img/seq/panel.png)
 
-Hold a **`[TRACK]`** key and press **`[PAGE]`**. SEQ opens for that track:
-title **SEQ**, the rings icon, a stock 3x2 DATA ENTRY grid, a step grid
-(hollow = off, solid = on; up to 4 rows of 16 for length 64), and **LEN**
-with the **pattern** step count at the bottom right.
+Use **SEQ** to fill an audio or MIDI track's pattern with a Euclidean
+rhythm, add parameter locks on their own rhythms, and generate melodies or
+MIDI chords. On **TRIG**, a fill writes sample or note trigs and the
+selected destination's locks together. On **PLCK**, it rewrites only that
+destination and leaves the track trigs alone.
 
-It writes **pattern** sequencer data. Settings live in `euclid.work` and
-save with the **project** / bank. Defaults: TRIG **PULS** 5, destination
-**AMP** / **VOL**, **ROT** / **DPTH** / PLCK **PULS** 0, **LANE** = **TRIG**.
+**PULS** sets the hit count, **ROT** shifts the hits, and **DPTH** controls
+how far locks vary from the Part value. Press **`[YES]`** to write the
+preview. Each destination keeps its own PLCK rhythm, so its locks can land
+independently of the track trigs. SEQ settings save with the **project** and
+bank; audio and MIDI tracks keep separate settings. Hold **`[TRACK]`** and
+press **`[PAGE]`** to open SEQ for that track.
+
+Fresh audio-track settings start on **SRC** / **PTCH**. Fresh MIDI-track
+settings start on **NOTE**.
 
 ## Mental model
 
-Think of the track as stacked rhythms, not one step grid.
+Each track has one TRIG rhythm and a separate PLCK rhythm for each
+destination.
 
-**Sample trigs** are one rhythm: when the machine plays. Each **parameter
-lock** destination is its own rhythm: when pitch moves, when volume ducks,
-when a filter opens. Those rhythms live side by side on the same track.
-They can line up, or they can disagree.
+Audio sample trigs play the machine. MIDI note trigs send notes. Each
+destination's PLCK rhythm controls which steps write its locks. These
+rhythms can line up or land on different steps.
 
-SEQ is how you paint those layers with Euclidean density and rotation.
-Focus the sample-trig layer when you want hits. Focus a destination when
-you want that parameter's motion. Other layers stay put until you choose
-them.
+Choose **TRIG** to fill the sample or note rhythm. Choose **PLCK** to fill
+one destination's rhythm. A **TRIG** fill also writes locks for the selected
+destination; a **PLCK** fill rewrites only that destination. Other
+destinations keep their locks.
 
-Nothing hits the **pattern** until **`[YES]`**. Dial the shape, watch the
-grid, then write.
+The grid previews SEQ's current settings; it does not show the pattern's
+existing trigs. Opening SEQ or switching tracks loads saved settings but
+does not read live trigs. Press **`[YES]`** to write the preview to the
+pattern.
 
 ## Open and leave
 
@@ -38,15 +43,21 @@ grid, then write.
 | **`[NO]`** | Close the window |
 | Bare **`[PAGE]`** | Stock pattern pages / step banks; SEQ stays open |
 | Another **`[TRACK]`** while open | Switch SEQ to that track |
+| Double-tap **`[TRACK]`** | Stock **QUICK ASSIGN** on audio tracks; stock behavior on MIDI tracks |
+| **`[FUNC]`** + **`[TRACK]`** | Stock mute |
+| **`[TRACK]`** + **`[PLAY]`** / **`[STOP]`** / **`[BANK]`** | Stock preview / stop / audio editor |
+| **`[CUE]`** + **`[TRACK]`** | Stock cue that track |
+| Bare **`[CUE]`** (tap) | Random **PULS** hits on the focused lane |
+| **`[FUNC]`** + **`[BANK]`** | Open the clear menu |
 
 ## Lanes
 
 On each track SEQ keeps:
 
-1. **One TRIG lane.** Where **sample trigs** land.
+1. **One TRIG lane.** Where audio **sample trigs** or MIDI **note trigs** land.
 2. **One PLCK lane per destination.** Knob **D** picks the destination
-   (**AMP** / **VOL**, **SRC** / **PTCH**, …). That destination keeps its
-   own **PULS**, **ROT**, **DPTH**, and free mask on the track.
+   (**AMP** / **VOL**, **SRC** / **PTCH**, or a MIDI parameter). That destination keeps its
+   own **PULS**, **ROT**, **DPTH**, and random step selection on the track.
 
 **LANE** (**C**) chooses which lane **A** / **B** and the step grid edit.
 Scroll **D** on **PLCK** to load that destination's **PULS** / **ROT** into
@@ -54,121 +65,272 @@ Scroll **D** on **PLCK** to load that destination's **PULS** / **ROT** into
 
 | **LANE** | What you edit | What **`[YES]`** does |
 |---|---|---|
-| **TRIG** | Sample-trig rhythm | Rewrites **sample trigs**. Places or clears locks for **only the current destination** on those steps. Copies that destination's PLCK **PULS** / **ROT** to match. |
-| **PLCK** | That destination's lock rhythm | Leaves sample trigs alone. Rewrites **only this destination**. Misses clear it even on sample-trig steps. Hits without a sample trig become **trigless trigs**. |
+| **TRIG** | Sample-trig or note-trig rhythm | Rewrites the track trigs. Places or clears locks for **only the current destination** on those steps. Copies that destination's PLCK **PULS** / **ROT** to match. |
+| **PLCK** | That destination's lock rhythm | Leaves track trigs alone. Rewrites **only this destination**. Misses clear it even on steps with a sample or note trig. |
+
+On audio tracks, a PLCK hit without a sample trig creates a **trigless
+trig**. It can trigger LFOs and FX envelopes without playing a sample. On
+MIDI tracks, PLCK leaves the note-trig rhythm alone and writes the selected
+MIDI lock on its hit steps. It does not add note trigs.
 
 **D** / **E** stay live on **`[YES]`** even when **LANE** is **TRIG**.
 
-## Knobs
+## Controls
 
-Same 3x2 cells as stock SETUP pages:
+SEQ has two control pages. **`[RIGHT]`** opens Harmony when **D** is set to
+audio **SRC** / **PTCH** or MIDI **NOTE**. **`[LEFT]`** returns to Rhythm.
+The step grid and **LEN** stay visible on both pages.
+
+### Rhythm
+
+![SEQ Rhythm page on an audio track.](../../img/seq/panel.png)
 
 | Knob | Label | Role |
 |---|---|---|
 | **A** | **PULS** | Hit count of the focused lane |
 | **B** | **ROT** | Rotation of the focused lane |
 | **C** | **LANE** | **TRIG** or **PLCK** |
-| **D** | page + param | Lock destination. Two lines, LFO SETUP **PMTR** style (**AMP** / **VOL**, **SRC** / **PTCH**, …). **AMP** / **XVOL** is skipped. On **CX OSC** also **SRC** / **CAR** **MOD** **SYMM** **FDBK** **PWM** |
-| **E** | **DPTH** | How far locks swing from the Part value. **0** clears that destination. **SRC** / **PTCH** stays in scale around the Part's **PLAYBACK** **PTCH**. **AMP** / **VOL** sits at or below the Part's **AMP** **VOL**. Anything else swings ± **DPTH** |
+| **D** | Page and parameter | Choose the lock destination. Audio choices include **AMP** / **VOL**, **SRC** / **PTCH**, and CX OSC controls. MIDI choices include **NOTE**, **VEL**, **LEN**, LFO and ARP parameters, pitch bend, channel pressure, and **CC1** through **CC10**. |
+| **E** | **DPTH** | Set lock variation. At 0, the fill clears this destination's locks. **AMP** / **VOL** varies only below the Part value; audio **PTCH** and MIDI **NOTE** use DPTH for their pitch span. Other destinations vary above and below their Part values. |
 | **F** | | Empty |
 
-**LEN** shows the active **pattern** length.
+**LEN** shows the active pattern length.
+
+Tap **`[CUE]`** and release without **`[TRACK]`** to keep the **PULS** hit
+count and choose its steps randomly on the focused lane. Changing **PULS**
+returns to the Euclidean pattern.
+
+### Harmony
+
+#### Audio tracks
+
+![SEQ Harmony page on an audio track, with RAND selected.](../../img/seq/tonal.png)
+
+On audio tracks, Harmony controls the **SRC** / **PTCH** destination.
+**SCAL** and **ROOT** set the scale for generated pitch locks. **DPTH**
+sets their pitch span around the Part's **PLAYBACK PTCH**. **D** **PHRS**
+chooses RAND, UP, DOWN, ALT or TRI for the generated pitches. New tracks
+start at RAND. **E** **JUMP**
+sets the spacing between successive phrase positions from 0 to 127: 0
+advances by one scale position; higher values skip farther. UP and DOWN
+start at the Part pitch and move in the selected direction, wrapping within
+the **DPTH** pitch span. ALT and TRI traverse that span from its lowest
+pitch. Sample playback pitch locks use whole-semitone steps. At **DPTH**
+127, sample playback spans up to 12 semitones in either direction; synth
+and CX pitch span up to 24.
+
+On audio tracks, **C** and **F** are blank.
+
+#### MIDI tracks
+
+![SEQ Harmony page on a MIDI track, with RAND selected.](../../img/seq/midi-tonal.png)
+
+On MIDI tracks, **A** **SCAL** chooses MAJ, MIN, PENT, DOR, PHR, MIX,
+WHOL or CHRO. **B** **ROOT** chooses C through B. **C** **VOIC** chooses
+one to four notes. For **NOTE** fills, **D** **PHRS** chooses RAND, UP,
+DOWN, ALT or TRI. New tracks start at RAND. **E** **JUMP** ranges from 0 to
+127 and sets spacing between successive phrase positions: 0 advances one
+scale position, and higher values skip farther. UP and DOWN start at the
+Part's **NOTE** and wrap through the in-scale notes inside the **DPTH** span.
+ALT and TRI traverse those notes from the low end. **F** **CHRD** chooses a
+chord shape and inversion. **JUMP** is not used for MIDI ARP destinations.
+
+**PHRS** sets the pitch order on audio and MIDI tracks:
+
+| **PHRS** | Pitch order |
+|---|---|
+| **RAND** | Choose a random direction for each move through the in-scale pitches. **JUMP** sets the scale-degree distance between neighboring hits. At a **DPTH** edge, the walk turns around so the interval stays the same. This is the default. Filling again rerolls the sequence without changing the controls. |
+| **UP** | Start at the Part pitch and move upward through the in-scale pitches. Wrap to the bottom of the **DPTH** span. |
+| **DOWN** | Start at the Part pitch and move downward through the in-scale pitches. Wrap to the top of the **DPTH** span. |
+| **ALT** | Rise from the lowest pitch to the highest, then descend without repeating the peak. |
+| **TRI** | Rise from the lowest pitch, repeat the highest pitch once, then descend. |
+
+For MIDI **NOTE** fills, **DPTH** sets the pitch span around the Part's
+**NOTE**. At **DPTH** 127, the span reaches up to four octaves in either
+direction, limited by the MIDI note range. MIDI **ARP** uses its selected
+mode's intervals rather than the melodic **DPTH** span.
+
+#### Phrase types
+
+Each piano roll shows 64 MIDI **NOTE** hits in C major, ROOT C, with Part
+**NOTE** C3 and **DPTH** 32. The pitch range is C2–C4. The **JUMP** 0, 64
+and 127 rolls use identical settings except for **JUMP**. Each roll uses the
+same seed so the random directions are comparable; **JUMP** changes the
+scale-degree distance while the notes stay within the same pitch range.
+
+##### RAND
+
+RAND chooses a starting in-scale pitch, then moves a random direction by the
+scale-degree distance set by **JUMP**. At either **DPTH** edge, it turns
+around instead of wrapping, so the absolute interval stays consistent;
+refilling chooses a new starting pitch and direction sequence.
+
+![RAND pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-rand.png)
+
+##### UP
+
+UP starts at C3 and climbs through the in-scale pitches. It wraps to the
+bottom of the C2–C4 span; raising **JUMP** skips farther between notes.
+
+![UP pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-up.png)
+
+##### DOWN
+
+DOWN starts at C3 and descends through the in-scale pitches. It wraps to the
+top of the span; raising **JUMP** skips farther between notes.
+
+![DOWN pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-down.png)
+
+##### ALT
+
+ALT starts at the bottom of the pitch set, rises to its highest note once,
+then descends without repeating the peak. At **JUMP** 0, its top notes are
+C4, B3.
+
+![ALT pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-alt.png)
+
+##### TRI
+
+TRI also starts at the bottom, but repeats the highest note once before
+descending. At **JUMP** 0, its top notes are C4, C4, B3. This single extra
+top hit is the only difference at **JUMP** 0. At **JUMP** 64, ALT uses a
+five-step stride and TRI a seven-step stride, so their rolls diverge more.
+
+![TRI pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-tri.png)
+
+SEQ's **SCAL** and **ROOT** are independent of the PROJECT SCALE
+QUANTIZER on both audio and MIDI tracks.
 
 ## Writing the pattern
 
-Open and track-switch load the track's saved SEQ settings into the knobs
-and grid. The grid is write-only: it shows those settings, and never reads
-live sample trigs back from the **pattern**. Nothing hits the **pattern**
-until **`[YES]`**.
+Opening SEQ or switching tracks loads that track's saved settings. The grid
+previews those settings; it does not show existing pattern trigs. Press
+**`[YES]`** to write the preview to the pattern.
 
-**`[YES]`** overwrites from **PULS** / **ROT**, or from a free **`[CUE]`**
-mask.
+Each fill writes lock values from the current Part. Changing the Part later
+leaves written locks unchanged; fill again to use the new Part values.
+
+**`[YES]`** overwrites from **PULS** / **ROT**, or from the random step
+selection made with **`[CUE]`**.
 
 **TRIG lane, sample trigs already present.** Changing **PULS** / **ROT** /
-**`[CUE]`** first opens stock **`"ARE YOU SURE?"`** with
+**`[CUE]`** opens **"ARE YOU SURE?"** with
 **`"EXISTING TRIGS IN THE PATTERN"`** /
 **`"WILL BE CLEARED ON NEXT FILL"`**. Dialog **`[YES]`** only unlocks the
-knobs. Writing the pattern is a second **`[YES]`**.
+knobs. Press **`[YES]`** again to write the pattern.
 
-**`[CUE]`.** Keeps **PULS** as the hit count and picks *which* steps are on
-at random on the focused lane. Editing **PULS** after that returns to
-Euclidean.
+**TRIG lane, note trigs already present.** Changing **PULS** / **ROT** /
+**`[CUE]`** opens the same dialog. The first **`[YES]`** applies the pending
+change to the preview and unlocks editing. Press **`[YES]`** again to write.
+**`[NO]`** cancels the pending change.
 
-**TRIG write.** Sample trigs follow the TRIG lane. Locks for the current
-destination land on those steps (**DPTH** 0 clears them). Other destination
-locks stay. If a step loses its sample trig but still holds another
-destination, it becomes a **trigless trig**.
+**`[CUE]`** tap (release with no **`[TRACK]`**). Keeps **PULS** as the hit
+count and picks *which* steps are on at random on the focused lane.
+**`[CUE]`** + **`[TRACK]`** is stock cue. Editing **PULS** after a random
+tap returns to Euclidean.
 
-**PLCK write.** Sample trigs stay. This destination clears on every miss,
-including on sample-trig steps, then writes on PLCK hits. **PULS 0** clears
-this destination across the pattern. Empty trigless steps drop when nothing
-else remains on them.
+**TRIG fill.** Audio sample trigs or MIDI note trigs follow the TRIG lane.
+Locks for the selected destination land on those steps. At **DPTH** 0, the
+fill clears that destination's locks. Other destination locks stay. On audio
+tracks, a step that loses its sample trig but keeps another destination's
+lock becomes a **trigless trig**. On MIDI tracks, the fill rewrites the note
+trig mask; locks for other destinations stay on their existing steps, but
+they do not add note trigs.
 
-## Examples
+**PLCK fill.** Track trigs stay. The selected destination clears on every
+miss, including on steps with a sample or note trig, then writes on PLCK
+hits. **PULS 0** clears this destination across the pattern. Empty
+trigless trigs drop when nothing else remains on them.
 
-In the figures: black = lock on a sample trig; hatch = **trigless trig**;
-white = no lock.
+## Clear data
 
-### Place sample trigs
-
-Empty track. **LANE** = **TRIG**, **D** = **SRC** / **PTCH**, **DPTH** = 0,
-set **PULS**, **`[YES]`**:
-
-![TRIG DPTH 0 writes sample trigs and clears PTCH.](../../img/seq/notes-only.png)
-
-Sample trigs land. Current destination locks clear because **DPTH** is 0.
-
-### Lock pitch on those trigs
-
-**LANE** = **TRIG**, set **PULS** / **ROT**, **D** = **SRC** / **PTCH**,
-**DPTH** non-zero, **`[YES]`**. Sample trigs land; **PTCH** locks sit on
-those steps; that destination's PLCK **PULS** / **ROT** match the TRIG
-rhythm.
-
-### Add volume locks on another rhythm
-
-You already have sample trigs + **PTCH**. Switch to **LANE** = **PLCK**,
-**D** = **AMP** / **VOL**, set a different **PULS** / **ROT**, **`[YES]`**:
-
-![PLCK writes only VOL; sample trigs and PTCH stay.](../../img/seq/stack-vol.png)
-
-**VOL** locks follow that destination's PLCK rhythm (**trigless trigs**
-where there is no sample trig). Sample trigs and **PTCH** stay.
-
-### Change the sample-trig rhythm
-
-Sample trigs with **PTCH** + **VOL**. Keep **D** = **SRC** / **PTCH**,
-change TRIG **PULS**, **`[YES]`**:
-
-![TRIG YES reshapes only PTCH; VOL survives as trigless where sample trigs drop.](../../img/seq/trig-reshape.png)
-
-- **PTCH** (current destination) clears on silent steps and rewrites on the
-  new sample trigs.
-- **VOL** (other destination) is kept. Where a sample trig disappears but
-  **VOL** remains, the step becomes a **trigless trig**.
-
-### Rewrite one destination's locks
-
-**PTCH** was placed from **TRIG**. Switch to **LANE** = **PLCK**, **D** =
-**SRC** / **PTCH**, change **ROT**, **`[YES]`**:
-
-![PLCK YES clears PTCH on sample-trig misses; other destinations stay.](../../img/seq/plck-overwrite.png)
-
-- **PTCH** clears on every miss, including on sample trigs that still fire,
-  then writes on the new PLCK hits (**trigless trig** if no sample trig).
-- Other destinations (**VOL**, filter, …) stay.
-
-### Clear one destination's locks
-
-**LANE** = **PLCK**, that destination's **PULS** = 0, **`[YES]`**:
+To clear one destination's locks, set **LANE** to **PLCK**, set **PULS**
+to 0, then press **`[YES]`**. Track trigs and other destinations stay.
+Empty **trigless trigs** drop when nothing else remains on the step.
 
 ![PLCK PULS 0 clears PTCH; sample trigs and other destinations stay.](../../img/seq/clear-dest.png)
 
-Clears this destination over the pattern length. Sample trigs stay. Orphan
-trigless bits drop when nothing else remains on the step.
+Use the menu to clear existing locks or trigs without writing a new fill.
+
+![SEQ clear menu.](../../img/seq/clear.png)
+
+While SEQ is open, press **`[FUNC]`** + **`[BANK]`** to open the clear
+menu. Choose a row and press **`[YES]`** once. That row clears and resets
+immediately; no second SEQ **`[YES]`** is needed. SEQ returns afterward.
+
+| Row | What clears |
+|---|---|
+| **CLEAR DEST** | Clear the selected destination's locks. Reset its **DPTH**, PLCK **PULS** / **ROT**, and random step selection; keep track trigs. |
+| **CLEAR ALL DEST** | Clear every SEQ destination's locks on this track. Reset each destination's **DPTH**, PLCK **PULS** / **ROT**, and random step selection; keep track trigs. |
+| **CLEAR ALL+TRIGS** | Clear all destination locks and reset their **DPTH** / PLCK settings, plus audio sample trigs or MIDI note trigs. Reset TRIG **PULS** to 5 and **ROT** to 0. |
+
+These clears affect only the selected track within the current pattern
+length. Other tracks and patterns keep their data.
+
+The first two rows keep track trigs. Steps with no track trig or remaining
+locks become empty. Press **`[NO]`** to cancel and return to SEQ. Press
+**`[FUNC]`** + **`[BANK]`** again to close the menu.
+
+## Examples
+
+In the figures, black marks a lock on a sample trig, hatching marks a
+**trigless trig**, and white marks no lock.
+
+### Place sample trigs
+
+On an empty track, set **LANE** to **TRIG**, choose **SRC** / **PTCH** with
+**D**, leave **DPTH** at 0, set **PULS**, then press **`[YES]`**. Sample
+trigs land and PTCH locks clear.
+
+![TRIG DPTH 0 writes sample trigs and clears PTCH.](../../img/seq/notes-only.png)
+
+### Lock pitch on those trigs
+
+Set **LANE** to **TRIG**, choose **SRC** / **PTCH**, set **PULS** / **ROT**
+and a non-zero **DPTH**, then press **`[YES]`**. PTCH locks land on the new
+sample trigs. The PTCH PLCK **PULS** / **ROT** match the TRIG rhythm.
+
+### Add volume locks on another rhythm
+
+Set **LANE** to **PLCK**, choose **AMP** / **VOL**, set a different
+**PULS** / **ROT**, then press **`[YES]`**. VOL follows its own PLCK rhythm.
+Sample trigs and PTCH locks stay where they are.
+
+![PLCK writes only VOL; sample trigs and PTCH stay.](../../img/seq/stack-vol.png)
+
+### Change the sample-trig rhythm
+
+With PTCH and VOL locks on the pattern, set **LANE** to **TRIG**, choose
+**SRC** / **PTCH**, change **PULS**, then press **`[YES]`**. PTCH follows
+the new sample trigs. VOL locks stay; steps that lose a sample trig become
+**trigless trigs** if another lock remains.
+
+![TRIG reshapes PTCH while VOL survives as trigless trigs.](../../img/seq/trig-reshape.png)
+
+### Rewrite one destination's locks
+
+Set **LANE** to **PLCK**, choose **SRC** / **PTCH**, change **ROT**, then
+press **`[YES]`**. PTCH clears on every PLCK miss, including on sample
+trigs. Other destinations stay.
+
+![PLCK rewrites PTCH while preserving sample trigs and other destinations.](../../img/seq/plck-overwrite.png)
 
 ### Place random trigs
 
-Focus the lane (**TRIG** or **PLCK**), set **PULS** to the hit count you
-want, press **`[CUE]`** (exactly that many hits at random on that lane),
-then **`[YES]`** to write.
+Focus **TRIG** or **PLCK**, set **PULS** to the hit count, tap **`[CUE]`**
+to choose those steps at random, then press **`[YES]`** to write.
+
+### Write MIDI chords
+
+Set the MIDI track's output channel in **NOTE SETUP**, opened with
+**`[FUNC]`** + **`[SRC]`** or a double-tap of **`[SRC]`**. Set the Part's
+**NOTE** to C3. In SEQ, select **TRIG**, choose **NOTE** with **D**, and set
+**PULS** and a non-zero **DPTH**. Press **`[RIGHT]`**, choose MAJ for
+**SCAL**, C for **ROOT**, set **VOIC** to 3 and **CHRD** to MAJ0. Set
+**PHRS** to UP and **JUMP** to 0. The first hit writes C3, E3 and G3;
+following hits move upward through the scale. Press **`[YES]`** to write
+the phrase.
+
+Set **VOIC** to 1 and fill again to write single notes and clear unused
+extra-voice locks. USB MIDI output is available when the remix includes
+USB MIDI and the Octatrack is outside USB DISK MODE.

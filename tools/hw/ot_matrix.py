@@ -105,6 +105,7 @@ usb_counters.py), and the unit's analog outputs.
 """
 import argparse
 import json
+import os
 import pathlib
 import re
 import shutil
@@ -115,6 +116,7 @@ import time
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent)); import toolpath  # noqa: E402,F401
+import ot_events  # noqa: E402
 
 DEAD_DBFS = -80.0
 WIN_S = 0.25
@@ -213,6 +215,11 @@ def layouts(remix_name, pairs=False, split=False):
                     lo = {t: ((k1, d1) if t <= 4 else (k2, d2), None) if col == 0 else (None, (k1, d1) if t <= 4 else (k2, d2))
                           for t in range(1, 9)}
                     out.append((f"{k1} {slot} T1-4 + {k2} {slot} T5-8 dear", "split", lo))
+    only = os.environ.get("OT_DARK_ONLY")           # a test: DARK REV FX2 on these tracks only, e.g. "1,2,3,4"
+    if only:
+        keep = {int(x) for x in only.split(",")}
+        out = [(n, k, {t: (v if t in keep else (v[0], None)) for t, v in lo.items()} if n == "DARK REV FX2 def" else lo)
+               for n, k, lo in out]
     return out
 
 
@@ -882,11 +889,11 @@ def cmd_run(a):
                         results.append({"slot": e["slot"], "program": e["program"], "name": e["name"], "flags": ["UNHEALTHY"],
                                         "metrics": {}, "load": None, "why": why})
                         break
-                clock.stop(); time.sleep(0.3)
-                clock.pc(pc_ch, e["program"]); time.sleep(0.8)
+                clock.stop(); ot_events.wait_stopped(clock.remote, 0.3)
+                clock.pc_wait(pc_ch, e["program"], 0.8)
                 t_settle = time.time()
                 while live["db"] > SETTLE_DBFS and time.time() - t_settle < SETTLE_MAX_S:
-                    time.sleep(0.25)
+                    time.sleep(0.25)  # waits for: audio level settling
                 settled = round(time.time() - t_settle, 1)
                 with lock:
                     seg["chunks"] = []
@@ -894,9 +901,9 @@ def cmd_run(a):
                 t_play = time.time()
                 while time.time() - t_play < a.play:
                     lm.poll()
-                    time.sleep(0.25)
+                    time.sleep(0.25)  # waits for: LOAD METER poll cadence
                 clock.stop()
-                time.sleep(a.tail)
+                time.sleep(a.tail)  # waits for: the audio tail
                 with lock:
                     chunks, seg["chunks"] = seg["chunks"], None
                 x = np.concatenate(chunks).astype(np.float64) if chunks else np.zeros((0, nch))
@@ -946,7 +953,7 @@ def cmd_run(a):
                     print("NO AUDIO CAPTURED twice running: the unit or its USB stream is not delivering. Stopping.")
                     break
                 if "FREEZE" in flags:
-                    clock.stop(); time.sleep(0.5)
+                    clock.stop(); ot_events.wait_stopped(clock.remote, 0.5)
     finally:
         clock.stop()
         clock.close()
@@ -1119,6 +1126,26 @@ def switch_flags(m):
     return f
 
 
+def unapplied(results):
+    """Indexes of the transitions whose DSP busy after the switch stays at the previous layout's figure
+    (FAILURE_MODES.md, "Program changes left unapplied in a loader soak"). A layout's figure is the median of its
+    DSP busy in the second before each switch away from it; a transition is unapplied when the median from 2.5 s
+    after the switch is nearer the previous layout's figure than the new one's. Needs each layout to be left at
+    least once, and layouts whose figures differ by more than the noise (about 0.3 point).
+    Series rows are [t, cf us, dsp core 0, dsp core 1, ...]."""
+    import statistics
+    pre, post = {}, []
+    for i, r in enumerate(results):
+        s, t = r.get("series") or [], r.get("t_switch_s")
+        before = [p[2] for p in s if t is not None and p[0] < t - 1]
+        after = [p[2] for p in s if t is not None and p[0] > t + 2.5]
+        if before and after:
+            pre.setdefault(r["from"], []).append(statistics.median(before))
+            post.append((i, r["from"], r["to"], statistics.median(after)))
+    level = {k: statistics.median(v) for k, v in pre.items()}
+    return [i for i, f, t, b in post if t in level and abs(b - level[t]) >= abs(b - level[f])]
+
+
 def _switch_pairs(a, entries):
     """[(slot A, slot B)]: --pairs 'A:B,...', else from --report the lightest, heaviest and second heaviest layouts
     that did not drop frames: light to heavy, heavy to light, heavy to second heaviest and back."""
@@ -1165,7 +1192,7 @@ def cmd_switch(a):
                 r["t"] = time.time()
                 rows.append(r)
             except Exception:  # noqa: BLE001
-                time.sleep(0.05)
+                time.sleep(0.05)  # waits for: retry back-off
 
     th = threading.Thread(target=poll, daemon=True)
     th.start()
@@ -1185,16 +1212,16 @@ def cmd_switch(a):
                     print(f"The unit is not running normally: {why}. Stopping; power-cycle it.")
                     results.append({"from": ea["name"], "to": eb["name"], "flags": ["UNHEALTHY"], "why": why})
                     break
-                clock.stop(); time.sleep(0.5)
-                clock.pc(pc_ch, ea["program"]); time.sleep(1.0)
+                clock.stop(); ot_events.wait_stopped(clock.remote, 0.5)
+                clock.pc_wait(pc_ch, ea["program"], 1.0)
                 n0 = len(rows)
                 with lock:
                     seg["chunks"] = []
                 t0 = time.time()
                 clock.start()
-                time.sleep(a.pc_at)
+                time.sleep(a.pc_at)  # waits for: the instant of the switch inside the run
                 clock.pc(pc_ch, eb["program"])
-                time.sleep(SW_RUN_S - a.pc_at)
+                time.sleep(SW_RUN_S - a.pc_at)  # waits for: the rest of the run
                 clock.stop()
                 with lock:
                     chunks, seg["chunks"] = seg["chunks"], None
@@ -1237,7 +1264,9 @@ def cmd_switch(a):
         clock.close()
         (out_dir / "report.json").write_text(json.dumps({"remix": plan["remix"], "project": a.project, "mode": "switch",
                                                         "args": vars(a), "results": results}, indent=1))
-    print(f"{len(results)} transitions; report {out_dir / 'report.json'}")
+    bad = unapplied(results)
+    print(f"{len(results)} transitions; unapplied {len(bad)} {bad}; bad records {sum(r.get('bad_in_window') or 0 for r in results)}; "
+          f"report {out_dir / 'report.json'}")
     return 1 if any(r["flags"] for r in results) else 0
 
 

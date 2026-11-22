@@ -33,6 +33,12 @@ not re-enter.
 events it handles; the handler for event `e` is `<prefix>_st_<e>`. A client not
 in the remix is left out of the tables, and a handler named there that the
 link cannot find stops the build. A client declares `requires=("STORE",)`.
+A client's key may be a tuple of module keys, present when all of them are; a
+tuple nested in it is present when any one of its keys is. PAGES' locks
+(`pglocks.work`, client 10) take PAGES' `LOCKS_KEY`: PAGES, EVENTS, STORE and
+one of the clients in its `LOCKS` (DRUMMER's KIT BALANCE today), the condition
+PAGES links its locks unit on. The clients table writes such a key `A + B + C`,
+a nested tuple of one key as that key.
 
 | client | events |
 |---|---|
@@ -46,7 +52,10 @@ link cannot find stops the build. A client declares `requires=("STORE",)`.
 | CHORDS FACTORY (`ch`) | loadall_post, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
 | DRUMMER (`dr`) | loadall_pre, loadall_post, loadmask_pre, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
 | SEQ (`ef`) | loadall_post, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
+| PAGES + EVENTS + STORE + DRUMMER (`pg`) | loadall_pre/post, loadmask_post, newproj, bankw_post, pstore_pre/post, preload_post |
 | VARISPEED (`vs`) | partsaved, partclear |
+| REMOTE (`rmt`) | loadall_post, loadmask_post, newproj, bankw_post, pstore_post, preload_post |
+| PATTERN MUTE (`pm`) | loadall_pre, loadmask_pre, newproj, bankw_post, pstore_pre/post, preload_post, tocs1, fromcs1 |
 
 ## File calls
 
@@ -83,7 +92,7 @@ LEVEL scrolls the list; YES answers; NO closes it without an answer, leaving the
 entries listed and asking no more until the next load. No answer touches the
 card: the callbacks run in the UI task and the save in the engine task (a file
 copy called through the port's `--call` never returned). Client ids: 0 PLOCKS P2
-(argument = the bank), 1 KITS, 2 MIDI SCENES, 3 PERSISTENT BUFFERS, 4 MORPH, 5 FREE LOOP, 6 SCALES, 7 CHORDS FACTORY, 8 DRUMMER, 9 SEQ. PLOCKS P2 used
+(argument = the bank), 1 KITS, 2 MIDI SCENES, 3 PERSISTENT BUFFERS, 4 MORPH, 5 FREE LOOP, 6 SCALES, 7 CHORDS FACTORY, 8 DRUMMER, 9 SEQ, 10 PAGES' locks, 11 PATTERN MUTE. PLOCKS P2 used
 to read a refused `p2lkNN.work` as empty and overwrite it at the next bank write.
 
 ## Native Part access
@@ -128,14 +137,14 @@ unused by stock's pages; the record has no byte left that no module uses.
 | byte | offset | stock | module | state |
 | --- | --- | --- | --- | --- |
 | 0-2 | `+0x00..0x02` | CHAN, BANK, PROG | — | stock |
-| 3 | `+0x03` | unused (NOTE SETUP slot D) | MIDI FOLLOW: source | #824 |
+| 3 | `+0x03` | unused (NOTE SETUP slot D) | MIDI FOLLOW: source | in use |
 | 4 | `+0x04` | SBNK | — | stock |
 | 5 | `+0x05` | unused (NOTE SETUP slot F) | MIDI HARMONY: OFF / NOTE / CHORD | radiohagen's repo |
 | 6-11 | `+0x06..0x0b` | LFO PMTR, WAVE | — | stock |
-| 12 | `+0x0c` | unused (ARP SETUP slot A) | the shared flags byte, owned by STORE: MIDI FOLLOW mode / response (bits 0-1), MIDI LOOPBACK DEST (bits 2-3) | #824; merged |
-| 13 | `+0x0d` | unused (ARP SETUP slot B) | MIDI FOLLOW: remembered fixed octave | #824 |
+| 12 | `+0x0c` | unused (ARP SETUP slot A) | the shared flags byte, owned by STORE: MIDI FOLLOW mode / response (bits 0-1), MIDI LOOPBACK DEST (bits 2-3) | in use |
+| 13 | `+0x0d` | unused (ARP SETUP slot B) | MIDI FOLLOW: remembered fixed octave | in use |
 | 14 | `+0x0e` | ARP LEN | — | stock |
-| 15 | `+0x0f` | unused (ARP SETUP slot D) | MIDI FOLLOW: remembered relative octave | #824 |
+| 15 | `+0x0f` | unused (ARP SETUP slot D) | MIDI FOLLOW: remembered relative octave | in use |
 | 16 | `+0x10` | unused (ARP SETUP slot E) | MIDI HARMONY: VOIC / SPRD / ROOT | radiohagen's repo |
 | 17 | `+0x11` | ARP KEY | MIDI SCALES and SCALES write it (values 25-84 past stock's 0-24); MIDI FOLLOW, MIDI HARMONY and SCALES read it (`store_part_midi_key`) | merged; SCALES PR |
 | 18 | `+0x12` | unused (CTRL1 SETUP slot A) | MIDI HARMONY: CHRD (bits 0-2), SIZE (bits 3-4) | radiohagen's repo |
@@ -143,7 +152,7 @@ unused by stock's pages; the record has no byte left that no module uses.
 | 20-29 | `+0x14..0x1d` | CC1..CC10 numbers | — | stock |
 | 30-35 | `+0x1e..0x23` | LFO MULT, TRIG | — | stock |
 
-Measured on stock 1.40C for `+0x12` (SCALES, 30 Oct 2026, under the port):
+Measured on stock 1.40C for `+0x12` (SCALES, under the port):
 the load keeps the byte (a value past 127 loads as 127), SAVE PROJECT
 writes it back, and CTRL1 SETUP's YES (`0x4003fe14`) writes back the value
 its window read when it opened (`0x40059620`), so a value no page shows

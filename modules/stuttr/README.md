@@ -75,26 +75,10 @@ DARK REV, they read as DARK's knobs:
 Keep a separate project copy, or re-select effects and save, before going
 back to stock.
 
-## Measured
-
-Local render gates (`verify_stuttr`): MIX 0 bit-exact; CHNC 0 stays dry;
-CHNC 127 + HOLD engages; SIZE loop gaps; HALF lengthens gaps vs FWD;
-REV 127 reverses; every named knob renders; max-knob (all 127, each MODE,
-~3 s / 0.5 FS) hits **0 rail samples**; two FX2 instances each have energy;
-CHNC 8 sits between dry and always-on; REV 64 is neither always-fwd nor
-always-rev (LFSR); grab onsets spread at CHNC 127; MODE RND varies gaps.
-
 ## Defaults
 
 SIZE / RATE / HOLD mid (64); CHNC 0 (dry until raised); REV 0; MIX 127;
 MODE FWD; SYNC **8**.
-
-## On the unit
-
-Ilia's MKII, **STUT NS.RMX** (latest−SHATTER via BRAIN; 21 Oct 2026): empty
-project sequencer advances; every page-1/page-2 knob, MODE/SYNC, trig
-splits, two instances per core, engage/release fades heard click-free.
-(Prior G4 was the old always-loop topology.)
 
 ## Conflicts
 
@@ -113,7 +97,3 @@ scratch only). Build refuses the combo until fixed.
 - Project-BPM tempo sync
 - Root cause of the SHATTER+STUTTR empty-play stall
 
-
-## Gates
-
-`tools/verify/verify_stuttr.py` (manifest `Gate`).
