@@ -157,11 +157,18 @@ _RMXED = Linked("rmxed", "modules/rec-matrix/editor.s", dram=True, include=cue_k
 
 def select(modules):
     """Beside BAR LED (modules/hooks beat_led) the editor unit is assembled
-    with HK_BEAT_LED: the beat detour calls bl_flash where it called set_led."""
+    with HK_BEAT_LED: the beat detour calls bl_flash where it called set_led.
+    RMX_ICON=LEAD in the environment (a layout trial, not a setting) builds
+    the title's state icon before the title instead of after it."""
     from remix import hooks_flags
-    if not hooks_flags.on("beat_led", "REC MATRIX", modules):
+    defs = ()
+    if hooks_flags.on("beat_led", "REC MATRIX", modules):
+        defs += (("HK_BEAT_LED", 1),)
+    if os.environ.get("RMX_ICON", "").upper() == "LEAD":
+        defs += (("RMX_ICON_LEAD", 1),)
+    if not defs:
         return {}
-    return {"linked": (_RMX, dataclasses.replace(_RMXED, defsyms=(("HK_BEAT_LED", 1),)))}
+    return {"linked": (_RMX, dataclasses.replace(_RMXED, defsyms=defs))}
 
 
 MODULE = Module(

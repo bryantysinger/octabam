@@ -84,7 +84,7 @@
         .equ    LED_OFF,    0x400131c8      | (id): the steady bit cleared
         .equ    PULSE_CONT, 0x40034434      | the track keys' green pulse, after pea 2; move.l (a3),d3
         .equ    PULSE_SKIP, 0x4003443c      | the same loop's next track
-        .equ    ICON_X,     104             | the title's icon: its 7 x 5 cell's left, clear of the title tab's corners
+        .equ    ICON_GAP,   4               | the title's icon: pixels between it and the title's text
         .equ    ICON_Y,     56              | and bottom (y up): rows 3..7, the title bar's band
 
 | mask bits: 0 A, 1 B, 2 C, 3 D, 4 AB, 5 CD, 6..13 T1..T8, 14 MAIN, 15 CUE
@@ -844,6 +844,28 @@ rmx_draw:
         jsr     (SET_TITLE).l
         lea     12(%sp),%sp
         lea     36(%a3),%a4                 | a4 = the surface
+| the icon's place beside the title: stock centres the title at (w - 1) / 2
+| in FONT (0x40057c84 -> 0x40013904, align 1), so its text starts at that
+| centre less half its width (TEXT_W, the width stock measures for its tab)
+        pea     -32(%fp)
+        pea     -1
+        pea     FONT
+        jsr     (TEXT_W).l
+        lea     12(%sp),%sp
+        move.l  %d0,%d1                     | d1 = the title's width
+        move.l  (%a4),%d0                   | the surface's width
+        subq.l  #1,%d0
+        asr.l   #1,%d0                      | d0 = the title's centre
+        move.l  %d1,%d2
+        asr.l   #1,%d2
+        sub.l   %d2,%d0                     | d0 = the title's left
+        .ifdef  RMX_ICON_LEAD
+        sub.l   #ICON_GAP+7,%d0             | B: the icon's 7-wide cell ends a gap before the text
+        .else
+        add.l   %d1,%d0
+        add.l   #ICON_GAP,%d0               | A: the glyph starts a gap after the text
+        .endif
+        move.l  %d0,rmx_icon_x
         move.l  %a4,-(%sp)
         jsr     (CLEAR_BODY).l
         addq.l  #4,%sp
@@ -988,12 +1010,20 @@ rmx_mark:
 rmx_icon:
         move.l  %d2,-(%sp)
         move.l  %d0,%d2
+        lea     rmx_icon_dx,%a0
+        moveq   #0,%d1
+        move.b  (%a0,%d2.l),%d1             | d1 = the glyph's offset in its cell
+        move.l  rmx_icon_x,%d0
+        .ifndef RMX_ICON_LEAD
+        sub.l   %d1,%d0                     | A: the cell placed so the glyph lands at rmx_icon_x
+        .endif
+        move.l  %d0,rmx_cell_x              | B: the cell at rmx_icon_x (glyphs end at its right)
         clr.l   -(%sp)                      | ink 0: the cell cleared
         bsr.s   rmx_icon_cell
         lea     rmx_icon_dx,%a0
         moveq   #0,%d0
         move.b  (%a0,%d2.l),%d0
-        add.l   #ICON_X,%d0
+        add.l   rmx_cell_x,%d0
         pea     ICON_Y
         move.l  %d0,-(%sp)
         move.l  %a4,-(%sp)
@@ -1010,9 +1040,12 @@ rmx_icon_cell:
         move.l  4(%sp),%d0                  | the ink
         move.l  %d0,-(%sp)
         pea     ICON_Y+4
-        pea     ICON_X+6
+        move.l  rmx_cell_x,%d0
+        move.l  %d0,%d1
+        addq.l  #6,%d1
+        move.l  %d1,-(%sp)                  | x1
         pea     ICON_Y
-        pea     ICON_X
+        move.l  %d0,-(%sp)                  | x0
         move.l  %a4,-(%sp)
         jsr     (INVERT).l
         lea     24(%sp),%sp
@@ -1141,6 +1174,10 @@ rmx_toast_h:
         .long   0                           | the toast window this editor last opened
 rmx_icon_drawn:
         .long   -1                          | the state the title's icon shows
+rmx_icon_x:
+        .long   0                           | A: the glyph's left; B: the cell's left (rmx_draw)
+rmx_cell_x:
+        .long   0                           | the icon's 7 x 5 cell's left (rmx_icon)
 rmx_in_wincb:
         .long   0                           | 1 inside rmx_win_closed (the manager's callback)
 rmx_beat_phase:
